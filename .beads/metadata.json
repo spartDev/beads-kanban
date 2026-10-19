@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "bdesk",
+  "project_id": "557f550a-d4d6-4ad3-a918-85a4bf93eac7"
+}
