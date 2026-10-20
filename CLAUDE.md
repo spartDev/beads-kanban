@@ -2,6 +2,22 @@
 
 This file provides instructions and context for AI coding agents working on this project.
 
+## beads-desktop
+
+App web locale (lecture seule) qui suit les tickets beads de tous les Projets Dolt et calcule des métriques de flux. Vocabulaire : `CONTEXT.md`. Décisions : `docs/adr/`.
+
+```bash
+pnpm dev          # serveur Fastify (127.0.0.1:5179, tsx watch) + Vite (5173, proxy /api)
+pnpm build        # interface → dist/web, serveur → dist/cli.js (esbuild)
+pnpm start        # = beads-desktop : sert dist/web et ouvre le navigateur
+pnpm test         # vitest
+pnpm typecheck && pnpm lint
+```
+
+- `src/domain/` : logique métier pure (Transitions, Livraisons, Blocage, durées) — aucune dépendance au serveur ni à Dolt.
+- `src/server/` : Fastify, config (`~/.config/beads-desktop/config.json`, racines par défaut `~/Developer`), CLI.
+- `src/web/` : React 19 + Tailwind 4 + TanStack Query.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker
 
