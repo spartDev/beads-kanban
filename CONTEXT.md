@@ -56,11 +56,14 @@ Nombre de Livraisons sur une période (équivalent de la Deployment Frequency DO
 _Avoid_: vélocité, throughput
 
 **Bug d'origine**:
-Un bug relié à la Livraison qui l'a introduit.
+Un ticket de type bug, créé à ou après la date d'une Livraison à laquelle il est relié par un lien « découvert à partir de » actif. Le ticket relié est autre que lui-même : un bug n'est jamais son propre Bug d'origine. Un bug créé avant cette Livraison, ou relié à un ticket qui n'est pas une Livraison (ouvert, Abandon), a été trouvé en cours de travail : il n'est l'origine d'aucun échec. Un bug relié à une Epic n'est l'origine d'aucun échec et n'est pas compté comme relié. Un bug en Abandon n'est jamais un Bug d'origine : il décrit le même défaut qu'un autre bug. Il transmet ses liens au bug qui le remplace ; pour ces liens, la date qui compte est celle de sa propre création, car c'est lui qui a constaté le défaut.
 
 **Taux d'échec**:
-Part des Livraisons ayant au moins un Bug d'origine (équivalent du Change Failure Rate DORA). Non significatif tant que peu de bugs sont reliés.
+Part des Livraisons ayant au moins un Bug d'origine (équivalent du Change Failure Rate DORA). Non significatif tant que la Couverture est faible.
 _Avoid_: CFR, qualité
+
+**Couverture**:
+Part des bugs dont l'origine est renseignée : c'est le cas d'un bug relié par un lien « découvert à partir de » actif à un ticket du Projet hors Epic, autre que lui-même, que ce ticket soit livré ou non. Un bug en Abandon n'est pas compté : il décrit le même défaut qu'un autre bug, et transmet ses liens au bug qui le remplace.
 
 **Temps de rétablissement**:
 Lead Time des bugs critiques (P0/P1) (équivalent du MTTR DORA).
@@ -90,5 +93,5 @@ Part des Abandons parmi les tickets fermés sur une période.
 - Un **Projet** contient zéro ou plusieurs tickets
 - Toutes les durées (**Lead Time**, **Cycle Time**, **Temps de rétablissement**) sont mesurées en temps calendaire, dans le fuseau de l'utilisateur
 - Une **Epic** a des **Enfants** ; son avancement = **Livraisons** parmi ses Enfants
-- Un **Bug d'origine** est relié à exactement une **Livraison** ; une **Livraison** peut avoir plusieurs Bugs d'origine
+- Un **Bug d'origine** est relié à au moins une **Livraison**, qu'il met chacune en échec ; une **Livraison** peut avoir plusieurs Bugs d'origine
 - La **Vue globale** agrège tous les **Projets** suivis ; le kanban reste centré sur un **Projet**
