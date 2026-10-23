@@ -18,7 +18,7 @@ const config = loadConfig();
 const webRoot = values.dev ? undefined : join(dirname(fileURLToPath(import.meta.url)), 'web');
 const port = Number(values.port);
 
-await startServer({ config, webRoot, port });
+await startServer({ config, webRoot, port, allowAnyLocalPort: values.dev });
 
 const url = `http://${HOST}:${port}`;
 console.log(`beads-desktop → ${url}`);

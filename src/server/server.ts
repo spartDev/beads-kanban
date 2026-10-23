@@ -1,6 +1,10 @@
+import { STATUS_CODES } from 'node:http';
 import fastifyStatic from '@fastify/static';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
+import type { ApiErrorBody } from '../shared/api';
+import { registerApi } from './api';
 import type { Config } from './config';
+import { createProjectService, type ProjectService } from './projects/service';
 
 export const HOST = '127.0.0.1';
 export const DEFAULT_PORT = 5179;
@@ -9,18 +13,45 @@ export interface ServerOptions {
   config: Config;
   /** Dossier de l'interface compilée ; absent en développement (Vite la sert). */
   webRoot?: string;
+  /** Accès aux Projets ; par défaut, celui de la configuration, lu via le CLI `dolt`. */
+  projects?: ProjectService;
+  /**
+   * Accepte n'importe quel port dans l'en-tête Host (toujours sur localhost ou 127.0.0.1). Pour le développement :
+   * le proxy de Vite relaie les requêtes avec le Host du navigateur (`localhost:5173`), pas celui du serveur.
+   */
+  allowAnyLocalPort?: boolean;
 }
 
-export function buildServer({ webRoot }: ServerOptions): FastifyInstance {
+export function buildServer({
+  config,
+  webRoot,
+  projects = createProjectService(config),
+  allowAnyLocalPort = false,
+}: ServerOptions): FastifyInstance {
   const app = Fastify({ logger: false });
 
+  // Protection contre le DNS rebinding : une page web hostile peut faire pointer son propre nom de domaine sur
+  // 127.0.0.1 et lire l'API depuis le navigateur de l'utilisateur. Sa requête porte alors son nom dans Host.
+  app.addHook('onRequest', async (req, reply) => {
+    if (isLocalHost(req.headers.host, listeningPort(app), allowAnyLocalPort)) return;
+    const body: ApiErrorBody = {
+      statusCode: 403,
+      error: STATUS_CODES[403] ?? 'Forbidden',
+      message: "Hôte non autorisé : l'application n'est joignable que par 127.0.0.1 ou localhost.",
+    };
+    return reply.code(403).send(body);
+  });
+
   app.get('/api/health', async () => ({ status: 'ok' }));
+  // Plugin à part : le gestionnaire d'erreurs de l'API ne s'applique pas aux autres routes.
+  app.register((api) => registerApi(api, projects));
 
   if (webRoot) {
     app.register(fastifyStatic, { root: webRoot });
+    // Ce qui n'est ni un fichier ni une route de l'API : index.html pour les routes de l'app, 404 sinon.
     app.setNotFoundHandler((req, reply) => {
-      if (req.url.startsWith('/api/')) return reply.code(404).send({ error: 'Not Found' });
-      return reply.sendFile('index.html');
+      if (isAppRoute(req)) return reply.sendFile('index.html');
+      return reply.code(404).send({ error: 'Not Found' });
     });
   }
 
@@ -31,4 +62,53 @@ export async function startServer(options: ServerOptions & { port?: number }): P
   const app = buildServer(options);
   await app.listen({ host: HOST, port: options.port ?? DEFAULT_PORT });
   return app;
+}
+
+/** Le port sur lequel le serveur écoute, inconnu tant qu'il n'écoute pas (tests avec `app.inject`). */
+function listeningPort(app: FastifyInstance): number | undefined {
+  const address = app.server.address();
+  return typeof address === 'object' && address !== null ? address.port : undefined;
+}
+
+const LOCAL_HOST = /^(?:127\.0\.0\.1|localhost)(?::(\d{1,5}))?$/i;
+
+/** `127.0.0.1:<port>` ou `localhost:<port>` ; sans port connu (le serveur n'écoute pas), n'importe lequel. */
+function isLocalHost(host: string | undefined, port: number | undefined, anyPort: boolean): boolean {
+  const match = host === undefined ? null : LOCAL_HOST.exec(host);
+  if (!match) return false;
+  return anyPort || port === undefined || Number(match[1] ?? 80) === port;
+}
+
+/**
+ * Une route de l'app (React Router) : une requête GET ou HEAD qui accepte du HTML, hors de l'API (`/api` et `/api/…`)
+ * et sans extension de fichier. `.js`, `.css` ou `.woff2` manquants ne sont pas des routes de l'app. En revanche
+ * `.7` n'est pas une extension : `/p/beads-desktop/t/bdesk-38k.7` est le ticket enfant d'un Projet.
+ */
+function isAppRoute(req: FastifyRequest): boolean {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  const path = pathnameOf(req.url);
+  if (path === '/api' || path.startsWith('/api/')) return false;
+  return acceptsHtml(req.headers.accept) && !FILE_EXTENSION.test(path.slice(path.lastIndexOf('/') + 1));
+}
+
+const FILE_EXTENSION = /\.[a-z][a-z0-9]*$/i;
+
+function pathnameOf(url: string): string {
+  const path = url.split('?', 1)[0] ?? '';
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+}
+
+// Sans en-tête Accept, tout est acceptable ; sinon il faut text/html, text/* ou tout (étoile/étoile), avec un q non nul.
+function acceptsHtml(accept: string | undefined): boolean {
+  if (accept === undefined || accept.trim() === '') return true;
+  return accept.split(',').some((range) => {
+    const [type = '', ...params] = range.split(';').map((part) => part.trim().toLowerCase());
+    const quality = params.find((param) => param.startsWith('q='));
+    if (quality !== undefined && Number(quality.slice(2)) === 0) return false;
+    return type === 'text/html' || type === 'text/*' || type === '*/*';
+  });
 }

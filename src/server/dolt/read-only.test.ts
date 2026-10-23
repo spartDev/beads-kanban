@@ -1,0 +1,91 @@
+import { describe, expect, it } from 'vitest';
+import { assertReadOnly } from './read-only';
+
+describe('assertReadOnly', () => {
+  it.each<[string, string]>([
+    ['insert', 'insert into issues values (1)'],
+    ['update', 'update issues set status = "closed"'],
+    ['delete', 'delete from issues'],
+    ['drop', 'drop table issues'],
+    ['call', "call dolt_commit('-am', 'x')"],
+    ['create', 'create table t (id int)'],
+    ['truncate', 'truncate table issues'],
+    ['alter', 'alter table issues add column x int'],
+    ['replace', 'replace into issues values (1)'],
+    ['load data', "load data infile '/etc/passwd' into table issues"],
+    ['set', 'set @@dolt_force_transaction_commit = 1'],
+    ['use', 'use autre_base'],
+    ['start transaction', 'start transaction'],
+    ['commit', 'commit'],
+    ['lock', 'lock tables issues write'],
+    ['instruction vide', ''],
+    ['un commentaire seul', '-- rien'],
+    ['lecture puis écriture', 'select 1; delete from issues'],
+    ['deux lectures', 'select 1; select 2'],
+    ['écriture après une chaîne', "select 'a'; update issues set status = 'x'"],
+    // Contournements relevés en revue.
+    ['WITH … DELETE', 'with x as (select 1) delete from issues'],
+    ['WITH … UPDATE', 'with x as (select 1) update issues set status = 1'],
+    ['WITH … INSERT', 'with x as (select 1) insert into issues select * from x'],
+    ['WITH récursif à plusieurs tables … DELETE', 'with recursive x (n) as (select 1), y as (select 2) delete from issues'],
+    ['WITH sans instruction finale', 'with x as (select 1)'],
+    ['WITH mal formé', 'with x (select 1) select 1'],
+    ['apostrophe dans un commentaire --', "select 1 -- '\n; insert into issues values (2) -- '"],
+    ['apostrophe dans un commentaire #', "select 1 # '\n; insert into issues values (2) # '"],
+    ['apostrophes dans des commentaires /* */', "select 1 /* ' */; insert into issues values (2) /* ' */"],
+    ['SELECT … INTO DUMPFILE', "select 'x' into dumpfile '/tmp/x'"],
+    ['SELECT … INTO OUTFILE', "select 'x' into outfile '/tmp/x'"],
+    ['SELECT … INTO variable', 'select 1 into @x'],
+    ['SELECT … FOR UPDATE', 'select * from issues for update'],
+    ['EXPLAIN ANALYZE … DELETE', 'explain analyze delete from issues'],
+    ['SHOW CREATE', 'show create table issues'],
+    ['LOAD_FILE', "select load_file('/etc/passwd')"],
+    // Constructions que Dolt et le garde-fou pourraient lire différemment : dans le doute, on refuse.
+    ['commentaire exécutable /*! */', "select 1 /*!50000 into outfile '/tmp/x' */"],
+    ['commentaire exécutable contenant ;', 'select 1 /*! ; delete from issues */'],
+    ['-- collé au caractère suivant', 'select 1 --x; delete from issues'],
+    // Trouvé par fuzzing : le découpeur d'instructions de Dolt ignore les commentaires #, son analyseur les lit.
+    ['point-virgule dans un commentaire #', 'select 1 #; delete from issues'],
+    ['point-virgule après un commentaire # sur la même ligne', 'select 1 # fin ; delete from issues #'],
+    ['apostrophe dans un commentaire # avec ; sur la même ligne', "select 1 # ' ; delete from issues"],
+    ['guillemets dans un commentaire #', 'select 1 # "; delete from issues'],
+    ['commentaire /* dans un commentaire #', 'select 1 # /*\n; delete from issues # */'],
+    ['retour chariot dans un commentaire --', 'select 1 -- x\r; delete from issues'],
+    ['retour chariot dans un commentaire #', 'select 1 # x\r; delete from issues'],
+    ['chaîne non terminée', "select 'abc"],
+    ['identifiant non terminé', 'select `abc'],
+    ['commentaire non terminé', 'select 1 /* abc'],
+    ['antislash hors chaîne', 'select 1 \\ delete from issues'],
+    ['caractère nul', 'select 1\u0000'],
+    ['caractère hors ASCII hors chaîne', 'select é from issues'],
+  ])('refuse une requête qui n’est pas en lecture seule : %s', (_label, sql) => {
+    expect(() => assertReadOnly(sql)).toThrow('lecture seule');
+  });
+
+  it.each<[string, string]>([
+    ['SELECT', 'select * from issues'],
+    ['SELECT en majuscules', '  SELECT 1'],
+    ['SELECT terminé par un point-virgule', 'select 1;'],
+    ['SHOW', 'show tables'],
+    ['DESCRIBE', 'describe issues'],
+    ['DESC', 'desc issues'],
+    ['EXPLAIN', 'explain select * from issues'],
+    ['WITH … SELECT', 'with t as (select 1) select * from t'],
+    ['WITH à plusieurs tables, colonnes nommées', 'with a (x) as (select 1), b as (select 2) select * from a, b'],
+    ['WITH RECURSIVE … SELECT', 'with recursive l (n) as (select 1 union all select n + 1 from l where n < 3) select * from l'],
+    ['point-virgule dans une chaîne', "select * from issues where title = 'a;b; delete from issues'"],
+    ['apostrophe échappée dans une chaîne', "select * from issues where id = 'x\\' ; delete from issues; --'"],
+    ['apostrophe doublée dans une chaîne', "select * from issues where id = 'it''s -- /* # ; delete'"],
+    ['guillemets doubles', 'select "a /* b */ ; c"'],
+    ['mots interdits en identifiants entre guillemets inversés', 'select `into`, `update` from `delete`'],
+    ['mots interdits dans des noms plus longs', 'select created_at, updated_at, closed_at, close_reason, description from issues'],
+    ['commentaire --', 'select 1 -- un commentaire'],
+    ['commentaire -- suivi de la suite de la requête', 'select 1 -- un commentaire\n, 2'],
+    ['commentaire #', 'select 1 # un commentaire'],
+    ['commentaire /* */', 'select /* un commentaire ; delete */ 1'],
+    ['apostrophe seule dans un commentaire', "select 1 -- l'apostrophe"],
+    ['commentaire après le point-virgule', 'select 1; -- fin'],
+  ])('laisse passer une lecture : %s', (_label, sql) => {
+    expect(() => assertReadOnly(sql)).not.toThrow();
+  });
+});

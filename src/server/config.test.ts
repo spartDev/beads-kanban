@@ -11,17 +11,22 @@ describe('loadConfig', () => {
     const config = loadConfig({ home, configPath: join(tmpdir(), 'absent', 'config.json') });
 
     expect(config.roots).toEqual(['/Users/someone/Developer']);
+    expect(config.projects).toEqual([]);
     expect(config.hiddenProjects).toEqual([]);
   });
 
   it('lit les racines du fichier de configuration et développe le ~', () => {
     const dir = mkdtempSync(join(tmpdir(), 'bdesk-config-'));
     const configPath = join(dir, 'config.json');
-    writeFileSync(configPath, JSON.stringify({ roots: ['~/code', '/opt/work'], hiddenProjects: ['~/code/old'] }));
+    writeFileSync(
+      configPath,
+      JSON.stringify({ roots: ['~/code', '/opt/work'], projects: ['~/elsewhere/app', '/srv/api'], hiddenProjects: ['~/code/old'] }),
+    );
 
     const config = loadConfig({ home, configPath });
 
     expect(config.roots).toEqual(['/Users/someone/code', '/opt/work']);
+    expect(config.projects).toEqual(['/Users/someone/elsewhere/app', '/srv/api']);
     expect(config.hiddenProjects).toEqual(['/Users/someone/code/old']);
   });
 

@@ -5,6 +5,8 @@ import { join } from 'node:path';
 export interface Config {
   /** Dossiers racines scannés à la recherche de Projets. */
   roots: string[];
+  /** Projets ajoutés manuellement, hors des racines (chemins de dossiers contenant `.beads/`). */
+  projects: string[];
   /** Projets masqués manuellement (chemins absolus). */
   hiddenProjects: string[];
 }
@@ -18,6 +20,7 @@ export function loadConfig({ home = homedir(), configPath = defaultConfigPath(ho
   const expand = (p: string) => (p === '~' || p.startsWith('~/') ? join(home, p.slice(1)) : p);
   return {
     roots: (raw.roots ?? ['~/Developer']).map(expand),
+    projects: (raw.projects ?? []).map(expand),
     hiddenProjects: (raw.hiddenProjects ?? []).map(expand),
   };
 }
