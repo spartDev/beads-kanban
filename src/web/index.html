@@ -2,8 +2,28 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f3f4f6" />
     <title>beads-desktop</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      // Thème posé avant le premier rendu (pas d'éclair clair en thème sombre), avec la couleur de la barre du
+      // navigateur mobile. Même clé, même règle et mêmes couleurs que theme/theme.ts (un test les compare) :
+      // préférence mémorisée, sinon le système.
+      (function () {
+        var preference = null;
+        try {
+          preference = localStorage.getItem('beads-desktop:theme');
+        } catch (e) {}
+        var dark =
+          preference === 'dark' ||
+          (preference !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        var themeColor = document.querySelector('meta[name="theme-color"]');
+        if (themeColor) themeColor.setAttribute('content', dark ? '#0f1114' : '#f3f4f6');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

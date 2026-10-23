@@ -1,1 +1,282 @@
 @import 'tailwindcss';
+
+/*
+ * Thèmes : `data-theme` est posé sur <html> avant le premier rendu (script de index.html),
+ * puis tenu à jour par ThemeProvider. Sans attribut : thème clair.
+ * Les composants n'utilisent que des tokens sémantiques (bg-panel, text-ink-2, border-line…) :
+ * aucun `dark:` à écrire.
+ */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces : le fond de l'app (barre latérale) et le panneau de contenu qui flotte dessus. */
+  --canvas: oklch(0.965 0.004 255);
+  --panel: oklch(1 0 0);
+  --float: oklch(1 0 0);
+  --well: oklch(0.975 0.003 255);
+
+  /*
+   * Texte : ink-2 et ink-3 atteignent tous deux 4.5:1 (WCAG AA) sur les fonds où ils s'affichent, voiles de
+   * survol compris (design/contrast.test.ts le vérifie). ink-3 est réservé aux indices secondaires, jamais
+   * sur une ligne sélectionnée (voile `press`) : là, le texte passe en ink-2.
+   */
+  --ink: oklch(0.21 0.012 255);
+  --ink-2: oklch(0.45 0.014 255);
+  --ink-3: oklch(0.51 0.012 255);
+
+  --line: oklch(0.25 0.02 255 / 0.1);
+  --line-strong: oklch(0.25 0.02 255 / 0.18);
+  --hover: oklch(0.25 0.02 255 / 0.05);
+  --press: oklch(0.25 0.02 255 / 0.09);
+
+  /* Seul accent de l'interface : verre marin. Il marque l'endroit où l'on se trouve (sélection, focus). */
+  --accent: oklch(0.49 0.105 190);
+  --accent-ink: oklch(0.99 0.005 190);
+  --accent-soft: oklch(0.49 0.105 190 / 0.1);
+
+  --danger: oklch(0.52 0.19 25);
+  --danger-soft: oklch(0.52 0.19 25 / 0.08);
+
+  --float-shadow:
+    0 0 0 1px var(--line), 0 22px 48px -14px oklch(0.25 0.03 255 / 0.28),
+    0 4px 12px oklch(0.25 0.03 255 / 0.07);
+  --panel-shadow: 0 1px 2px oklch(0.25 0.03 255 / 0.05);
+
+  /* Pastille d'un Projet : la teinte (--h) vient de son préfixe, la saturation reste discrète. */
+  --tile-bg-l: 0.93;
+  --tile-bg-c: 0.04;
+  --tile-fg-l: 0.4;
+  --tile-fg-c: 0.11;
+
+  /*
+   * Code couleur fixe des tickets (voir design/issue-palette.ts). Teintes hors de la plage
+   * 165–205° : elle appartient à l'accent, qui ne doit jamais se confondre avec une donnée.
+   */
+  --type-bug: oklch(0.58 0.2 25);
+  --type-feature: oklch(0.6 0.15 150);
+  --type-task: oklch(0.57 0.17 258);
+  --type-chore: oklch(0.58 0.02 255);
+  --type-epic: oklch(0.55 0.2 305);
+  --type-decision: oklch(0.64 0.14 88);
+  --type-spike: oklch(0.62 0.13 222);
+  --type-story: oklch(0.6 0.19 350);
+  --type-milestone: oklch(0.64 0.17 52);
+  --type-other: oklch(0.58 0.02 255);
+
+  --prio-0: oklch(0.56 0.22 25);
+  --prio-1: oklch(0.65 0.18 52);
+  --prio-2: oklch(0.7 0.15 90);
+  --prio-3: oklch(0.6 0.09 250);
+  --prio-4: oklch(0.66 0.01 255);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --canvas: oklch(0.155 0.007 255);
+  --panel: oklch(0.187 0.008 255);
+  --float: oklch(0.222 0.009 255);
+  --well: oklch(0.14 0.007 255);
+
+  --ink: oklch(0.95 0.004 255);
+  --ink-2: oklch(0.75 0.01 255);
+  --ink-3: oklch(0.65 0.012 255);
+
+  --line: oklch(0.98 0.01 255 / 0.08);
+  --line-strong: oklch(0.98 0.01 255 / 0.15);
+  --hover: oklch(0.98 0.01 255 / 0.05);
+  --press: oklch(0.98 0.01 255 / 0.09);
+
+  --accent: oklch(0.8 0.125 187);
+  --accent-ink: oklch(0.2 0.04 190);
+  --accent-soft: oklch(0.8 0.125 187 / 0.14);
+
+  --danger: oklch(0.72 0.17 25);
+  --danger-soft: oklch(0.72 0.17 25 / 0.12);
+
+  --float-shadow:
+    0 0 0 1px var(--line-strong), 0 24px 56px -12px oklch(0 0 0 / 0.6), 0 4px 14px oklch(0 0 0 / 0.3);
+  --panel-shadow: none;
+
+  --tile-bg-l: 0.33;
+  --tile-bg-c: 0.06;
+  --tile-fg-l: 0.86;
+  --tile-fg-c: 0.1;
+
+  --type-bug: oklch(0.72 0.17 25);
+  --type-feature: oklch(0.76 0.16 150);
+  --type-task: oklch(0.73 0.14 258);
+  --type-chore: oklch(0.7 0.02 255);
+  --type-epic: oklch(0.72 0.16 305);
+  --type-decision: oklch(0.82 0.14 88);
+  --type-spike: oklch(0.78 0.12 222);
+  --type-story: oklch(0.75 0.15 350);
+  --type-milestone: oklch(0.78 0.15 52);
+  --type-other: oklch(0.7 0.02 255);
+
+  --prio-0: oklch(0.68 0.2 25);
+  --prio-1: oklch(0.76 0.16 52);
+  --prio-2: oklch(0.84 0.15 90);
+  --prio-3: oklch(0.72 0.08 250);
+  --prio-4: oklch(0.58 0.01 255);
+}
+
+@theme inline {
+  --font-sans:
+    'Mona Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:
+    'Geist Mono Variable', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+
+  --color-canvas: var(--canvas);
+  --color-panel: var(--panel);
+  --color-float: var(--float);
+  --color-well: var(--well);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-hover: var(--hover);
+  --color-press: var(--press);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+
+  --text-ui: 0.8125rem;
+  --text-ui--line-height: 1.25rem;
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1rem;
+
+  --shadow-float: var(--float-shadow);
+  --shadow-panel: var(--panel-shadow);
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--line);
+  }
+
+  html {
+    background: var(--canvas);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--canvas);
+    color: var(--ink);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    /* Mona Sans a un axe de chasse : un cran plus serré donne la densité d'un outil de dev. */
+    font-stretch: 94%;
+    letter-spacing: -0.003em;
+    font-optical-sizing: auto;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Chiffres de largeur fixe partout où l'on compare des nombres. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+  }
+
+  :where(a, button, input, [role='button'], [tabindex]):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
+
+@layer components {
+  /* Touche de clavier, pour les raccourcis affichés. */
+  .kbd {
+    display: inline-flex;
+    height: 1.125rem;
+    min-width: 1.125rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.25rem;
+    border: 1px solid var(--line);
+    border-radius: 0.25rem;
+    background: var(--hover);
+    /* ink-2 : le voile `hover` de la touche s'ajoute à celui de la ligne survolée ou sélectionnée qui la porte. */
+    color: var(--ink-2);
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    font-stretch: 100%;
+    line-height: 1;
+    letter-spacing: 0;
+  }
+
+  /* Les variables de teinte se lisent à l'endroit de l'élément : --h est posé par ProjectTile. */
+  .project-tile {
+    background: oklch(var(--tile-bg-l) var(--tile-bg-c) var(--h, 255));
+    color: oklch(var(--tile-fg-l) var(--tile-fg-c) var(--h, 255));
+  }
+}
+
+@keyframes palette-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes palette-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.99);
+  }
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
