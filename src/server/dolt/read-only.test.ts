@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { assertReadOnly } from './read-only';
+import { DoltQueryError } from './client';
+import { assertReadOnly, ReadOnlyViolation } from './read-only';
 
 describe('assertReadOnly', () => {
   it.each<[string, string]>([
@@ -87,5 +88,57 @@ describe('assertReadOnly', () => {
     ['commentaire après le point-virgule', 'select 1; -- fin'],
   ])('laisse passer une lecture : %s', (_label, sql) => {
     expect(() => assertReadOnly(sql)).not.toThrow();
+  });
+
+  // Le refus part dans la réponse HTTP : typé, il devient un 503 avec sa raison ; ordinaire, un 500 qui citerait la requête.
+  describe('erreur du refus', () => {
+    /** Ce qui trahit la requête dans un message : le mot « canari » que chaque requête ci-dessous contient, ou du SQL ordinaire. */
+    const QUERY_TRACE = /canari|select|issues|read only/i;
+    const refusal = (sql: string): unknown => {
+      try {
+        assertReadOnly(sql);
+      } catch (err) {
+        return err;
+      }
+      return undefined;
+    };
+
+    it('est une ReadOnlyViolation, donc une DoltQueryError : le service en fait un 503, et non un 500', () => {
+      const error = refusal('delete from issues');
+
+      expect(error).toBeInstanceOf(ReadOnlyViolation);
+      expect(error).toBeInstanceOf(DoltQueryError);
+      expect((error as Error).name).toBe('ReadOnlyViolation');
+    });
+
+    it.each<[string, string]>([
+      ['verbe qui n’est pas une lecture', 'canari_ecrit into canari'],
+      ['écriture', "delete from canari where id = 'canari'"],
+      ['plusieurs instructions', 'select canari; select canari'],
+      ['mot interdit', "select canari into outfile '/tmp/canari'"],
+      ['WITH qui ne finit pas par une lecture', 'with canari as (select 1) delete from canari'],
+      ['WITH mal formé', 'with canari (select canari) select canari'],
+      ['parenthèse non fermée', 'with canari as (select canari'],
+      ['chaîne non terminée', "select 'canari"],
+      ['identifiant non terminé', 'select `canari'],
+      ['caractère hors ASCII', 'select canari é'],
+      ['antislash hors chaîne', 'select canari \\ canari'],
+      ['commentaire exécutable', 'select canari /*!50000 canari */'],
+      ['-- collé au caractère suivant', 'select canari --canari'],
+      ['commentaire # ambigu', "select canari # '; canari"],
+      ['commentaire non terminé', 'select canari /* canari'],
+      ['caractère de contrôle dans un commentaire', 'select canari -- canari\u0001'],
+    ])('ne cite rien de la requête, ni extrait ni mot : %s', (_label, sql) => {
+      const error = refusal(sql);
+
+      expect(error).toBeInstanceOf(ReadOnlyViolation);
+      expect((error as Error).message).toContain('lecture seule');
+      expect((error as Error).message).not.toMatch(QUERY_TRACE);
+    });
+
+    it('dit pourquoi, sans citer la requête : l’instruction en trop, le mot interdit', () => {
+      expect((refusal('select 1; select 2') as Error).message).toContain('une seule instruction');
+      expect((refusal('select 1 into @x') as Error).message).toContain('« into »');
+    });
   });
 });

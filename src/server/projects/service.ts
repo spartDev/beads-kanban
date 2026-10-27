@@ -124,6 +124,8 @@ export function createProjectService(
 
     issue: (projectId, issueId) =>
       read(projectId, async (db) => {
+        // Aucun ticket n'a d'octet nul dans son identifiant, et dolt ne pourrait pas recevoir la requête : inutile de l'envoyer.
+        if (issueId.includes('\0')) throw new IssueNotFoundError(projectId, issueId);
         const [record, summaries, dependencies, labels, comments] = await Promise.all([
           readIssue(db, issueId),
           readIssueSummaries(db),

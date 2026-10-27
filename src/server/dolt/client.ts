@@ -2,7 +2,10 @@ import { type ExecFileException, execFile } from 'node:child_process';
 import { chmodSync, existsSync, lstatSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DoltNotFoundError, DoltQueryError } from './errors';
 import { assertReadOnly, READ_ONLY_PREFIX } from './read-only';
+
+export { DoltNotFoundError, DoltQueryError };
 
 /** Ligne de résultat de `dolt sql -r json` : les colonnes NULL sont absentes de l'objet. */
 export type Row = Record<string, unknown>;
@@ -10,29 +13,13 @@ export type Row = Record<string, unknown>;
 /** Une base Dolt (dossier contenant `.dolt/`), interrogée en lecture seule. */
 export interface DoltDatabase {
   readonly dir: string;
-  /** Exécute une seule requête de lecture (SELECT, SHOW, DESCRIBE, EXPLAIN, WITH … SELECT) et renvoie ses lignes. */
+  /**
+   * Exécute une seule requête de lecture (SELECT, SHOW, DESCRIBE, EXPLAIN, WITH … SELECT) et renvoie ses lignes.
+   * Un échec est une `DoltQueryError` (ou une `DoltNotFoundError`), jamais une erreur brute de Node : son message
+   * citerait la requête, qui n'a pas sa place dans une réponse HTTP. Le refus du garde-fou (`ReadOnlyViolation`)
+   * est une `DoltQueryError`, lui aussi sans la requête.
+   */
   query(sql: string): Promise<Row[]>;
-}
-
-/** Le binaire `dolt` n'est pas installé (ou pas dans le PATH). */
-export class DoltNotFoundError extends Error {
-  constructor(binary: string) {
-    super(`Le binaire « ${binary} » est introuvable : installez Dolt et vérifiez qu'il est dans le PATH.`);
-    this.name = 'DoltNotFoundError';
-  }
-}
-
-/** Échec d'une requête : base illisible, schéma inattendu, verrou persistant, délai dépassé… */
-export class DoltQueryError extends Error {
-  constructor(
-    message: string,
-    /** Dossier de la base, quand l'erreur en vient. */
-    readonly dir = '',
-    readonly locked = false,
-  ) {
-    super(message);
-    this.name = 'DoltQueryError';
-  }
 }
 
 export interface DoltClientOptions {
@@ -85,7 +72,7 @@ export function createDoltClient(options: DoltClientOptions = {}): DoltClient {
         return await limit(() => run(binary, dir, sql, env, timeoutMs, maxOutputBytes));
       } catch (err) {
         if (err instanceof QueueFull) throw new DoltQueryError(`Trop de lectures Dolt en attente (plus de ${maxQueued}) : réessayez dans un instant.`, dir);
-        if (!(err instanceof DoltQueryError) || !err.locked || attempt >= retries) throw err;
+        if (!(err instanceof DoltQueryError) || !err.locked || attempt >= retries) throw typed(err, binary, dir, sql);
         await sleep(retryDelayMs * 2 ** attempt);
       }
     }
@@ -101,7 +88,7 @@ function run(binary: string, dir: string, sql: string, env: NodeJS.ProcessEnv, t
       ['sql', '-r', 'json', '-q', READ_ONLY_PREFIX + sql],
       { cwd: dir, env, timeout: timeoutMs, maxBuffer: maxOutputBytes, windowsHide: true },
       (error, stdout, stderr) => {
-        if (error) return reject(toError(error, binary, dir, stdout, stderr, timeoutMs, maxOutputBytes));
+        if (error) return reject(toError(error, binary, dir, withoutQuery(stderr, sql), timeoutMs, maxOutputBytes));
         try {
           resolve(parseRows(stdout));
         } catch (err) {
@@ -152,7 +139,6 @@ function toError(
   error: ExecFileException,
   binary: string,
   dir: string,
-  stdout: string,
   stderr: string,
   timeoutMs: number,
   maxOutputBytes: number,
@@ -166,8 +152,49 @@ function toError(
     return new DoltQueryError(`Sortie de dolt trop volumineuse (plus de ${formatBytes(maxOutputBytes)}) pour lire ${dir}`, dir);
   }
   if (error.killed) return new DoltQueryError(`Délai dépassé (${timeoutMs} ms) pour lire ${dir}`, dir);
-  const detail = firstLines(stderr || stdout || error.message);
+  // Dolt écrit ses erreurs sur stderr ; stdout n'a que les documents JSON des instructions réussies (le `{}` de la
+  // transaction en lecture seule, des lignes de résultat) : jamais un message.
+  const detail = firstLines(stderr) || describeFailure(error, binary);
   return new DoltQueryError(detail, dir, LOCK_ERROR.test(detail));
+}
+
+/**
+ * Pourquoi dolt s'est arrêté sans rien dire. On ne reprend pas `error.message` : celui de Node cite la ligne de
+ * commande (« Command failed: dolt sql -r json -q start transaction read only; select … »), requête comprise.
+ */
+function describeFailure(error: ExecFileException, binary: string): string {
+  if (error.signal) return `dolt a été interrompu (${error.signal}) sans message d'erreur`;
+  if (typeof error.code === 'number') return `dolt a échoué (code de sortie ${error.code}) sans message d'erreur`;
+  return `Impossible de lancer « ${binary} » : ${error.code ?? 'cause inconnue'}.`;
+}
+
+/**
+ * Dolt répète l'instruction en échec avant sa cause (« error on line 1 for query <instruction>: <cause> »). On la
+ * retire : sur une requête de plusieurs lignes, la cause arrive après les lignes que `firstLines` garde, et la
+ * requête n'a pas sa place dans un message d'erreur. Dolt la cite sans les blancs qui la précèdent ni le `;` qui la
+ * termine (« select 1; » devient « select 1 ») : c'est cette forme rognée que l'on cherche. Il ne la répète pas
+ * toujours telle quelle (commentaire après le `;`, en tête de requête…) : alors rien n'est retiré.
+ */
+function withoutQuery(text: string, sql: string): string {
+  // Une boucle plutôt que /[\s;]+$/ : cette expression est quadratique sur une longue suite de blancs.
+  let end = sql.length;
+  while (end > 0 && /[\s;]/.test(sql.charAt(end - 1))) end--;
+  const quoted = sql.slice(0, end).trimStart();
+  return quoted ? text.split(quoted).join('[…]') : text;
+}
+
+/**
+ * Toute erreur qui sort du client est typée. `execFile` lève lui-même des erreurs de Node : octet nul dans un
+ * argument, requête trop longue pour la ligne de commande (E2BIG), option invalide… Leur message reprend la
+ * requête (« Received "start transaction read only; select …" ») et finirait tel quel dans une réponse 500 :
+ * on n'en garde que le code, et l'erreur d'origine reste dans `cause`.
+ */
+function typed(err: unknown, binary: string, dir: string, sql: string): Error {
+  if (err instanceof DoltQueryError || err instanceof DoltNotFoundError) return err;
+  let reason = 'erreur inconnue';
+  if (sql.includes('\0')) reason = 'la requête contient un octet nul, que dolt ne peut pas recevoir en argument';
+  else if (err instanceof Error) reason = String((err as NodeJS.ErrnoException).code ?? err.name);
+  return new DoltQueryError(`Impossible de lancer « ${binary} » : ${reason}.`, dir, false, err);
 }
 
 const formatBytes = (bytes: number) => (bytes >= 1024 * 1024 ? `${Math.round(bytes / (1024 * 1024))} Mo` : `${bytes} octets`);

@@ -8,7 +8,7 @@ import { buildLegacyDatabase, createDatabase, day, hasBinary, isolatedDoltEnv, t
 import { discoverProjects } from '../projects/discovery';
 import { createProjectService } from '../projects/service';
 import { buildServer } from '../server';
-import { createDoltClient, type DoltDatabase } from './client';
+import { createDoltClient, type DoltDatabase, DoltQueryError } from './client';
 import { readTicketHistories } from './history';
 import { readComments, readDependencies, readIssue, readIssuePrefix, readIssueSummaries, readLabels } from './reader';
 
@@ -162,6 +162,17 @@ describe.skipIf(!hasBinary('dolt'))('Projets sur une vraie base Dolt', () => {
 
     expect(histories.map((h) => h.id)).toEqual(['t-1', 't-2', 't-3', 't-4']);
   });
+
+  it('répond 404 en JSON, sans SQL, à un identifiant de ticket qui contient un octet nul', async () => {
+    const app = buildServer({ config: config() });
+
+    const res = await app.inject({ url: '/api/projects/projet-embedded/issues/t-1%00x' });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.headers['content-type']).toContain('application/json');
+    expect(res.json()).toMatchObject({ statusCode: 404, error: 'Not Found' });
+    expect(res.body).not.toMatch(/select|from issues|read only/i);
+  });
 });
 
 /** Le garde-fou et la transaction en lecture seule, sur une vraie base Dolt jetable (jamais celle d'un vrai Projet). */
@@ -218,6 +229,41 @@ describe.skipIf(!hasBinary('dolt'))('lecture seule sur une vraie base Dolt', () 
     }
 
     expect(count()).toBe(1);
+  });
+
+  it('signale une requête en échec par sa cause, sans la requête que Dolt cite avant elle', async () => {
+    const error = await db.query('select colonne_inconnue\n  from t').catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DoltQueryError);
+    expect((error as Error).message).toContain('could not be found');
+    expect((error as Error).message).not.toMatch(/select|from t/);
+  });
+
+  // Dolt cite l'instruction sans son `;` final (et sans ce qui le suit) : la requête citée n'est plus celle que l'on a envoyée.
+  it.each([
+    ['un point-virgule', 'select colonne_inconnue from t;'],
+    ['un point-virgule précédé d’un blanc', 'select colonne_inconnue from t ;'],
+    ['un point-virgule suivi d’un saut de ligne', 'select colonne_inconnue\n  from t;\n'],
+    ['des points-virgules en série', 'select colonne_inconnue from t;;'],
+    ['des points-virgules et des blancs en série', 'select colonne_inconnue from t ; ;  \n'],
+  ])('signale par sa cause une requête terminée par %s, sans la requête que Dolt cite', async (_label, sql) => {
+    const error = await db.query(sql).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DoltQueryError);
+    expect((error as Error).message).toContain('could not be found');
+    expect((error as Error).message).not.toMatch(/select|from t/);
+  });
+
+  // ADR 0001 : la lignée se lit par une CTE récursive, donc un Projet de plus de ~10 000 commits est illisible (503).
+  it('plafonne les CTE récursives à 10 001 lignes, et l’échec au-delà dit pourquoi', async () => {
+    const cte = (n: number) => `with recursive r (n) as (select 1 union all select n + 1 from r where n < ${n}) select count(*) as c from r`;
+
+    expect(await db.query(cte(10_001))).toEqual([{ c: 10_001 }]);
+    const error = await db.query(cte(10_002)).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DoltQueryError);
+    expect((error as Error).message).toContain('iteration limit exceeded');
+    expect((error as Error).message).not.toContain('select');
   });
 });
 
@@ -328,5 +374,34 @@ describe.skipIf(!hasBinary('dolt'))('historique d’une base Dolt aux commits to
       { status: 'open', at: at(day(1)) },
       { status: 'closed', at: at(day(4)) },
     ]);
+  }, 60_000);
+
+  it('ticket supprimé puis recréé : les dépendances de sa vie précédente ne subsistent pas, seules celles observées depuis la recréation restent', async () => {
+    const db = newDatabase();
+    db.sql(`${ISSUES_AND_DEPENDENCIES} insert into issues values ('t-1','open','task'), ('t-2','open','task'), ('t-3','open','task'), ('t-4','open','task')`);
+    db.commit(1, 'create');
+    db.sql(`insert into dependencies values ('t-1','t-2','blocks'), ('t-3','t-2','blocks'), ('t-4','t-2','blocks')`);
+    db.commit(2, 't-1, t-3 et t-4 dépendent de t-2');
+    // Supprimer un ticket supprime ses dépendances (t-1) ; la base d'essai n'a pas de clé étrangère : celle de t-4 reste, orpheline.
+    db.sql(`delete from dependencies where issue_id = 't-1'; delete from issues where id in ('t-1', 't-4')`);
+    db.commit(3, 'delete t-1 et t-4');
+    db.sql(`insert into issues values ('t-1','open','task'), ('t-4','open','task'); insert into dependencies values ('t-1','t-3','blocks')`);
+    db.commit(4, 'recreate t-1 (avec une dépendance) et t-4');
+    db.sql(`insert into dependencies values ('t-1','t-2','blocks')`);
+    db.commit(5, 't-1 dépend de nouveau de t-2');
+
+    const byId = new Map((await readTicketHistories(client.open(db.dir))).map((h) => [h.id, h]));
+
+    // t-1 : la dépendance vers t-2 de sa vie précédente (du 2 au 3) est oubliée ; celle posée à la recréation et celle
+    // rétablie ensuite (même cible qu'avant : une durée de vie, pas deux) restent.
+    expect(byId.get('t-1')?.dependencies).toEqual([
+      { type: 'blocks', target: 't-3', addedAt: at(day(4)) },
+      { type: 'blocks', target: 't-2', addedAt: at(day(5)) },
+    ]);
+    // t-4 : sa dépendance a survécu à son absence, mais n'est observée comme sienne que depuis la recréation.
+    expect(byId.get('t-4')?.dependencies).toEqual([{ type: 'blocks', target: 't-2', addedAt: at(day(4)) }]);
+    // t-3 n'a pas de trou : sa dépendance garde sa date.
+    expect(byId.get('t-3')?.dependencies).toEqual([{ type: 'blocks', target: 't-2', addedAt: at(day(2)) }]);
+    expect(byId.get('t-2')?.dependencies).toEqual([]);
   }, 60_000);
 });

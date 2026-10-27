@@ -39,13 +39,14 @@ const LINEAGE = `with recursive lineage (commit_hash, seq) as (
  * (un ticket supprimé puis recréé avec le même identifiant). Les commits de la lignée se suivent de 1 en 1 en `seq` :
  * un écart de plus de 1 entre deux apparitions du ticket est un trou, que `lag` enjamberait sans le voir.
  * `seq` croît vers le passé : `order by seq desc` range les commits du plus ancien au plus récent.
+ * `commit_hash` est le commit de l'instantané : pour un `restart`, celui où commence la vie du ticket.
  */
 const STATUS_CHANGES_SQL = `${LINEAGE}
-  select id, status, changed_at, restart from (
-    select id, status, changed_at, seq, previous,
+  select id, status, changed_at, restart, commit_hash from (
+    select id, status, changed_at, commit_hash, seq, previous,
            case when previous_seq is null or previous_seq - seq > 1 then 1 else 0 end as restart
     from (
-      select h.id as id, h.status as status, l.date as changed_at, ln.seq as seq,
+      select h.id as id, h.status as status, l.date as changed_at, h.commit_hash as commit_hash, ln.seq as seq,
              lag(h.status) over (partition by h.id order by ln.seq desc) as previous,
              lag(ln.seq) over (partition by h.id order by ln.seq desc) as previous_seq
       from dolt_history_issues h
@@ -79,15 +80,18 @@ export async function readTicketHistories(db: DoltDatabase): Promise<TicketHisto
   ]);
 
   const snapshots = new Map<string, StatusSnapshot[]>();
+  const recreations = new Map<string, string>(); // tickets recréés : le commit où commence leur vie actuelle
   for (const row of statusChanges) {
     const id = asText(row.id);
-    // Une nouvelle vie du ticket (recréation après un trou) fait oublier la précédente.
-    const list = row.restart === 1 ? [] : (snapshots.get(id) ?? []);
+    const restart = row.restart === 1;
+    // Une nouvelle vie du ticket (recréation après un trou) fait oublier la précédente, dépendances comprises.
+    if (restart && snapshots.has(id)) recreations.set(id, asText(row.commit_hash));
+    const list = restart ? [] : (snapshots.get(id) ?? []);
     list.push({ status: asText(row.status), at: parseDoltDate(row.changed_at) });
     snapshots.set(id, list);
   }
 
-  const dependencies = dependencyLifetimes(appearances, commits);
+  const dependencies = dependencyLifetimes(appearances, commits, recreations);
 
   return tickets.map((row) => {
     const id = asText(row.id);
@@ -160,16 +164,23 @@ function latestCommit(hashes: Set<string>, lineage: Commit[]): string | undefine
  * Durée de vie des dépendances : `addedAt` est le premier commit où elle apparaît, `removedAt` le commit
  * suivant le dernier où elle figure (absent si elle est encore là au dernier commit). Une dépendance retirée
  * puis rétablie donne deux entrées.
+ *
+ * `recreations` donne, pour chaque ticket supprimé puis recréé, le commit où commence sa vie actuelle. Comme ses
+ * statuts, ses dépendances ne sont comptées que depuis ce commit : celles de sa vie précédente sont oubliées, et
+ * une dépendance qui a survécu à son absence est datée de la recréation.
  */
 export function dependencyLifetimes(
   appearances: DependencyAppearance[],
   commits: Commit[],
+  recreations: ReadonlyMap<string, string> = new Map(),
 ): Map<string, DependencyHistory[]> {
   const position = new Map(commits.map((commit, i) => [commit.hash, i]));
+  // Un commit de recréation absent de la lignée (arrivé entre deux lectures) n'écarte rien.
+  const lifeStart = (ticket: string) => position.get(recreations.get(ticket) ?? '') ?? 0;
   const byDependency = new Map<string, { from: string; to: string; type: string; positions: number[] }>();
   for (const { commit, from, to, type } of appearances) {
     const i = position.get(commit);
-    if (i === undefined) continue;
+    if (i === undefined || i < lifeStart(from)) continue;
     const key = JSON.stringify([from, to, type]);
     const entry = byDependency.get(key) ?? { from, to, type, positions: [] };
     entry.positions.push(i);

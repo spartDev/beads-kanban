@@ -54,6 +54,52 @@ describe('dependencyLifetimes', () => {
     expect(dependencyLifetimes([seen('inconnu', 'a', 'b')], commits).size).toBe(0);
   });
 
+  describe('ticket recréé (commit où commence sa vie actuelle, par ticket)', () => {
+    const recreatedAtC3 = new Map([['a', 'c3']]);
+
+    it('ne garde que ce qui est observé depuis la recréation, et rien d’autre que pour ce ticket', () => {
+      const lifetimes = dependencyLifetimes(
+        [seen('c0', 'a', 'b'), seen('c1', 'a', 'b'), seen('c4', 'a', 'b'), seen('c5', 'a', 'b'), seen('c0', 'x', 'b'), seen('c1', 'x', 'b')],
+        commits,
+        recreatedAtC3,
+      );
+
+      // a : la vie précédente (c0-c1) est oubliée, la dépendance rétablie à c4 compte ; x n'a pas été recréé.
+      expect(lifetimes.get('a')).toEqual([{ type: 'blocks', target: 'b', addedAt: at('2026-10-05T10:00:00') }]);
+      expect(lifetimes.get('x')).toEqual([
+        { type: 'blocks', target: 'b', addedAt: at('2026-10-01T10:00:00'), removedAt: at('2026-10-03T10:00:00') },
+      ]);
+    });
+
+    it('garde une dépendance observée dès le commit de la recréation', () => {
+      const lifetimes = dependencyLifetimes([seen('c3', 'a', 'b')], commits, recreatedAtC3);
+
+      expect(lifetimes.get('a')).toEqual([
+        { type: 'blocks', target: 'b', addedAt: at('2026-10-04T10:00:00'), removedAt: at('2026-10-05T10:00:00') },
+      ]);
+    });
+
+    it('date de la recréation une dépendance qui la traverse sans avoir été retirée', () => {
+      const lifetimes = dependencyLifetimes(
+        [seen('c1', 'a', 'b'), seen('c2', 'a', 'b'), seen('c3', 'a', 'b'), seen('c4', 'a', 'b')],
+        commits,
+        recreatedAtC3,
+      );
+
+      expect(lifetimes.get('a')).toEqual([
+        { type: 'blocks', target: 'b', addedAt: at('2026-10-04T10:00:00'), removedAt: at('2026-10-06T10:00:00') },
+      ]);
+    });
+
+    it('n’écarte rien quand le commit de la recréation est inconnu de l’historique', () => {
+      const lifetimes = dependencyLifetimes([seen('c0', 'a', 'b'), seen('c1', 'a', 'b')], commits, new Map([['a', 'inconnu']]));
+
+      expect(lifetimes.get('a')).toEqual([
+        { type: 'blocks', target: 'b', addedAt: at('2026-10-01T10:00:00'), removedAt: at('2026-10-03T10:00:00') },
+      ]);
+    });
+  });
+
   it('ne date jamais un retrait avant l’ajout, même quand l’horloge recule entre deux commits', () => {
     const skewed: Commit[] = [
       { hash: 'c0', at: at('2026-10-05T10:00:00') },
@@ -274,6 +320,39 @@ describe('readTicketHistories', () => {
       { status: 'closed', at: at('2026-10-06T10:00:00') },
     ]);
     expect(second?.statusSnapshots).toEqual([{ status: 'open', at: at('2026-10-01T10:00:00') }]);
+  });
+
+  it('oublie les dépendances de la vie précédente d’un ticket recréé, sans toucher à celles des autres', async () => {
+    const db = fakeDb([
+      { match: /from issues/, rows: tickets },
+      {
+        match: /lag\(/,
+        rows: [
+          { id: 'p-1', status: 'open', changed_at: '2026-10-01 10:00:00.000', restart: 1, commit_hash: 'c0' },
+          { id: 'p-1', status: 'open', changed_at: '2026-10-03 10:00:00.000', restart: 1, commit_hash: 'c2' }, // recréé au commit c2
+          { id: 'p-2', status: 'open', changed_at: '2026-10-01 10:00:00.000', restart: 1, commit_hash: 'c0' },
+        ],
+      },
+      { match: /select l\.commit_hash/, rows: log },
+      columns(CURRENT_COLUMNS),
+      {
+        match: /^select .* from dolt_history_dependencies$/s,
+        rows: [
+          { commit_hash: 'c0', issue_id: 'p-1', depends_on_issue_id: 'p-2', type: 'blocks' }, // vie précédente de p-1
+          { commit_hash: 'c1', issue_id: 'p-1', depends_on_issue_id: 'p-2', type: 'blocks' },
+          { commit_hash: 'c3', issue_id: 'p-1', depends_on_issue_id: 'p-2', type: 'blocks' }, // depuis la recréation
+          { commit_hash: 'c0', issue_id: 'p-2', depends_on_issue_id: 'p-1', type: 'blocks' }, // p-2 n'a jamais été recréé
+          { commit_hash: 'c1', issue_id: 'p-2', depends_on_issue_id: 'p-1', type: 'blocks' },
+        ],
+      },
+    ]);
+
+    const [first, second] = await readTicketHistories(db);
+
+    expect(first?.dependencies).toEqual([{ type: 'blocks', target: 'p-2', addedAt: at('2026-10-04T10:00:00') }]);
+    expect(second?.dependencies).toEqual([
+      { type: 'blocks', target: 'p-1', addedAt: at('2026-10-01T10:00:00'), removedAt: at('2026-10-03T10:00:00') },
+    ]);
   });
 
   it('lit statuts et commits le long de la lignée du premier parent, jamais selon les horloges ni commit_order', async () => {

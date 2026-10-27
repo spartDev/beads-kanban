@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDoltClient, DoltNotFoundError, DoltQueryError, parseDoltDate, sqlIdent, sqlString } from './client';
+import { ReadOnlyViolation } from './read-only';
 
 const LOCKED = 'database "beads" is locked by another dolt process; either clone the database to run a second server';
 
@@ -105,6 +106,94 @@ EOF`);
 
     await expect(db.query('select * from config')).rejects.toThrow('table not found: config');
     expect(fake.calls()).toBe(1);
+  });
+
+  // Une erreur du client sort toujours typée, et son message (qui part dans la réponse HTTP) ne reprend pas la requête.
+  describe('échecs d’exécution', () => {
+    const SQL = "select id from issues where id = 'a-1'";
+    const failure = (binary: string, sql = SQL) => createDoltClient(options(binary)).open(tmpdir()).query(sql).catch((e: unknown) => e);
+    /** Ce qui trahit la requête dans un message : un de ses mots, sa table, ou la transaction qui la précède. */
+    const QUERY_TRACE = /select|issues|read only/i;
+
+    it('signale un octet nul dans la requête par une DoltQueryError, sans lancer dolt : execFile lèverait une TypeError citant la requête', async () => {
+      const before = empty.calls();
+
+      const error = await failure(empty.binary, "select 'a\u0000b' from issues");
+
+      expect(error).toBeInstanceOf(DoltQueryError);
+      expect((error as Error).message).toContain('octet nul');
+      expect((error as Error).message).not.toMatch(QUERY_TRACE);
+      expect((error as Error).cause).toBeInstanceOf(TypeError); // l'erreur d'origine reste à qui débogue
+      expect(empty.calls()).toBe(before);
+    });
+
+    it('type de même un refus de lancer le processus qui ne tient pas à la requête (ici, un octet nul dans le chemin du binaire)', async () => {
+      const error = await failure('/usr/bin/do\u0000lt');
+
+      expect(error).toBeInstanceOf(DoltQueryError);
+      expect((error as Error).message).not.toMatch(QUERY_TRACE);
+    });
+
+    it('type une requête trop longue pour la ligne de commande (E2BIG), sans lancer dolt', async () => {
+      const before = empty.calls();
+
+      const error = await failure(empty.binary, `select '${'x'.repeat(2 * 1024 * 1024)}'`);
+
+      expect(error).toBeInstanceOf(DoltQueryError);
+      expect((error as Error).message).not.toContain('xxxx');
+      expect(empty.calls()).toBe(before);
+    });
+
+    it('ne reprend pas la requête quand dolt s’arrête sans rien dire : seul le code de sortie est donné', async () => {
+      const error = await failure(fakeDolt('exit 3').binary);
+
+      expect(error).toBeInstanceOf(DoltQueryError);
+      expect((error as Error).message).toContain('code de sortie 3');
+      expect((error as Error).message).not.toMatch(QUERY_TRACE);
+    });
+
+    it('ne reprend pas la requête quand dolt est interrompu par un signal : seul le signal est donné', async () => {
+      const error = await failure(fakeDolt('kill -9 $$').binary);
+
+      expect(error).toBeInstanceOf(DoltQueryError);
+      expect((error as Error).message).toContain('SIGKILL');
+      expect((error as Error).message).not.toMatch(QUERY_TRACE);
+    });
+
+    it('ne reprend pas ce que dolt a écrit sur stdout (le {} de la transaction, des lignes de résultat) : ce n’est pas un message', async () => {
+      const error = await failure(fakeDolt(`echo '{}'; echo '{"rows": [{"titre": "confidentiel"}]}'; kill -9 $$`).binary);
+
+      expect(error).toBeInstanceOf(DoltQueryError);
+      expect((error as Error).message).toContain('SIGKILL');
+      expect((error as Error).message).not.toMatch(/confidentiel|\{\}/);
+    });
+
+    it('garde la cause d’un échec, et non la requête que dolt répète avant elle', async () => {
+      // Dolt écrit « error on line 1 for query <requête> : <cause> » : sur une requête de plusieurs lignes, la
+      // cause vient après les lignes que l'on garde. Ce faux dolt répète la requête reçue, comme le vrai.
+      const fake = fakeDolt(
+        `printf 'error on line 1 for query %s: WITH RECURSIVE iteration limit exceeded\\n' "\${5#start transaction read only; }" >&2\nexit 1`,
+      );
+
+      const error = await failure(fake.binary, 'select a,\n  b\n  from table_secrete\n  where c = 1');
+
+      expect(error).toBeInstanceOf(DoltQueryError);
+      expect((error as Error).message).toContain('WITH RECURSIVE iteration limit exceeded');
+      expect((error as Error).message).not.toContain('table_secrete');
+    });
+
+    it('retire aussi la requête terminée par un point-virgule, que Dolt cite sans lui', async () => {
+      // Comme le vrai, ce faux dolt retire le `;` final de l'instruction qu'il cite : « select 1; » devient « select 1 ».
+      const fake = fakeDolt(
+        `q="\${5#start transaction read only; }"\nq="\${q%;}"\nprintf 'error on line 1 for query %s: WITH RECURSIVE iteration limit exceeded\\n' "$q" >&2\nexit 1`,
+      );
+
+      const error = await failure(fake.binary, 'select a,\n  b\n  from table_secrete\n  where c = 1;');
+
+      expect(error).toBeInstanceOf(DoltQueryError);
+      expect((error as Error).message).toContain('WITH RECURSIVE iteration limit exceeded');
+      expect((error as Error).message).not.toContain('table_secrete');
+    });
   });
 
   it('signale clairement l’absence du binaire dolt', async () => {
@@ -261,6 +350,18 @@ EOF`);
     const before = empty.calls();
 
     await expect(emptyDb().query(sql)).rejects.toThrow('lecture seule');
+    expect(empty.calls()).toBe(before);
+  });
+
+  it('refuse une écriture par une ReadOnlyViolation, qui est une DoltQueryError et ne cite pas la requête, sans lancer dolt', async () => {
+    const before = empty.calls();
+
+    const error = await emptyDb().query("delete from issues where id = 'SECRET-ID'").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ReadOnlyViolation);
+    expect(error).toBeInstanceOf(DoltQueryError);
+    expect((error as Error).message).toContain('lecture seule');
+    expect((error as Error).message).not.toMatch(/SECRET-ID|delete|issues/i);
     expect(empty.calls()).toBe(before);
   });
 

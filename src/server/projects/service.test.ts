@@ -3,8 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DoltClient, Row } from '../dolt/client';
+import { assertReadOnly } from '../dolt/read-only';
 import { buildServer } from '../server';
-import { createProjectService, ProjectNotFoundError, ProjectUnreadableError } from './service';
+import { createProjectService, IssueNotFoundError, ProjectNotFoundError, ProjectUnreadableError } from './service';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -36,14 +37,16 @@ function project(name: string, { database = true } = {}): void {
   if (database) mkdirSync(join(beads, 'embeddeddolt', name, '.dolt'), { recursive: true });
 }
 
-/** Un faux client dolt qui compte les requêtes reçues : un scan en envoie une par Projet lisible. */
-function fakeDolt(rows: (sql: string) => Row[] = () => []): DoltClient & { queries: number } {
+/** Un faux client dolt qui compte (et garde) les requêtes reçues : un scan en envoie une par Projet lisible. */
+function fakeDolt(rows: (sql: string) => Row[] = () => []): DoltClient & { queries: number; sqls: string[] } {
   const dolt = {
     queries: 0,
+    sqls: [] as string[],
     open: (dir: string) => ({
       dir,
       async query(sql: string) {
         dolt.queries++;
+        dolt.sqls.push(sql);
         await sleep(5);
         return sql.includes("'issue_prefix'") ? [{ value: 'x' }] : rows(sql);
       },
@@ -162,5 +165,55 @@ describe('erreurs de lecture', () => {
 
     expect(res.statusCode).toBe(503);
     expect(res.json()).toMatchObject({ statusCode: 503, error: 'Service Unavailable', reason: 'Date Dolt invalide : pas une date' });
+  });
+
+  it('répond 503 avec la raison, sans la requête, quand le garde-fou du client refuse une lecture fautive', async () => {
+    project('a');
+    // Un lecteur fautif qui construirait une écriture : le client la refuse (avec le vrai garde-fou) avant de lancer dolt.
+    const dolt = fakeDolt((sql) => {
+      if (sql.includes('from issues')) assertReadOnly("delete from issues where id = 'SECRET-ID'");
+      return [];
+    });
+    const app = buildServer({ config: { roots: [root], projects: [], hiddenProjects: [] }, projects: serviceFor(dolt) });
+
+    const res = await app.inject({ url: '/api/projects/a/issues' });
+
+    expect(res.statusCode).toBe(503);
+    expect(res.headers['content-type']).toContain('application/json');
+    expect(res.json()).toMatchObject({ statusCode: 503, error: 'Service Unavailable', reason: expect.stringContaining('lecture seule') });
+    expect(res.body).not.toMatch(/SECRET-ID|delete|from issues/i);
+  });
+});
+
+describe('identifiant de ticket', () => {
+  it('un octet nul désigne un ticket inconnu : la base n’est pas interrogée avec lui (dolt ne pourrait pas le recevoir)', async () => {
+    project('a');
+    const dolt = fakeDolt();
+    const service = serviceFor(dolt);
+    await service.list(); // le scan lit le préfixe de chaque Projet
+    const scanned = dolt.sqls.length;
+
+    const error = await service.issue('a', 'x\u0000y').catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(IssueNotFoundError);
+    expect(dolt.sqls).toHaveLength(scanned);
+  });
+
+  it('un Projet inconnu reste un Projet inconnu, même avec un octet nul dans l’identifiant du ticket', async () => {
+    project('a');
+
+    await expect(serviceFor(fakeDolt()).issue('inconnu', 'x\u0000y')).rejects.toBeInstanceOf(ProjectNotFoundError);
+  });
+
+  it('GET /api/projects/:p/issues/x%00y répond 404 en JSON, sans SQL', async () => {
+    project('a');
+    const app = buildServer({ config: { roots: [root], projects: [], hiddenProjects: [] }, projects: serviceFor(fakeDolt()) });
+
+    const res = await app.inject({ url: '/api/projects/a/issues/x%00y' });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.headers['content-type']).toContain('application/json');
+    expect(res.json()).toMatchObject({ statusCode: 404, error: 'Not Found' });
+    expect(res.body).not.toMatch(/select|from issues|read only/i);
   });
 });

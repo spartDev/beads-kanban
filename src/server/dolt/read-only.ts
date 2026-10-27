@@ -8,12 +8,26 @@
  *    ligne de défense les arrête.
  */
 
+import { DoltQueryError } from './errors';
+
 /** Chaque appel s'ouvre sur une transaction en lecture seule. */
 export const READ_ONLY_PREFIX = 'start transaction read only; ';
 
 /**
+ * La requête n'est pas une lecture simple : le garde-fou l'a refusée. C'est une `DoltQueryError`, donc un Projet
+ * illisible (503 avec la raison) pour l'API, et non une erreur interne (500). Son message dit pourquoi sans citer
+ * la requête (ni extrait, ni verbe) : elle n'a pas sa place dans une réponse HTTP.
+ */
+export class ReadOnlyViolation extends DoltQueryError {
+  constructor(reason: string) {
+    super(`Requête refusée : le lecteur Dolt est en lecture seule (${reason})`);
+    this.name = 'ReadOnlyViolation';
+  }
+}
+
+/**
  * Garde-fou : le lecteur ne lance qu'une seule lecture (SELECT, SHOW, DESCRIBE, EXPLAIN, ou WITH … SELECT),
- * quelle que soit la requête construite.
+ * quelle que soit la requête construite. Sinon il lève une `ReadOnlyViolation`.
  *
  * La requête est découpée en jetons comme le fait Dolt : chaînes et identifiants entre guillemets (opaques),
  * commentaires (ignorés), mots et symboles. Tout ce que Dolt et ce découpage pourraient lire différemment est
@@ -24,7 +38,7 @@ export function assertReadOnly(sql: string): void {
     checkReadOnly(sql);
   } catch (err) {
     if (!(err instanceof NotReadOnly)) throw err;
-    throw new Error(`Requête refusée : le lecteur Dolt est en lecture seule (${err.message} : ${sql.slice(0, 60)})`);
+    throw new ReadOnlyViolation(err.message);
   }
 }
 
@@ -42,7 +56,10 @@ const AMBIGUOUS_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f\u0085\u2028\u2029]/;
 /** Jeton qui représente une chaîne ou un identifiant entre guillemets. */
 const QUOTED = "'";
 
-/** Raison pour laquelle une requête n'est pas une lecture simple. */
+/**
+ * Raison pour laquelle une requête n'est pas une lecture simple. Elle finit dans le message de la `ReadOnlyViolation`,
+ * donc dans la réponse HTTP : elle ne reprend rien de la requête, hormis un mot de `FORBIDDEN_WORDS`.
+ */
 class NotReadOnly extends Error {}
 
 function checkReadOnly(sql: string): void {
@@ -50,8 +67,8 @@ function checkReadOnly(sql: string): void {
   const [statement] = statements;
   if (!statement || statements.length > 1) throw new NotReadOnly('une seule instruction attendue');
   const [verb = ''] = statement;
-  if (!READ_ONLY_VERBS.has(verb)) throw new NotReadOnly(`« ${verb} » n'est pas une lecture`);
-  if (verb === 'with' && statementAfterCtes(statement) !== 'select') throw new NotReadOnly('WITH doit finir par un select');
+  if (!READ_ONLY_VERBS.has(verb)) throw new NotReadOnly("l'instruction n'est pas une lecture");
+  if (verb === 'with' && statementAfterCtes(statement) !== 'select') throw new NotReadOnly("un WITH doit être suivi d'une lecture");
   const forbidden = statement.find((token) => FORBIDDEN_WORDS.has(token));
   if (forbidden) throw new NotReadOnly(`mot interdit « ${forbidden} »`);
 }
