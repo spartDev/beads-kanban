@@ -1,6 +1,9 @@
 import { STATUS_CODES } from 'node:http';
 import type { FastifyError, FastifyInstance, FastifyReply } from 'fastify';
-import type { ApiErrorBody, IssueResponse, IssuesResponse, ProjectsResponse } from '../shared/api';
+import { InvalidPeriodError } from '../domain/calendar';
+import type { ApiErrorBody, IssueResponse, IssuesResponse, MetricsResponse, ProjectsResponse } from '../shared/api';
+import { InvalidMetricsQueryError, parseMetricsQuery } from './metrics/query';
+import type { MetricsService } from './metrics/service';
 import {
   IssueNotFoundError,
   ProjectNotFoundError,
@@ -8,9 +11,12 @@ import {
   ProjectUnreadableError,
 } from './projects/service';
 
-/** Routes `/api/projects…` ; les erreurs du service deviennent des réponses JSON (404, 503). */
-export async function registerApi(app: FastifyInstance, projects: ProjectService): Promise<void> {
+/** Routes `/api/projects…` et `/api/metrics` ; les erreurs des services deviennent des réponses JSON (400, 404, 503). */
+export async function registerApi(app: FastifyInstance, projects: ProjectService, metrics: MetricsService): Promise<void> {
   app.setErrorHandler((error: FastifyError, _req, reply) => {
+    if (error instanceof InvalidMetricsQueryError || error instanceof InvalidPeriodError) {
+      return send(reply, 400, error.message);
+    }
     if (error instanceof ProjectNotFoundError || error instanceof IssueNotFoundError) {
       return send(reply, 404, error.message);
     }
@@ -25,6 +31,11 @@ export async function registerApi(app: FastifyInstance, projects: ProjectService
   app.get<{ Params: { projectId: string } }>(
     '/api/projects/:projectId/issues',
     async (req): Promise<IssuesResponse> => ({ issues: await projects.issues(req.params.projectId) }),
+  );
+
+  app.get<{ Querystring: Record<string, unknown> }>(
+    '/api/metrics',
+    (req): Promise<MetricsResponse> => metrics.compute(parseMetricsQuery(req.query)),
   );
 
   app.get<{ Params: { projectId: string; issueId: string } }>(

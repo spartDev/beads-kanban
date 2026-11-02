@@ -3,7 +3,7 @@ import type { Issue, IssueDetail, Project, ProjectsResponse } from '../../shared
 import type { Config } from '../config';
 import { createDoltClient, type DoltClient, type DoltDatabase, DoltNotFoundError, DoltQueryError } from '../dolt/client';
 import { readTicketHistories } from '../dolt/history';
-import { readComments, readDependencies, readIssue, readIssueSummaries, readLabels } from '../dolt/reader';
+import { readComments, readDependencies, readHead, readIssue, readIssueSummaries, readLabels } from '../dolt/reader';
 import { type Discovery, type DiscoveredProject, discoverProjects } from './discovery';
 import { buildIssueDetail, buildIssues } from './issues';
 
@@ -42,6 +42,8 @@ export interface ProjectService {
   issue(projectId: string, issueId: string): Promise<IssueDetail>;
   /** Historique complet des tickets, pour `analyzeFlow`. */
   histories(projectId: string): Promise<TicketHistory[]>;
+  /** Hash du dernier commit Dolt du Projet : change à chaque commit, donc clé d'invalidation des calculs. */
+  head(projectId: string): Promise<string>;
 }
 
 export interface ProjectServiceOptions {
@@ -139,6 +141,8 @@ export function createProjectService(
       }),
 
     histories: (projectId) => read(projectId, readTicketHistories),
+
+    head: (projectId) => read(projectId, readHead),
   };
 }
 

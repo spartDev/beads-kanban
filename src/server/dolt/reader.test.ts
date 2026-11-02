@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { DoltDatabase, Row } from './client';
+import { type DoltDatabase, DoltQueryError, type Row } from './client';
 import {
   readComments,
   readDependencies,
+  readHead,
   readIssue,
   readIssuePrefix,
   readIssueSummaries,
@@ -140,5 +141,18 @@ describe('lecture de l’état courant', () => {
     expect(
       await readComments(fakeDb([{ author: 'tom', text: 'Salut\nle monde', created_at: '2026-10-20 12:12:28' }]), 'xx-1'),
     ).toEqual([{ author: 'tom', text: 'Salut\nle monde', createdAt: new Date('2026-10-20T12:12:28Z') }]);
+  });
+});
+
+describe('readHead', () => {
+  it('lit le hash du dernier commit : il change à chaque nouveau commit Dolt', async () => {
+    const db = fakeDb([{ head: 'u050lk7o6a7uiav2gkh0gr3e6dl4vupt' }]);
+
+    expect(await readHead(db)).toBe('u050lk7o6a7uiav2gkh0gr3e6dl4vupt');
+    expect(db.queries).toEqual(["select hashof('HEAD') as head"]);
+  });
+
+  it('signale une base dont HEAD est illisible comme une erreur de lecture', async () => {
+    await expect(readHead(fakeDb([]))).rejects.toBeInstanceOf(DoltQueryError);
   });
 });

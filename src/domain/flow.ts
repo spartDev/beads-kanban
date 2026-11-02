@@ -52,7 +52,8 @@ export interface TicketFlow {
 }
 
 const WORK_STATUSES = new Set(['in_progress', 'hooked', 'blocked']);
-const isWork = (status: string) => WORK_STATUSES.has(status);
+/** Statut de travail : en cours, rattaché à un agent, bloqué. Ce que le Cycle Time et le WIP comptent. */
+export const isWork = (status: string) => WORK_STATUSES.has(status);
 
 /** Liens posés par `bd duplicate` / `bd supersede` sur le ticket abandonné lui-même. */
 const ABANDON_LINKS = new Map<string, AbandonCause>([

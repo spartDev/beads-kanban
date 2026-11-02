@@ -4,6 +4,7 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import type { ApiErrorBody } from '../shared/api';
 import { registerApi } from './api';
 import type { Config } from './config';
+import { createMetricsService, type MetricsService } from './metrics/service';
 import { createProjectService, type ProjectService } from './projects/service';
 
 export const HOST = '127.0.0.1';
@@ -15,6 +16,8 @@ export interface ServerOptions {
   webRoot?: string;
   /** Accès aux Projets ; par défaut, celui de la configuration, lu via le CLI `dolt`. */
   projects?: ProjectService;
+  /** Calcul des métriques ; par défaut, celui des `projects`, avec l'horloge et le fuseau du serveur. */
+  metrics?: MetricsService;
   /**
    * Accepte n'importe quel port dans l'en-tête Host (toujours sur localhost ou 127.0.0.1). Pour le développement :
    * le proxy de Vite relaie les requêtes avec le Host du navigateur (`localhost:5173`), pas celui du serveur.
@@ -26,6 +29,7 @@ export function buildServer({
   config,
   webRoot,
   projects = createProjectService(config),
+  metrics = createMetricsService(projects),
   allowAnyLocalPort = false,
 }: ServerOptions): FastifyInstance {
   const app = Fastify({ logger: false });
@@ -44,7 +48,7 @@ export function buildServer({
 
   app.get('/api/health', async () => ({ status: 'ok' }));
   // Plugin à part : le gestionnaire d'erreurs de l'API ne s'applique pas aux autres routes.
-  app.register((api) => registerApi(api, projects));
+  app.register((api) => registerApi(api, projects, metrics));
 
   if (webRoot) {
     app.register(fastifyStatic, { root: webRoot });

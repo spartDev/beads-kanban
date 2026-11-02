@@ -1,4 +1,4 @@
-import { type DoltDatabase, parseDoltDate, type Row, sqlString } from './client';
+import { type DoltDatabase, DoltQueryError, parseDoltDate, type Row, sqlString } from './client';
 
 /** État courant d'un ticket : ce qu'il faut au kanban. */
 export interface IssueSummary {
@@ -52,6 +52,17 @@ export function toDependency(row: Row): DependencyRecord | null {
 export async function readIssuePrefix(db: DoltDatabase): Promise<string | null> {
   const rows = await db.query("select `value` from config where `key` = 'issue_prefix'");
   return asText(rows[0]?.value) || null;
+}
+
+/**
+ * Hash du dernier commit (HEAD) de la base : il change à chaque nouveau commit Dolt, donc à chaque écriture de bd en
+ * auto-commit. Une seule requête légère : de quoi savoir, sans relire l'historique, si un résultat calculé est périmé.
+ */
+export async function readHead(db: DoltDatabase): Promise<string> {
+  const rows = await db.query("select hashof('HEAD') as head");
+  const head = asText(rows[0]?.head);
+  if (!head) throw new DoltQueryError(`HEAD illisible dans ${db.dir}`, db.dir);
+  return head;
 }
 
 export async function readIssueSummaries(db: DoltDatabase): Promise<IssueSummary[]> {
