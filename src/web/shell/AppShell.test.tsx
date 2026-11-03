@@ -74,6 +74,16 @@ describe('navigation', () => {
     await waitFor(() => expect(document.title).toBe('Epics · beads-desktop · beads-desktop'));
   });
 
+  it('nomme le bouton de changement de Projet du mobile par le Projet affiché : le texte visible est dans son nom accessible', async () => {
+    stubDefaultApi();
+    renderApp('/p/bdesk/kanban');
+
+    // WCAG 2.5.3 : un aria-label qui ne commence pas par le texte visible fait échouer axe (label-content-name-mismatch).
+    const button = await screen.findByRole('button', { name: 'beads-desktop, changer de Projet' });
+    expect(button.getAttribute('aria-label')).toBeNull();
+    expect(button.textContent).toContain('beads-desktop');
+  });
+
   it('pointe les onglets du mobile sur le dernier Projet visité quand on est en Vue globale', async () => {
     stubDefaultApi();
     window.localStorage.setItem('beads-desktop:last-project', 'mpm');

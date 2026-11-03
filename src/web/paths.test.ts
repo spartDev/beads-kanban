@@ -5,6 +5,7 @@ describe('paths', () => {
   it('construit les URL de l’application', () => {
     expect(paths.global()).toBe('/');
     expect(paths.kanban('bdesk')).toBe('/p/bdesk/kanban');
+    expect(paths.kanban('bdesk', 'bdesk-38k')).toBe('/p/bdesk/kanban?epic=bdesk-38k');
     expect(paths.epics('bdesk')).toBe('/p/bdesk/epics');
     expect(paths.epics('bdesk', 'bdesk-38k')).toBe('/p/bdesk/epics?epic=bdesk-38k');
     expect(paths.metrics('bdesk')).toBe('/p/bdesk/metrics');
@@ -13,6 +14,7 @@ describe('paths', () => {
 
   it('échappe les identifiants', () => {
     expect(paths.kanban('a b')).toBe('/p/a%20b/kanban');
+    expect(paths.kanban('a b', 'epic/1&2')).toBe('/p/a%20b/kanban?epic=epic%2F1%262');
   });
 });
 

@@ -25,7 +25,8 @@ export function ShortcutsHelp() {
             <div>
               <Dialog.Title className="text-[15px] font-semibold text-ink">Raccourcis clavier</Dialog.Title>
               <Dialog.Description id="shortcuts-help-description" className="mt-0.5 text-ink-2">
-                Ils sont ignorés quand le curseur est dans un champ de saisie.
+                Ils sont ignorés quand le curseur est dans un champ de saisie. Entrée et les flèches restent au bouton, au
+                lien ou à la liste qui les utilise.
               </Dialog.Description>
             </div>
             <Dialog.Close
@@ -36,7 +37,13 @@ export function ShortcutsHelp() {
             </Dialog.Close>
           </div>
 
-          <div className="max-h-[min(60dvh,28rem)] overflow-y-auto px-5 py-3">
+          {/* tabIndex : une zone qui défile prend le focus, sinon le clavier ne peut pas l'atteindre ; le contour reste à l'intérieur (le panneau rogne). */}
+          <div
+            role="region"
+            aria-label="Liste des raccourcis"
+            tabIndex={0}
+            className="max-h-[min(60dvh,28rem)] overflow-y-auto px-5 py-3 focus-visible:-outline-offset-2"
+          >
             {[...groups].map(([group, items]) => (
               <section key={group} aria-label={group} className="py-2">
                 <h3 className="pb-1 text-xs font-medium text-ink-3">{group}</h3>
@@ -47,7 +54,7 @@ export function ShortcutsHelp() {
                       className="flex min-h-9 items-center justify-between gap-4 border-b border-line py-1.5 last:border-b-0"
                     >
                       <span>{shortcut.label}</span>
-                      <SequenceKeys keys={shortcut.keys} />
+                      <Alternatives keys={[shortcut.keys, ...(shortcut.alternateKeys ?? [])]} />
                     </li>
                   ))}
                 </ul>
@@ -57,6 +64,21 @@ export function ShortcutsHelp() {
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+/** Les touches d'une même action sur une seule ligne : « H ou ← ». */
+function Alternatives({ keys }: { keys: readonly string[] }) {
+  return (
+    <span className="inline-flex shrink-0 flex-wrap items-center justify-end gap-x-1.5 gap-y-1">
+      {keys.map((alternative, index) => (
+        // Deux alternatives ne peuvent pas être identiques : la touche sert de clé.
+        <Fragment key={alternative}>
+          {index > 0 ? <span className="text-xs text-ink-3">ou</span> : null}
+          <SequenceKeys keys={alternative} />
+        </Fragment>
+      ))}
+    </span>
   );
 }
 

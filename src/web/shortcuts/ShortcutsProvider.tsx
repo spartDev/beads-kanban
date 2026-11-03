@@ -51,8 +51,8 @@ export type ShortcutDefinition = Shortcut & {
 
 /**
  * Déclare des raccourcis tant que le composant est monté.
- * Les `run` peuvent changer à chaque rendu sans ré-enregistrer quoi que ce soit : le registre
- * n'est touché que si l'identité, les touches, le libellé ou l'activation d'un raccourci changent.
+ * Les `run` et les `when` peuvent changer à chaque rendu sans ré-enregistrer quoi que ce soit : le registre
+ * n'est touché que si l'identité, les touches, le libellé, les options ou l'activation d'un raccourci changent.
  */
 export function useShortcuts(definitions: readonly ShortcutDefinition[]): void {
   const registry = useShortcutRegistry();
@@ -63,19 +63,25 @@ export function useShortcuts(definitions: readonly ShortcutDefinition[]): void {
 
   const signature = definitions
     .filter((d) => d.enabled !== false)
-    .map((d) => [d.id, d.keys, d.label, d.group, d.allowInInput ? 1 : 0].join('|'))
+    .map((d) =>
+      [d.id, d.keys, (d.alternateKeys ?? []).join(','), d.label, d.group, d.allowInInput ? 1 : 0, d.overrideNative ? 1 : 0].join('|'),
+    )
     .join('\n');
 
   useEffect(() => {
     const disposers = latest.current
       .filter((d) => d.enabled !== false)
-      .map(({ id, keys, label, group, allowInInput }) =>
+      .map(({ id, keys, alternateKeys, label, group, allowInInput, overrideNative }) =>
         registry.register({
           id,
           keys,
+          alternateKeys,
           label,
           group,
           allowInInput,
+          overrideNative,
+          // Relues à chaque touche, comme `run` : elles peuvent changer à chaque rendu sans ré-enregistrer le raccourci.
+          when: (event) => latest.current.find((d) => d.id === id)?.when?.(event) ?? true,
           run: (event) => latest.current.find((d) => d.id === id)?.run(event),
         }),
       );

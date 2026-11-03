@@ -66,15 +66,29 @@ describe('un rafraîchissement des Projets en échec', () => {
 });
 
 describe('un rafraîchissement des tickets en échec', () => {
-  it('garde la répartition du kanban', async () => {
+  it('garde les colonnes du kanban : les cartes restent à l’écran', async () => {
     const fetchMock = stubDefaultApi();
     const app = renderApp('/p/bdesk/kanban');
-    expect(await screen.findByText(/tickets, dont/)).toBeTruthy();
+    const ready = await screen.findByRole('region', { name: 'Prêt' });
+    expect(within(ready).getByRole('link', { name: /Kanban par Projet/ })).toBeTruthy();
 
     await refreshFails(app, fetchMock, queryKeys.issues('bdesk'), '/api/projects/bdesk/issues');
 
-    expect(screen.getByText(/tickets, dont/)).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'Prêt' })).getByRole('link', { name: /Kanban par Projet/ })).toBeTruthy();
     expect(screen.queryByText('Impossible de charger les tickets')).toBeNull();
+    expect(screen.queryByRole('status', { name: 'Chargement des tickets' })).toBeNull();
+  });
+
+  it('garde le filtre Epic et la colonne choisis : l’adresse ne bouge pas', async () => {
+    const fetchMock = stubDefaultApi();
+    const app = renderApp('/p/bdesk/kanban?epic=bdesk-38k&col=ready');
+    await screen.findByRole('region', { name: 'Prêt' });
+
+    await refreshFails(app, fetchMock, queryKeys.issues('bdesk'), '/api/projects/bdesk/issues');
+
+    expect(app.router.state.location.search).toBe('?epic=bdesk-38k&col=ready');
+    expect((screen.getByRole('combobox', { name: 'Epic' }) as HTMLSelectElement).value).toBe('bdesk-38k');
+    expect(within(screen.getByRole('region', { name: 'Prêt' })).getByRole('link', { name: /Kanban par Projet/ })).toBeTruthy();
   });
 
   it('garde le décompte de la page Epics', async () => {
@@ -102,7 +116,7 @@ describe('un rafraîchissement des tickets en échec', () => {
   it('garde les résultats de la palette, sans « Tickets indisponibles »', async () => {
     const fetchMock = stubDefaultApi();
     const app = renderApp('/p/bdesk/kanban');
-    expect(await screen.findByText(/tickets, dont/)).toBeTruthy();
+    expect(await screen.findByRole('region', { name: 'Prêt' })).toBeTruthy();
     await refreshFails(app, fetchMock, queryKeys.issues('bdesk'), '/api/projects/bdesk/issues');
 
     await app.user.keyboard('{Control>}k{/Control}');
@@ -118,7 +132,7 @@ describe('bandeau « actualisation impossible »', () => {
   it('prévient, discrètement, que les données affichées ne sont peut-être plus à jour, puis disparaît au rétablissement', async () => {
     const fetchMock = stubDefaultApi();
     const app = renderApp('/p/bdesk/kanban');
-    expect(await screen.findByText(/tickets, dont/)).toBeTruthy();
+    expect(await screen.findByRole('region', { name: 'Prêt' })).toBeTruthy();
     expect(screen.queryByText(/Actualisation impossible/)).toBeNull();
 
     const repair = await refreshFails(app, fetchMock, queryKeys.projects, '/api/projects');

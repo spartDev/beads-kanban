@@ -55,11 +55,12 @@ function MobileSwitcher() {
     <button
       type="button"
       onClick={() => openPalette('projects')}
-      aria-label={`Changer de Projet (actuel : ${label})`}
       className="-ml-1.5 flex h-8 min-w-0 items-center gap-2 rounded-lg px-1.5 text-ui font-semibold text-ink transition-colors hover:bg-hover md:hidden"
     >
       {project ? <ProjectTile project={project} size={20} /> : <BrandMark size={20} />}
       <span className="truncate">{label}</span>
+      {/* Le nom accessible commence par le texte visible (WCAG 2.5.3) ; un aria-label qui le remplacerait ferait échouer axe. */}
+      <span className="sr-only">, changer de Projet</span>
       <ChevronDown size={14} strokeWidth={2} aria-hidden="true" className="shrink-0 text-ink-3" />
     </button>
   );

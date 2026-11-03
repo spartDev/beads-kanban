@@ -117,8 +117,9 @@ const STATUS_LABELS: Record<string, string> = {
   closed: 'fermé',
 };
 
-/** Libellé d'un statut beads ; un statut inconnu s'affiche tel quel. */
-export const statusLabel = (status: string): string => STATUS_LABELS[status] ?? status;
+/** Libellé d'un statut beads ; un statut personnalisé s'affiche tel quel, un statut vide se dit « inconnu ». */
+export const statusLabel = (status: string): string =>
+  STATUS_LABELS[status] ?? (status.trim() === '' ? 'inconnu' : status);
 
 /**
  * Couleur résolue d'un token (`--type-bug`) pour le thème courant, quand `var()` ne peut pas servir

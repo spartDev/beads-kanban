@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ShortcutsProvider, useShortcut, useShortcutList } from './ShortcutsProvider';
+import type { Shortcut } from './registry';
 
 function Counter({ enabled = true }: { enabled?: boolean }) {
   const [count, setCount] = useState(0);
@@ -95,5 +96,190 @@ describe('ShortcutsProvider et useShortcut', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     expect(() => render(<Counter />)).toThrow(/ShortcutsProvider/);
     spy.mockRestore();
+  });
+});
+
+describe('touches alternatives', () => {
+  function Both({ alternate }: { alternate: string[] }) {
+    const [count, setCount] = useState(0);
+    useShortcut({
+      id: 'previous',
+      keys: 'h',
+      alternateKeys: alternate,
+      label: 'Précédent',
+      group: 'Test',
+      run: () => setCount(count + 1),
+    });
+    return <output aria-label="compte">{count}</output>;
+  }
+
+  it('lance la même action avec la touche et avec ses alternatives, sans les lister deux fois', async () => {
+    const user = userEvent.setup();
+    render(
+      <ShortcutsProvider isMac>
+        <Both alternate={['arrowleft']} />
+        <ListProbe />
+      </ShortcutsProvider>,
+    );
+
+    await user.keyboard('h{ArrowLeft}');
+
+    expect(screen.getByLabelText('compte').textContent).toBe('2');
+    expect(screen.getAllByText(/Précédent/)).toHaveLength(1);
+  });
+
+  it('ré-enregistre le raccourci quand ses touches alternatives changent', async () => {
+    const user = userEvent.setup();
+    const view = render(
+      <ShortcutsProvider isMac>
+        <Both alternate={['arrowleft']} />
+      </ShortcutsProvider>,
+    );
+
+    view.rerender(
+      <ShortcutsProvider isMac>
+        <Both alternate={['arrowright']} />
+      </ShortcutsProvider>,
+    );
+
+    // L'ancienne touche alternative n'est plus enregistrée, la nouvelle l'est.
+    await user.keyboard('{ArrowLeft}');
+    expect(screen.getByLabelText('compte').textContent).toBe('0');
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByLabelText('compte').textContent).toBe('1');
+  });
+});
+
+describe('les touches que le focus utilise déjà', () => {
+  it('« Entrée » sur un bouton : le bouton agit une fois, le raccourci reste à l’écart', async () => {
+    const user = userEvent.setup();
+    const run = vi.fn();
+    const clicked = vi.fn();
+    function Page() {
+      useShortcut({ id: 'open', keys: 'enter', label: 'Ouvrir', group: 'Test', run });
+      return <button onClick={clicked}>Bouton</button>;
+    }
+    render(<ShortcutsProvider isMac><Page /></ShortcutsProvider>);
+    const seen: boolean[] = [];
+    // Écoutée après le registre (même cible, enregistrée plus tard) : lit l'événement une fois que le registre l'a vu.
+    window.addEventListener('keydown', (event) => seen.push(event.defaultPrevented));
+
+    screen.getByRole('button', { name: 'Bouton' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(clicked).toHaveBeenCalledTimes(1);
+    expect(run).not.toHaveBeenCalled();
+    expect(seen).toEqual([false]);
+  });
+
+  it('« Entrée » hors de tout élément qui l’utilise : le raccourci la prend', async () => {
+    const user = userEvent.setup();
+    const run = vi.fn();
+    function Page() {
+      useShortcut({ id: 'open', keys: 'enter', label: 'Ouvrir', group: 'Test', run });
+      return <button>Bouton</button>;
+    }
+    render(<ShortcutsProvider isMac><Page /></ShortcutsProvider>);
+
+    await user.keyboard('{Enter}');
+
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('les flèches d’un groupe de boutons radio gardent leur effet : le choix se déplace, le raccourci reste à l’écart', async () => {
+    const user = userEvent.setup();
+    const run = vi.fn();
+    function Page() {
+      useShortcut({ id: 'next', keys: 'arrowright', label: 'Suivant', group: 'Test', run });
+      return (
+        <fieldset>
+          <input type="radio" name="vue" aria-label="liste" defaultChecked />
+          <input type="radio" name="vue" aria-label="tableau" />
+        </fieldset>
+      );
+    }
+    render(<ShortcutsProvider isMac><Page /></ShortcutsProvider>);
+
+    screen.getByRole('radio', { name: 'liste' }).focus();
+    await user.keyboard('{ArrowRight}');
+
+    expect(screen.getByRole('radio', { name: 'tableau' })).toHaveProperty('checked', true);
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('`overrideNative` reprend la touche au bouton', async () => {
+    const user = userEvent.setup();
+    const run = vi.fn();
+    const clicked = vi.fn();
+    function Page() {
+      useShortcut({ id: 'open', keys: 'enter', label: 'Ouvrir', group: 'Test', run, overrideNative: true });
+      return <button onClick={clicked}>Bouton</button>;
+    }
+    render(<ShortcutsProvider isMac><Page /></ShortcutsProvider>);
+
+    screen.getByRole('button', { name: 'Bouton' }).focus();
+    await user.keyboard('{Enter}');
+
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(clicked).not.toHaveBeenCalled();
+  });
+});
+
+describe('when : une condition d’application relue à chaque touche', () => {
+  function Conditional({ active }: { active: boolean }) {
+    const [count, setCount] = useState(0);
+    useShortcut({
+      id: 'parfois',
+      keys: 'escape',
+      label: 'Parfois',
+      group: 'Test',
+      // Cette fermeture lit `active` : elle doit rester à jour sans que le raccourci soit ré-enregistré.
+      when: () => active,
+      run: () => setCount(count + 1),
+    });
+    return <output aria-label="compte">{count}</output>;
+  }
+
+  /** Note si le registre a détourné la touche. Écoutée après lui, sur la même cible (window). */
+  function watchDefaults() {
+    const seen: boolean[] = [];
+    const controller = new AbortController();
+    window.addEventListener('keydown', (event) => seen.push(event.defaultPrevented), { signal: controller.signal });
+    return { seen, stop: () => controller.abort() };
+  }
+
+  it('ne lance le raccourci, et ne détourne la touche, que tant que la condition est vraie', async () => {
+    const user = userEvent.setup();
+    const view = render(<ShortcutsProvider isMac><Conditional active={false} /></ShortcutsProvider>);
+    const keys = watchDefaults();
+
+    await user.keyboard('{Escape}');
+    view.rerender(<ShortcutsProvider isMac><Conditional active /></ShortcutsProvider>);
+    await user.keyboard('{Escape}');
+    view.rerender(<ShortcutsProvider isMac><Conditional active={false} /></ShortcutsProvider>);
+    await user.keyboard('{Escape}');
+    keys.stop();
+
+    expect(screen.getByLabelText('compte').textContent).toBe('1');
+    expect(keys.seen).toEqual([false, true, false]);
+  });
+
+  it('ne ré-enregistre rien quand la condition change : la liste des raccourcis garde sa référence', () => {
+    const lists: (readonly Shortcut[])[] = [];
+    function ListSpy() {
+      lists.push(useShortcutList());
+      return null;
+    }
+    const view = render(<ShortcutsProvider isMac><ListSpy /><Conditional active={false} /></ShortcutsProvider>);
+    // Une fois monté, le raccourci est enregistré : c'est la liste que les rendus suivants doivent garder.
+    const registered = lists.at(-1);
+    expect(registered).toHaveLength(1);
+    const rendered = lists.length;
+
+    view.rerender(<ShortcutsProvider isMac><ListSpy /><Conditional active /></ShortcutsProvider>);
+    view.rerender(<ShortcutsProvider isMac><ListSpy /><Conditional active={false} /></ShortcutsProvider>);
+
+    expect(lists.length).toBeGreaterThan(rendered);
+    expect(lists.slice(rendered).every((list) => list === registered)).toBe(true);
   });
 });

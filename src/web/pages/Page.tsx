@@ -1,17 +1,28 @@
 import type { ReactNode } from 'react';
+import { cx } from '../lib/cx';
 
-/** Cadre commun des pages : titre, phrase d'explication, contenu. Largeur de lecture limitée. */
+/**
+ * Cadre commun des pages : titre, phrase d'explication, contenu. Largeur de lecture limitée, sauf `wide` : le contenu
+ * prend toute la largeur du panneau, avec des marges et des écarts plus serrés (le kanban).
+ */
 export function Page({
   title,
   description,
   children,
+  wide = false,
 }: {
   title: ReactNode;
   description?: ReactNode;
   children?: ReactNode;
+  wide?: boolean;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-7 px-4 py-6 md:px-8 md:py-8">
+    <div
+      className={cx(
+        'mx-auto flex w-full min-w-0 flex-col px-4 py-6 md:py-8',
+        wide ? 'gap-4 md:px-5' : 'max-w-4xl gap-7 md:px-8',
+      )}
+    >
       <header className="min-w-0">
         {/* wrap-anywhere : un id, un chemin ou un nom de fichier sans espace passe à la ligne au lieu d'être rogné. */}
         <h1 className="wrap-anywhere text-xl font-semibold tracking-[-0.02em] text-ink md:text-[22px] md:leading-7">{title}</h1>

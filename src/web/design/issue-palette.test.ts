@@ -67,4 +67,9 @@ describe('statusLabel', () => {
     expect(statusLabel('in_progress')).toBe('en cours');
     expect(statusLabel('custom')).toBe('custom');
   });
+
+  it('dit « inconnu » d’un statut vide, au lieu d’une pastille sans texte', () => {
+    expect(statusLabel('')).toBe('inconnu');
+    expect(statusLabel('   ')).toBe('inconnu');
+  });
 });
