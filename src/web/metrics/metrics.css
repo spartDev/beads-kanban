@@ -1,0 +1,38 @@
+/*
+ * Couleurs des graphiques de la page Métriques, en clair et en sombre. Comme styles.css, elles ne sont lues que par
+ * leur nom (`var(--flow-done)`) : le thème change les valeurs, jamais les composants.
+ *
+ * Ce sont des aplats doux : l'œil lit le contour, pas le remplissage. Chaque forme pleine (bande, barre, point) est
+ * donc cernée d'un trait mêlé à l'encre du thème (`outlineOf`, palette.ts), et c'est ce trait qui atteint 3:1 (WCAG
+ * 1.4.11, contraste des éléments graphiques) sur le fond du panneau ; metrics/palette.test.ts le vérifie pour chaque
+ * jeton, dans les deux thèmes. Les teintes évitent la plage 165–205° de l'accent, comme le code couleur des tickets.
+ */
+
+:root {
+  /* Les cinq colonnes du CFD, comme au kanban. */
+  --flow-backlog: oklch(0.84 0.015 255);
+  --flow-ready: oklch(0.76 0.09 258);
+  --flow-progress: oklch(0.84 0.14 88);
+  --flow-blocked: oklch(0.7 0.17 25);
+  --flow-done: oklch(0.76 0.12 150);
+
+  /* Texte d'une tendance favorable : l'autre ton est --danger, de styles.css. */
+  --good: oklch(0.5 0.13 150);
+
+  /* Couleur d'un Projet quand le découpage est « Projet » : seule la teinte change, celle de sa pastille. */
+  --series-l: 0.62;
+  --series-c: 0.14;
+}
+
+:root[data-theme='dark'] {
+  --flow-backlog: oklch(0.42 0.015 255);
+  --flow-ready: oklch(0.52 0.1 258);
+  --flow-progress: oklch(0.7 0.13 88);
+  --flow-blocked: oklch(0.6 0.17 25);
+  --flow-done: oklch(0.6 0.12 150);
+
+  --good: oklch(0.78 0.15 150);
+
+  --series-l: 0.74;
+  --series-c: 0.13;
+}

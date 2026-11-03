@@ -42,7 +42,7 @@ function Layout() {
       <div className="flex min-w-0 flex-1 flex-col md:py-2 md:pr-2">
         <main
           id="contenu"
-          className="flex min-h-0 flex-1 flex-col bg-panel pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:overflow-y-auto md:rounded-xl md:border md:border-line md:pb-0 md:shadow-panel"
+          className="relative flex min-h-0 flex-1 flex-col bg-panel pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:overflow-y-auto md:rounded-xl md:border md:border-line md:pb-0 md:shadow-panel"
         >
           <TopBar />
           <RefreshFailedBanner />

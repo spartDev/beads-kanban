@@ -4,10 +4,11 @@ import { useProjects } from '../data/hooks';
 import type { Project } from '../data/types';
 import { cx } from '../lib/cx';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
+import { LazyMetricsView } from '../metrics/LazyMetricsView';
 import { paths } from '../paths';
 import { ProjectTile } from '../ui/ProjectTile';
 import { ErrorNotice, Notice, Skeleton } from '../ui/states';
-import { ComingSoon, Page, SectionTitle } from './Page';
+import { Page, SectionTitle } from './Page';
 
 const MODE_LABELS: Record<Project['mode'], string> = {
   embedded: 'Dolt embarqué',
@@ -19,10 +20,8 @@ export function GlobalPage() {
   const projects = useProjects();
 
   return (
-    <Page title="Vue globale" description="Tous les Projets suivis, au même endroit.">
-      <ComingSoon ticket="bdesk-38k.12">
-        Les métriques qui agrègent les Projets arrivent avec « Page Métriques ».
-      </ComingSoon>
+    <Page title="Vue globale" description="Les métriques de flux de tous les Projets suivis, recalculées sur l’ensemble de leurs tickets, puis la liste des Projets." wide>
+      <LazyMetricsView scope={{ kind: 'global' }} />
 
       <section aria-labelledby="projects-title" className="flex flex-col gap-3">
         <SectionTitle id="projects-title">Projets suivis</SectionTitle>
