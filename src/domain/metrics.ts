@@ -17,9 +17,10 @@ import type {
   MetricsWipTile,
 } from '../shared/api';
 import { addDays, type BucketSpan, bucketsOf, daysOf, type Period, type PeriodSpec, resolvePeriod, startOfDay } from './calendar';
+import { type Column, COLUMNS } from './columns';
 import { analyzeFailures } from './failures';
 import { analyzeFlow, isWork, type TicketHistory } from './flow';
-import { buildTimeline, type Column, COLUMNS, columnAt, isWorking, statusAt, stepsOf, type TicketTimeline } from './timeline';
+import { buildTimeline, columnAt, isWorking, statusAt, stepsOf, type TicketTimeline } from './timeline';
 
 /**
  * Métriques de flux, DORA transposées : Débit, Lead Time, Cycle Time, Taux d'échec, Temps de rétablissement, WIP,

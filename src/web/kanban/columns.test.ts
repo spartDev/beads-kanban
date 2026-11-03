@@ -1,4 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
+import { COLUMNS } from '../../domain/columns';
+import type { TicketHistory } from '../../domain/flow';
+import { buildTimeline, columnAt, stepsOf } from '../../domain/timeline';
 import type { MetricsCfdPoint } from '../../shared/api';
 import type { Issue } from '../data/types';
 import { issue } from '../test/fixtures';
@@ -18,7 +21,6 @@ import {
   onlyPaused,
   placeClosed,
   type ColumnId,
-  type Lane,
 } from './columns';
 
 withTimeZone('Europe/Paris');
@@ -37,10 +39,12 @@ const daysAgo = (days: number) => iso(local(2026, 10, 23 - days, 12));
 const BLOCKERS = ['bdesk-38k.6'];
 
 describe('les colonnes du kanban', () => {
-  it('ont les identifiants du CFD : une seule définition des colonnes pour le tableau et le graphique', () => {
+  it('sont celles du domaine et du CFD : une seule définition des colonnes pour le tableau et le graphique', () => {
     // Vérifié à la compilation (pnpm typecheck) : renommer ou ajouter une colonne d'un seul côté échoue ici.
     expectTypeOf<ColumnId>().toEqualTypeOf<Exclude<keyof MetricsCfdPoint, 'date'>>();
     expect([...COLUMN_IDS]).toEqual(['backlog', 'ready', 'inProgress', 'blocked', 'done']);
+    // Pas une copie de la liste : la liste du domaine elle-même.
+    expect(COLUMN_IDS).toBe(COLUMNS);
   });
 
   it('gardent par défaut les 14 derniers jours dans Terminé', () => {
@@ -59,44 +63,43 @@ describe('Blocage', () => {
 });
 
 describe('columnOf : le classement d’un ticket', () => {
-  /**
-   * Table de vérité écrite à la main, ticket fermé exclu (voir plus bas) : chaque statut beads, sans puis avec
-   * dépendance en suspens. `paused` est le tiroir « En pause ».
-   */
-  const TABLE: readonly (readonly [status: string, free: Lane, blocked: Lane])[] = [
-    ['open', 'ready', 'backlog'],
-    ['in_progress', 'inProgress', 'blocked'],
-    ['hooked', 'inProgress', 'blocked'],
-    ['blocked', 'blocked', 'blocked'],
-    ['deferred', 'paused', 'paused'],
-    ['pinned', 'paused', 'paused'],
-    // Statut personnalisé de beads : comme dans le CFD, rangé « En pause » plutôt que perdu.
-    ['review', 'paused', 'paused'],
-  ];
+  // La règle statut × Blocage -> colonne est `columnFor` (domaine) : tous ses cas sont dans `src/domain/columns.test.ts`, une
+  // seule fois. Ici, seulement ce que le tableau lui passe ou en fait : son Blocage (les dépendances en suspens,
+  // `blockedBy`), le tiroir « En pause » pour ce que le CFD laisse hors des colonnes, et la fenêtre de Terminé.
+  const laneFor = (status: string, blockedBy: string[] = [], closedAt: string | null = null) =>
+    columnOf({ status, blockedBy, closedAt }, { now: NOW });
 
-  describe.each(TABLE)('statut %s', (status, free, blocked) => {
-    it(`hors Blocage : ${free}`, () => {
-      expect(columnOf({ status, blockedBy: [], closedAt: null }, { now: NOW })).toBe(free);
+  describe('le tableau se sert de la règle partagée (columnFor)', () => {
+    it('lui passe le Blocage des dépendances en suspens : Backlog pour un ticket ouvert, Bloqué pour un statut de travail', () => {
+      expect(laneFor('open')).toBe('ready');
+      expect(laneFor('open', BLOCKERS)).toBe('backlog');
+      expect(laneFor('in_progress')).toBe('inProgress');
+      expect(laneFor('hooked')).toBe('inProgress');
+      expect(laneFor('hooked', BLOCKERS)).toBe('blocked');
     });
 
-    it(`avec une dépendance en suspens : ${blocked}`, () => {
-      expect(columnOf({ status, blockedBy: BLOCKERS, closedAt: null }, { now: NOW })).toBe(blocked);
+    it('range plusieurs dépendances en suspens dans le même Blocage', () => {
+      expect(laneFor('open', ['a', 'b', 'c'])).toBe('backlog');
     });
 
-    it('ne dépend pas de closedAt (un ticket rouvert garde l’ancienne date de clôture)', () => {
-      expect(columnOf({ status, blockedBy: [], closedAt: daysAgo(1) }, { now: NOW })).toBe(free);
+    it('lui passe le statut bloqué : Bloqué, même sans dépendance en suspens', () => {
+      expect(laneFor('blocked')).toBe('blocked');
     });
-  });
 
-  it('couvre tous les statuts de beads', () => {
-    const covered = TABLE.map(([status]) => status);
-    for (const status of ['open', 'in_progress', 'blocked', 'deferred', 'closed', 'pinned', 'hooked']) {
-      expect(status === 'closed' || covered.includes(status), status).toBe(true);
-    }
-  });
+    it('range dans le tiroir « En pause » ce que le CFD laisse hors des colonnes : différé, épinglé, statut inconnu', () => {
+      for (const status of ['deferred', 'pinned', 'review']) {
+        expect(laneFor(status), status).toBe('paused');
+        expect(laneFor(status, BLOCKERS), status).toBe('paused');
+      }
+    });
 
-  it('range plusieurs dépendances en suspens dans le même Blocage', () => {
-    expect(columnOf({ status: 'open', blockedBy: ['a', 'b', 'c'], closedAt: null }, { now: NOW })).toBe('backlog');
+    it('ne lit closedAt que pour Terminé (un ticket rouvert garde l’ancienne date de clôture)', () => {
+      for (const closedAt of [daysAgo(1), daysAgo(40)]) {
+        expect(laneFor('open', [], closedAt), closedAt).toBe('ready');
+        expect(laneFor('in_progress', BLOCKERS, closedAt), closedAt).toBe('blocked');
+        expect(laneFor('deferred', [], closedAt), closedAt).toBe('paused');
+      }
+    });
   });
 
   describe('Terminé : un ticket fermé ces 14 derniers jours, aujourd’hui compris', () => {
@@ -172,6 +175,47 @@ describe('columnOf : le classement d’un ticket', () => {
     it('arrondit une fenêtre fractionnaire au nombre de jours entier du dessous', () => {
       expect(lane(iso(local(2026, 10, 22, 0)), 1.9)).toBeNull();
       expect(lane(iso(local(2026, 10, 22, 0)), 2)).toBe('done');
+    });
+  });
+});
+
+describe('le tableau et le CFD rangent un ticket dans la même colonne', () => {
+  // Le croisement qui tue une re-fourche : si le tableau ou le CFD réécrivait la règle chez lui et s'écartait de `columnFor`
+  // pour un seul couple statut × Blocage, ce test échoue. Il ne dit pas ce que la règle doit rendre (ce sont les cas de
+  // `src/domain/columns.test.ts`), seulement que les deux côtés rendent la même chose : ci-dessous une liste de statuts, sans
+  // valeur attendue.
+  const day = (n: number) => new Date(Date.UTC(2026, 9, n, 9));
+  const history = (id: string, snapshots: [string, number][], dependencies: TicketHistory['dependencies'] = []): TicketHistory => ({
+    id,
+    type: 'task',
+    statusSnapshots: snapshots.map(([status, d]) => ({ status, at: day(d) })),
+    dependencies,
+  });
+
+  /**
+   * La colonne que le CFD donne à un ticket passé à `status` la veille, sans ou avec une dépendance `blocks` vers un
+   * ticket resté ouvert : celle de `buildTimeline`, qui lit l'historique. `null` : « En pause », hors des colonnes.
+   */
+  function cfdColumn(status: string, blocked: boolean) {
+    const target = history('b', [['open', 1]]);
+    const ticket = history(
+      'a',
+      [
+        ['open', 1],
+        [status, 2],
+      ],
+      blocked ? [{ type: 'blocks', target: 'b', addedAt: day(1) }] : [],
+    );
+    const steps = new Map([target, ticket].map((t) => [t.id, stepsOf(t.statusSnapshots)] as const));
+    return columnAt(buildTimeline(ticket, steps.get('a') ?? [], steps), day(3).getTime());
+  }
+
+  // Tous les statuts de beads, un statut personnalisé et le statut vide (NULL en base).
+  describe.each(['open', 'in_progress', 'blocked', 'deferred', 'closed', 'pinned', 'hooked', 'review', ''])('statut « %s »', (status) => {
+    it.each([false, true])('en Blocage : %s', (blocked) => {
+      // Fenêtre infinie : la fenêtre de Terminé est propre au tableau, le CFD cumule tous les tickets fermés.
+      const lane = columnOf({ status, blockedBy: blocked ? ['b'] : [], closedAt: null }, { now: NOW, doneDays: Infinity });
+      expect(lane).toBe(cfdColumn(status, blocked) ?? 'paused');
     });
   });
 });

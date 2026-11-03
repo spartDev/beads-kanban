@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { Column } from './columns';
 import { analyzeFlow, type DependencyHistory, isWork, type TicketHistory } from './flow';
-import { buildTimeline, type Column, columnAt, isWorking, stepsOf, type TicketTimeline } from './timeline';
+import { buildTimeline, columnAt, isWorking, stepsOf, type TicketTimeline } from './timeline';
 
 const at = (iso: string) => new Date(`${iso}Z`);
 const ms = (iso: string) => at(iso).getTime();
@@ -301,5 +302,48 @@ describe('chronologie des colonnes', () => {
       const [first] = Object.values(scenarios);
       expect(analyzeFlow(first ?? []).get('t')?.blockedTime).toBe(3 * HOUR);
     });
+  });
+});
+
+describe('le CFD range les tickets avec la règle partagée (columnFor)', () => {
+  // La table de vérité statut × Blocage est dans `columns.test.ts`, une seule fois. Ici, seulement ce que le CFD lui passe : le
+  // statut d'alors, le Blocage d'alors (les dépendances `blocks` actives vers une cible non fermée), et « hors des colonnes »
+  // pour ce qu'elle range en pause. Le croisement avec le tableau est dans `src/web/kanban/columns.test.ts`.
+
+  it('lui passe son Blocage : un ticket hooked est Bloqué tant que la dépendance tient, puis retrouve En cours sans changer de statut', () => {
+    const t = timelines([
+      ticket('b', [
+        ['open', '2026-10-01T09:00'],
+        ['closed', '2026-10-05T09:00'],
+      ]),
+      ticket(
+        'a',
+        [
+          ['open', '2026-10-01T09:00'],
+          ['hooked', '2026-10-02T09:00'],
+        ],
+        { dependencies: [blocks('b', '2026-10-01T09:00')] },
+      ),
+    ]);
+
+    expect(columns(t('a'))).toEqual([
+      ['2026-10-01T09:00', 'backlog'],
+      ['2026-10-02T09:00', 'blocked'],
+      ['2026-10-05T09:00', 'inProgress'],
+    ]);
+  });
+
+  it('laisse hors des colonnes un ticket différé ou d’un statut inconnu, même en Blocage', () => {
+    /** Ouvert et en Blocage dès sa création (il dépend de `b`, resté ouvert), puis passé à `status` le lendemain. */
+    const pausedAfter = (id: string, status: string) =>
+      ticket(id, [['open', '2026-10-01T09:00'], [status, '2026-10-02T09:00']], { dependencies: [blocks('b', '2026-10-01T09:00')] });
+    const t = timelines([ticket('b', [['open', '2026-10-01T09:00']]), pausedAfter('differe', 'deferred'), pausedAfter('inconnu', 'mon_statut')]);
+
+    for (const id of ['differe', 'inconnu']) {
+      expect(columns(t(id)), id).toEqual([
+        ['2026-10-01T09:00', 'backlog'],
+        ['2026-10-02T09:00', null],
+      ]);
+    }
   });
 });

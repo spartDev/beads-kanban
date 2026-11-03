@@ -6,7 +6,7 @@
  * (`kanban/columns`) l'utilisent toutes deux, si bien qu'une carte qui dit « hier » est dans Terminé exactement quand
  * Terminé couvre hier. Les dates écrites en toutes lettres (« 5 sept. », « mardi 13 octobre ») passent par `localDateFormat`,
  * pour que le jour écrit soit le jour compté. (La page Métriques a la même convention avec un fuseau IANA explicite, dans
- * `src/domain/calendar.ts` ; le kanban lit l'horloge du navigateur et ne dépend ni du serveur ni du domaine.)
+ * `src/domain/calendar.ts` ; le kanban lit l'horloge du navigateur et ne prend au domaine que sa règle de colonne.)
  */
 
 const DAY_MS = 86_400_000;

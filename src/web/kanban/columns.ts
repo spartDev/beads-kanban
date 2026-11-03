@@ -1,3 +1,4 @@
+import { type Column, COLUMNS, columnFor } from '../../domain/columns';
 import type { Issue } from '../data/types';
 import { startOfLocalDay } from '../lib/localDay';
 
@@ -15,14 +16,17 @@ import { startOfLocalDay } from '../lib/localDay';
  *
  * Le Blocage se déduit des dépendances (`blockedBy`, les cibles `blocks` non fermées), pas du statut : voir CONTEXT.md.
  *
- * Ces règles sont aussi celles du CFD de `src/domain/timeline.ts` (`columnFor`, non exportée), qui les applique à
- * l'historique d'un ticket au lieu de son état présent. Les deux copies doivent évoluer ensemble : les identifiants de
- * colonne sont comparés au contrat `MetricsCfdPoint` à la compilation (`columns.test.ts`).
+ * La règle statut × Blocage → colonne n'est pas écrite ici : c'est `columnFor` (`src/domain/columns.ts`), la même que celle
+ * du CFD de `src/domain/timeline.ts`, qui l'applique à l'historique d'un ticket au lieu de son état présent. Ne reste
+ * propre au tableau que ce que le CFD n'a pas : la fenêtre de Terminé (le CFD cumule tous les tickets fermés) et le tiroir
+ * « En pause » (que le CFD laisse hors des colonnes). `columns.test.ts` compare les deux ticket par ticket ; sur un Projet
+ * entier, c'est `src/server/projects/board-vs-cfd.test.ts` (il passe par `buildIssues`, du serveur).
  */
 
-export const COLUMN_IDS = ['backlog', 'ready', 'inProgress', 'blocked', 'done'] as const;
+/** Les colonnes, dans l'ordre du flux : celles du domaine, que le CFD partage. */
+export const COLUMN_IDS = COLUMNS;
 
-export type ColumnId = (typeof COLUMN_IDS)[number];
+export type ColumnId = Column;
 
 /** Une colonne, ou le tiroir « En pause ». */
 export type Lane = ColumnId | 'paused';
@@ -54,20 +58,12 @@ export const isBlocked = (issue: Pick<Issue, 'status' | 'blockedBy'>): boolean =
  * Un ticket fermé est dans Terminé s'il l'a été ces `doneDays` derniers jours, aujourd'hui compris (`closedWithin`).
  */
 export function columnOf(issue: IssueFacts, { now, doneDays = DEFAULT_DONE_DAYS }: PlacementOptions): Lane | null {
-  switch (issue.status) {
-    case 'closed':
-      return closedWithin(issue.closedAt, now, doneDays) ? 'done' : null;
-    case 'blocked':
-      return 'blocked';
-    case 'in_progress':
-    case 'hooked':
-      return issue.blockedBy.length > 0 ? 'blocked' : 'inProgress';
-    case 'open':
-      return issue.blockedBy.length > 0 ? 'backlog' : 'ready';
-    default:
-      // deferred, pinned, ou un statut personnalisé de beads : en pause plutôt que perdu.
-      return 'paused';
-  }
+  const column = columnFor(issue.status, isBlocked(issue));
+  // Hors des colonnes pour le CFD : deferred, pinned, ou un statut personnalisé de beads. Ici, le tiroir plutôt que perdu.
+  if (column === null) return 'paused';
+  // Le CFD cumule tous les tickets fermés ; le tableau ne garde dans Terminé que ceux de la fenêtre.
+  if (column === 'done') return closedWithin(issue.closedAt, now, doneDays) ? 'done' : null;
+  return column;
 }
 
 /**
