@@ -331,3 +331,92 @@ describe('priority : le raccourci d’une couche passe avant celui de la page, q
     expect(first).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('allowInLayer : un raccourci de l’application qui vaut sous une couche non modale', () => {
+  function Global({ layer }: { layer?: boolean }) {
+    const [count, setCount] = useState(0);
+    useShortcut({ id: 'aide', keys: '?', label: 'Aide', group: 'Test', allowInLayer: layer, run: () => setCount(count + 1) });
+    return <output aria-label="compte">{count}</output>;
+  }
+
+  const Dialogs = () => (
+    <>
+      <div role="dialog" aria-modal="false" aria-label="couche">
+        <button>dans la couche</button>
+        <input aria-label="champ de la couche" />
+      </div>
+      <div role="dialog" aria-label="modale">
+        <button>dans la modale</button>
+      </div>
+    </>
+  );
+
+  it('transmet l’option au registre : le raccourci vaut sous une couche non modale, ni sous une boîte modale ni dans un champ', async () => {
+    const user = userEvent.setup();
+    render(
+      <ShortcutsProvider isMac>
+        <Global layer />
+        <Dialogs />
+      </ShortcutsProvider>,
+    );
+
+    screen.getByRole('button', { name: 'dans la couche' }).focus();
+    await user.keyboard('?');
+    expect(screen.getByLabelText('compte').textContent).toBe('1');
+
+    screen.getByRole('button', { name: 'dans la modale' }).focus();
+    await user.keyboard('?');
+    screen.getByLabelText('champ de la couche').focus();
+    await user.keyboard('?');
+    expect(screen.getByLabelText('compte').textContent).toBe('1');
+  });
+
+  it('sans l’option, le raccourci se tait sous une couche, comme dans toute boîte de dialogue', async () => {
+    const user = userEvent.setup();
+    render(
+      <ShortcutsProvider isMac>
+        <Global />
+        <Dialogs />
+      </ShortcutsProvider>,
+    );
+
+    screen.getByRole('button', { name: 'dans la couche' }).focus();
+    await user.keyboard('?');
+
+    expect(screen.getByLabelText('compte').textContent).toBe('0');
+  });
+
+  it('ré-enregistre le raccourci quand l’option change', async () => {
+    const user = userEvent.setup();
+    const view = render(
+      <ShortcutsProvider isMac>
+        <Global />
+        <Dialogs />
+      </ShortcutsProvider>,
+    );
+    const inLayer = () => screen.getByRole('button', { name: 'dans la couche' });
+    inLayer().focus();
+    await user.keyboard('?');
+    expect(screen.getByLabelText('compte').textContent).toBe('0');
+
+    view.rerender(
+      <ShortcutsProvider isMac>
+        <Global layer />
+        <Dialogs />
+      </ShortcutsProvider>,
+    );
+    inLayer().focus();
+    await user.keyboard('?');
+    expect(screen.getByLabelText('compte').textContent).toBe('1');
+
+    view.rerender(
+      <ShortcutsProvider isMac>
+        <Global layer={false} />
+        <Dialogs />
+      </ShortcutsProvider>,
+    );
+    inLayer().focus();
+    await user.keyboard('?');
+    expect(screen.getByLabelText('compte').textContent).toBe('1');
+  });
+});

@@ -58,5 +58,8 @@ export function useGlobalShortcuts(): void {
     ),
   ];
 
-  useShortcuts(definitions);
+  // Ceux de l'application valent aussi sous une couche non modale posée sur la page (le panneau d'un ticket sur desktop) : la page
+  // dessous reste utilisable, l'aide et la navigation avec elle. Les boîtes de dialogue modales (palette, aide, panneau du mobile)
+  // gardent le clavier, comme les champs de saisie.
+  useShortcuts(definitions.map((definition) => ({ allowInLayer: true, ...definition })));
 }

@@ -32,6 +32,11 @@ const NARROW_SCREEN = '(max-width: 767.98px)';
  * - Échap le ferme par le registre des raccourcis : le raccourci n'existe que tant que le panneau est ouvert, il passe avant
  *   celui du tableau (qui désélectionne une carte : `priority`, quel que soit l'ordre où chacun s'est enregistré) et se tait
  *   sous la palette ou l'aide, qui se ferment d'abord. Fermé, le panneau laisse à Échap du tableau sa désélection.
+ * - Selon l'écran, il est une couche posée sur la page ou une boîte de dialogue modale, et le dit (`aria-modal`) : le registre des
+ *   raccourcis le lit. Sur écran large (`aria-modal="false"`), le tableau dessous reste utilisable : l'aide (?) et la navigation
+ *   (g …) valent même quand le panneau a le focus, alors que les touches du tableau (j, k, h, l, Entrée) se taisent, pour ne pas
+ *   lui voler le focus. Sur écran étroit (`aria-modal="true"`, la page est inerte), il garde le clavier comme la palette et l'aide :
+ *   Échap le ferme et ⌘K ouvre la palette, la navigation d'un écran étroit ; ni l'aide ni « g … » ne passent derrière un écran plein.
  * - Les deux requêtes sont indépendantes : la fiche, et la chronologie, plus lente (`Chronology`). Un 404, au chargement
  *   comme à un rafraîchissement, dit « Ticket introuvable » au lieu de garder la fiche périmée.
  */
@@ -101,7 +106,7 @@ export function IssuePanel() {
       ref={panelRef}
       role="dialog"
       aria-labelledby={`${idId} ${titleId}`}
-      aria-modal={narrow || undefined}
+      aria-modal={narrow}
       tabIndex={-1}
       className="fixed inset-0 z-40 flex animate-[panel-fade-in_140ms_ease-out] flex-col bg-panel outline-none md:inset-y-2 md:left-auto md:right-2 md:w-[min(42rem,calc(100vw-1rem))] md:animate-[panel-in_160ms_cubic-bezier(0.2,0.8,0.2,1)] md:rounded-xl md:border md:border-line md:shadow-float"
     >

@@ -824,3 +824,184 @@ describe('priority : qui prend la touche quand plusieurs raccourcis le peuvent',
     expect(page).not.toHaveBeenCalled();
   });
 });
+
+// Une couche posée sur la page : le panneau d'un ticket sur desktop. Elle prend le focus à son ouverture, mais la page dessous reste
+// utilisable : les raccourcis de l'application (aide, navigation) y valent, ceux de la page (le kanban) s'y taisent.
+const LAYER_FOCUSED = '<div role="dialog" aria-modal="false" tabindex="-1" data-target></div>';
+const LAYER_WITH_BUTTON = '<div role="dialog" aria-modal="false"><button data-target>Fermer</button></div>';
+
+describe('une couche non modale (`aria-modal="false"`) : le panneau d’un ticket sur desktop', () => {
+  beforeEach(() => ({ registry, cleanup } = setup(true)));
+
+  it.each([
+    ['la couche elle-même, qui a le focus', LAYER_FOCUSED],
+    ['un bouton de la couche', LAYER_WITH_BUTTON],
+    ['un lien de la couche', '<div role="dialog" aria-modal="false"><a href="/t/b" data-target>Ticket</a></div>'],
+  ])('laisse passer les raccourcis `allowInLayer`, touche simple ou séquence, quand le focus est sur %s', (_name, html) => {
+    const help = vi.fn();
+    const goMetrics = vi.fn();
+    registry.register(shortcut('?', help, { allowInLayer: true }));
+    registry.register(shortcut('g m', goMetrics, { allowInLayer: true }));
+    const target = mount(html);
+
+    const question = press({ key: '?', shiftKey: true }, target);
+    press({ key: 'g' }, target);
+    press({ key: 'm' }, target);
+
+    expect(help).toHaveBeenCalledTimes(1);
+    expect(question.defaultPrevented).toBe(true);
+    expect(goMetrics).toHaveBeenCalledTimes(1);
+  });
+
+  it('tait les raccourcis de la page dessous, sans détourner la touche : « j » ne vole pas le focus, « Entrée » reste à l’élément', () => {
+    const next = vi.fn();
+    const column = vi.fn();
+    const open = vi.fn();
+    registry.register(shortcut('j', next));
+    registry.register(shortcut('h', column, { alternateKeys: ['arrowleft'] }));
+    registry.register(shortcut('enter', open));
+    const panel = mount(LAYER_FOCUSED);
+
+    const events = [{ key: 'j' }, { key: 'h' }, { key: 'ArrowLeft' }, { key: 'Enter' }].map((init) => press(init, panel));
+
+    expect([next, column, open].map((run) => run.mock.calls.length)).toEqual([0, 0, 0]);
+    expect(events.map((event) => event.defaultPrevented)).toEqual([false, false, false, false]);
+  });
+
+  it('tait aussi les séquences de la page dessous : « g » n’est même pas pris pour un début de séquence', () => {
+    const page = vi.fn();
+    registry.register(shortcut('g k', page));
+    const panel = mount(LAYER_FOCUSED);
+
+    const first = press({ key: 'g' }, panel);
+    press({ key: 'k' }, panel);
+
+    expect(page).not.toHaveBeenCalled();
+    expect(first.defaultPrevented).toBe(false);
+  });
+
+  it('laisse passer les raccourcis `allowInInput` : Échap ferme le panneau, comme avant', () => {
+    const close = vi.fn();
+    registry.register(shortcut('escape', close, { allowInInput: true }));
+
+    press({ key: 'Escape' }, mount(LAYER_FOCUSED));
+    press({ key: 'Escape' }, mount(LAYER_WITH_BUTTON));
+
+    expect(close).toHaveBeenCalledTimes(2);
+  });
+
+  it('garde le champ de saisie de la couche pour lui : taper « g » ou « ? » dans un champ ne lance rien', () => {
+    const help = vi.fn();
+    const forced = vi.fn();
+    registry.register(shortcut('?', help, { allowInLayer: true }));
+    registry.register(shortcut('f', forced, { allowInInput: true }));
+
+    for (const field of [
+      '<input type="text" data-target>',
+      '<textarea data-target></textarea>',
+      '<select data-target><option>a</option></select>',
+      '<div contenteditable="true" data-target>texte</div>',
+    ]) {
+      const target = mount(`<div role="dialog" aria-modal="false">${field}</div>`);
+      press({ key: '?', shiftKey: true }, target);
+      press({ key: 'f' }, target);
+    }
+
+    expect(help).not.toHaveBeenCalled();
+    expect(forced).toHaveBeenCalledTimes(4);
+  });
+
+  it('garde un menu de la couche pour lui : Échap y ferme le menu, il ne lance pas le raccourci de la couche', () => {
+    const run = vi.fn();
+    registry.register(shortcut('escape', run, { allowInLayer: true }));
+
+    press({ key: 'Escape' }, mount('<div role="dialog" aria-modal="false"><div role="menu"><div role="menuitem" tabindex="0" data-target>Action</div></div></div>'));
+
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('ne prend pas la touche à l’élément qui l’utilise déjà, comme ailleurs : « Entrée » sur un lien de la couche reste au lien', () => {
+    const run = vi.fn();
+    registry.register(shortcut('enter', run, { allowInLayer: true }));
+
+    const event = press({ key: 'Enter' }, mount('<div role="dialog" aria-modal="false"><a href="/t/b" data-target>Ticket</a></div>'));
+
+    expect(run).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('ne change rien hors d’une couche : un raccourci `allowInLayer` vaut sur la page, et se tait dans un champ comme les autres', () => {
+    const run = vi.fn();
+    registry.register(shortcut('?', run, { allowInLayer: true }));
+
+    press({ key: '?', shiftKey: true });
+    press({ key: '?', shiftKey: true }, mount('<button data-target>Un bouton de la page</button>'));
+    expect(run).toHaveBeenCalledTimes(2);
+
+    press({ key: '?', shiftKey: true }, mount('<input data-target>'));
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it('cède à un raccourci plus prioritaire, ou dont la condition est fausse, comme n’importe quel raccourci', () => {
+    const app = vi.fn();
+    const layer = vi.fn();
+    registry.register(shortcut('x', app, { id: 'application', allowInLayer: true, when: () => false }));
+    registry.register(shortcut('x', layer, { id: 'couche', allowInInput: true, priority: 1 }));
+    registry.register(shortcut('x', app, { id: 'autre', allowInLayer: true }));
+
+    press({ key: 'x' }, mount(LAYER_FOCUSED));
+
+    expect(layer).toHaveBeenCalledTimes(1);
+    expect(app).not.toHaveBeenCalled();
+  });
+});
+
+describe('une boîte de dialogue modale garde le clavier : même un raccourci `allowInLayer` s’y tait', () => {
+  beforeEach(() => ({ registry, cleanup } = setup(true)));
+
+  it.each([
+    ['la palette ou l’aide (Radix : `role="dialog"`, sans `aria-modal`)', '<div role="dialog"><button data-target>Fermer</button></div>'],
+    ['une boîte qui se dit modale (`aria-modal="true"` : le panneau plein écran du mobile)', '<div role="dialog" aria-modal="true" tabindex="-1" data-target></div>'],
+    ['une alerte (`role="alertdialog"`)', '<div role="alertdialog"><button data-target>OK</button></div>'],
+    ['un <dialog> natif', '<dialog open><button data-target>Fermer</button></dialog>'],
+    ['une couche posée dans une boîte modale', '<div role="dialog"><div role="dialog" aria-modal="false"><button data-target>x</button></div></div>'],
+    ['une boîte modale posée dans une couche', '<div role="dialog" aria-modal="false"><div role="dialog"><button data-target>x</button></div></div>'],
+    ['un <dialog> natif posé dans une couche', '<div role="dialog" aria-modal="false"><dialog open><button data-target>x</button></dialog></div>'],
+  ])('%s', (_name, html) => {
+    const appWide = vi.fn();
+    const page = vi.fn();
+    const everywhere = vi.fn();
+    registry.register(shortcut('?', appWide, { allowInLayer: true }));
+    registry.register(shortcut('x', page));
+    registry.register(shortcut('f', everywhere, { allowInInput: true }));
+    const target = mount(html);
+
+    const question = press({ key: '?', shiftKey: true }, target);
+    const letter = press({ key: 'x' }, target);
+    press({ key: 'f' }, target);
+
+    expect(appWide).not.toHaveBeenCalled();
+    expect(page).not.toHaveBeenCalled();
+    expect([question.defaultPrevented, letter.defaultPrevented]).toEqual([false, false]);
+    expect(everywhere).toHaveBeenCalledTimes(1);
+  });
+
+  it('une séquence commencée sur la page ne s’achève pas dans une boîte modale', () => {
+    const goKanban = vi.fn();
+    registry.register(shortcut('g k', goKanban, { allowInLayer: true }));
+
+    press({ key: 'g' });
+    press({ key: 'k' }, mount('<div role="dialog"><button data-target>Fermer</button></div>'));
+
+    expect(goKanban).not.toHaveBeenCalled();
+  });
+
+  it('les combinaisons ⌘/Ctrl passent toujours : ⌘K ouvre la palette depuis le panneau modal du mobile', () => {
+    const palette = vi.fn();
+    registry.register(shortcut('mod+k', palette));
+
+    press({ key: 'k', metaKey: true }, mount('<div role="dialog" aria-modal="true" tabindex="-1" data-target></div>'));
+
+    expect(palette).toHaveBeenCalledTimes(1);
+  });
+});

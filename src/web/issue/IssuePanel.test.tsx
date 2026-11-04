@@ -1367,7 +1367,8 @@ describe('le panneau d’un ticket : écran étroit (mobile) et large (bureau)',
 
     const dialog = await openPanel(/Shell UI façon Linear/);
 
-    expect(dialog.hasAttribute('aria-modal')).toBe(false);
+    // Il le dit : le registre des raccourcis y lit une couche posée sur la page (voir IssuePanel.shortcuts.test.tsx).
+    expect(dialog.getAttribute('aria-modal')).toBe('false');
     expect(document.querySelectorAll('[inert]')).toHaveLength(0);
   });
 });

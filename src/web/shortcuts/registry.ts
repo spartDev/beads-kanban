@@ -6,7 +6,13 @@
  * - Les touches sont lues par `event.key` (et non `event.code`) : les raccourcis suivent la disposition
  *   du clavier, AZERTY compris.
  * - Hors combinaisons ⌘/Ctrl/Alt, un raccourci est ignoré quand le focus est dans un champ de saisie ou
- *   dans une boîte de dialogue : taper « g » dans la palette ne doit rien déclencher.
+ *   dans une boîte de dialogue : taper « g » dans la palette ne doit rien déclencher. Une boîte de dialogue est modale, et garde
+ *   le clavier comme un champ, tant qu'elle ne dit pas le contraire : la palette et l'aide (Radix ne pose pas `aria-modal`), un
+ *   `<dialog>` natif, le panneau plein écran du mobile (`aria-modal="true"`).
+ * - Une boîte de dialogue qui se déclare non modale (`aria-modal="false"`) est une couche posée sur la page, comme le panneau d'un
+ *   ticket sur desktop : elle prend le focus, mais la page dessous reste utilisable. Les raccourcis de l'application (l'aide, la
+ *   navigation) y valent, quand ils le demandent (`allowInLayer`) ; ceux de la page dessous (le kanban) s'y taisent, de sorte que
+ *   « j » ne vole pas le focus au panneau. Un champ de saisie de la couche garde le clavier comme partout.
  * - Hors combinaisons ⌘/Ctrl/Alt, un raccourci cède aussi la touche à l'élément qui l'utilise déjà et qui a le focus :
  *   Entrée sur un bouton ou un lien, les flèches sur un groupe de boutons radio, un onglet, un curseur ou une liste
  *   (`usesKeyNatively`). Le raccourci ne se lance pas et la touche n'est pas détournée (`preventDefault`) : le
@@ -33,8 +39,19 @@ export interface Shortcut {
   /** Rubrique de l'aide (`Navigation`, `Général`…). */
   group: string;
   run: (event: KeyboardEvent) => void;
-  /** Autoriser le raccourci quand le focus est dans un champ. Les combinaisons ⌘/Ctrl/Alt le sont toujours. */
+  /**
+   * Autoriser le raccourci quand le focus est dans un champ ou dans une boîte de dialogue, modale ou non. Les combinaisons
+   * ⌘/Ctrl/Alt le sont toujours. Vaut aussi pour `allowInLayer` : qui passe partout passe sous une couche.
+   */
   allowInInput?: boolean;
+  /**
+   * Autoriser le raccourci quand le focus est dans une couche non modale posée sur la page : une boîte de dialogue qui se
+   * déclare non modale (`aria-modal="false"`), comme le panneau d'un ticket sur desktop. La page dessous reste utilisable, donc
+   * les raccourcis de l'application (aide, navigation) la traversent ; ceux de la page dessous (le kanban), qui ne le demandent
+   * pas, s'y taisent. Sans effet ailleurs : un champ de saisie, même dans la couche, et une boîte de dialogue modale (palette,
+   * aide, `<dialog>` natif, panneau du mobile) gardent le clavier, et seul `allowInInput` les traverse.
+   */
+  allowInLayer?: boolean;
   /**
    * Prendre la touche même quand le focus est sur un élément qui l'utilise déjà (Entrée sur un bouton, flèche sur un
    * bouton radio) : le raccourci détourne alors l'action native. Par défaut il s'efface devant elle.
@@ -109,13 +126,28 @@ const EDITABLE = '[contenteditable]:not([contenteditable="false"])';
 // jsdom n'implémente pas `isContentEditable` : l'attribut dit la même chose.
 const isEditable = (element: HTMLElement): boolean => element.isContentEditable === true || element.closest(EDITABLE) !== null;
 
-/** Focus dans un champ de saisie ou une boîte de dialogue : les raccourcis à touche simple se taisent. */
+// Une boîte de dialogue : l'élément natif, ou un rôle `dialog` / `alertdialog`.
+const DIALOGS = ['dialog', '[role="dialog"]', '[role="alertdialog"]'];
+// Modale tant qu'elle ne dit pas le contraire : Radix, qui fait la palette et l'aide, ne pose pas `aria-modal`, et un `<dialog>` natif non plus.
+const MODAL_DIALOGS = DIALOGS.map((dialog) => `${dialog}:not([aria-modal="false"])`).join(', ');
+// Une couche : une boîte de dialogue qui déclare ne pas être modale. Sans cette déclaration, elle garde le clavier.
+const LAYERS = DIALOGS.map((dialog) => `${dialog}[aria-modal="false"]`).join(', ');
+
+/** Focus dans un champ de saisie, un menu ou une boîte de dialogue modale : les raccourcis à touche simple se taisent. */
 export function isTypingContext(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (isEditable(target)) return true;
-  if (target.closest('[role="dialog"], [role="alertdialog"], [role="menu"]')) return true;
+  if (target.closest(`[role="menu"], ${MODAL_DIALOGS}`)) return true;
   if (target instanceof HTMLInputElement) return !NON_TEXT_INPUT_TYPES.has(target.type);
   return target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+}
+
+/**
+ * Focus dans une couche non modale posée sur la page (le panneau d'un ticket sur desktop). Un champ de saisie ou un menu de la couche,
+ * une boîte de dialogue modale posée dans la couche ou qui la contient y gardent le clavier : `isTypingContext` prime sur ce verdict.
+ */
+export function isInLayer(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(LAYERS) !== null;
 }
 
 const roles = (names: readonly string[]): string => names.map((name) => `[role="${name}"]`).join(', ');
@@ -174,8 +206,10 @@ interface Entry {
 
 /** Où est le focus, pour la touche qui vient d'être pressée. */
 interface KeyContext {
-  /** Champ de saisie ou boîte de dialogue. */
+  /** Champ de saisie, menu ou boîte de dialogue modale (`isTypingContext`). */
   typing: boolean;
+  /** Couche non modale posée sur la page (`isInLayer`) ; `typing` prime : un champ de la couche en garde le clavier. */
+  layer: boolean;
   /** Élément qui utilise déjà cette touche (`usesKeyNatively`). */
   native: boolean;
 }
@@ -200,11 +234,14 @@ export function createShortcutRegistry({ isMac }: { isMac: boolean }): ShortcutR
     timer = undefined;
   };
 
-  // Dans un champ, `allowInInput` décide ; ailleurs, la touche reste à l'élément qui l'utilise, sauf `overrideNative`.
-  const allowedByFocus = (entry: Entry, { typing, native }: KeyContext): boolean => {
+  // Dans un champ ou une boîte modale, `allowInInput` décide ; sous une couche, `allowInLayer` ou `allowInInput` ; ailleurs, la touche
+  // reste à l'élément qui l'utilise, sauf `overrideNative`.
+  const allowedByFocus = (entry: Entry, { typing, layer, native }: KeyContext): boolean => {
     if (isModified(entry.steps[0] ?? '')) return true;
-    if (typing) return Boolean(entry.shortcut.allowInInput);
-    return !native || Boolean(entry.shortcut.overrideNative);
+    const { allowInInput, allowInLayer, overrideNative } = entry.shortcut;
+    if (typing) return Boolean(allowInInput);
+    if (layer && !allowInInput && !allowInLayer) return false;
+    return !native || Boolean(overrideNative);
   };
 
   // Puis la condition du raccourci (`when`), qu'on ne demande que si le focus lui laisse la touche.
@@ -249,7 +286,11 @@ export function createShortcutRegistry({ isMac }: { isMac: boolean }): ShortcutR
       if (event.defaultPrevented || event.isComposing) return false;
       const step = describeKeyEvent(event, isMac);
       if (step === null) return false;
-      const context: KeyContext = { typing: isTypingContext(event.target), native: usesKeyNatively(event.target, step) };
+      const context: KeyContext = {
+        typing: isTypingContext(event.target),
+        layer: isInLayer(event.target),
+        native: usesKeyNatively(event.target, step),
+      };
 
       // Le navigateur n'agit pas non plus sur une répétition (Ctrl+K est la recherche de Firefox) : on la consomme.
       const fire = (entry: Entry): true => {
