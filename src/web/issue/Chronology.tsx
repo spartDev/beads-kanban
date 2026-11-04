@@ -21,7 +21,7 @@ const BLOCKED_TIME = 'Temps bloqué en cours de travail';
 /**
  * La chronologie du ticket : Lead Time, Cycle Time et temps bloqué, les Transitions avec le temps passé dans chaque
  * statut, et les Blocages. Elle a sa requête : lire l'historique du Projet est plus long que lire la fiche, et sa panne
- * ne prive pas de la fiche. Les durées sont celles des métriques, en temps calendaire et écrites comme la page Métriques
+ * ne prive pas de la fiche. Les durées sont celles des métriques, des Durées écoulées, écrites comme la page Métriques
  * les écrit (`metrics/format`) ; les heures s'écrivent dans le fuseau du navigateur. Un statut qui dure encore se compte
  * jusqu'à maintenant, avec l'horloge du navigateur.
  *

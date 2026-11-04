@@ -28,6 +28,31 @@ const DAY = 24 * HOUR;
 /** Le texte d'un nœud, espaces insécables comprises comme des espaces : « 3,4 j » s'écrit avec une insécable à l'écran. */
 export const plain = (text: string | null | undefined): string => (text ?? '').replace(/[\u00a0\u202f]/g, ' ');
 
+/** Le texte d'un nœud sans les sous-arbres que `skip` écarte. Les blocs se suivent sans séparateur, comme avec `textContent`. */
+function textWithout(node: Node, skip: (element: Element) => boolean): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
+  if (node.nodeType !== Node.ELEMENT_NODE || skip(node as Element)) return '';
+  return Array.from(node.childNodes, (child) => textWithout(child, skip)).join('');
+}
+
+/** Le texte que l'œil lit : tout sauf ce qui n'est écrit que pour les lecteurs d'écran (`sr-only`). */
+export const shownText = (node: Node): string => textWithout(node, (element) => element.classList.contains('sr-only'));
+
+/** Le texte que l'oreille entend : tout sauf ce que les lecteurs d'écran ignorent (`aria-hidden="true"`). */
+export const spokenText = (node: Node): string => textWithout(node, (element) => element.getAttribute('aria-hidden') === 'true');
+
+/**
+ * Les noms (`aria-label`) et descriptions (`title`) que les lecteurs d'écran annoncent dans une partie de la page : ceux des
+ * éléments que `aria-hidden="true"` ne cache pas, lui ni aucun de ses ancêtres. L'intérieur d'un dessin nommé (`<svg role="img">`)
+ * compte : les enfants d'une image sont présentationnels pour la norme, mais Chromium expose le texte d'un SVG dans son arbre
+ * d'accessibilité (`Accessibility.getFullAXTree`), et un chevron y serait lu. Seul `aria-hidden` le cache pour de bon.
+ */
+export function spokenNames(root: Element): string[] {
+  if (root.getAttribute('aria-hidden') === 'true') return [];
+  const own = [root.getAttribute('aria-label'), root.getAttribute('title')].filter((name): name is string => name !== null);
+  return [...own, ...Array.from(root.children, spokenNames).flat()];
+}
+
 const noTrend: MetricsTrend = { previous: null, delta: null, ratio: null };
 
 /** Une tendance comme l'API la calcule : `delta` est le courant moins le précédent, `ratio` est `delta / previous`. */

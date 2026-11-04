@@ -271,11 +271,21 @@ function offsetAt(instant: number, timeZone: string): number {
 }
 
 /**
- * Le temps calendaire écoulé entre deux instants (ms) : l'écart de leurs heures du mur dans le fuseau, où chaque jour compte
- * 24 h. Un changement d'heure ne s'y voit pas : du mardi 12:00 au mardi 12:00 deux semaines plus tard, c'est 14 jours, que les
- * horloges aient avancé ou reculé d'une heure entre-temps (l'horloge réelle en compterait 14 j moins ou plus une heure). C'est
- * ainsi que l'utilisateur compte « 14 jours » sur son calendrier. Jamais négatif : l'heure répétée de l'automne n'est pas
- * dans l'ordre du mur (02:45 puis, une demi-heure plus tard, 02:15).
+ * L'Âge calendaire du glossaire (CONTEXT.md) entre deux instants (ms) : l'écart de leurs heures du mur dans le fuseau, où chaque
+ * jour compte 24 h. Un changement d'heure ne s'y voit pas : du mardi 12:00 au mardi 12:00 deux semaines plus tard, c'est 14 jours,
+ * que les horloges aient avancé ou reculé d'une heure entre-temps (l'horloge réelle en compterait 13 j 23 h ou 14 j 1 h). C'est
+ * ainsi que l'utilisateur compte « 14 jours » sur son calendrier.
+ *
+ * Limite assumée, une heure de nuit par an : quand les horloges reculent, une heure du mur se répète (à Paris, 02:00 à 03:00 en
+ * heure d'été, puis de nouveau 02:00 à 03:00 en heure d'hiver), et l'écart cesse de croître avec l'horloge réelle.
+ * - Il perd une heure d'un coup au retour de l'horloge, puis remonte normalement : il ne retrouve son niveau d'avant qu'une heure
+ *   réelle plus tard. Un Prêt dont les 14 jours s'achèvent dans l'heure répétée cesse donc de stagner, puis stagne de nouveau :
+ *   devenu Prêt le dimanche 11 octobre à 02:30 (été), il a 14 j 20 min le 25 à 02:50 (été), 13 j 23 h 40 à 02:10 (hiver), puis
+ *   14 j 10 min à 02:40 (hiver).
+ * - Il n'est jamais négatif : de 02:45 (été) à 02:15 (hiver), une demi-heure réelle plus tard, l'heure du mur a reculé de 30 min, et
+ *   l'écart vaut 0.
+ * Compter l'horloge réelle supprimerait ces effets, mais déplacerait d'une heure le seuil de tout Prêt qui a traversé un changement
+ * d'heure, et pas seulement une nuit par an. On les accepte donc.
  */
 export function calendarElapsed(from: number, to: number, timeZone: string): number {
   return Math.max(0, to + offsetAt(to, timeZone) - (from + offsetAt(from, timeZone)));

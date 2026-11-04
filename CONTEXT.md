@@ -43,8 +43,16 @@ _Avoid_: ticket fermé, done
 Un ticket fermé parce qu'il est le doublon d'un autre ou qu'un autre ticket l'a remplacé. Un « won't fix » n'est pas un Abandon.
 _Avoid_: annulé, rejeté
 
+**Durée écoulée**:
+Le temps qui s'est réellement écoulé entre deux instants, nuits, week-ends et jours fériés compris (jamais en jours ouvrés). Elle ne dépend pas du fuseau, et un changement d'heure y compte pour ce qu'il est : le dimanche où les horloges reculent dure 25 heures. C'est le sens de toutes les durées mesurées, hors l'âge d'un Prêt : Lead Time, Cycle Time, Temps de rétablissement, Attente de dépendance, Attente en Prêt, âge d'un ticket en cours.
+_Avoid_: temps calendaire (se confond avec l'Âge calendaire)
+
+**Âge calendaire**:
+Le temps passé depuis un instant, compté sur le calendrier de l'utilisateur, dans son fuseau : chaque jour compte pour 24 heures, quelle que soit sa durée réelle, donc un changement d'heure ne l'allonge ni ne le raccourcit. Du mardi 12:00 au mardi 12:00 deux semaines plus tard, il y a 14 jours, que les horloges aient avancé ou reculé entre-temps (la Durée écoulée y compterait 13 jours 23 heures ou 14 jours 1 heure). C'est le sens de l'âge d'un Prêt.
+_Avoid_: temps calendaire (se confond avec la Durée écoulée)
+
 **Lead Time**:
-Durée entre la création d'un ticket et sa dernière clôture.
+Durée écoulée entre la création d'un ticket et sa dernière clôture.
 _Avoid_: time to delivery (ambigu), délai
 
 **Cycle Time**:
@@ -105,7 +113,7 @@ Temps passé dans la colonne Prêt entre la création d'un ticket et sa dernièr
 Le Lead Time cumulé des Livraisons d'une période, réparti en cinq parts qui s'additionnent : Attente de dépendance, Attente en Prêt, travail (Cycle Time hors Blocage), Blocage (dans le Cycle Time) et autre attente (le reste : Backlog après un premier démarrage, différé, fermé avant une Réouverture).
 
 **Prêt qui stagne**:
-Un Prêt qui l'est depuis plus de 14 jours calendaires (14 jours pile ne stagne pas). L'âge d'un Prêt est le temps calendaire écoulé depuis qu'il l'est devenu : création, fin de son Blocage, retour à ouvert ou Réouverture. Il se compte sur le calendrier de l'utilisateur, dans son fuseau : un changement d'heure ne l'allonge ni ne le raccourcit.
+Un Prêt dont l'Âge calendaire dépasse 14 jours (14 jours pile ne stagne pas). L'âge d'un Prêt se compte depuis qu'il l'est devenu : création, fin de son Blocage, retour à ouvert ou Réouverture.
 _Avoid_: ticket oublié, ticket périmé
 
 **Carte d'activité**:
@@ -125,7 +133,7 @@ Partie d'un Blocage où le ticket reste dans la même situation : _avant le prem
 ## Relationships
 
 - Un **Projet** contient zéro ou plusieurs tickets
-- Toutes les durées (**Lead Time**, **Cycle Time**, **Temps de rétablissement**, **Attente de dépendance**, **Attente en Prêt**, âge d'un **Prêt**) sont mesurées en temps calendaire, dans le fuseau de l'utilisateur
+- Les durées (**Lead Time**, **Cycle Time**, **Temps de rétablissement**, **Attente de dépendance**, **Attente en Prêt**, âge d'un ticket en cours) sont des **Durées écoulées** ; l'âge d'un **Prêt**, lui, est un **Âge calendaire**
 - Une **Epic** a des **Enfants** ; son avancement = **Livraisons** parmi ses Enfants
 - Un **Bug d'origine** est relié à au moins une **Livraison**, qu'il met chacune en échec ; une **Livraison** peut avoir plusieurs Bugs d'origine
 - La **Vue globale** agrège tous les **Projets** suivis ; le kanban reste centré sur un **Projet**

@@ -5,7 +5,8 @@ import { SectionHeading } from './ChartParts';
 import type { Comparison } from './comparison';
 import { formatCount, formatDuration, formatPercent, formatSigned } from './format';
 import { HEALTH_GRID, HEALTH_SPANS } from './healthGrid';
-import { formatEfficiency, MEASURES } from './trend';
+import { DurationText, SpokenText } from './SpokenText';
+import { formatEfficiency, MEASURES, spokenEfficiency } from './trend';
 import { plural, Tile, Trend, Value } from './Tiles';
 
 /**
@@ -52,14 +53,15 @@ function BalanceTile({ tiles, comparison, className }: { tiles: Pick<MetricsTile
 /**
  * La part du Cycle Time hors Blocage. Elle vaut souvent presque 100 % : les tickets sont démarrés une fois débloqués, et leur
  * attente tombe avant le démarrage, dans l'Attente de dépendance. La tuile le dit, et renvoie à la décomposition du Lead Time.
- * Elle n'écrit « 100 % » que sans le moindre Blocage (`formatEfficiency`).
+ * Elle n'écrit « 100 % » que sans le moindre Blocage (`formatEfficiency`), et se dit « plus de 99,9 % » là où elle s'écrit
+ * « > 99,9 % » (`SpokenText`), comme « < 1 min » se dit « moins d'une minute » dans la ligne du Blocage.
  */
 function EfficiencyTile({ efficiency, comparison, className }: { efficiency: MetricsHealth['efficiency']; comparison: Comparison; className: string }) {
   const defined = efficiency.ratio !== null;
   return (
     <Tile title="Efficacité du flux" sample={plural(efficiency.n, 'Livraison')} className={className}>
       <Value muted={!defined} caption={defined ? 'du Cycle Time hors Blocage' : 'Aucune Livraison démarrée sur la période.'}>
-        {formatEfficiency(efficiency.ratio)}
+        <SpokenText written={formatEfficiency(efficiency.ratio)} spoken={spokenEfficiency(efficiency.ratio)} />
       </Value>
       {defined ? (
         <>
@@ -68,7 +70,7 @@ function EfficiencyTile({ efficiency, comparison, className }: { efficiency: Met
             {efficiency.blockedTime > 0 ? (
               <>
                 <p className="tnum">
-                  Blocage : {formatDuration(efficiency.blockedTime)} sur {formatDuration(efficiency.cycleTime)} de Cycle Time
+                  Blocage : <DurationText ms={efficiency.blockedTime} /> sur <DurationText ms={efficiency.cycleTime} /> de Cycle Time
                 </p>
                 <p className="tnum">{plural(efficiency.blockedDeliveries, 'Livraison')} avec du Blocage</p>
               </>

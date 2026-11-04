@@ -16,6 +16,7 @@ import { outlineOf } from './palette';
 import type { Dimension } from './params';
 import { dayTicks, DURATION_STEPS, logDomain, nearestPoint, pickTicks } from './scales';
 import { DIMENSION_LABELS, legendOf, seriesOf, type SeriesContext } from './series';
+import { DurationText } from './SpokenText';
 
 const MARGIN = { top: 12, right: 12, bottom: 24, left: 46 };
 const HIT_RADIUS = 24;
@@ -167,7 +168,11 @@ function ReferenceLine({ y, width, dash }: { y: number; width: number; dash: str
   return <line x1={0} x2={width} y1={y} y2={y} stroke="var(--ink-2)" strokeWidth={1.25} strokeDasharray={dash} pointerEvents="none" />;
 }
 
-/** L'étiquette d'une ligne de repère, posée à droite contre elle et cernée du fond du panneau pour rester lisible sur un point. */
+/**
+ * L'étiquette d'une ligne de repère, posée à droite contre elle et cernée du fond du panneau pour rester lisible sur un point. Elle
+ * répète le nom du dessin (« médiane moins d'une minute ») et s'écrit « Médiane < 1 min » sous 30 s : cachée aux lecteurs d'écran,
+ * car Chromium expose le texte d'un SVG nommé et le chevron y serait lu tel quel.
+ */
 function ReferenceLabel({ y, width, label, below = false }: { y: number; width: number; label: string; below?: boolean }) {
   return (
     <text
@@ -180,6 +185,7 @@ function ReferenceLabel({ y, width, label, below = false }: { y: number; width: 
       strokeWidth={3}
       paintOrder="stroke"
       pointerEvents="none"
+      aria-hidden="true"
     >
       {label}
     </text>
@@ -276,7 +282,9 @@ function CycleTimeTable({
           <td className="whitespace-nowrap px-3 py-1">{priorityMeta(point.priority).code}</td>
           {showProject ? <td className="whitespace-nowrap px-3 py-1">{ctx.projectName(point.project)}</td> : null}
           <td className="whitespace-nowrap px-3 py-1 text-ink-2">{deliveredLabel(point.deliveredAt, timeZone)}</td>
-          <td className="whitespace-nowrap px-3 py-1 text-right font-medium">{formatDuration(point.cycleTime)}</td>
+          <td className="whitespace-nowrap px-3 py-1 text-right font-medium">
+            <DurationText ms={point.cycleTime} />
+          </td>
         </tr>
       ))}
     </DataTable>

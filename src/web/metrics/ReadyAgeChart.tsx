@@ -13,6 +13,7 @@ import { outlineOf } from './palette';
 import type { Dimension } from './params';
 import { formatReadyAge, spokenReadyAge } from './readyAge';
 import { DIMENSION_LABELS, legendOf, seriesOf, type SeriesContext } from './series';
+import { SpokenText } from './SpokenText';
 
 /** « 3 des 5 le sont depuis plus de 14 j » : combien de Prêts stagnent, accordé comme le dirait un lecteur. */
 function stagnation(stagnant: number, total: number, threshold: string): string {
@@ -88,8 +89,7 @@ export function ReadyAgePanel({ ages, dimension, ctx, projectOrder, showProject,
                       <TypeGlyph type={ticket.type} />
                       <span className="min-w-0 flex-1 truncate font-medium text-ink group-hover/age:underline">{ticket.title}</span>
                       <span className="tnum shrink-0 font-semibold text-ink">
-                        {formatReadyAge(ticket.age, stagnantAfter)}
-                        <span className="sr-only"> ({spokenReadyAge(ticket.age, stagnantAfter)})</span>
+                        <SpokenText written={formatReadyAge(ticket.age, stagnantAfter)} spoken={spokenReadyAge(ticket.age, stagnantAfter)} spelledOut />
                       </span>
                     </span>
                     <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 pl-[22px] text-micro text-ink-3">
@@ -157,7 +157,9 @@ function ReadyTable({ ages, ctx, showProject, timeZone, moment }: { ages: Metric
           </th>
           {showProject ? <td className="whitespace-nowrap px-3 py-1">{ctx.projectName(ticket.project)}</td> : null}
           <td className="whitespace-nowrap px-3 py-1 text-ink-2">{formatDay(dayInZone(ticket.since, timeZone), { year: true })}</td>
-          <td className="whitespace-nowrap px-3 py-1 text-right font-medium">{formatReadyAge(ticket.age, ages.stagnantAfter)}</td>
+          <td className="whitespace-nowrap px-3 py-1 text-right font-medium">
+            <SpokenText written={formatReadyAge(ticket.age, ages.stagnantAfter)} spoken={spokenReadyAge(ticket.age, ages.stagnantAfter)} />
+          </td>
           <td className="whitespace-nowrap px-3 py-1">{ticket.stagnant ? 'Oui' : 'Non'}</td>
         </tr>
       ))}

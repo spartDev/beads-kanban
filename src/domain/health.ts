@@ -205,8 +205,8 @@ function readyTimeOf(ticket: TrackedTicket, end: number): number {
 
 /**
  * Les Prêts à l'instant `at`, avec depuis quand ils le sont : le début du segment de la chronologie qui les range dans la
- * colonne Prêt (ouvert, hors Blocage). Un ticket créé après `at` n'existe pas encore. L'âge est le temps calendaire écoulé dans
- * le fuseau (`calendarElapsed`) : c'est lui, et non les millisecondes, que l'on compare au seuil de 14 jours.
+ * colonne Prêt (ouvert, hors Blocage). Un ticket créé après `at` n'existe pas encore. L'âge est un Âge calendaire dans le fuseau
+ * (`calendarElapsed`, voir CONTEXT.md) : c'est lui, et non les millisecondes, que l'on compare au seuil de 14 jours.
  */
 function readyAt(entries: Entry[], at: number, timeZone: string): MetricsReadyTicket[] {
   return entries

@@ -12,6 +12,7 @@ import { formatCount, formatDuration, spokenDuration } from './format';
 import { outlineOf } from './palette';
 import type { Dimension } from './params';
 import { DIMENSION_LABELS, legendOf, seriesOf, type SeriesContext } from './series';
+import { SpokenText } from './SpokenText';
 
 /** Combien de tickets montrer avant « Afficher les autres » : un WIP raisonnable tient en entier. */
 export const VISIBLE_AGES = 12;
@@ -54,8 +55,8 @@ export function AgePanel({ tickets, dimension, ctx, projectOrder, median, p85, s
             <Legend label={`Couleurs : ${DIMENSION_LABELS[dimension].toLowerCase()}`} items={series} />
             {references.length > 0 ? (
               <ul aria-label="Repères" className="flex flex-wrap gap-x-4 gap-y-1 text-micro text-ink-2">
-                {median !== null ? <Marker label={`Médiane du Cycle Time ${formatDuration(median)}`} /> : null}
-                {p85 !== null ? <Marker label={`P85 ${formatDuration(p85)}`} dotted /> : null}
+                {median !== null ? <Marker label={`Médiane du Cycle Time ${formatDuration(median)}`} spoken={`Médiane du Cycle Time ${spokenDuration(median)}`} /> : null}
+                {p85 !== null ? <Marker label={`P85 ${formatDuration(p85)}`} spoken={`P85 ${spokenDuration(p85)}`} dotted /> : null}
               </ul>
             ) : null}
           </div>
@@ -80,8 +81,7 @@ export function AgePanel({ tickets, dimension, ctx, projectOrder, median, p85, s
                       <TypeGlyph type={ticket.type} />
                       <span className="min-w-0 flex-1 truncate font-medium text-ink group-hover/age:underline">{ticket.title}</span>
                       <span className="tnum shrink-0 font-semibold text-ink">
-                        {formatDuration(ticket.age)}
-                        <span className="sr-only"> ({spokenDuration(ticket.age)})</span>
+                        <SpokenText written={formatDuration(ticket.age)} spoken={spokenDuration(ticket.age)} spelledOut />
                       </span>
                     </span>
                     <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 pl-[22px] text-micro text-ink-3">
@@ -121,11 +121,15 @@ export function AgePanel({ tickets, dimension, ctx, projectOrder, median, p85, s
   );
 }
 
-function Marker({ label, dotted = false }: { label: string; dotted?: boolean }) {
+/**
+ * Un repère : son trait, puis son étiquette (`label` s'écrit, `spoken` se dit : « < 1 min » ne se lit pas tel quel). L'étiquette est
+ * dite en UNE phrase, pas en morceaux : le <li> est un conteneur flex, qui sépare chaque enfant du suivant par l'écart.
+ */
+function Marker({ label, spoken, dotted = false }: { label: string; spoken: string; dotted?: boolean }) {
   return (
     <li className="inline-flex items-center gap-1.5">
       <span aria-hidden="true" className={dotted ? 'h-3 w-0 border-l-2 border-dotted border-ink-2' : 'h-3 w-0 border-l border-dashed border-ink-2'} />
-      {label}
+      <SpokenText written={label} spoken={spoken} />
     </li>
   );
 }

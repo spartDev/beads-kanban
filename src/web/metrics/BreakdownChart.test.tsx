@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { BreakdownPanel } from './BreakdownChart';
-import { emptyHealthFixture, healthFixture, plain } from './testing';
+import { emptyHealthFixture, healthFixture, plain, shownText, spokenText } from './testing';
 
 const HOUR = 3_600_000;
 
@@ -15,6 +15,10 @@ const HOUR = 3_600_000;
 const named = (expected: string) => (name: string) => plain(name) === expected;
 
 const renderPanel = (breakdown = healthFixture().leadTimeBreakdown) => render(<BreakdownPanel breakdown={breakdown} />);
+
+/** Ce que l'œil lit, et ce que l'oreille entend : « < 1 min » s'écrit avec un chevron et se dit « moins d'une minute ». */
+const shown = (element: Element | null | undefined) => plain(shownText(element!));
+const heard = (element: Element | null | undefined) => plain(spokenText(element!));
 
 describe('BreakdownPanel : la décomposition du Lead Time', () => {
   it('dit ce qu’elle répartit : le Lead Time cumulé des Livraisons, en cinq parts', () => {
@@ -89,7 +93,24 @@ describe('BreakdownPanel : la décomposition du Lead Time', () => {
     const base = healthFixture().leadTimeBreakdown;
     renderPanel({ ...base, blocked: 3516, otherWait: base.otherWait - 3516 });
 
-    expect(plain(within(screen.getByRole('list', { name: 'Parts du Lead Time' })).getAllByRole('listitem')[4]?.firstElementChild?.textContent)).toBe('Blocage< 1 min0 %');
+    expect(shown(within(screen.getByRole('list', { name: 'Parts du Lead Time' })).getAllByRole('listitem')[4]?.firstElementChild)).toBe('Blocage< 1 min0 %');
+  });
+
+  it('dit « moins d’une minute » de ces 3,5 s de Blocage aux lecteurs d’écran, qui liraient le chevron tel quel', () => {
+    const base = healthFixture().leadTimeBreakdown;
+    renderPanel({ ...base, blocked: 3516, otherWait: base.otherWait - 3516 });
+
+    const blocage = within(screen.getByRole('list', { name: 'Parts du Lead Time' })).getAllByRole('listitem')[4]?.firstElementChild;
+    expect(heard(blocage)).toBe('Blocagemoins d’une minute0 %');
+    expect(heard(screen.getByRole('list', { name: 'Parts du Lead Time' }))).not.toMatch(/[<>]/);
+  });
+
+  it('ne double pas les autres parts : « 21 j » s’écrit et se lit tel quel, sans version dite en plus', () => {
+    renderPanel();
+
+    const legend = screen.getByRole('list', { name: 'Parts du Lead Time' });
+    expect(legend.querySelector('.sr-only, [aria-hidden="true"]:not([style])')).toBeNull(); // seules les pastilles de couleur (avec un style) sont cachées
+    expect(heard(within(legend).getAllByRole('listitem')[0]?.firstElementChild)).toBe('Attente de dépendance21 j17,5 %');
   });
 
   it('nomme chaque part dans la légende avec sa durée cumulée et sa part du Lead Time', () => {
@@ -156,6 +177,48 @@ describe('BreakdownPanel : la décomposition du Lead Time', () => {
       ['Blocage', '2,5 j', '2,1 %'],
       ['Lead Time cumulé', '120 j', '100 %'],
     ]);
+  });
+
+  it('dit « moins d’une minute » dans le tableau des données comme dans la légende, et garde « < 1 min » à l’écran', async () => {
+    const user = userEvent.setup();
+    const base = healthFixture().leadTimeBreakdown;
+    renderPanel({ ...base, blocked: 3516, otherWait: base.otherWait - 3516 });
+
+    await user.click(screen.getByText('Données du graphique'));
+    const table = screen.getByRole('table', { name: 'Parts du Lead Time cumulé des Livraisons de la période' });
+    const blocage = within(table).getAllByRole('row')[5]!;
+    expect(shown(blocage)).toBe('Blocage< 1 min0 %');
+    expect(heard(blocage)).toBe('Blocagemoins d’une minute0 %');
+    expect(heard(table)).not.toMatch(/[<>]/);
+  });
+
+  it('dit « moins d’une minute » du Lead Time cumulé et de l’attente quand ils sont sous la minute : la description, la phrase des attentes et le total du tableau', async () => {
+    const user = userEvent.setup();
+    const base = healthFixture().leadTimeBreakdown;
+    const { container } = renderPanel({
+      ...base,
+      deliveries: 1,
+      total: 20_000,
+      dependencyWait: 20_000,
+      readyWait: 0,
+      otherWait: 0,
+      work: 0,
+      blocked: 0,
+      waited: 1,
+      waits: { median: 20_000, p85: 20_000, n: 1 },
+    });
+    await user.click(screen.getByText('Données du graphique'));
+
+    const description = container.querySelector('header p');
+    expect(shown(description)).toBe('Le Lead Time cumulé de 1 Livraison (< 1 min), réparti en cinq parts qui s’additionnent.');
+    expect(heard(description)).toBe('Le Lead Time cumulé de 1 Livraison (moins d’une minute), réparti en cinq parts qui s’additionnent.');
+    const waits = screen.getByText(/a attendu une dépendance/, { selector: '[aria-hidden="true"]' }).parentElement; // l'écriture est cachée aux lecteurs d'écran : la phrase est son parent
+    expect(shown(waits)).toBe('1 Livraison sur 1 a attendu une dépendance avant de démarrer : médiane < 1 min, P85 < 1 min.');
+    expect(heard(waits)).toBe('1 Livraison sur 1 a attendu une dépendance avant de démarrer : médiane moins d’une minute, P85 moins d’une minute.');
+    const total = within(screen.getByRole('table')).getAllByRole('row')[6]!;
+    expect(shown(total)).toBe('Lead Time cumulé< 1 min100 %');
+    expect(heard(total)).toBe('Lead Time cumulémoins d’une minute100 %');
+    expect(heard(screen.getByRole('region', { name: 'Décomposition du Lead Time' }))).not.toMatch(/[<>]/);
   });
 
   it('écrit « Aucun » dans le tableau des données pour un Blocage nul, comme dans la légende', async () => {

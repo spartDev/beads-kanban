@@ -3,10 +3,11 @@ import { Link } from 'react-router';
 import type { MetricsDurationStats } from '../../shared/api';
 import { cx } from '../lib/cx';
 import { Swatch, SectionHeading } from './ChartParts';
-import { formatCount, formatDuration, formatPercent } from './format';
+import { formatCount, formatPercent } from './format';
 import type { Dimension } from './params';
 import { DIMENSION_LABELS } from './series';
 import type { FailureCell, SliceRow, SliceTableView } from './slices';
+import { DurationText } from './SpokenText';
 
 /**
  * Le tableau du découpage choisi : une ligne par type, priorité ou Projet, avec Débit, Lead Time, Cycle Time, Taux
@@ -121,8 +122,12 @@ function Duration({ stats }: { stats: MetricsDurationStats }) {
   if (stats.n === 0 || stats.median === null) return <span className="text-ink-3">—</span>;
   return (
     <span className="flex flex-col @min-[44rem]:items-end">
-      <span className="font-medium text-ink">{formatDuration(stats.median)}</span>{' '}
-      <span className="text-micro font-normal text-ink-3">P85 {formatDuration(stats.p85)}</span>
+      <span className="font-medium text-ink">
+        <DurationText ms={stats.median} />
+      </span>{' '}
+      <span className="text-micro font-normal text-ink-3">
+        P85 <DurationText ms={stats.p85} />
+      </span>
     </span>
   );
 }

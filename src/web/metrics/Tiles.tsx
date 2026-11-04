@@ -5,7 +5,8 @@ import { cx } from '../lib/cx';
 import { Tip } from '../ui/Tip';
 import { SectionHeading } from './ChartParts';
 import type { Comparison } from './comparison';
-import { formatCount, formatDecimal, formatDuration, formatPercent, tidy } from './format';
+import { formatCount, formatDecimal, formatPercent, tidy } from './format';
+import { DurationText, SpokenText } from './SpokenText';
 import { describeTrend, MEASURES, type Measure, type TrendDirection, type TrendTone } from './trend';
 
 const TREND_ICONS: Record<Exclude<TrendDirection, 'none'>, LucideIcon> = { up: ArrowUp, down: ArrowDown, flat: Minus };
@@ -103,7 +104,14 @@ export function Value({ children, caption, muted = false }: { children: ReactNod
 export function Trend({ trend, measure, comparison, label, hasValue = true }: { trend: MetricsTrend; measure: Measure; comparison: Comparison; label?: string; hasValue?: boolean }) {
   const view = describeTrend(trend, measure);
   if (view.direction === 'none') {
-    if (view.previous !== null) return <p className="text-micro text-ink-3 tnum">Avant : {view.previous}</p>;
+    // « Avant : < 1 min » : l'écran écrit le chevron (comme la puce), les lecteurs d'écran entendent « moins d'une minute » (comme la phrase).
+    if (trend.previous !== null) {
+      return (
+        <p className="text-micro text-ink-3 tnum">
+          Avant : <SpokenText written={measure.format(trend.previous)} spoken={measure.speak(trend.previous)} />
+        </p>
+      );
+    }
     return hasValue ? <p className="text-micro text-ink-3">Pas de période précédente à comparer.</p> : null;
   }
   const Icon = TREND_ICONS[view.direction];
@@ -148,7 +156,7 @@ function DurationTile({ title, tile, sample, empty, comparison }: { title: strin
     <Tile title={title} sample={sample}>
       <div className="flex flex-col gap-1">
         <Value muted={!defined} caption={defined ? 'médiane' : empty}>
-          {formatDuration(tile.median)}
+          <DurationText ms={tile.median} />
         </Value>
         <Trend trend={tile.trend.median} measure={MEASURES.duration} comparison={comparison} label="Médiane" hasValue={defined && !nothingBefore} />
       </div>
@@ -157,7 +165,7 @@ function DurationTile({ title, tile, sample, empty, comparison }: { title: strin
           <p className="flex items-baseline gap-1.5">
             <span className="text-micro text-ink-3">P85</span>
             <span data-p85="" className="tnum text-[15px] font-semibold leading-5 text-ink">
-              {formatDuration(tile.p85)}
+              <DurationText ms={tile.p85} />
             </span>
           </p>
           <Trend trend={tile.trend.p85} measure={MEASURES.duration} comparison={comparison} label="P85" hasValue={!nothingBefore} />

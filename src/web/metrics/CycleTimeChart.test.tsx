@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CycleTimePanel, type CycleTimePanelProps } from './CycleTimeChart';
 import type { SeriesContext } from './series';
-import { emptyMetricsFixture, metricsFixture, plain, stubChartWidth } from './testing';
+import { emptyMetricsFixture, metricsFixture, plain, shownText, spokenText, stubChartWidth } from './testing';
 
 beforeEach(() => stubChartWidth(640));
 afterEach(() => vi.restoreAllMocks());
@@ -221,5 +221,64 @@ describe('CycleTimePanel : le nuage de points du Cycle Time', () => {
     const dot = dots(container)[0]!;
     expect(Number.isFinite(Number(dot.getAttribute('cy')))).toBe(true);
     expect(Number.isFinite(Number(dot.getAttribute('cx')))).toBe(true);
+  });
+});
+
+describe('CycleTimePanel : ce que lit un lecteur d’écran', () => {
+  /** Ce que l'œil lit, et ce que l'oreille entend : « < 1 min » s'écrit avec un chevron et se dit « moins d’une minute ». */
+  const shown = (element: Element) => plain(shownText(element));
+  const heard = (element: Element) => plain(spokenText(element));
+
+  /** Le cadre du dessin : le SVG et l'infobulle, sans la légende ni le tableau des données. */
+  const frame = (container: HTMLElement) => container.querySelector<HTMLElement>('[data-chart-frame]')!;
+
+  /** Une Livraison de 10 s : l'arrondi à la minute la ramène à zéro, l'écran écrit « < 1 min ». */
+  const quick = () => [{ ...metricsFixture().cycleTimeScatter[0]!, cycleTime: 10_000 }];
+
+  it('le tableau des données dit « moins d’une minute » d’un Cycle Time sous 30 s, sans le chevron', async () => {
+    const user = userEvent.setup();
+    renderPanel({ points: quick(), median: 10_000, p85: 10_000 });
+
+    await user.click(screen.getByText('Données du graphique'));
+    const cell = [...within(screen.getByRole('table')).getAllByRole('row')[1]!.querySelectorAll('td')].at(-1)!;
+
+    expect([shown(cell), heard(cell)]).toEqual(['< 1 min', 'moins d’une minute']);
+    expect(heard(screen.getByRole('table'))).not.toMatch(/[<>]/);
+  });
+
+  it('un Cycle Time qui s’écrit sans chevron reste un seul morceau de texte dans le tableau', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByText('Données du graphique'));
+    const cell = [...within(screen.getByRole('table')).getAllByRole('row')[1]!.querySelectorAll('td')].at(-1)!;
+
+    expect(plain(cell.textContent)).toBe('1 h 30');
+    expect(cell.children).toHaveLength(0);
+  });
+
+  it('le dessin est nommé « moins d’une minute » et ses étiquettes « Médiane < 1 min » sont cachées aux lecteurs d’écran : Chromium expose le texte d’un SVG nommé', () => {
+    const { container } = renderPanel({ points: quick(), median: 10_000, p85: 20_000 });
+    const chart = screen.getByRole('img', { name: /Nuage de points/ });
+
+    expect(chart.getAttribute('aria-label')).toBe('Nuage de points du Cycle Time : 1 Livraison, médiane moins d’une minute, P85 moins d’une minute, échelle logarithmique.');
+    // L'écran écrit toujours les étiquettes avec le chevron…
+    const labels = [...chart.querySelectorAll('text')].filter((text) => /[<>]/.test(text.textContent ?? ''));
+    expect(labels.map((text) => plain(text.textContent))).toEqual(['Médiane < 1 min', 'P85 < 1 min']);
+    // …mais elles répètent le nom du dessin : aucun lecteur d'écran ne les lit.
+    expect(labels.every((text) => text.closest('[aria-hidden="true"]') !== null)).toBe(true);
+    expect(plain(spokenText(frame(container)))).not.toMatch(/[<>]/);
+  });
+
+  it('l’infobulle est un décor caché aux lecteurs d’écran : elle écrit « Cycle Time < 1 min », rien n’en est lu', () => {
+    const { container } = renderPanel({ points: quick(), median: 10_000, p85: 20_000 });
+    const dot = dots(container)[0]!;
+
+    fireEvent.pointerMove(hitArea(container), { clientX: Number(dot.getAttribute('cx')), clientY: Number(dot.getAttribute('cy')), pointerType: 'mouse' });
+
+    const tooltip = container.querySelector<HTMLElement>('[data-chart-tooltip]')!;
+    expect(tooltip.getAttribute('aria-hidden')).toBe('true');
+    expect(shown(tooltip)).toContain('Cycle Time < 1 min');
+    expect(heard(tooltip)).toBe('');
   });
 });

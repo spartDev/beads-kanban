@@ -4,7 +4,7 @@ import type { MetricsResponse } from '../../shared/api';
 import { TooltipProvider } from '../ui/Tip';
 import { describeComparison } from './comparison';
 import { HealthTiles } from './HealthTiles';
-import { emptyHealthFixture, emptyMetricsFixture, healthFixture, metricsFixture, plain, trendOf } from './testing';
+import { emptyHealthFixture, emptyMetricsFixture, healthFixture, metricsFixture, plain, shownText, spokenText, trendOf } from './testing';
 
 /**
  * Les cinq tuiles de la santé du flux. Chiffres du fixture (Vue globale, 7 derniers jours) : 20 Arrivées pour 18 Livraisons
@@ -22,6 +22,9 @@ function renderTiles(data: MetricsResponse = metricsFixture()) {
 
 const tile = (name: string) => screen.getByRole('article', { name });
 const text = (element: HTMLElement) => plain(element.textContent);
+/** Ce que l'œil lit, et ce que l'oreille entend : « > 99,9 % » s'écrit avec un chevron et se dit « plus de 99,9 % ». */
+const shown = (element: Element) => plain(shownText(element));
+const heard = (element: Element) => plain(spokenText(element));
 const trends = (element: HTMLElement) => [...element.querySelectorAll('[data-trend]')].map((trend) => [trend.getAttribute('data-trend'), trend.getAttribute('data-tone')]);
 
 describe('HealthTiles : la santé du flux', () => {
@@ -82,28 +85,61 @@ describe('HealthTiles : la santé du flux', () => {
       renderTiles({ ...data, health: healthFixture({ efficiency: { n: 75, cycleTime: 10_723_598_096, blockedTime: 3516, blockedDeliveries: 1, ratio, trend: trendOf(ratio, 1) } }) });
 
       const efficiency = tile('Efficacité du flux');
-      expect(plain(efficiency.querySelector('[data-value]')?.textContent)).toBe('> 99,9 %');
-      expect(text(efficiency)).toContain('> 99,9 %du Cycle Time hors Blocage');
-      expect(text(efficiency)).not.toMatch(/^Efficacité du flux75 Livraisons100 %/);
-      expect(text(efficiency)).toContain('Blocage : < 1 min sur 124 j de Cycle Time');
+      expect(shown(efficiency.querySelector('[data-value]') as HTMLElement)).toBe('> 99,9 %');
+      expect(shown(efficiency)).toContain('> 99,9 %du Cycle Time hors Blocage');
+      expect(shown(efficiency)).not.toMatch(/^Efficacité du flux75 Livraisons100 %/);
+      expect(shown(efficiency)).toContain('Blocage : < 1 min sur 124 j de Cycle Time');
       expect(text(efficiency)).toContain('1 Livraison avec du Blocage');
-      // La période précédente n'avait aucun Blocage : exactement 100 %, et c'est ce qu'on lit. La phrase de la tendance suit la même règle.
-      expect(text(efficiency.querySelector('[data-trend]') as HTMLElement)).toContain('avant 100 %');
-      expect(text(efficiency.querySelector('[data-trend]') as HTMLElement)).toContain('Stable : > 99,9 % comme sur la période précédente.');
+      // La période précédente n'avait aucun Blocage : exactement 100 %, et c'est ce qu'on lit. La phrase de la tendance dit les deux valeurs, comme la puce.
+      const trend = efficiency.querySelector('[data-trend]') as HTMLElement;
+      expect(shown(trend)).toContain('avant 100 %');
+      expect(heard(trend)).toBe('Stable : plus de 99,9 % contre 100 % sur la période précédente.');
+      expect(heard(trend)).not.toContain('comme sur la période précédente');
+    });
+
+    it('se lit « plus de 99,9 % » : l’écran écrit le chevron, le lecteur d’écran dit les mots, et « < 1 min » se dit « moins d’une minute »', () => {
+      const data = metricsFixture();
+      const ratio = 1 - 3516 / 10_723_598_096;
+      renderTiles({ ...data, health: healthFixture({ efficiency: { n: 75, cycleTime: 10_723_598_096, blockedTime: 3516, blockedDeliveries: 1, ratio, trend: trendOf(ratio, 1) } }) });
+
+      const efficiency = tile('Efficacité du flux');
+      const value = efficiency.querySelector('[data-value]') as HTMLElement;
+      expect(heard(value)).toBe('plus de 99,9 %');
+      expect(heard(efficiency)).toContain('plus de 99,9 %du Cycle Time hors Blocage');
+      expect(heard(efficiency)).toContain('Blocage : moins d’une minute sur 124 j de Cycle Time');
+      expect(heard(efficiency)).not.toMatch(/[<>]/); // aucune valeur lue ne commence par un chevron
+      // Le chevron écrit est caché aux lecteurs d'écran, qui ne le lisent donc pas en plus des mots.
+      expect(plain(value.querySelector('[aria-hidden="true"]')?.textContent)).toBe('> 99,9 %');
+      expect(plain(value.querySelector('.sr-only')?.textContent)).toBe('plus de 99,9 %');
+    });
+
+    it('ne double pas ce qui se lit tel quel : « 100 % » et « 91,9 % » n’ont qu’une seule version, la même pour l’œil et l’oreille', () => {
+      const data = metricsFixture();
+      const exact = healthFixture({ efficiency: { ...data.health.efficiency, blockedTime: 0, ratio: 1, blockedDeliveries: 0, trend: trendOf(1, 1) } });
+      for (const health of [exact, data.health]) {
+        const view = renderTiles({ ...data, health });
+        const efficiency = tile('Efficacité du flux');
+        const value = efficiency.querySelector('[data-value]') as HTMLElement;
+        expect(value.querySelector('.sr-only, [aria-hidden]')).toBeNull();
+        expect(shown(value)).toBe(heard(value));
+        expect(heard(efficiency)).toContain(health === exact ? 'Aucun Blocage pendant le travail.' : 'Blocage : 2,5 j sur 31 j de Cycle Time');
+        view.unmount();
+      }
     });
 
     it('n’écrit « 100 % » que pour une efficacité exacte : 99,95 % de Blocage près s’écrit « > 99,9 % », 99,94 % s’écrit « 99,9 % »', () => {
       const data = metricsFixture();
       const render = (ratio: number) => {
         const view = renderTiles({ ...data, health: healthFixture({ efficiency: { n: 4, cycleTime: 1_000_000, blockedTime: Math.round((1 - ratio) * 1_000_000), blockedDeliveries: 1, ratio, trend: trendOf(ratio, ratio) } }) });
-        const value = plain(tile('Efficacité du flux').querySelector('[data-value]')?.textContent);
+        const value = tile('Efficacité du flux').querySelector('[data-value]') as HTMLElement;
+        const texts = { shown: shown(value), heard: heard(value) };
         view.unmount();
-        return value;
+        return texts;
       };
 
-      expect(render(0.9995)).toBe('> 99,9 %');
-      expect(render(0.99949)).toBe('99,9 %');
-      expect(render(1)).toBe('100 %');
+      expect(render(0.9995)).toEqual({ shown: '> 99,9 %', heard: 'plus de 99,9 %' });
+      expect(render(0.99949)).toEqual({ shown: '99,9 %', heard: '99,9 %' });
+      expect(render(1)).toEqual({ shown: '100 %', heard: '100 %' });
     });
 
     it('explique pourquoi la part est souvent proche de 100 %, et renvoie à l’Attente de dépendance de la décomposition du Lead Time', () => {

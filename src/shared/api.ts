@@ -114,7 +114,7 @@ export interface IssueResponse {
  * Chronologie d'un ticket : `GET /api/projects/:projectId/issues/:issueId/chronology`
  *
  * Les Transitions du ticket, lues dans l'historique Dolt du Projet (voir docs/adr/0001), avec les mêmes durées que les
- * métriques : celles de `analyzeFlow`, en temps calendaire (ms), sur la même horloge que le Lead Time. Une requête à part
+ * métriques : celles de `analyzeFlow`, des Durées écoulées (ms), sur la même horloge que le Lead Time. Une requête à part
  * de la fiche : lire l'historique du Projet est plus long (jusqu'à quelques secondes à froid) que lire un ticket, et sa
  * panne (historique trop long, 503) ne doit pas priver de la fiche. Les instants sont des chaînes ISO 8601 en UTC.
  * ---------------------------------------------------------------------------------------------------------------- */
@@ -240,7 +240,8 @@ export interface LiveChangeEvent {
  *   &range=7d|30d|90d        les N derniers jours, aujourd'hui compris (défaut : 30d)
  *   &from=YYYY-MM-DD&to=YYYY-MM-DD   ou une plage personnalisée, bornes incluses (jamais avec `range`)
  *
- * Les durées sont des nombres de millisecondes, en temps calendaire. Les instants sont des chaînes ISO 8601 en UTC ;
+ * Les durées sont des nombres de millisecondes : des Durées écoulées, sauf l'âge d'un Prêt, qui est un Âge calendaire (voir
+ * CONTEXT.md). Les instants sont des chaînes ISO 8601 en UTC ;
  * les jours (`YYYY-MM-DD`) sont ceux du fuseau local du serveur, qui est celui de l'utilisateur : c'est lui qui découpe
  * les périodes et les buckets. Une semaine commence le lundi. Une Livraison, un Abandon ou un échec appartient à la
  * période de sa date de Livraison, c'est-à-dire de sa dernière clôture. Les Epics ne sont mesurées nulle part : ce ne
@@ -484,7 +485,7 @@ export interface MetricsSlices {
  *
  * Les métriques de flux additionnelles, calculées avec les mêmes règles que les précédentes : sur la période courante
  * de `period.start` à `asOf`, comparée à la précédente de `previousPeriod.start` à `previousAsOf` (même durée écoulée),
- * en temps calendaire, Epics exclues, sur l'union des tickets des Projets mesurés. Sept métriques, dont deux déjà servies
+ * en Durée écoulée (CONTEXT.md), Epics exclues, sur l'union des tickets des Projets mesurés. Sept métriques, dont deux déjà servies
  * par l'API : « Arrivées vs Débit » (`tiles.arrivals`, `tiles.throughput` et les `buckets`) et « Répartition par type »
  * (`slices.type`). Les cinq autres sont ici, avec la décomposition du Lead Time qui porte l'Attente de dépendance :
  *
@@ -581,7 +582,7 @@ export interface MetricsReadyTicket {
   /** L'instant où le ticket est devenu Prêt : sa création, la fin de son Blocage, son retour à ouvert ou sa Réouverture. */
   since: string;
   /**
-   * Le temps calendaire écoulé entre `since` et `asOf` (ms) : l'écart de leurs heures du mur dans le fuseau de la réponse, un jour
+   * L'Âge calendaire (CONTEXT.md) entre `since` et `asOf` (ms) : l'écart de leurs heures du mur dans le fuseau de la réponse, un jour
    * de 23 h ou de 25 h (changement d'heure) comptant pour 24 h. Hors changement d'heure, c'est `asOf` moins `since`.
    */
   age: number;

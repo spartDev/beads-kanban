@@ -56,6 +56,15 @@ describe('describeBreakdown', () => {
     expect(describeBreakdown({ ...base, blocked: 3000 }).parts[4]?.text.replaceAll('\u00a0', ' ')).toBe('< 1 min');
   });
 
+  it('dit la durée de chaque part en toutes lettres, « moins d’une minute » là où elle s’écrit « < 1 min », « Aucun » ou « Aucune » quand elle est nulle', () => {
+    expect(view.parts.map((part) => part.spoken)).toEqual(['21 jours', '52 jours', '16 jours', '29 jours', '2,5 jours']);
+
+    const base = healthFixture().leadTimeBreakdown;
+    const zeros = describeBreakdown({ ...base, dependencyWait: 0, readyWait: 0, otherWait: 0, work: 0, blocked: 0, total: 1 });
+    expect(zeros.parts.map((part) => part.spoken)).toEqual(['Aucune', 'Aucune', 'Aucune', 'Aucun', 'Aucun']);
+    expect(describeBreakdown({ ...base, blocked: 3000 }).parts[4]?.spoken).toBe('moins d’une minute');
+  });
+
   it('reprend les Livraisons qui ont attendu une dépendance, avec la médiane et le P85 de leur attente', () => {
     expect(view).toMatchObject({ deliveries: 18, waited: 6, waits: { median: 2.1 * DAY, p85: 6 * DAY, n: 6 } });
   });

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { MetricsReadyAges, MetricsReadyTicket } from '../../shared/api';
 import { ReadyAgePanel, type ReadyAgePanelProps } from './ReadyAgeChart';
 import type { SeriesContext } from './series';
-import { emptyHealthFixture, healthFixture, plain } from './testing';
+import { emptyHealthFixture, healthFixture, plain, shownText, spokenText } from './testing';
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -196,5 +196,50 @@ describe('ReadyAgePanel : les Prêts qui stagnent', () => {
 
     expect(screen.getByText('Aucun ticket Prêt.')).toBeTruthy();
     expect(screen.queryByRole('list', { name: 'Prêts, du plus ancien au plus récent' })).toBeNull();
+  });
+});
+
+describe('ReadyAgePanel : ce que lit un lecteur d’écran', () => {
+  /** Ce que l'œil lit, et ce que l'oreille entend : « < 1 min » s'écrit avec un chevron et se dit « moins d’une minute ». */
+  const shown = (element: Element) => plain(shownText(element));
+  const heard = (element: Element) => plain(spokenText(element));
+  const times = (text: string, part: string) => text.split(part).length - 1;
+
+  /** Un Prêt créé il y a 10 s, et un autre il y a 12 min. */
+  function renderFresh() {
+    const base = healthFixture().readyAges;
+    const tickets = [
+      { ...base.tickets[0]!, id: 'x-2', age: 10_000, stagnant: false },
+      { ...base.tickets[0]!, id: 'x-3', age: 12 * 60_000, stagnant: false },
+    ];
+    return renderPanel({ ages: { ...base, tickets, stagnant: 0 }, showProject: false });
+  }
+
+  it('un Prêt créé il y a 10 s s’écrit « < 1 min » et se dit « moins d’une minute », une seule fois', () => {
+    renderFresh();
+    const item = rows()[0]!;
+
+    expect(shown(item)).toContain('< 1 min');
+    expect(heard(item)).not.toMatch(/[<>]/);
+    expect(times(heard(item), 'moins d’une minute')).toBe(1);
+    expect(plain(item.textContent)).toContain('< 1 minmoins d’une minute');
+  });
+
+  it('un âge qui s’écrit sans chevron garde sa version en toutes lettres : « 12 min (12 minutes) »', () => {
+    renderFresh();
+
+    expect(heard(rows()[1]!)).toContain('12 min (12 minutes)');
+    expect(shown(rows()[1]!)).not.toContain('12 minutes');
+  });
+
+  it('le tableau des données dit « moins d’une minute » d’un âge sous 30 s, sans le chevron, et garde « 12 min » tel quel', async () => {
+    const user = userEvent.setup();
+    renderFresh();
+
+    await user.click(screen.getByText('Données du graphique'));
+    const cells = within(screen.getByRole('table')).getAllByRole('row').slice(1).map((row) => within(row).getAllByRole('cell').at(-2)!);
+
+    expect(cells.map((cell) => shown(cell))).toEqual(['< 1 min', '12 min']);
+    expect(cells.map((cell) => heard(cell))).toEqual(['moins d’une minute', '12 min']);
   });
 });

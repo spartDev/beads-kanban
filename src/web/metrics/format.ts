@@ -49,8 +49,11 @@ export function formatSigned(value: number, digits = 0): string {
 }
 
 /**
- * Durée en temps calendaire, arrondie à la minute avant de choisir l'unité : minutes sous une heure, heures et
- * minutes sous un jour, jours au-delà (une décimale sous 10 jours). 59 min 40 s font « 1 h », pas « 60 min ».
+ * Durée arrondie à la minute avant de choisir l'unité : minutes sous une heure, heures et minutes sous un jour, jours
+ * au-delà (une décimale sous 10 jours). 59 min 40 s font « 1 h », pas « 60 min ». Sous 30 s, « < 1 min » : un lecteur d'écran
+ * le lirait tel quel, la version dite est `spokenDuration` (« moins d'une minute »). Dans une page, une durée mesurée que les
+ * lecteurs d'écran lisent s'écrit avec `DurationText` (ou `SpokenText`) : le chevron leur est caché, les mots leur sont dits. Seul un
+ * texte déjà caché aux lecteurs d'écran (`aria-hidden` : l'infobulle d'un graphique, les étiquettes d'un dessin) peut l'écrire seule.
  */
 export function formatDuration(ms: number | null | undefined): string {
   if (!isNumber(ms)) return DASH;

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { MetricsTrend } from '../../shared/api';
-import { describeTrend, formatEfficiency, MEASURES } from './trend';
+import { describeTrend, formatEfficiency, MEASURES, spokenEfficiency } from './trend';
 
 const NBSP = ' ';
+const MINUTE = 60_000;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
@@ -85,6 +86,7 @@ describe('durées : plus court, c’est mieux', () => {
   it('dit « stable » sous la minute : l’arrondi de l’affichage l’effacerait', () => {
     const view = describeTrend(trend(HOUR + 20_000, HOUR), MEASURES.duration);
     expect(view).toMatchObject({ direction: 'flat', tone: 'neutral' });
+    expect(view.sentence).toBe('Stable : 1 heure comme sur la période précédente.'); // les deux s'écrivent « 1 h »
     expect(describeTrend(trend(HOUR + 30_000, HOUR), MEASURES.duration).direction).toBe('up');
   });
 });
@@ -174,13 +176,138 @@ describe('Efficacité du flux : « 100 % » seulement quand il n’y a aucun Blo
   });
 
   it('écrit la valeur, la précédente et la phrase de la tendance avec la même règle', () => {
-    // Courante : 99,99997 % (du Blocage) ; précédente : exactement 100 % (aucun Blocage).
+    // Courante : 99,99997 % (du Blocage) ; précédente : exactement 100 % (aucun Blocage). La phrase dit les deux, comme la tuile les écrit.
     const view = describeTrend(trend(1 - 3516 / 10_723_598_096, 1), MEASURES.efficiency);
     expect(view.direction).toBe('flat');
     expect(view.previous).toBe(`100${NBSP}%`);
-    expect(view.sentence).toBe(`Stable : > 99,9${NBSP}% comme sur la période précédente.`);
+    expect(view.sentence).toBe(`Stable : plus de 99,9${NBSP}% contre 100${NBSP}% sur la période précédente.`);
     // Une baisse sensible : 100 % puis 99,7 %, on lit la baisse en points, et jamais « 100 % » pour la valeur courante.
     expect(describeTrend(trend(0.997, 1), MEASURES.efficiency).sentence).toBe(`En baisse de 0,3 point : 99,7${NBSP}% contre 100${NBSP}% sur la période précédente.`);
+  });
+});
+
+describe('Efficacité du flux : ce que lit un lecteur d’écran', () => {
+  it('dit « plus de 99,9 % » là où l’écran écrit « > 99,9 % » : le chevron serait lu tel quel', () => {
+    expect(spokenEfficiency(1 - 3516 / 10_723_598_096)).toBe(`plus de 99,9${NBSP}%`);
+    expect(spokenEfficiency(0.9995)).toBe(`plus de 99,9${NBSP}%`);
+    expect(spokenEfficiency(0.99999999)).toBe(`plus de 99,9${NBSP}%`);
+    expect(MEASURES.efficiency.speak(0.9995)).toBe(`plus de 99,9${NBSP}%`);
+  });
+
+  it('dit le reste comme il s’écrit : 100 % pour l’exact, 99,9 %, 91,9 %, 0 %, et rien sans mesure', () => {
+    expect(spokenEfficiency(1)).toBe(`100${NBSP}%`);
+    expect(spokenEfficiency(0.99949)).toBe(`99,9${NBSP}%`);
+    expect(spokenEfficiency(0.919)).toBe(`91,9${NBSP}%`);
+    expect(spokenEfficiency(0)).toBe(`0${NBSP}%`);
+    expect(spokenEfficiency(null)).toBe('—');
+  });
+
+  it('suit la même frontière que l’écriture : « plus de 99,9 % » exactement quand l’écran écrit « > 99,9 % »', () => {
+    for (const ratio of [0, 0.5, 0.919, 0.99949, 0.9995, 0.99999, 0.99999999, 1 - Number.EPSILON, 1]) {
+      expect(formatEfficiency(ratio).startsWith('>')).toBe(spokenEfficiency(ratio).startsWith('plus de'));
+    }
+  });
+
+  // Données réelles de la Vue globale, 30 j (relecture de bdesk-38k.13) : ratio 0,99999967, période précédente 1 (aucun Blocage).
+  it('F1 : la phrase « Stable » ne prête pas à la période précédente une valeur qu’elle n’avait pas', () => {
+    const view = describeTrend({ previous: 1, delta: -3.2692351070728876e-7, ratio: -3.2692351070728876e-7 }, MEASURES.efficiency);
+    expect(view.previous).toBe(`100${NBSP}%`);
+    // La puce dit « avant 100 % » : la phrase ne dit pas « > 99,9 % comme sur la période précédente ».
+    expect(view.sentence).not.toMatch(/> 99,9.*comme sur la période précédente/);
+    expect(view.sentence).toBe(`Stable : plus de 99,9${NBSP}% contre 100${NBSP}% sur la période précédente.`);
+  });
+});
+
+describe('« Stable » : la phrase dit la valeur précédente telle que la tuile l’écrit', () => {
+  it('dit « comme sur la période précédente » seulement quand les deux valeurs s’écrivent pareil', () => {
+    expect(describeTrend(trend(0.1002, 0.1), MEASURES.rate).sentence).toBe(`Stable : 10${NBSP}% comme sur la période précédente.`);
+    expect(describeTrend(trend(9, 9), MEASURES.count).sentence).toBe('Stable : 9 comme sur la période précédente.');
+    expect(describeTrend(trend(1, 1), MEASURES.efficiency).sentence).toBe(`Stable : 100${NBSP}% comme sur la période précédente.`);
+  });
+
+  it('dit les deux valeurs quand un écart sous le seuil change l’arrondi : 29 min 20 s puis 29 min 40 s', () => {
+    // 20 s d'écart : « stable » (sous 30 s), mais 29 min 20 s s'écrit « 29 min » et 29 min 40 s « 30 min ».
+    const view = describeTrend(trend(29 * MINUTE + 40_000, 29 * MINUTE + 20_000), MEASURES.duration);
+    expect(view).toMatchObject({ direction: 'flat', previous: `29${NBSP}min` });
+    expect(view.sentence).toBe('Stable : 30 minutes contre 29 minutes sur la période précédente.');
+  });
+
+  it('dit les deux valeurs d’un taux quand l’arrondi à 0,1 point les sépare : 10,04 % puis 10,06 %', () => {
+    const view = describeTrend(trend(0.1006, 0.1004), MEASURES.rate);
+    expect(view).toMatchObject({ direction: 'flat', previous: `10${NBSP}%` });
+    expect(view.sentence).toBe(`Stable : 10,1${NBSP}% contre 10${NBSP}% sur la période précédente.`);
+  });
+
+  /** Un générateur pseudo-aléatoire à graine fixe (mulberry32) : le balayage est le même à chaque exécution. */
+  function seeded(seed: number): () => number {
+    let state = seed >>> 0;
+    return () => {
+      state = (state + 0x6d2b79f5) >>> 0;
+      let t = state;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
+    };
+  }
+
+  // Relecture de bdesk-38k.18 : la règle vaut pour les huit mesures, sur plus de mille valeurs et onze écarts chacune, pas seulement pour les cas cités.
+  it.each(Object.entries(MEASURES))('%s : « comme sur la période précédente » si et seulement si la tuile et la puce écrivent la même valeur', (_name, measure) => {
+    const random = seeded(18);
+    const previous: number[] = [0, 1, 0.9995, 0.99949, 29_999, 30_000, 59_999, 9.95 * DAY];
+    for (let index = 0; index < 1200; index++) {
+      const r = random();
+      previous.push(index % 4 === 0 ? r : index % 4 === 1 ? r * 2 * MINUTE : index % 4 === 2 ? r * 30 * DAY : 1 - r * 1e-3);
+    }
+
+    // Les écarts sont relevés puis comparés d'un coup : des milliers d'`expect` ralentiraient le balayage.
+    const wrong: string[] = [];
+    const chevrons: string[] = [];
+    let same = 0;
+    let both = 0;
+    for (const before of previous) {
+      for (const gap of [0, 1e-9, -1e-9, 1e-4, -1e-4, 10, -10, 0.3, -0.3, 0.04, -0.04]) {
+        const now = before + gap;
+        const view = describeTrend(trend(now, before), measure);
+        if (view.direction !== 'flat') continue;
+        const writtenSame = measure.format(before + (now - before)) === measure.format(before);
+        const saysSame = view.sentence.includes('comme sur la période précédente');
+        if (saysSame !== writtenSame) wrong.push(`${measure.format(now)} / ${measure.format(before)} : ${view.sentence}`);
+        if (/[<>]/.test(view.sentence)) chevrons.push(view.sentence);
+        if (saysSame) same++;
+        else both++;
+      }
+    }
+    expect(wrong).toEqual([]);
+    expect(chevrons).toEqual([]);
+    // Les deux phrases sont exercées : le balayage ne passe pas à côté de la règle.
+    expect(same).toBeGreaterThan(0);
+    expect(both).toBeGreaterThan(0);
+  });
+});
+
+describe('les phrases lues ne contiennent ni « < » ni « > » : un lecteur d’écran les lirait tels quels', () => {
+  // Des valeurs qui écrivent un chevron : sous la minute (« < 1 min »), et une part qui arrondit à 100 % sans l’être (« > 99,9 % »).
+  const VALUES = [0, 0.00001, 0.4, 1, 12, 301, 29_999, 30_000, 59_999, HOUR, 3 * DAY, 0.9995, 0.99999999, 1 - 3516 / 10_723_598_096, -6];
+  const CHEVRON = /[<>]/;
+
+  it.each(Object.entries(MEASURES))('%s : valeur, écart et phrase de la tendance', (_name, measure) => {
+    for (const value of VALUES) {
+      expect(measure.speak(value)).not.toMatch(CHEVRON);
+      expect(measure.speakDelta(Math.abs(value))).not.toMatch(CHEVRON);
+      for (const other of VALUES) {
+        expect(describeTrend(trend(value, other), measure).sentence).not.toMatch(CHEVRON);
+      }
+      expect(describeTrend(trend(null, value), measure).sentence).not.toMatch(CHEVRON); // pas de valeur courante
+      expect(describeTrend(trend(value, null), measure).sentence).not.toMatch(CHEVRON); // pas de valeur précédente
+    }
+  });
+
+  it('dit « moins d’une minute » d’une durée sous la minute, là où l’écran écrit « < 1 min »', () => {
+    expect(MEASURES.duration.format(20_000)).toBe(`< 1${NBSP}min`);
+    expect(MEASURES.duration.speak(20_000)).toBe('moins d’une minute');
+    expect(describeTrend(trend(20_000, 5 * MINUTE), MEASURES.duration).sentence).toBe(
+      `En baisse de 5 minutes (−93${NBSP}%) : moins d’une minute contre 5 minutes sur la période précédente.`,
+    );
   });
 });
 

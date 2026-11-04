@@ -1,5 +1,5 @@
 import type { MetricsDurationStats, MetricsLeadTimeBreakdown } from '../../shared/api';
-import { formatDuration } from './format';
+import { formatDuration, spokenDuration } from './format';
 
 /**
  * Décomposition du Lead Time : le Lead Time cumulé des Livraisons de la période, en cinq parts qui s'additionnent. Chaque part
@@ -22,6 +22,8 @@ export interface BreakdownPart {
   duration: number;
   /** La durée écrite : « 21 j », ou « Aucun » (« Aucune » pour une attente) quand elle est exactement nulle, jamais « < 1 min ». */
   text: string;
+  /** La durée dite aux lecteurs d'écran : « 21 jours », « moins d'une minute » là où `text` s'écrit « < 1 min », ou « Aucun » (« Aucune »). */
+  spoken: string;
   /** Part du Lead Time cumulé, de 0 à 1 ; null quand il n'y a rien à répartir. */
   share: number | null;
 }
@@ -39,7 +41,7 @@ export interface BreakdownView {
 }
 
 /** Une part sans ses mesures : ce que la page en dit. `none` est ce qu'on écrit d'une durée exactement nulle, accordé au libellé. */
-type PartSpec = Omit<BreakdownPart, 'duration' | 'share' | 'text'> & { none: string };
+type PartSpec = Omit<BreakdownPart, 'duration' | 'share' | 'text' | 'spoken'> & { none: string };
 
 const PARTS: readonly PartSpec[] = [
   {
@@ -85,6 +87,7 @@ export function describeBreakdown(breakdown: MetricsLeadTimeBreakdown): Breakdow
       duration: breakdown[part.key],
       // `formatDuration(0)` dirait « < 1 min » : une part exactement nulle n'a pas eu lieu, elle ne s'écrit pas comme une part minuscule.
       text: breakdown[part.key] > 0 ? formatDuration(breakdown[part.key]) : none,
+      spoken: breakdown[part.key] > 0 ? spokenDuration(breakdown[part.key]) : none,
       share: empty ? null : breakdown[part.key] / breakdown.total,
     })),
     total: breakdown.total,

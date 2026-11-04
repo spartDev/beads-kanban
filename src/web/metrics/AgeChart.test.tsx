@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { MetricsInProgressTicket } from '../../shared/api';
 import { AgePanel, VISIBLE_AGES, type AgePanelProps } from './AgeChart';
 import type { SeriesContext } from './series';
-import { metricsFixture, plain } from './testing';
+import { metricsFixture, plain, shownText, spokenText } from './testing';
 
 const DAY = 86_400_000;
 
@@ -148,5 +148,66 @@ describe('AgePanel : l’âge des tickets en cours', () => {
     expect(rows()).toHaveLength(15);
     await user.click(screen.getByRole('button', { name: 'Réduire la liste' }));
     expect(rows()).toHaveLength(VISIBLE_AGES);
+  });
+});
+
+describe('AgePanel : ce que lit un lecteur d’écran', () => {
+  /** Ce que l'œil lit, et ce que l'oreille entend : « < 1 min » s'écrit avec un chevron et se dit « moins d’une minute ». */
+  const shown = (element: Element) => plain(shownText(element));
+  const heard = (element: Element) => plain(spokenText(element));
+  const times = (text: string, part: string) => text.split(part).length - 1;
+
+  const quick = () => [{ ...metricsFixture().inProgress[0]!, id: 'x-1', age: 10_000 }];
+
+  it('un ticket en cours depuis 10 s s’écrit « < 1 min » et se dit « moins d’une minute », une seule fois', () => {
+    renderPanel({ tickets: quick(), median: null, p85: null, showProject: false });
+    const item = rows()[0]!;
+
+    expect(shown(item)).toContain('< 1 min');
+    expect(heard(item)).not.toMatch(/[<>]/);
+    // Ni le chevron puis les mots (« < 1 min (moins d’une minute) »), ni les mots deux fois.
+    expect(times(heard(item), 'moins d’une minute')).toBe(1);
+    expect(plain(item.textContent)).toContain('< 1 minmoins d’une minute');
+  });
+
+  it('les repères de la médiane et du P85 du Cycle Time sous 30 s s’écrivent « < 1 min » et se disent « moins d’une minute »', () => {
+    renderPanel({ median: 10_000, p85: 20_000 });
+    const markers = screen.getByRole('list', { name: 'Repères' });
+
+    expect(shown(markers)).toBe('Médiane du Cycle Time < 1 minP85 < 1 min');
+    expect(heard(markers)).toBe('Médiane du Cycle Time moins d’une minuteP85 moins d’une minute');
+  });
+
+  it('un âge qui s’écrit sans chevron garde sa version en toutes lettres : « 189 j (189 jours) », « 2 h (2 heures) »', () => {
+    renderPanel();
+
+    expect(heard(rows()[0]!)).toContain('189 j (189 jours)');
+    expect(heard(rows()[2]!)).toContain('2 h (2 heures)');
+    expect(shown(rows()[0]!)).not.toContain('189 jours');
+  });
+
+  // Le navigateur l'a montré : le <li> d'un repère est un conteneur flex (`inline-flex gap-1.5`), dont chaque enfant en flux est séparé du
+  // suivant par l'écart. Une étiquette en plusieurs nœuds (« Médiane du Cycle Time » puis « < 1 min ») perdait son espace au profit de cet
+  // écart. Le texte caché aux lecteurs d'écran (`sr-only`) est positionné hors flux : il n'est pas un enfant de la mise en page.
+  it.each([
+    ['sous 30 s (avec chevron)', 10_000, 20_000],
+    ['sans chevron', 2 * DAY, 3 * DAY],
+  ])('repères %s : un seul enfant en flux après le trait, pour que l’écart du conteneur flex ne coupe pas l’étiquette', (_name, median, p85) => {
+    renderPanel({ median, p85 });
+
+    const markers = [...screen.getByRole('list', { name: 'Repères' }).querySelectorAll('li')];
+    expect(markers).toHaveLength(2);
+    for (const marker of markers) {
+      const inFlow = [...marker.childNodes].filter((node) => !(node instanceof HTMLElement && node.classList.contains('sr-only')));
+      expect(inFlow).toHaveLength(2);
+    }
+  });
+
+  it('les repères sans chevron restent un seul morceau de texte', () => {
+    renderPanel();
+    const markers = [...screen.getByRole('list', { name: 'Repères' }).querySelectorAll('li')];
+
+    expect(markers.map((marker) => plain(marker.textContent))).toEqual(['Médiane du Cycle Time 2,1 j', 'P85 2,3 j']);
+    expect(markers.every((marker) => marker.querySelector('.sr-only') === null)).toBe(true);
   });
 });

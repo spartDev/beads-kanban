@@ -24,7 +24,10 @@ export interface Measure {
   format: (value: number) => string;
   /** Un écart signé : « +55 », « +3,3 j », « −9,5 pts ». */
   formatDelta: (delta: number) => string;
-  /** Une valeur telle qu'on la dit, pour la phrase. */
+  /**
+   * Une valeur telle qu'on la dit, pour la phrase : « 3,4 jours », « plus de 99,9 % ». Jamais de chevron, « < » ou « > » : un
+   * lecteur d'écran le lirait tel quel (« < 1 min » se dit « moins d'une minute »).
+   */
   speak: (value: number) => string;
   /** La taille d'un écart (sans signe) telle qu'on la dit : « 55 », « 3,3 jours », « 9,5 points ». */
   speakDelta: (magnitude: number) => string;
@@ -37,13 +40,28 @@ export interface Measure {
 const MINUTE = 60_000;
 
 /**
+ * Une Efficacité qui arrondirait à « 100 % » sans l'être (3,5 s de Blocage sur 124 j de Cycle Time) : « 100 % » dirait qu'il
+ * n'y a pas eu de Blocage, alors qu'il y en a eu. `written` est l'écriture à une décimale de la part.
+ */
+const roundsUpToWhole = (ratio: number | null | undefined, written: string): boolean =>
+  typeof ratio === 'number' && ratio < 1 && written === `100${NBSP}%`;
+
+/**
  * L'Efficacité du flux écrite : « 100 % » seulement quand elle vaut exactement 1, c'est-à-dire sans le moindre Blocage. Une part
- * qui arrondirait à 100 % sans l'être (3,5 s de Blocage sur 124 j de Cycle Time) s'écrit « > 99,9 % » : « 100 % » dirait qu'il
- * n'y a pas eu de Blocage, alors qu'il y en a eu.
+ * qui arrondirait à 100 % sans l'être s'écrit « > 99,9 % ».
  */
 export function formatEfficiency(ratio: number | null | undefined): string {
   const text = formatPercent(ratio, { precise: true });
-  return typeof ratio === 'number' && ratio < 1 && text === `100${NBSP}%` ? `> 99,9${NBSP}%` : text;
+  return roundsUpToWhole(ratio, text) ? `> 99,9${NBSP}%` : text;
+}
+
+/**
+ * L'Efficacité du flux telle qu'on la dit, pour les lecteurs d'écran : « plus de 99,9 % » là où elle s'écrit « > 99,9 % », car un
+ * lecteur d'écran lit le chevron tel quel, ou l'omet selon son réglage de ponctuation. Le reste se dit comme il s'écrit.
+ */
+export function spokenEfficiency(ratio: number | null | undefined): string {
+  const text = formatPercent(ratio, { precise: true });
+  return roundsUpToWhole(ratio, text) ? `plus de 99,9${NBSP}%` : text;
 }
 
 export const MEASURES = {
@@ -92,7 +110,7 @@ export const MEASURES = {
     polarity: 'higher-is-better',
     format: formatEfficiency,
     formatDelta: formatPoints,
-    speak: formatEfficiency,
+    speak: spokenEfficiency,
     speakDelta: spokenPoints,
     negligible: (delta) => Math.abs(delta) < 0.0005,
     showRatio: false,
@@ -169,6 +187,13 @@ export function describeTrend(trend: MetricsTrend, measure: Measure): TrendView 
   const direction: TrendDirection = measure.negligible(delta) ? 'flat' : delta > 0 ? 'up' : 'down';
   const ratio = measure.showRatio && trend.ratio !== null ? (direction === 'flat' ? `0${NBSP}%` : signedPercent(trend.ratio)) : null;
 
+  const [now, before] = [measure.speak(current), measure.speak(previous)];
+  const comparison = `${now} contre ${before} sur la période précédente.`;
+  // Un écart sous le seuil est « stable » même quand l'arrondi sépare les deux valeurs (« > 99,9 % » contre « 100 % », 30 min contre 29 min) :
+  // « comme sur la période précédente » ne se dit que si les deux valeurs se disent pareil. Sinon la phrase dit les deux, comme la tuile
+  // (la valeur) et la puce (« avant … ») les écrivent.
+  const unchanged = now === before;
+
   return {
     direction,
     tone: toneOf(direction, measure.polarity),
@@ -177,9 +202,10 @@ export function describeTrend(trend: MetricsTrend, measure: Measure): TrendView 
     ratio,
     sentence:
       direction === 'flat'
-        ? `Stable : ${measure.speak(current)} comme sur la période précédente.`
-        : `En ${direction === 'up' ? 'hausse' : 'baisse'} de ${measure.speakDelta(Math.abs(delta))}${ratio ? ` (${ratio})` : ''} : ` +
-          `${measure.speak(current)} contre ${measure.speak(previous)} sur la période précédente.`,
+        ? unchanged
+          ? `Stable : ${now} comme sur la période précédente.`
+          : `Stable : ${comparison}`
+        : `En ${direction === 'up' ? 'hausse' : 'baisse'} de ${measure.speakDelta(Math.abs(delta))}${ratio ? ` (${ratio})` : ''} : ${comparison}`,
   };
 }
 

@@ -6,7 +6,7 @@ import type { Dimension } from './params';
 import type { SeriesContext } from './series';
 import { SliceTable } from './SliceTable';
 import { describeSlices } from './slices';
-import { emptyMetricsFixture, metricsFixture, plain, trendOf } from './testing';
+import { emptyMetricsFixture, metricsFixture, plain, shownText, spokenText, trendOf } from './testing';
 
 const ctx: SeriesContext = {
   projectName: (id) => id,
@@ -206,5 +206,44 @@ describe('SliceTable : le découpage', () => {
     renderTable({ ...data, slices: { ...data.slices, type: [] }, tiles: { ...data.tiles, failureRate: { ...data.tiles.failureRate, trend: trendOf(0, 0) } } }, 'type');
 
     expect(rows().map((row) => within(row).getByRole('rowheader').textContent)).toEqual(['Ensemble']);
+  });
+});
+
+describe('SliceTable : ce que lit un lecteur d’écran', () => {
+  /** Ce que l'œil lit, et ce que l'oreille entend : « < 1 min » s'écrit avec un chevron et se dit « moins d’une minute ». */
+  const shown = (element: Element) => plain(shownText(element));
+  const heard = (element: Element) => plain(spokenText(element));
+  const durationCells = (row: HTMLElement) => [1, 2].map((index) => within(row).getAllByRole('cell')[index]!);
+
+  /** Des Livraisons de quelques secondes : la médiane et le P85 s'écrivent « < 1 min », dans chaque ligne et dans l'ensemble (les tuiles). */
+  function renderQuick() {
+    const data = metricsFixture();
+    const quick = (row: (typeof data.slices.type)[number]) => ({ ...row, leadTime: { median: 10_000, p85: 20_000, n: 6 }, cycleTime: { median: 8_000, p85: 25_000, n: 5 } });
+    const tiles = {
+      ...data.tiles,
+      leadTime: { ...data.tiles.leadTime, median: 10_000, p85: 20_000 },
+      cycleTime: { ...data.tiles.cycleTime, median: 8_000, p85: 25_000 },
+    };
+    return renderTable({ ...data, tiles, slices: { ...data.slices, type: data.slices.type.map(quick) } }, 'type');
+  }
+
+  it('dit « moins d’une minute » de la médiane et du P85 sous 30 s, sans le chevron', () => {
+    renderQuick();
+
+    for (const row of rows()) {
+      for (const cell of durationCells(row)) {
+        expect(shown(cell)).toBe('< 1 min P85 < 1 min');
+        expect(heard(cell)).toBe('moins d’une minute P85 moins d’une minute');
+      }
+    }
+    expect(heard(table())).not.toMatch(/[<>]/);
+  });
+
+  it('laisse une durée qui s’écrit sans chevron en un seul morceau de texte', () => {
+    renderTable(metricsFixture(), 'type');
+    const [lead] = durationCells(rows()[0]!);
+
+    expect(plain(lead!.textContent)).toBe('3 j P85 9 j');
+    expect([...lead!.querySelectorAll('span')].every((span) => span.querySelector('.sr-only, [aria-hidden]') === null)).toBe(true);
   });
 });

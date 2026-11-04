@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { MetricsResponse } from '../../shared/api';
 import { TooltipProvider } from '../ui/Tip';
 import { describeComparison } from './comparison';
-import { emptyMetricsFixture, metricsFixture, plain, trendOf } from './testing';
+import { emptyMetricsFixture, metricsFixture, plain, shownText, spokenText, trendOf } from './testing';
 import { MetricTiles } from './Tiles';
 
 /**
@@ -217,5 +217,69 @@ describe('MetricTiles : les six tuiles', () => {
     const trend = tile('Débit').querySelector<HTMLElement>('[data-trend]')!;
     trend.focus();
     expect(document.activeElement).toBe(trend);
+  });
+});
+
+describe('MetricTiles : ce que lit un lecteur d’écran', () => {
+  /** Ce que l'œil lit, et ce que l'oreille entend : « < 1 min » s'écrit avec un chevron et se dit « moins d’une minute ». */
+  const shown = (element: Element) => plain(shownText(element));
+  const heard = (element: Element) => plain(spokenText(element));
+  const one = (element: Element, selector: string) => element.querySelector(selector)!;
+
+  /** Un Lead Time d'une dizaine de secondes : l'arrondi à la minute le ramène à zéro, l'écran écrit « < 1 min ». */
+  function renderQuickLeadTime(previous: [number | null, number | null] = [59_296_172.5, 345_927_383.55], current: [number | null, number | null] = [10_000, 20_000]) {
+    const data = metricsFixture();
+    const [median, p85] = current;
+    const leadTime = { ...data.tiles.leadTime, median, p85, n: median === null ? 0 : 18, trend: { median: trendOf(median, previous[0]), p85: trendOf(p85, previous[1]) } };
+    return renderTiles({ ...data, tiles: { ...data.tiles, leadTime } });
+  }
+
+  it('Lead Time : la médiane et le P85 sous 30 s s’écrivent « < 1 min » et se disent « moins d’une minute », chacun une fois', () => {
+    renderQuickLeadTime();
+    const leadTime = tile('Lead Time');
+
+    expect([shown(one(leadTime, '[data-value]')), heard(one(leadTime, '[data-value]'))]).toEqual(['< 1 min', 'moins d’une minute']);
+    expect([shown(one(leadTime, '[data-p85]')), heard(one(leadTime, '[data-p85]'))]).toEqual(['< 1 min', 'moins d’une minute']);
+    expect(heard(leadTime)).not.toMatch(/[<>]/);
+    // L'écran ne change pas : les deux valeurs s'écrivent toujours avec le chevron.
+    expect(shown(leadTime).match(/< 1 min/g)).toHaveLength(2);
+  });
+
+  it('Lead Time : la médiane qui ne change pas d’une période à l’autre se dit « moins d’une minute comme sur la période précédente »', () => {
+    renderQuickLeadTime([12_000, 25_000]);
+    const [median, p85] = [...tile('Lead Time').querySelectorAll('[data-trend]')];
+
+    expect(heard(median!)).toBe('Médiane : stable : moins d’une minute comme sur la période précédente.');
+    expect(heard(p85!)).toBe('P85 : stable : moins d’une minute comme sur la période précédente.');
+    // La puce garde « avant < 1 min » pour l'œil, que les lecteurs d'écran n'entendent pas.
+    expect(shown(median!)).toContain('avant < 1 min');
+  });
+
+  it('« Avant : … » : la valeur de la période précédente sous 30 s s’écrit « < 1 min » et se dit « moins d’une minute »', () => {
+    renderQuickLeadTime([10_000, 20_000], [null, null]);
+    const leadTime = tile('Lead Time');
+
+    expect(shown(leadTime)).toContain('Avant : < 1 min');
+    expect(heard(leadTime)).toContain('Avant : moins d’une minute');
+    expect(heard(leadTime)).not.toMatch(/[<>]/);
+  });
+
+  it('« Avant : … » : une durée qui s’écrit sans chevron reste seule, sans balise de plus', () => {
+    renderQuickLeadTime([4 * 86_400_000, 9 * 86_400_000], [null, null]);
+    const before = [...tile('Lead Time').querySelectorAll('p')].find((paragraph) => paragraph.textContent?.startsWith('Avant'))!;
+
+    expect(plain(before.textContent)).toBe('Avant : 4 j');
+    expect(before.children).toHaveLength(0);
+  });
+
+  it('Cycle Time et Temps de rétablissement : mêmes tuiles, même règle', () => {
+    const data = metricsFixture();
+    const quick = { median: 8_000, p85: 15_000, n: 5, trend: { median: trendOf(8_000, 9_000), p85: trendOf(15_000, 14_000) } };
+    renderTiles({ ...data, tiles: { ...data.tiles, cycleTime: quick, recoveryTime: { ...quick, n: 2 } } });
+
+    for (const name of ['Cycle Time', 'Temps de rétablissement']) {
+      expect(heard(tile(name))).not.toMatch(/[<>]/);
+      expect(shown(tile(name))).toContain('< 1 min');
+    }
   });
 });

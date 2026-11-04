@@ -451,4 +451,14 @@ describe('temps calendaire écoulé', () => {
     expect(elapsed('2026-10-25T00:45:00Z', '2026-10-25T01:15:00Z')).toBe(0);
     expect(elapsed('2026-10-25T12:00:00Z', '2026-10-24T12:00:00Z')).toBe(0); // et à l'envers
   });
+
+  it('n’est pas croissant pendant l’heure répétée de l’automne : l’âge perd une heure quand les horloges reculent, puis la regagne', () => {
+    // Devenu Prêt le dimanche 11 octobre à 02:30 CEST (00:30Z), mesuré la nuit du 25 octobre, où 03:00 CEST redevient 02:00 CET.
+    const since = '2026-10-11T00:30:00Z';
+
+    expect(elapsed(since, '2026-10-25T00:20:00Z')).toBe(14 * DAY - 10 * 60_000); // 02:20 CEST : pas encore 14 jours
+    expect(elapsed(since, '2026-10-25T00:50:00Z')).toBe(14 * DAY + 20 * 60_000); // 02:50 CEST : 14 jours et 20 minutes
+    expect(elapsed(since, '2026-10-25T01:10:00Z')).toBe(14 * DAY - 20 * 60_000); // 02:10 CET, 20 minutes réelles plus tard : 40 minutes de moins
+    expect(elapsed(since, '2026-10-25T01:40:00Z')).toBe(14 * DAY + 10 * 60_000); // 02:40 CET : plus de 14 jours de nouveau
+  });
 });
