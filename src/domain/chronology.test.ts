@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { analyzeChronologies, chronologyFromDates } from './chronology';
 import { analyzeFlow, isWork, type DependencyHistory, type TicketHistory } from './flow';
 import { intersect, measure, type Interval } from './intervals';
-import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing';
+import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing/random-histories';
 
 const at = (iso: string) => new Date(`${iso}Z`);
 const iso = (value: string) => at(value).toISOString();
@@ -476,6 +476,67 @@ describe('Blocages', () => {
           { kind: 'otherWait', from: iso('2026-10-01T12:00'), to: iso('2026-10-01T15:00') },
         ],
       ]);
+    });
+
+    it('range hors du travail le Blocage d’un ticket différé avant tout démarrage : seul son ouvert d’avant est l’Attente de dépendance', () => {
+      // A est ouvert de 9 h à 12 h, puis différé de 12 h à 15 h, sans avoir encore démarré ; B, qui le bloque, est fermé à 17 h.
+      const tickets = [
+        waited(
+          'a',
+          [
+            ['open', '2026-10-01T09:00'],
+            ['deferred', '2026-10-01T12:00'], // différé avant tout démarrage
+            ['in_progress', '2026-10-01T15:00'],
+            ['closed', '2026-10-01T20:00'],
+          ],
+          [blocks('b', '2026-10-01T09:00')],
+        ),
+        ticket('b', [
+          ['open', '2026-09-30T00:00'],
+          ['closed', '2026-10-01T17:00'],
+        ]),
+      ];
+
+      const chronology = chronologyOf(tickets);
+
+      expect(chronology?.blockedTime).toBe(2 * HOUR);
+      expect(chronology?.blockages.map((blockage) => blockage.phases)).toEqual([
+        [
+          { kind: 'dependencyWait', from: iso('2026-10-01T09:00'), to: iso('2026-10-01T12:00') },
+          { kind: 'otherWait', from: iso('2026-10-01T12:00'), to: iso('2026-10-01T15:00') },
+          { kind: 'work', from: iso('2026-10-01T15:00'), to: iso('2026-10-01T17:00') },
+        ],
+      ]);
+      // Les métriques disent la même chose : l'Attente de dépendance est l'ouvert seul, les 3 h de différé n'en sont pas.
+      expect(analyzeFlow(tickets).get('a')?.dependencyWait).toBe(3 * HOUR);
+    });
+
+    it('range avant le premier démarrage le Blocage d’un ticket rouvert qui n’a jamais démarré : la Réouverture n’y change rien', () => {
+      // A est fermé à 12 h sans avoir jamais démarré, puis rouvert à 14 h : il n'a toujours pas démarré. B, qui le bloque, reste ouvert.
+      const tickets = [
+        waited(
+          'a',
+          [
+            ['open', '2026-10-01T09:00'],
+            ['closed', '2026-10-01T12:00'],
+            ['open', '2026-10-01T14:00'], // rouvert, toujours avant son premier démarrage
+            ['closed', '2026-10-01T18:00'],
+          ],
+          [blocks('b', '2026-10-01T09:00')],
+        ),
+        ticket('b', [['open', '2026-09-30T00:00']]),
+      ];
+
+      const chronology = chronologyOf(tickets);
+
+      // Le fermé n'est jamais en Blocage : la clôture sépare deux Blocages, tous deux d'Attente de dépendance, que le temps bloqué ne compte pas.
+      expect(chronology?.blockedTime).toBe(0);
+      expect(chronology?.blockages.map((blockage) => blockage.phases)).toEqual([
+        [{ kind: 'dependencyWait', from: iso('2026-10-01T09:00'), to: iso('2026-10-01T12:00') }],
+        [{ kind: 'dependencyWait', from: iso('2026-10-01T14:00'), to: iso('2026-10-01T18:00') }],
+      ]);
+      // Les métriques aussi : 3 h avant la clôture et 4 h après la Réouverture.
+      expect(analyzeFlow(tickets).get('a')?.dependencyWait).toBe(7 * HOUR);
     });
 
     it('range en travail le Blocage d’un ticket au statut bloqué, quel que soit le statut de travail d’avant ou d’après', () => {

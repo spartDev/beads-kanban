@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeFailures } from './failures';
 import { analyzeFlow, type TicketHistory } from './flow';
-import { randomHistories, seededRandom } from './testing';
+import { randomHistories, seededRandom } from './testing/random-histories';
 
 const at = (iso: string) => new Date(`${iso}Z`);
 

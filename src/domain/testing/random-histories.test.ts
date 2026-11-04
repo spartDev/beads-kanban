@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clockWentBack, randomHistories, randomLineage, seededRandom } from './testing';
+import { clockWentBack, randomHistories, randomLineage, seededRandom } from './random-histories';
 
 /**
  * Le générateur d'historiques aléatoires des tests du domaine. Avec une horloge partagée, il tire la lignée d'un Projet : une

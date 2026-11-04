@@ -78,7 +78,7 @@ Fourchette de Durée écoulée que mettraient les Enfants restants d'une Epic à
 _Avoid_: date de fin, échéance
 
 **Bug d'origine**:
-Un ticket de type bug, créé à ou après la date d'une Livraison à laquelle il est relié par un lien « découvert à partir de » actif. Le ticket relié est autre que lui-même : un bug n'est jamais son propre Bug d'origine. Un bug créé avant cette Livraison, ou relié à un ticket qui n'est pas une Livraison (ouvert, Abandon), a été trouvé en cours de travail : il n'est l'origine d'aucun échec. Un bug relié à une Epic n'est l'origine d'aucun échec et n'est pas compté comme relié. Un bug en Abandon n'est jamais un Bug d'origine : il décrit le même défaut qu'un autre bug. Il transmet ses liens au bug qui le remplace ; pour ces liens, la date qui compte est celle de sa propre création, car c'est lui qui a constaté le défaut.
+Un ticket de type bug, créé à ou après la dernière clôture d'une Livraison à laquelle il est relié par un lien « découvert à partir de » actif. Les deux dates sont celles que l'historique du Projet a enregistrées : une clôture dont l'horloge a reculé garde sa date, au lieu de prendre celle de la Transition précédente. Le ticket relié est autre que lui-même : un bug n'est jamais son propre Bug d'origine. Un bug créé avant cette clôture, ou relié à un ticket qui n'est pas une Livraison (ouvert, Abandon), a été trouvé en cours de travail : il n'est l'origine d'aucun échec. Un bug relié à une Epic n'est l'origine d'aucun échec et n'est pas compté comme relié. Un bug en Abandon n'est jamais un Bug d'origine : il décrit le même défaut qu'un autre bug. Il transmet ses liens au bug qui le remplace ; pour ces liens, la date qui compte est celle de sa propre création, car c'est lui qui a constaté le défaut.
 
 **Taux d'échec**:
 Part des Livraisons ayant au moins un Bug d'origine (équivalent du Change Failure Rate DORA). Non significatif tant que la Couverture est faible.
@@ -142,7 +142,7 @@ La vie d'un ticket telle que son Panneau la raconte : ses Transitions avec le te
 _Avoid_: historique (c'est sa source : l'historique Dolt du Projet)
 
 **Phase d'un Blocage**:
-Partie d'un Blocage où le ticket reste dans la même situation : _avant le premier démarrage_ (l'Attente de dépendance), _en cours de travail_ (le temps bloqué, seule phase comptée dans le Cycle Time) ou _autre attente_ (tout autre statut non fermé). Deux phases voisines de même sorte n'en font qu'une.
+Partie d'un Blocage où le ticket reste dans la même situation : _avant le premier démarrage_ (en Backlog : l'Attente de dépendance), _en cours de travail_ (le temps bloqué, seule phase comptée dans le Cycle Time) ou _autre attente_ (tout le reste : revenu à ouvert ou rouvert après un premier démarrage, ou dans un autre statut non fermé, le différé par exemple, même avant tout démarrage). Deux phases voisines de même sorte n'en font qu'une.
 
 ## Relationships
 

@@ -405,7 +405,7 @@ describe('buckets', () => {
   });
 });
 
-describe('temps calendaire écoulé', () => {
+describe('Âge calendaire entre deux instants', () => {
   // Les attendus viennent de zoneinfo (Python) : l'écart des heures du mur, pas le code testé.
   const DAY = 24 * HOUR;
   const elapsed = (from: string, to: string, timeZone = PARIS) => calendarElapsed(instant(from), instant(to), timeZone);

@@ -1,4 +1,4 @@
-import type { DependencyHistory, StatusSnapshot, TicketHistory, TicketId } from './flow';
+import type { DependencyHistory, StatusSnapshot, TicketHistory, TicketId } from '../flow';
 
 /**
  * Du hasard pour les tests du domaine : des historiques de tickets tirés avec une graine fixe, donc les mêmes à chaque

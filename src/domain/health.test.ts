@@ -4,7 +4,7 @@ import type { PeriodSpec } from './calendar';
 import type { DependencyHistory } from './flow';
 import { computeHealth, STAGNANT_READY_AFTER } from './health';
 import { analyzeProject, type MetricsTicket } from './metrics';
-import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing';
+import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing/random-histories';
 
 /**
  * La santé du flux : Efficacité du flux, Taux de Réouverture, Taux d'abandon, décomposition du Lead Time (avec l'Attente
@@ -782,7 +782,7 @@ describe('Décomposition du Lead Time, avec l’Attente de dépendance', () => {
 });
 
 describe('Prêts qui stagnent : l’âge des Prêts', () => {
-  it('est le temps écoulé depuis que le ticket est Prêt : ouvert, et sans dépendance bloquante en suspens', () => {
+  it('est l’Âge calendaire depuis que le ticket est Prêt : ouvert, et sans dépendance bloquante en suspens', () => {
     const { readyAges } = healthOf([opened('a', '2026-10-20T08:00')]);
 
     expect(readyAges.tickets).toEqual([
@@ -936,7 +936,7 @@ describe('Prêts qui stagnent : 14 jours calendaires dans le fuseau de l’utili
     expect(readyAt('2026-10-25T11:00:00', '2026-11-08T11:30:00').tickets).toEqual([expect.objectContaining({ age: 14 * DAY + 30 * 60_000, stagnant: true })]);
   });
 
-  it('mesure l’âge en temps calendaire : la même durée que l’horloge hors changement d’heure, et en UTC', () => {
+  it('mesure l’Âge calendaire : la même durée que l’horloge hors changement d’heure, et en UTC', () => {
     // Du 8 au 12 octobre, Paris est à UTC+2 des deux côtés : calendaire et réel coïncident.
     expect(readyAt('2026-10-08T08:00:00', '2026-10-12T20:30:00').tickets[0]?.age).toBe(real('2026-10-08T08:00:00', '2026-10-12T20:30:00'));
     // En UTC, jamais de changement d'heure : le seuil est celui des millisecondes.

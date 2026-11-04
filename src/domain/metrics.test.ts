@@ -10,7 +10,7 @@ import {
   type MetricsTicket,
   percentile,
 } from './metrics';
-import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing';
+import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing/random-histories';
 
 const PARIS = 'Europe/Paris';
 /** Vendredi 23 octobre 2026, 20:00 à Paris. */

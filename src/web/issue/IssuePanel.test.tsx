@@ -665,7 +665,7 @@ describe('le panneau d’un ticket : la chronologie', () => {
     expect(within(dialog).queryByRole('status', { name: 'Chargement de la chronologie' })).toBeNull();
   });
 
-  it('donne le Lead Time, le Cycle Time et le temps bloqué, en temps calendaire', async () => {
+  it('donne le Lead Time, le Cycle Time et le temps bloqué, en Durée écoulée', async () => {
     const { view } = await chronologyOf('bdesk-1', /Un ticket livré/, { 'bdesk/bdesk-1': DELIVERED });
 
     expect(view.getByText('Lead Time').closest('div')?.textContent).toContain(`2,5${NBSP}j`);

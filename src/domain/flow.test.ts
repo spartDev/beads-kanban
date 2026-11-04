@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeFlow, isWork, recordedTransitions, type TicketFlow, type TicketHistory } from './flow';
-import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing';
+import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing/random-histories';
 
 const at = (iso: string) => new Date(`${iso}Z`);
 const HOUR = 3_600_000;
