@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, bucketsOf, dayOf, daysOf, InvalidPeriodError, resolvePeriod, startOfDay } from './calendar';
+import { addDays, bucketsOf, dayOf, daysOf, InvalidPeriodError, MIN_CUSTOM_DAY, type PeriodSpec, resolvePeriod, startOfDay } from './calendar';
 
 const instant = (iso: string) => new Date(iso).getTime();
 const HOUR = 3_600_000;
@@ -184,6 +184,112 @@ describe('périodes', () => {
 
   it('accepte exactement 366 jours', () => {
     expect(resolvePeriod({ from: '2025-10-23', to: '2026-10-23' }, now, PARIS).current.days).toBe(366);
+  });
+});
+
+/*
+ * Aucun historique Dolt n'est plus ancien que 1970, et plus tôt les dates ne se calculent plus juste : `Date.UTC(20, …)` lit
+ * l'an 20 comme 1920, et `offsetAt` se trompe de 1900 ans pour les instants des années 0 à 99, donc pour le début d'une période
+ * qui commence le 1er janvier de l'an 100. Un champ de date tapé au clavier passe par 0002, 0020 puis 0202 avant 2026 : la page
+ * (src/web/metrics/params.ts) et le serveur refusent la même plage, et ne comptent rien dessus.
+ */
+describe('la borne basse d’une plage personnalisée', () => {
+  // Vendredi 23 octobre 2026, 20:00 à Paris.
+  const now = instant('2026-10-23T18:00:00Z');
+  const RULE = 'La plage doit commencer le 1er janvier 1970 ou après';
+  const tooEarly = (from: string) => `${RULE} : « from » (${from}) est trop tôt.`;
+
+  /** Le message dont `resolvePeriod` refuse la plage : le refus doit être une `InvalidPeriodError`. */
+  const refusal = (spec: PeriodSpec): string => {
+    try {
+      resolvePeriod(spec, now, PARIS);
+    } catch (error) {
+      expect(error).toBeInstanceOf(InvalidPeriodError);
+      return (error as Error).message;
+    }
+    throw new Error(`la plage ${JSON.stringify(spec)} aurait dû être refusée`);
+  };
+
+  it('est le 1er janvier 1970 (le texte de la règle dit la même date)', () => {
+    expect(MIN_CUSTOM_DAY).toBe('1970-01-01');
+  });
+
+  it('accepte une plage qui commence le 1er janvier 1970, bord compris, et la mesure juste', () => {
+    // Le 1er janvier 1970 est un jeudi. La France est à l'heure d'hiver (UTC+1) : pas de changement d'heure en 1970.
+    const resolved = resolvePeriod({ from: '1970-01-01', to: '1970-02-15' }, now, PARIS);
+
+    expect(resolved.range).toBe('custom');
+    expect(resolved.current).toEqual({
+      from: '1970-01-01',
+      to: '1970-02-15',
+      days: 46,
+      start: instant('1969-12-31T23:00:00Z'),
+      end: instant('1970-02-15T23:00:00Z'),
+    });
+    expect(resolved.previous).toEqual({
+      from: '1969-11-16',
+      to: '1969-12-31',
+      days: 46,
+      start: instant('1969-11-15T23:00:00Z'),
+      end: instant('1969-12-31T23:00:00Z'),
+    });
+    expect(resolved.unit).toBe('week');
+    expect(bucketsOf(resolved.current, 'week', PARIS).slice(0, 2).map((bucket) => [bucket.from, bucket.to, bucket.days])).toEqual([
+      ['1970-01-01', '1970-01-04', 4], // jeudi à dimanche
+      ['1970-01-05', '1970-01-11', 7],
+    ]);
+  });
+
+  it.each([
+    ['le 31 décembre 1969, le dernier jour d’avant', '1969-12-31'],
+    ['en 1900', '1900-01-01'],
+    ['en l’an 999', '0999-12-31'],
+    ['en l’an 101', '0101-01-01'],
+    ['le 1er janvier de l’an 100, dont la veille se calculait avec 1900 ans d’écart', '0100-01-01'],
+    ['le 31 décembre de l’an 99', '0099-12-31'],
+    ['en l’an 20', '0020-01-01'],
+    ['le 29 février de l’an 4, bissextile', '0004-02-29'],
+    ['en l’an 1', '0001-01-01'],
+    ['en l’an 0', '0000-01-01'],
+  ])('refuse une plage qui commence %s', (_, from) => {
+    expect(refusal({ from, to: '1970-01-31' })).toBe(tooEarly(from));
+    // Une plage courte, entièrement dans ces années-là : le message est le même.
+    expect(refusal({ from, to: from })).toBe(tooEarly(from));
+  });
+
+  it('dit que la plage est trop ancienne, et non que le jour n’existe pas, pour les années 0 à 99 qui s’affichent dans la page', () => {
+    // Les trois plages que la relecture de bdesk-38k.16 a fait refuser avec un message faux (ou calculer faux).
+    expect(refusal({ from: '0020-01-01', to: '0020-01-31' })).toBe(tooEarly('0020-01-01'));
+    expect(refusal({ from: '0000-01-01', to: '0000-01-31' })).toBe(tooEarly('0000-01-01'));
+    expect(refusal({ from: '0100-01-01', to: '0100-01-31' })).toBe(tooEarly('0100-01-01'));
+  });
+
+  it('juge le début avant de compter les jours : une plage trop ancienne n’est jamais dite « trop longue »', () => {
+    expect(refusal({ from: '0020-12-12', to: '2026-10-23' })).toBe(tooEarly('0020-12-12'));
+    expect(refusal({ from: '1900-01-01', to: '2026-10-23' })).toBe(tooEarly('1900-01-01'));
+    // Passé la borne, la longueur compte comme avant.
+    expect(refusal({ from: '1970-01-01', to: '2026-10-23' })).toContain('trop longue');
+  });
+
+  it('dit d’abord qu’une plage est à l’envers ou dans le futur, avant de parler de la borne basse', () => {
+    expect(refusal({ from: '0020-01-31', to: '0020-01-01' })).toContain('commence après sa fin');
+    expect(refusal({ from: '0020-01-01', to: '2026-10-24' })).toContain('futur');
+  });
+
+  it('vérifie toujours qu’un jour existe dans les années 0 à 99 : le 29 février de l’an 4 existe, pas celui de l’an 100', () => {
+    expect(refusal({ from: '0004-02-29', to: '0004-03-01' })).toBe(tooEarly('0004-02-29'));
+    expect(refusal({ from: '0100-02-29', to: '0100-03-01' })).toContain('doit être un jour qui existe');
+    expect(refusal({ from: '0020-02-30', to: '0020-03-01' })).toContain('doit être un jour qui existe');
+    expect(refusal({ from: '0020-13-01', to: '0020-03-01' })).toContain('doit être un jour qui existe');
+  });
+
+  it('ne vaut que pour une plage personnalisée : un préréglage part d’aujourd’hui, jamais refusé', () => {
+    // Une horloge au tout début de 1970 : les 90 derniers jours remontent avant la borne, ce que personne n'a choisi.
+    const resolved = resolvePeriod({ range: '90d' }, instant('1970-01-10T12:00:00Z'), 'UTC');
+
+    expect(resolved.range).toBe('90d');
+    expect(resolved.current.days).toBe(90);
+    expect(resolved.current.from < MIN_CUSTOM_DAY).toBe(true);
   });
 });
 

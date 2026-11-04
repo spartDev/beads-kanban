@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_PERIOD_DAYS } from '../../domain/calendar';
+import { InvalidPeriodError, MAX_PERIOD_DAYS, resolvePeriod } from '../../domain/calendar';
 import {
   DEFAULT_PERIOD,
   defaultDimension,
@@ -9,6 +9,7 @@ import {
   lastDays,
   MAX_CUSTOM_DAYS,
   metricsPath,
+  MIN_CUSTOM_DAY,
   parseMetricsParams,
   periodKey,
   spanInDays,
@@ -31,6 +32,12 @@ const parse = (search: string, scope: 'project' | 'global' = 'project') =>
 describe('MAX_CUSTOM_DAYS', () => {
   it('est la limite du serveur : au-delà il répond 400', () => {
     expect(MAX_CUSTOM_DAYS).toBe(MAX_PERIOD_DAYS);
+  });
+});
+
+describe('MIN_CUSTOM_DAY', () => {
+  it('est le 1er janvier 1970, le premier jour que le serveur accepte : aucun historique Dolt n’est plus ancien', () => {
+    expect(MIN_CUSTOM_DAY).toBe('1970-01-01');
   });
 });
 
@@ -85,6 +92,29 @@ describe('parseMetricsParams : la période', () => {
       expect(parsed.period, search).toEqual(DEFAULT_PERIOD);
       expect(parsed.notices.join(' '), search).toContain('AAAA-MM-JJ');
     }
+  });
+
+  it('prévient d’une plage qui part d’avant le 1er janvier 1970, l’an 20 compris : le jour existe, c’est la plage qui est trop ancienne', () => {
+    const parsed = parse('from=0020-01-01&to=0020-01-31');
+    expect(parsed.period).toEqual(DEFAULT_PERIOD);
+    expect(parsed.notices).toEqual([
+      'La plage doit commencer le 1er janvier 1970 ou après : 0020-01-01 est trop tôt. Les 30 derniers jours sont affichés.',
+    ]);
+
+    for (const search of ['from=0000-01-01&to=0000-01-31', 'from=0100-01-01&to=0100-01-31', 'from=1969-12-31&to=1970-01-15', 'from=0020-12-12&to=2026-11-02']) {
+      const other = parse(search);
+      expect(other.period, search).toEqual(DEFAULT_PERIOD);
+      expect(other.notices, search).toHaveLength(1);
+      expect(other.notices[0], search).toContain('La plage doit commencer le 1er janvier 1970 ou après');
+      expect(other.notices[0], search).not.toContain('n’est pas un jour');
+    }
+  });
+
+  it('accepte une plage qui commence le 1er janvier 1970', () => {
+    expect(parse('from=1970-01-01&to=1970-01-31')).toMatchObject({
+      period: { kind: 'custom', from: '1970-01-01', to: '1970-01-31' },
+      notices: [],
+    });
   });
 
   it('prévient d’une plage à l’envers ou qui dépasse aujourd’hui', () => {
@@ -151,6 +181,29 @@ describe('isCivilDay et spanInDays', () => {
     expect(spanInDays('2026-11-02', '2026-11-02')).toBe(1);
     expect(spanInDays('2026-10-04', '2026-11-02')).toBe(30);
     expect(spanInDays('2025-11-02', '2026-11-02')).toBe(366);
+  });
+
+  /*
+   * `Date.UTC(20, …)` lit l'an 20 comme 1920 : les années 0 à 99 sont décalées de 1900. Un champ de date qu'on tape au clavier
+   * passe par 0002, 0020 puis 0202 avant 2026 : ces jours-là existent, et la page doit en dire la vraie longueur.
+   */
+  it('lit les années 0001 à 0099 telles quelles, sans les décaler de 1900', () => {
+    for (const value of ['0001-01-01', '0002-12-12', '0004-02-29', '0020-12-12', '0099-12-31', '0100-01-01']) {
+      expect(isCivilDay(value), value).toBe(true);
+    }
+  });
+
+  it('refuse un jour en trop dans ces années comme dans les autres, bissextiles comprises', () => {
+    for (const value of ['0001-02-29', '0020-02-30', '0020-04-31', '0099-13-01', '0099-00-10', '0100-02-29']) {
+      expect(isCivilDay(value), value).toBe(false);
+    }
+  });
+
+  it('compte les jours d’une plage qui part d’une année 0001 à 0099, et de part et d’autre de l’an 100', () => {
+    expect(spanInDays('0099-12-31', '0100-01-01')).toBe(2);
+    expect(spanInDays('0020-12-12', '0021-12-12')).toBe(366);
+    // Référence indépendante (Python) : (date(2026, 11, 2) - date(20, 12, 12)).days + 1
+    expect(spanInDays('0020-12-12', '2026-11-02')).toBe(732_637);
   });
 });
 
@@ -231,5 +284,129 @@ describe('lastDays et checkRange : la plage du sélecteur', () => {
     expect(checkRange('2024-01-01', '2026-10-01', TODAY)).toContain('366');
     expect(checkRange('2026-02-30', '2026-03-01', TODAY)).toContain('AAAA-MM-JJ');
     expect(checkRange(null, '2026-03-01', TODAY)).toContain('« from » et « to »');
+  });
+
+  describe('la borne basse : le 1er janvier 1970', () => {
+    const tooEarly = (from: string) => `La plage doit commencer le 1er janvier 1970 ou après : ${from} est trop tôt.`;
+
+    it('checkRange accepte une plage qui commence le 1er janvier 1970, bord compris', () => {
+      expect(checkRange('1970-01-01', '1970-01-31', TODAY)).toEqual({ kind: 'custom', from: '1970-01-01', to: '1970-01-31' });
+      expect(checkRange(MIN_CUSTOM_DAY, MIN_CUSTOM_DAY, TODAY)).toEqual({ kind: 'custom', from: '1970-01-01', to: '1970-01-01' });
+    });
+
+    it.each(['1969-12-31', '1900-01-01', '0999-12-31', '0101-01-01', '0100-01-01', '0099-12-31', '0020-01-01', '0004-02-29', '0001-01-01', '0000-01-01'])(
+      'checkRange refuse une plage qui commence le %s, et le dit',
+      (from) => {
+        expect(checkRange(from, '1970-01-31', TODAY)).toBe(tooEarly(from));
+        // Une plage courte, tout entière dans ces années-là : même message, et non « ce jour n'existe pas ».
+        expect(checkRange(from, from, TODAY)).toBe(tooEarly(from));
+      },
+    );
+
+    it('checkRange juge le début avant de compter les jours : une plage trop ancienne n’est jamais dite « trop longue »', () => {
+      expect(checkRange('0020-12-12', TODAY, TODAY)).toBe(tooEarly('0020-12-12'));
+      expect(checkRange('0002-12-12', '2026-11-02', TODAY)).toBe(tooEarly('0002-12-12'));
+      // Passé la borne, la longueur compte comme avant.
+      expect(checkRange('1970-01-01', TODAY, TODAY)).toMatch(/^La plage est trop longue : \d+ jours, au plus 366\.$/);
+    });
+
+    it('checkRange dit d’abord qu’une plage est à l’envers ou dans le futur, avant de parler de la borne basse', () => {
+      expect(checkRange('0020-01-31', '0020-01-01', TODAY)).toContain('commence après sa fin');
+      expect(checkRange('0020-01-01', '2026-11-03', TODAY)).toContain('dépasse aujourd’hui');
+    });
+
+    it('checkRange vérifie toujours qu’un jour existe dans les années 0 à 99 : le 29 février de l’an 4 existe, pas celui de l’an 100', () => {
+      expect(checkRange('0004-02-29', '0004-03-01', TODAY)).toBe(tooEarly('0004-02-29'));
+      expect(checkRange('0100-02-29', '0100-03-01', TODAY)).toContain('n’est pas un jour');
+      expect(checkRange('0020-02-30', '0020-03-01', TODAY)).toContain('n’est pas un jour');
+    });
+  });
+});
+
+/*
+ * Le défaut de bdesk-38k.16 : la page acceptait une plage dans l'an 20 que le serveur refusait ensuite, avec un message faux. La page
+ * ne doit accepter que ce que le serveur accepte, et le refuser pour la même raison : on le vérifie sur une grille de plages, en
+ * passant le même « aujourd'hui » aux deux.
+ */
+describe('checkRange et le serveur (resolvePeriod) disent la même chose', () => {
+  // Le 2 novembre 2026, 13:00 à Paris : c'est TODAY pour la page comme pour le serveur.
+  const NOW = new Date('2026-11-02T12:00:00Z').getTime();
+
+  const serverSays = (from: string, to: string): string | null => {
+    try {
+      resolvePeriod({ from, to }, NOW, 'Europe/Paris');
+      return null;
+    } catch (error) {
+      if (error instanceof InvalidPeriodError) return error.message;
+      throw error;
+    }
+  };
+
+  /** La raison d'un refus, sans les mots exacts (la page parle à l'utilisateur, le serveur à l'API). */
+  const reasonOf = (message: string): string => {
+    if (message.includes('1er janvier 1970')) return 'trop ancienne';
+    if (message.includes('trop longue')) return 'trop longue';
+    if (message.includes('commence après sa fin')) return 'à l’envers';
+    if (/dépasse aujourd’hui|dans le futur/.test(message)) return 'dans le futur';
+    if (/n’est pas un jour|jour qui existe/.test(message)) return 'jour inexistant';
+    return `inconnue : ${message}`;
+  };
+
+  const GRID: Array<[string, string]> = [
+    // acceptées
+    ['2026-10-01', '2026-10-15'],
+    ['2025-11-02', '2026-11-02'], // 366 jours
+    ['1970-01-01', '1970-01-31'], // la borne basse
+    ['1970-01-01', '1970-12-31'],
+    ['1972-01-01', '1972-12-31'], // 366 jours, année bissextile
+    ['1971-01-01', '1971-01-01'],
+    // trop longues
+    ['2025-11-01', '2026-11-02'], // 367 jours
+    ['1970-01-01', '2026-11-02'],
+    ['1972-01-01', '1973-01-01'], // 367 jours
+    // d'avant la borne
+    ['1969-12-31', '1970-01-15'],
+    ['1900-01-01', '1900-01-31'],
+    ['1000-01-01', '1000-01-31'],
+    ['0999-12-31', '0999-12-31'],
+    ['0101-01-01', '0101-01-31'],
+    ['0100-01-01', '0100-01-31'], // l'an 100, dont la veille est dans l'an 99
+    ['0099-12-31', '0100-01-01'],
+    ['0020-01-01', '0020-01-31'],
+    ['0020-12-12', '2026-11-02'],
+    ['0004-02-29', '0004-03-01'],
+    ['0002-11-02', '2026-11-02'], // un état de passage de la frappe de « 2026 »
+    ['0020-11-02', '2026-11-02'],
+    ['0202-11-02', '2026-11-02'],
+    ['0001-01-01', '0001-01-02'],
+    ['0000-01-01', '0000-01-31'],
+    // à l'envers, dans le futur
+    ['2026-10-15', '2026-10-01'],
+    ['0020-01-31', '0020-01-01'],
+    ['2026-10-15', '2026-11-03'],
+    ['0020-01-01', '2026-11-03'],
+    // des jours qui n'existent pas
+    ['2026-02-30', '2026-03-01'],
+    ['2026-1-5', '2026-01-10'],
+    ['0100-02-29', '0100-03-01'], // 100 n'est pas bissextile
+    ['0020-02-30', '0020-03-01'],
+    ['0020-13-01', '0020-03-01'],
+  ];
+
+  it.each(GRID)('%s → %s : même verdict, pour la même raison', (from, to) => {
+    const page = checkRange(from, to, TODAY);
+    const server = serverSays(from, to);
+
+    expect(typeof page === 'string', `la page ${typeof page === 'string' ? `refuse (${page})` : 'accepte'}, le serveur ${server === null ? 'accepte' : `refuse (${server})`}`).toBe(server !== null);
+    if (typeof page === 'string' && server !== null) {
+      expect(reasonOf(page)).toBe(reasonOf(server));
+      expect(reasonOf(page)).not.toContain('inconnue');
+    }
+  });
+
+  it('dit la règle de la borne basse avec les mêmes mots que le serveur', () => {
+    const rule = 'La plage doit commencer le 1er janvier 1970 ou après';
+    expect(checkRange('0020-01-01', '0020-01-31', TODAY)).toContain(rule);
+    expect(serverSays('0020-01-01', '0020-01-31')).toContain(rule);
   });
 });

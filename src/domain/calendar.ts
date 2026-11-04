@@ -52,6 +52,14 @@ export interface ResolvedPeriod {
 export const MAX_DAILY_BUCKET_DAYS = 31;
 /** Au-delà d'un an, une plage personnalisée est refusée : le CFD a un point par jour. */
 export const MAX_PERIOD_DAYS = 366;
+/**
+ * Le premier jour qu'une plage personnalisée peut contenir. Aucun historique Dolt n'est plus ancien, et plus tôt les dates ne se
+ * calculent plus juste : `Date.UTC(20, …)` lit l'an 20 comme 1920 (les années 0 à 99 y sont décalées de 1900), et `offsetAt` se
+ * trompe de 1900 ans pour les instants de ces années-là, donc pour le début d'une période qui commence le 1er janvier de l'an 100.
+ * `resolvePeriod` refuse une plage qui commence avant ce jour, sans rien compter dessus ; la page importe la même borne
+ * (src/web/metrics/params.ts) et refuse la même plage avant de la demander. Un préréglage part d'aujourd'hui : il n'est pas concerné.
+ */
+export const MIN_CUSTOM_DAY: CivilDay = '1970-01-01';
 
 const PRESET_DAYS: Record<MetricsRangePreset, number> = { '7d': 7, '30d': 30, '90d': 90 };
 const DAY_MS = 86_400_000;
@@ -123,8 +131,9 @@ export function addDays(day: CivilDay, n: number): CivilDay {
 
 /**
  * Les bornes de la période demandée, et de la période précédente de même durée. Un préréglage couvre les N derniers
- * jours, aujourd'hui compris ; une plage personnalisée a ses deux bornes incluses. Elle est comptée jusqu'à `asOf`
- * (maintenant tant qu'elle court, sa fin sinon), et la précédente jusqu'à `previousAsOf`, à la même durée écoulée.
+ * jours, aujourd'hui compris ; une plage personnalisée a ses deux bornes incluses, et commence au plus tôt le
+ * `MIN_CUSTOM_DAY`. Elle est comptée jusqu'à `asOf` (maintenant tant qu'elle court, sa fin sinon), et la précédente jusqu'à
+ * `previousAsOf`, à la même durée écoulée.
  */
 export function resolvePeriod(spec: PeriodSpec, now: number, timeZone: string): ResolvedPeriod {
   const today = dayOf(now, timeZone);
@@ -135,6 +144,10 @@ export function resolvePeriod(spec: PeriodSpec, now: number, timeZone: string): 
 
   if (from > to) throw new InvalidPeriodError(`La plage commence après sa fin : « from » (${from}) doit être avant « to » (${to}).`);
   if (to > today) throw new InvalidPeriodError(`« to » (${to}) est dans le futur : la plage ne peut pas dépasser aujourd'hui (${today}).`);
+  // Avant de compter quoi que ce soit : `daysBetween` et `periodOf` se trompent sur les premières années (voir `MIN_CUSTOM_DAY`).
+  if (range === 'custom' && from < MIN_CUSTOM_DAY) {
+    throw new InvalidPeriodError(`La plage doit commencer le 1er janvier 1970 ou après : « from » (${from}) est trop tôt.`);
+  }
   const days = daysBetween(from, to) + 1;
   if (days > MAX_PERIOD_DAYS) {
     throw new InvalidPeriodError(`La plage est trop longue : ${days} jours, au plus ${MAX_PERIOD_DAYS}.`);
@@ -193,15 +206,25 @@ function daysBetween(from: CivilDay, to: CivilDay): number {
 
 const DAY_FORMAT = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-/** Un jour `AAAA-MM-JJ` qui existe au calendrier ; refuse `2026-1-5` comme `2026-02-30`. */
+/** Un jour `AAAA-MM-JJ` qui existe au calendrier, quelle que soit l'année ; refuse `2026-1-5` comme `2026-02-30`. */
 function checkedDay(value: string, name: string): CivilDay {
   const match = DAY_FORMAT.exec(value);
   if (match) {
     const [year, month, date] = [Number(match[1]), Number(match[2]), Number(match[3])];
-    const real = new Date(Date.UTC(year, month - 1, date));
+    const real = utcMidnight(year, month, date);
     if (real.getUTCFullYear() === year && real.getUTCMonth() === month - 1 && real.getUTCDate() === date) return value;
   }
   throw new InvalidPeriodError(`« ${name} » doit être un jour qui existe, au format AAAA-MM-JJ : reçu « ${value} ».`);
+}
+
+/**
+ * Minuit UTC de ce jour du calendrier. `Date.UTC(20, …)` lirait l'an 20 comme 1920 : `setUTCFullYear` prend l'année telle
+ * quelle, pour que « 0020-01-01 » soit reconnu pour ce qu'il est, un jour qui existe mais d'avant `MIN_CUSTOM_DAY`.
+ */
+function utcMidnight(year: number, month: number, date: number): Date {
+  const day = new Date(0);
+  day.setUTCFullYear(year, month - 1, date);
+  return day;
 }
 
 function parseDay(day: CivilDay): { year: number; month: number; date: number } {

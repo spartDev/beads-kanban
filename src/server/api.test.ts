@@ -249,6 +249,8 @@ describe('API des métriques', () => {
     ['un début après la fin', '?from=2026-10-15&to=2026-10-01'],
     ['une fin dans le futur', '?from=2026-10-01&to=2026-10-24'],
     ['plus d’un an', '?from=2025-01-01&to=2026-10-23'],
+    ['une plage d’avant le 1er janvier 1970', '?from=1969-12-31&to=1970-01-15'],
+    ['une plage dans l’an 20', '?from=0020-01-01&to=0020-01-31'],
   ])('renvoie 400 en JSON pour %s', async (_name, query) => {
     const res = await getMetrics(query);
 
@@ -268,6 +270,50 @@ describe('API des métriques', () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.json()).toEqual({ statusCode: 400, error: 'Bad Request', message: 'La plage est trop longue : 400 jours, au plus 366.' });
+  });
+
+  it.each([
+    ['le 31 décembre 1969, le dernier jour d’avant', '1969-12-31', '1970-01-15'],
+    ['en l’an 20, un jour qui existe', '0020-01-01', '0020-01-31'],
+    ['en l’an 0', '0000-01-01', '0000-01-31'],
+    ['le 1er janvier de l’an 100, dont la période précédente se calculait avec 1900 ans d’écart', '0100-01-01', '0100-01-31'],
+  ])('renvoie 400 avec la règle de la page pour une plage qui commence %s, sans rien lire ni calculer', async (_name, from, to) => {
+    const reads: string[] = [];
+    const projects = serviceWith({
+      list: async () => {
+        reads.push('list');
+        return { projects: [project], ignored: [] };
+      },
+      head: async () => {
+        reads.push('head');
+        return 'h1';
+      },
+      histories: async () => {
+        reads.push('histories');
+        return [];
+      },
+    });
+
+    const res = await getMetrics(`?from=${from}&to=${to}`, projects);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({
+      statusCode: 400,
+      error: 'Bad Request',
+      message: `La plage doit commencer le 1er janvier 1970 ou après : « from » (${from}) est trop tôt.`,
+    });
+    expect(reads).toEqual([]); // refusée avant de lire un seul Projet
+  });
+
+  it('mesure une plage qui commence le 1er janvier 1970, la borne basse comprise', async () => {
+    const res = await getMetrics('?from=1970-01-01&to=1970-01-31');
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json<MetricsResponse>()).toMatchObject({
+      range: 'custom',
+      period: { from: '1970-01-01', to: '1970-01-31', days: 31 },
+      previousPeriod: { from: '1969-12-01', to: '1969-12-31', days: 31 },
+    });
   });
 
   it('renvoie 404 en JSON pour un Projet inconnu', async () => {

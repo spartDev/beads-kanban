@@ -104,7 +104,7 @@ export function describeSlices({
     rows,
     overall,
     failureColumn: rows.some((row) => row.failure.kind === 'rate'),
-    coverageNote: coverageNote(dimension, rows, tiles.failureRate, slices.some((slice) => slice.significant)),
+    coverageNote: coverageNote(dimension, rows, overall, tiles.failureRate, slices.some((slice) => slice.significant)),
   };
 }
 
@@ -135,15 +135,20 @@ export function explainInsignificance(coverage: MetricsCoverage, thresholds: Thr
  * `covered` : au moins un Projet a assez de Couverture (c'est le `significant` de l'API, qui par Projet ne dépend que de sa
  * Couverture). Quand aucun taux ne s'affiche, ce n'est pas toujours faute de Couverture : un Projet qui en a assez mais n'a rien
  * livré n'a pas de taux à montrer non plus, et la note ne doit pas dire que la Couverture manque partout.
+ *
+ * Par Projet, quand des taux s'affichent, la note est la légende des cellules « n. s. » : elle n'existe que si le tableau en
+ * montre au moins une, dans une ligne de Projet ou dans la ligne « Ensemble ». Elle ne parle donc d'aucun Projet en particulier :
+ * la ligne « Ensemble » peut être la seule à dire « n. s. ».
  */
-function coverageNote(dimension: Dimension, rows: readonly SliceRow[], failureRate: MetricsTiles['failureRate'], covered: boolean): string | null {
+function coverageNote(dimension: Dimension, rows: readonly SliceRow[], overall: SliceRow, failureRate: MetricsTiles['failureRate'], covered: boolean): string | null {
   if (!rows.some((row) => row.throughput > 0)) return null;
   const { thresholds, coverage } = failureRate;
 
   if (dimension === 'project') {
     if (rows.some((row) => row.failure.kind === 'rate')) {
+      if (![...rows, overall].some((row) => row.failure.kind === 'insignificant')) return null;
       return (
-        'n. s. : Taux d’échec non significatif dans ce Projet, faute de Couverture ou de bugs ' +
+        'n. s. : Taux d’échec non significatif, faute de Couverture ou de bugs ' +
         `(moins de ${formatPercent(thresholds.minCoverage)} des bugs avec une origine, ou moins de ${thresholds.minBugs} bugs).`
       );
     }

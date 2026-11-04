@@ -109,7 +109,57 @@ describe('SliceTable : le découpage', () => {
     expect(cells(bdesk!)[3]).toBe('n. s. : non significatif (Couverture 0 % (minimum 50 %) ; 1 bug (minimum 5))');
     expect(bdesk!.querySelector('[title]')?.getAttribute('title')).toBe('Couverture 0 % (minimum 50 %) ; 1 bug (minimum 5)');
     expect(cells(mpm!)[3]).toBe('12,5 % 2 sur 16');
-    expect(screen.getByText(/^n\. s\. : Taux d’échec non significatif dans ce Projet/)).toBeTruthy();
+    expect(screen.getByText(/^n\. s\. : Taux d’échec non significatif, faute de Couverture ou de bugs/)).toBeTruthy();
+  });
+
+  it('explique « n. s. » sans parler d’un Projet quand seule la ligne Ensemble est marquée n. s.', () => {
+    const data = metricsFixture();
+    const onlyOverall: MetricsResponse = {
+      ...data,
+      // Les deux Projets ont un taux ; l'ensemble, lui, garde la Couverture insuffisante de la fixture.
+      slices: {
+        ...data.slices,
+        project: [
+          { ...data.slices.project[0]!, throughput: 2, failureRate: 0, failedDeliveries: 0, significant: true, coverage: { bugs: 6, linked: 6, ratio: 1 } },
+          { ...data.slices.project[1]!, throughput: 16, failureRate: 0.125, failedDeliveries: 2, significant: true, coverage: { bugs: 36, linked: 30, ratio: 30 / 36 } },
+        ],
+      },
+    };
+    renderTable(onlyOverall, 'project');
+
+    const [bdesk, mpm, all] = rows();
+    expect([bdesk!, mpm!].map((row) => cells(row)[3])).toEqual(['0 % 0 sur 2', '12,5 % 2 sur 16']);
+    expect(cells(all!)[3]).toMatch(/^n\. s\. : non significatif/);
+    const legend = screen.getByText(/^n\. s\. : Taux d’échec non significatif/);
+    expect(plain(legend.textContent)).toBe(
+      'n. s. : Taux d’échec non significatif, faute de Couverture ou de bugs (moins de 50 % des bugs avec une origine, ou moins de 5 bugs).',
+    );
+    expect(legend.textContent).not.toContain('Projet');
+  });
+
+  it('n’écrit pas la légende « n. s. » quand aucune ligne n’est marquée n. s.', () => {
+    const data = metricsFixture();
+    const allSignificant: MetricsResponse = {
+      ...data,
+      tiles: {
+        ...data.tiles,
+        failureRate: { ...data.tiles.failureRate, significant: true, reasons: [], reason: null, coverage: { bugs: 42, linked: 36, ratio: 36 / 42 }, deliveries: 18, failed: 2, rate: 2 / 18 },
+      },
+      slices: {
+        ...data.slices,
+        project: [
+          { ...data.slices.project[0]!, throughput: 2, failureRate: 0, failedDeliveries: 0, significant: true, coverage: { bugs: 6, linked: 6, ratio: 1 } },
+          { ...data.slices.project[1]!, throughput: 16, failureRate: 0.125, failedDeliveries: 2, significant: true, coverage: { bugs: 36, linked: 30, ratio: 30 / 36 } },
+        ],
+      },
+    };
+    renderTable(allSignificant, 'project');
+
+    expect(within(table()).getAllByRole('columnheader').map((header) => header.textContent)).toContain('Taux d’échec');
+    const [bdesk, mpm, all] = rows();
+    expect([bdesk!, mpm!, all!].map((row) => cells(row)[3])).toEqual(['0 % 0 sur 2', '12,5 % 2 sur 16', '11,1 % 2 sur 18']);
+    // Ni cellule « n. s. » ni légende pour en expliquer une.
+    expect(screen.queryByText(/n\. s\./)).toBeNull();
   });
 
   it('retire la colonne du Taux d’échec quand aucun Projet n’a de taux, et le dit', () => {

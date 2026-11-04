@@ -1,3 +1,4 @@
+import { MIN_CUSTOM_DAY } from '../../domain/calendar';
 import type { MetricsRangePreset } from '../../shared/api';
 import { addDays } from './scales';
 
@@ -25,6 +26,13 @@ export const DEFAULT_PERIOD: PeriodChoice = { kind: 'preset', range: DEFAULT_RAN
 /** La limite du serveur (`MAX_PERIOD_DAYS`, src/domain/calendar.ts) : au-delà il répond 400. Un test garde les deux alignées. */
 export const MAX_CUSTOM_DAYS = 366;
 
+/**
+ * Le premier jour d'une plage personnalisée : le 1er janvier 1970, la borne du serveur elle-même (`MIN_CUSTOM_DAY`,
+ * src/domain/calendar.ts), partagée plutôt que recopiée. Une plage qui commence plus tôt, le serveur la refuse (400) : la page la
+ * refuse sans le lui demander.
+ */
+export { MIN_CUSTOM_DAY };
+
 const RANGE = 'range';
 const FROM = 'from';
 const TO = 'to';
@@ -43,6 +51,16 @@ export function defaultDimension(scope: Scope): Dimension {
 }
 
 /**
+ * Minuit UTC de ce jour du calendrier. `Date.UTC(20, …)` lirait l'an 20 comme 1920 (les années 0 à 99 y sont décalées de
+ * 1900), alors qu'un champ de date tapé au clavier passe par 0002, 0020 puis 0202 avant 2026 : `setUTCFullYear` les prend telles quelles.
+ */
+function utcMidnight(year: number, month: number, date: number): Date {
+  const day = new Date(0);
+  day.setUTCFullYear(year, month - 1, date);
+  return day;
+}
+
+/**
  * Un vrai jour du calendrier `AAAA-MM-JJ` : refuse `2026-1-5` comme `2026-02-30`. Un mois ou un jour qui déborde fait
  * dériver la date (un 30 février devient un 2 mars, un mois 13 change l'année) : il suffit de relire l'année et le jour.
  */
@@ -50,13 +68,13 @@ export function isCivilDay(value: string): boolean {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return false;
   const [year, month, date] = [Number(match[1]), Number(match[2]), Number(match[3])];
-  const check = new Date(Date.UTC(year, month - 1, date));
+  const check = utcMidnight(year, month, date);
   return check.getUTCFullYear() === year && check.getUTCDate() === date;
 }
 
 const utcOf = (day: string): number => {
   const [year = 0, month = 1, date = 1] = day.split('-').map(Number);
-  return Date.UTC(year, month - 1, date);
+  return utcMidnight(year, month, date).getTime();
 };
 
 /** Nombre de jours d'une plage, bornes comprises. */
@@ -151,12 +169,17 @@ export function lastDays(today: string, days: number): { from: string; to: strin
   return { from: addDays(today, 1 - days), to: today };
 }
 
-/** Une plage de jours, ou ce qui l'empêche d'être servie : un jour qui n'existe pas, une plage à l'envers, dans le futur, ou trop longue. */
+/**
+ * Une plage de jours, ou ce qui l'empêche d'être servie : un jour qui n'existe pas, une plage à l'envers, dans le futur,
+ * d'avant le 1er janvier 1970, ou trop longue. Les mêmes refus que `resolvePeriod` (le serveur), dans le même ordre : les
+ * bornes d'abord, la durée ensuite.
+ */
 export function checkRange(from: string | null, to: string | null, today: string): PeriodChoice | string {
   if (from === null || to === null) return 'Une plage personnalisée a besoin de « from » et « to » ensemble.';
   for (const value of [from, to]) if (!isCivilDay(value)) return `« ${value} » n’est pas un jour (AAAA-MM-JJ).`;
   if (from > to) return `La plage commence après sa fin (${from} > ${to}).`;
   if (to > today) return `La plage dépasse aujourd’hui (${to} > ${today}).`;
+  if (from < MIN_CUSTOM_DAY) return `La plage doit commencer le 1er janvier 1970 ou après : ${from} est trop tôt.`;
   const days = spanInDays(from, to);
   if (days > MAX_CUSTOM_DAYS) return `La plage est trop longue : ${days} jours, au plus ${MAX_CUSTOM_DAYS}.`;
   return { kind: 'custom', from, to };

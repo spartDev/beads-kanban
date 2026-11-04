@@ -131,6 +131,34 @@ describe('describeSlices : par Projet', () => {
     expect(view.coverageNote).toContain('5 bugs');
   });
 
+  it('n’explique pas « n. s. » quand aucune ligne n’est marquée n. s. : il n’y a rien à expliquer', () => {
+    const view = describeSlices({
+      slices: [slices[0]!, slice('b', 'projet-b', { significant: true, coverage: coverage(40, 30), throughput: 10, failedDeliveries: 1, failureRate: 0.1 }), slices[2]!],
+      dimension: 'project',
+      // L'ensemble a lui aussi un taux significatif : aucune cellule du tableau ne dit « n. s. ».
+      tiles: tiles({ significant: true, reasons: [], reason: null, coverage: coverage(100, 80) }),
+      ctx,
+    });
+    expect(view.failureColumn).toBe(true);
+    expect([...view.rows, view.overall].map((row) => row.failure.kind)).toEqual(['rate', 'rate', 'empty', 'rate']);
+    expect(view.coverageNote).toBeNull();
+  });
+
+  it('explique « n. s. » dès qu’une ligne en est marquée, même si c’est seulement la ligne Ensemble', () => {
+    // Le Projet a un taux ; l'ensemble, lui, n'a pas assez de Couverture (celle de tuiles() : 19 %).
+    const view = describeSlices({ slices: [slices[0]!], dimension: 'project', tiles: tiles(), ctx });
+    expect(view.rows.map((row) => row.failure.kind)).toEqual(['rate']);
+    expect(view.overall.failure.kind).toBe('insignificant');
+    expect(view.coverageNote).toContain('n. s.');
+  });
+
+  it('dit « n. s. » sans parler d’un Projet : la légende sert aussi à la ligne Ensemble', () => {
+    const view = describeSlices({ slices: [slices[0]!], dimension: 'project', tiles: tiles(), ctx });
+    expect(view.coverageNote).toBe(
+      `n. s. : Taux d’échec non significatif, faute de Couverture ou de bugs (moins de 50${NBSP}% des bugs avec une origine, ou moins de 5 bugs).`,
+    );
+  });
+
   it('retire la colonne quand aucun Projet n’a de taux significatif, et le dit', () => {
     const view = describeSlices({ slices: slices.slice(1), dimension: 'project', tiles: tiles(), ctx });
     expect(view.failureColumn).toBe(false);

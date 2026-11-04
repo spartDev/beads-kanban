@@ -1,10 +1,11 @@
 import { RefreshCw } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState, type KeyboardEvent } from 'react';
 import { cx } from '../lib/cx';
 import {
   checkRange,
   dimensionsOf,
   lastDays,
+  MIN_CUSTOM_DAY,
   PRESET_DAYS,
   PRESETS,
   type Dimension,
@@ -115,7 +116,20 @@ const DATE_INPUT =
   'h-8 rounded-md border border-line-strong bg-panel px-2 text-ui text-ink aria-[invalid=true]:border-danger';
 
 /**
- * Les deux jours d'une plage personnalisée. Elle s'applique dès qu'elle est valable ; sinon l'erreur est dite sous les champs.
+ * Le silence, après le dernier chiffre tapé, au bout duquel une plage refusée est dite. Un champ de date tapé au clavier émet
+ * une date à chaque chiffre : pour 2026, 0002, 0020 et 0202 d'abord. Ce ne sont que des états de passage, et une alerte
+ * interrompt le lecteur d'écran : la dire à chaque chiffre empêcherait de taper.
+ */
+const ANNOUNCE_DELAY_MS = 800;
+
+/**
+ * Les deux jours d'une plage personnalisée. Elle s'applique dès qu'elle est valable ; sinon l'erreur est dite sous les champs,
+ * une fois la saisie posée : après un silence (`ANNOUNCE_DELAY_MS`), ou tout de suite quand on quitte le champ ou tape Entrée.
+ * Une plage qui redevient valable retire l'erreur aussitôt, et la suivante attend de nouveau.
+ *
+ * Les champs n'offrent que les jours du 1er janvier 1970 à aujourd'hui (`min` et `max`). Un jour tapé au clavier peut sortir de ces
+ * bornes (taper 2026 passe par 0002, 0020 et 0202) : la plage est alors refusée, et dite, comme n'importe quelle autre, sans rien
+ * demander au serveur.
  *
  * Les champs repartent de la plage de l'adresse quand elle change d'ailleurs (un lien, « Retour »). Quand elle change parce que
  * ce composant vient de l'appliquer, ils la montrent déjà et rien ne bouge. Le composant ne doit surtout pas être remonté à chaque
@@ -125,6 +139,8 @@ const DATE_INPUT =
 function CustomRange({ from, to, today, onApply }: { from: string; to: string; today: string; onApply: (period: PeriodChoice) => void }) {
   const [draft, setDraft] = useState({ from, to });
   const [address, setAddress] = useState({ from, to });
+  // La dernière erreur dite. Entre deux annonces, `error` change à chaque chiffre mais `told` garde son texte : rien ne bouge à l'écran.
+  const [told, setTold] = useState<string | null>(null);
   const errorId = useId();
 
   if (address.from !== from || address.to !== to) {
@@ -136,6 +152,25 @@ function CustomRange({ from, to, today, onApply }: { from: string; to: string; t
   const complete = draft.from !== '' && draft.to !== '';
   const checked = complete ? checkRange(draft.from, draft.to, today) : null;
   const error = typeof checked === 'string' ? checked : null;
+
+  // Plus d'erreur : on oublie la dernière dite, sinon la prochaine, un état de passage peut-être, s'afficherait sans attendre.
+  if (error === null && told !== null) setTold(null);
+
+  useEffect(() => {
+    if (error === null) return undefined;
+    const timer = setTimeout(() => setTold(error), ANNOUNCE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [error]);
+
+  const announced = error === null ? null : told;
+  // Aucun jour d'avant `MIN_CUSTOM_DAY` n'est offert, et « Au » ne commence pas avant « Du » non plus.
+  const earliestEnd = draft.from > MIN_CUSTOM_DAY ? draft.from : MIN_CUSTOM_DAY;
+  const tellNow = () => {
+    if (error !== null) setTold(error);
+  };
+  const tellOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') tellNow();
+  };
 
   const change = (next: { from: string; to: string }) => {
     setDraft(next);
@@ -152,10 +187,13 @@ function CustomRange({ from, to, today, onApply }: { from: string; to: string; t
           <input
             type="date"
             value={draft.from}
+            min={MIN_CUSTOM_DAY}
             max={draft.to || today}
-            aria-invalid={error ? true : undefined}
-            aria-describedby={error ? errorId : undefined}
+            aria-invalid={announced ? true : undefined}
+            aria-describedby={announced ? errorId : undefined}
             onChange={(event) => change({ ...draft, from: event.target.value })}
+            onBlur={tellNow}
+            onKeyDown={tellOnEnter}
             className={DATE_INPUT}
           />
         </label>
@@ -164,18 +202,20 @@ function CustomRange({ from, to, today, onApply }: { from: string; to: string; t
           <input
             type="date"
             value={draft.to}
-            min={draft.from || undefined}
+            min={earliestEnd}
             max={today}
-            aria-invalid={error ? true : undefined}
-            aria-describedby={error ? errorId : undefined}
+            aria-invalid={announced ? true : undefined}
+            aria-describedby={announced ? errorId : undefined}
             onChange={(event) => change({ ...draft, to: event.target.value })}
+            onBlur={tellNow}
+            onKeyDown={tellOnEnter}
             className={DATE_INPUT}
           />
         </label>
       </div>
-      {error ? (
+      {announced ? (
         <p id={errorId} role="alert" className="text-micro text-danger">
-          {error}
+          {announced}
         </p>
       ) : null}
     </div>
