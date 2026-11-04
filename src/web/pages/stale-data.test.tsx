@@ -105,11 +105,11 @@ describe('un rafraîchissement des tickets en échec', () => {
   it('garde la fiche d’un ticket', async () => {
     const fetchMock = stubDefaultApi();
     const app = renderApp('/p/bdesk/t/bdesk-38k.6');
-    expect(await screen.findByRole('heading', { level: 1, name: /Shell UI façon Linear/ })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 2, name: /Shell UI façon Linear/ })).toBeTruthy();
 
     await refreshFails(app, fetchMock, queryKeys.issue('bdesk', 'bdesk-38k.6'), '/api/projects/bdesk/issues/bdesk-38k.6');
 
-    expect(screen.getByRole('heading', { level: 1, name: /Shell UI façon Linear/ })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: /Shell UI façon Linear/ })).toBeTruthy();
     expect(screen.queryByText('Impossible de charger le ticket')).toBeNull();
   });
 

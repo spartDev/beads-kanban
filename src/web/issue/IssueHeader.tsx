@@ -1,0 +1,104 @@
+import { Lock } from 'lucide-react';
+import { Fragment } from 'react';
+import type { IssueDetail } from '../data/types';
+import { statusLabel } from '../design/issue-palette';
+import { PriorityBadge, TypeBadge, TypeGlyph } from '../ui/IssueBadges';
+import { IssueLink } from './IssueLink';
+
+/**
+ * Sous le titre : type, priorité, statut, assigné, Parent, et ce qui retient le ticket. Tout vient de la fiche, y
+ * compris le titre du Parent (`linked`) : la ligne du Parent est là dès que le titre l'est, la page ne se recompose pas.
+ */
+export function IssueHeader({ issue, projectId }: { issue: IssueDetail; projectId: string }) {
+  const parent = issue.parentId ? issue.linked[issue.parentId] : undefined;
+
+  return (
+    <div className="flex flex-col gap-2">
+      <dl className="flex flex-wrap items-center gap-x-4 gap-y-1.5 wrap-anywhere text-ink-2">
+        <div className="flex items-center gap-1.5">
+          <dt className="sr-only">Type</dt>
+          <dd>
+            <TypeBadge type={issue.type} />
+          </dd>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <dt className="sr-only">Priorité</dt>
+          <dd>
+            <PriorityBadge priority={issue.priority} />
+          </dd>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <dt className="sr-only">Statut</dt>
+          <dd>{statusLabel(issue.status)}</dd>
+        </div>
+        {issue.assignee ? (
+          <div className="flex items-center gap-1.5">
+            <dt className="shrink-0 text-ink-3">Assigné à</dt>
+            <dd>{issue.assignee}</dd>
+          </div>
+        ) : null}
+        {issue.parentId ? (
+          <div className="flex min-w-0 max-w-full items-center gap-1.5">
+            <dt className="sr-only">Parent</dt>
+            <dd className="min-w-0">
+              {parent?.type === 'epic' ? (
+                <IssueLink
+                  projectId={projectId}
+                  id={parent.id}
+                  title={parent.title}
+                  className="inline-flex max-w-full items-center gap-1 rounded-md border border-line bg-well px-1.5 py-px text-xs text-ink-2 transition-colors hover:text-ink"
+                >
+                  <TypeGlyph type="epic" size={12} />
+                  <span className="sr-only">Epic :</span> <span className="min-w-0 truncate">{parent.title}</span>
+                </IssueLink>
+              ) : (
+                <IssueLink projectId={projectId} id={issue.parentId} className="hover:text-ink hover:underline">
+                  <span className="text-ink-3">Parent</span> <span className="font-mono text-xs">{issue.parentId}</span>
+                  {parent ? ` ${parent.title}` : ''}
+                </IssueLink>
+              )}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+      <Blocking issue={issue} projectId={projectId} />
+      {issue.labels.length > 0 ? (
+        <ul aria-label="Étiquettes" className="flex flex-wrap gap-1.5">
+          {issue.labels.map((label) => (
+            <li key={label} className="rounded-full border border-line px-2 text-xs leading-5 text-ink-2">
+              {label}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/** Ce qui retient le ticket : les tickets non fermés dont il dépend, ou le seul statut bloqué. Un ticket fermé n'est jamais retenu. */
+function Blocking({ issue, projectId }: { issue: IssueDetail; projectId: string }) {
+  if (issue.blockedBy.length === 0) {
+    return issue.status === 'blocked' ? (
+      <p className="flex items-start gap-1.5 text-ink-2">
+        <Lock size={13} aria-hidden="true" className="mt-1 shrink-0 text-ink-3" />
+        <span>Statut bloqué, sans dépendance en suspens</span>
+      </p>
+    ) : null;
+  }
+  return (
+    <p className="flex items-start gap-1.5 text-ink-2">
+      <Lock size={13} aria-hidden="true" className="mt-1 shrink-0 text-ink-3" />
+      <span className="min-w-0 wrap-anywhere">
+        Bloqué : attend{' '}
+        {issue.blockedBy.map((id, index) => (
+          <Fragment key={id}>
+            {index > 0 ? ', ' : null}
+            <IssueLink projectId={projectId} id={id} title={issue.linked[id]?.title} className="font-mono text-xs text-ink hover:underline">
+              {id}
+            </IssueLink>
+          </Fragment>
+        ))}
+      </span>
+    </p>
+  );
+}

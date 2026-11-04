@@ -1,4 +1,4 @@
-import type { Issue, IssueDetail, Project, ProjectsResponse } from '../data/types';
+import type { Issue, IssueChronology, IssueDetail, Project, ProjectsResponse } from '../data/types';
 
 export const projects: Project[] = [
   { id: 'bdesk', name: 'beads-desktop', path: '/dev/beads-desktop', prefix: 'bdesk', mode: 'embedded', status: 'ok' },
@@ -46,7 +46,23 @@ export function issueDetail(overrides: Partial<IssueDetail> & Pick<IssueDetail, 
     labels: [],
     dependencies: [],
     dependents: [],
+    linked: {},
     comments: [],
+    ...overrides,
+  };
+}
+
+/** Une chronologie telle que la renvoie `GET …/chronology` : celle d'un ticket resté ouvert depuis sa création, sauf indication contraire. */
+export function chronology(overrides: Partial<IssueChronology> = {}): IssueChronology {
+  return {
+    source: 'history',
+    transitions: [{ status: 'open', at: '2026-10-01T09:00:00.000Z', duration: null }],
+    blockages: [],
+    outcome: { kind: 'open' },
+    leadTime: null,
+    cycleTime: null,
+    blockedTime: null,
+    reopenings: 0,
     ...overrides,
   };
 }

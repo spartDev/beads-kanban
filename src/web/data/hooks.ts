@@ -1,13 +1,21 @@
 import { QueryClient, queryOptions, useQuery } from '@tanstack/react-query';
 import { ApiError, apiGet } from './client';
-import type { IssueResponse, IssuesResponse, ProjectsResponse } from './types';
+import type { IssueChronologyResponse, IssueResponse, IssuesResponse, ProjectsResponse } from './types';
 
 export const queryKeys = {
   projects: ['projects'] as const,
   issues: (projectId: string) => ['projects', projectId, 'issues'] as const,
   /** Rangé sous la liste des tickets du Projet : invalider la liste invalide aussi les fiches. */
   issue: (projectId: string, issueId: string) => ['projects', projectId, 'issues', issueId] as const,
+  /** Rangée sous la fiche : la relire avec la liste des tickets du Projet relit aussi la chronologie. */
+  chronology: (projectId: string, issueId: string) => ['projects', projectId, 'issues', issueId, 'chronology'] as const,
 };
+
+/**
+ * Requête dont la page affiche elle-même un 404 (« Ticket introuvable ») : quand un rafraîchissement le reçoit, la page
+ * le dit à la place des données périmées, et le bandeau « actualisation impossible » (`RefreshFailedBanner`) s'en abstient.
+ */
+export const HANDLES_NOT_FOUND = { handlesNotFound: true } as const;
 
 export function projectsQuery() {
   return queryOptions({
@@ -35,6 +43,20 @@ export function issueQuery(projectId: string, issueId: string) {
         signal,
       ),
     staleTime: 15_000,
+    meta: HANDLES_NOT_FOUND,
+  });
+}
+
+export function chronologyQuery(projectId: string, issueId: string) {
+  return queryOptions({
+    queryKey: queryKeys.chronology(projectId, issueId),
+    queryFn: ({ signal }) =>
+      apiGet<IssueChronologyResponse>(
+        `/api/projects/${encodeURIComponent(projectId)}/issues/${encodeURIComponent(issueId)}/chronology`,
+        signal,
+      ),
+    staleTime: 15_000,
+    meta: HANDLES_NOT_FOUND,
   });
 }
 
@@ -58,6 +80,18 @@ export function useIssue(projectId: string | undefined, issueId: string | undefi
     ...issueQuery(projectId ?? '', issueId ?? ''),
     enabled: Boolean(projectId && issueId),
     select: (data) => data.issue,
+  });
+}
+
+/**
+ * Chronologie d'un ticket : ses Transitions, ses Blocages, Lead Time, Cycle Time et temps bloqué. Lire l'historique du
+ * Projet est plus long que lire la fiche (secondes à froid) : une requête à part. Inactif tant que le Projet ou le ticket manque.
+ */
+export function useChronology(projectId: string | undefined, issueId: string | undefined) {
+  return useQuery({
+    ...chronologyQuery(projectId ?? '', issueId ?? ''),
+    enabled: Boolean(projectId && issueId),
+    select: (data) => data.chronology,
   });
 }
 

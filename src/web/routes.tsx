@@ -1,8 +1,9 @@
 import { Navigate, useParams, type RouteObject } from 'react-router';
+import { HistoryTrail } from './issue/HistoryTrail';
+import { IssuePanel } from './issue/IssuePanel';
 import { EpicsPage } from './pages/EpicsPage';
 import { GlobalPage } from './pages/GlobalPage';
-import { IssuePage } from './pages/IssuePage';
-import { KanbanPage } from './pages/KanbanPage';
+import { KanbanRoute } from './pages/KanbanRoute';
 import { MetricsPage } from './pages/MetricsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { ProjectGate } from './pages/ProjectGate';
@@ -22,7 +23,11 @@ function RedirectToKanban() {
 export const routes: RouteObject[] = [
   {
     path: '/',
-    element: <AppShell />,
+    element: (
+      <HistoryTrail>
+        <AppShell />
+      </HistoryTrail>
+    ),
     errorElement: <RouteError standalone />,
     children: [
       {
@@ -34,10 +39,14 @@ export const routes: RouteObject[] = [
             element: <ProjectGate />,
             children: [
               { index: true, element: <RedirectToKanban /> },
-              { path: 'kanban', element: <KanbanPage /> },
+              {
+                // Le kanban, et par-dessus lui le panneau du ticket : une seule route mère, donc un tableau qui reste en place.
+                element: <KanbanRoute />,
+                // `element: null` : le tableau est celui de la route mère, il n'y a rien à ajouter sur `/kanban` (sans lui, React Router avertit).
+                children: [{ path: 'kanban', element: null }, { path: 't/:issueId', element: <IssuePanel /> }],
+              },
               { path: 'epics', element: <EpicsPage /> },
               { path: 'metrics', element: <MetricsPage /> },
-              { path: 't/:issueId', element: <IssuePage /> },
             ],
           },
           { path: '*', element: <NotFoundPage /> },

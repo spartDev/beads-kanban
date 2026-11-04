@@ -64,14 +64,14 @@ export function useShortcuts(definitions: readonly ShortcutDefinition[]): void {
   const signature = definitions
     .filter((d) => d.enabled !== false)
     .map((d) =>
-      [d.id, d.keys, (d.alternateKeys ?? []).join(','), d.label, d.group, d.allowInInput ? 1 : 0, d.overrideNative ? 1 : 0].join('|'),
+      [d.id, d.keys, (d.alternateKeys ?? []).join(','), d.label, d.group, d.allowInInput ? 1 : 0, d.overrideNative ? 1 : 0, d.priority ?? 0].join('|'),
     )
     .join('\n');
 
   useEffect(() => {
     const disposers = latest.current
       .filter((d) => d.enabled !== false)
-      .map(({ id, keys, alternateKeys, label, group, allowInInput, overrideNative }) =>
+      .map(({ id, keys, alternateKeys, label, group, allowInInput, overrideNative, priority }) =>
         registry.register({
           id,
           keys,
@@ -80,6 +80,7 @@ export function useShortcuts(definitions: readonly ShortcutDefinition[]): void {
           group,
           allowInInput,
           overrideNative,
+          priority,
           // Relues à chaque touche, comme `run` : elles peuvent changer à chaque rendu sans ré-enregistrer le raccourci.
           when: (event) => latest.current.find((d) => d.id === id)?.when?.(event) ?? true,
           run: (event) => latest.current.find((d) => d.id === id)?.run(event),

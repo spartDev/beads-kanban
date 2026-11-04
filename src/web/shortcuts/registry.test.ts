@@ -764,3 +764,63 @@ describe('when : un raccourci qui ne s’applique que dans certains états', () 
     expect(run).not.toHaveBeenCalled();
   });
 });
+
+describe('priority : qui prend la touche quand plusieurs raccourcis le peuvent', () => {
+  beforeEach(() => ({ registry, cleanup } = setup(true)));
+
+  it('le plus prioritaire l’emporte, même enregistré avant les autres : l’ordre où les composants se montent n’y change rien', () => {
+    const layer = vi.fn();
+    const page = vi.fn();
+    registry.register(shortcut('escape', layer, { id: 'couche', priority: 1 }));
+    registry.register(shortcut('escape', page, { id: 'page' }));
+
+    press({ key: 'Escape' });
+
+    expect(layer).toHaveBeenCalledTimes(1);
+    expect(page).not.toHaveBeenCalled();
+  });
+
+  it('à priorité égale, le dernier enregistré l’emporte, comme sans priorité', () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    registry.register(shortcut('escape', first, { id: 'premier', priority: 2 }));
+    registry.register(shortcut('escape', second, { id: 'second', priority: 2 }));
+
+    press({ key: 'Escape' });
+
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(first).not.toHaveBeenCalled();
+  });
+
+  it('cède la touche aux autres quand sa condition est fausse ou quand il est retiré', () => {
+    let open = true;
+    const layer = vi.fn();
+    const page = vi.fn();
+    const unregister = registry.register(shortcut('escape', layer, { id: 'couche', priority: 1, when: () => open }));
+    registry.register(shortcut('escape', page, { id: 'page' }));
+
+    press({ key: 'Escape' });
+    open = false;
+    press({ key: 'Escape' });
+    open = true;
+    unregister();
+    press({ key: 'Escape' });
+
+    expect(layer).toHaveBeenCalledTimes(1);
+    expect(page).toHaveBeenCalledTimes(2);
+  });
+
+  it('vaut aussi pour les touches alternatives et pour une séquence', () => {
+    const layer = vi.fn();
+    const page = vi.fn();
+    registry.register(shortcut('g k', layer, { id: 'couche', priority: 1, alternateKeys: ['x'] }));
+    registry.register(shortcut('g k', page, { id: 'page', alternateKeys: ['x'] }));
+
+    press({ key: 'x' });
+    press({ key: 'g' });
+    press({ key: 'k' });
+
+    expect(layer).toHaveBeenCalledTimes(2);
+    expect(page).not.toHaveBeenCalled();
+  });
+});

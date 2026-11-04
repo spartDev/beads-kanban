@@ -1,7 +1,15 @@
 import { STATUS_CODES } from 'node:http';
 import type { FastifyError, FastifyInstance, FastifyReply } from 'fastify';
 import { InvalidPeriodError } from '../domain/calendar';
-import type { ApiErrorBody, IssueResponse, IssuesResponse, MetricsResponse, ProjectsResponse } from '../shared/api';
+import type {
+  ApiErrorBody,
+  IssueChronologyResponse,
+  IssueResponse,
+  IssuesResponse,
+  MetricsResponse,
+  ProjectsResponse,
+} from '../shared/api';
+import { type ChronologyService, createChronologyService } from './chronology/service';
 import { InvalidMetricsQueryError, parseMetricsQuery } from './metrics/query';
 import type { MetricsService } from './metrics/service';
 import {
@@ -12,7 +20,12 @@ import {
 } from './projects/service';
 
 /** Routes `/api/projects…` et `/api/metrics` ; les erreurs des services deviennent des réponses JSON (400, 404, 503). */
-export async function registerApi(app: FastifyInstance, projects: ProjectService, metrics: MetricsService): Promise<void> {
+export async function registerApi(
+  app: FastifyInstance,
+  projects: ProjectService,
+  metrics: MetricsService,
+  chronology: ChronologyService = createChronologyService(projects),
+): Promise<void> {
   app.setErrorHandler((error: FastifyError, _req, reply) => {
     if (error instanceof InvalidMetricsQueryError || error instanceof InvalidPeriodError) {
       return send(reply, 400, error.message);
@@ -42,6 +55,13 @@ export async function registerApi(app: FastifyInstance, projects: ProjectService
     '/api/projects/:projectId/issues/:issueId',
     async (req): Promise<IssueResponse> => ({
       issue: await projects.issue(req.params.projectId, req.params.issueId),
+    }),
+  );
+
+  app.get<{ Params: { projectId: string; issueId: string } }>(
+    '/api/projects/:projectId/issues/:issueId/chronology',
+    async (req): Promise<IssueChronologyResponse> => ({
+      chronology: await chronology.chronology(req.params.projectId, req.params.issueId),
     }),
   );
 }

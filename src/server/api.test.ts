@@ -46,6 +46,7 @@ const detail: IssueDetail = {
   labels: ['backend'],
   dependencies: [{ to: 'bdesk-38k.1', type: 'blocks' }],
   dependents: [{ from: 'bdesk-38k.7', type: 'blocks' }],
+  linked: {},
   comments: [{ author: 'tom', text: 'ok', createdAt: '2026-10-20T12:00:00.000Z' }],
 };
 
@@ -167,6 +168,93 @@ describe('API des Projets', () => {
 
     expect(res.statusCode).toBe(500);
     expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'boum' });
+  });
+});
+
+describe('API de la chronologie d’un ticket', () => {
+  const history = (id: string): TicketHistory => ({
+    id,
+    type: 'task',
+    statusSnapshots: [
+      { status: 'open', at: new Date('2026-10-01T09:00:00Z') },
+      { status: 'in_progress', at: new Date('2026-10-02T09:00:00Z') },
+      { status: 'closed', at: new Date('2026-10-03T21:00:00Z') },
+    ],
+    dependencies: [],
+  });
+  const URL = '/api/projects/beads-desktop/issues/bdesk-38k.4/chronology';
+
+  it('GET …/issues/:issueId/chronology renvoie { chronology } tirée de l’historique du Projet', async () => {
+    const seen: string[] = [];
+    const res = await get(
+      serviceWith({
+        histories: async (projectId) => {
+          seen.push(projectId);
+          return [history('bdesk-38k.4')];
+        },
+      }),
+      URL,
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('application/json');
+    expect(res.json()).toEqual({
+      chronology: {
+        source: 'history',
+        transitions: [
+          { status: 'open', at: '2026-10-01T09:00:00.000Z', duration: 86_400_000 },
+          { status: 'in_progress', at: '2026-10-02T09:00:00.000Z', duration: 129_600_000 },
+          { status: 'closed', at: '2026-10-03T21:00:00.000Z', duration: null },
+        ],
+        blockages: [],
+        outcome: { kind: 'delivered', at: '2026-10-03T21:00:00.000Z' },
+        leadTime: 216_000_000,
+        cycleTime: 129_600_000,
+        blockedTime: 0,
+        reopenings: 0,
+      },
+    });
+    expect(seen).toEqual(['beads-desktop']);
+  });
+
+  it('renvoie 404 en JSON pour un ticket qui n’est dans le Projet ni dans l’historique', async () => {
+    const res = await get(serviceWith({ histories: async () => [history('autre')], issues: async () => [] }), URL);
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toMatchObject({ statusCode: 404, error: 'Not Found', message: expect.stringContaining('bdesk-38k.4') });
+  });
+
+  it('renvoie 404 en JSON pour un Projet inconnu', async () => {
+    const res = await get(
+      serviceWith({
+        head: async (projectId) => {
+          throw new ProjectNotFoundError(projectId);
+        },
+      }),
+      '/api/projects/nope/issues/x/chronology',
+    );
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope' });
+  });
+
+  it('renvoie 503 avec la raison quand l’historique du Projet est illisible, comme pour la fiche', async () => {
+    const res = await get(
+      serviceWith({
+        histories: async () => {
+          throw new ProjectUnreadableError('beads-desktop', 'Historique trop long (plus de 10 000 commits)');
+        },
+      }),
+      URL,
+    );
+
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toEqual({
+      statusCode: 503,
+      error: 'Service Unavailable',
+      message: 'Projet illisible : Historique trop long (plus de 10 000 commits)',
+      reason: 'Historique trop long (plus de 10 000 commits)',
+    });
   });
 });
 

@@ -136,9 +136,10 @@ export function createProjectService(
           readLabels(db, issueId),
           readComments(db, issueId),
         ]);
-        const issue = record && buildIssues(summaries, dependencies).find((i) => i.id === record.id);
+        const all = buildIssues(summaries, dependencies);
+        const issue = record && all.find((i) => i.id === record.id);
         if (!record || !issue) throw new IssueNotFoundError(projectId, issueId);
-        return buildIssueDetail(issue, record, dependencies, labels, comments);
+        return buildIssueDetail(issue, record, dependencies, labels, comments, new Map(all.map((i) => [i.id, i])));
       }),
 
     histories: (projectId) => read(projectId, readTicketHistories),

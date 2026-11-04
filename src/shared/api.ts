@@ -73,6 +73,16 @@ export interface IssueComment {
   createdAt: string;
 }
 
+/** Un ticket du Projet vu depuis un autre : de quoi le nommer et l'ouvrir sans autre requête. */
+export interface IssueRef {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  /** 0 (critique) à 4 (minimale). */
+  priority: number;
+}
+
 export interface IssueDetail extends Issue {
   /** Champs texte : chaîne vide quand ils ne sont pas renseignés. */
   description: string;
@@ -85,12 +95,115 @@ export interface IssueDetail extends Issue {
   dependencies: IssueDependency[];
   /** Dépendances entrantes (`from` dépend de ce ticket). */
   dependents: IssueDependent[];
+  /**
+   * Les tickets du Projet que celui-ci nomme (son parent, les cibles et les sources de ses dépendances), par
+   * identifiant : de quoi écrire les relations avec le titre et le statut de chacun, dans la même réponse que la fiche
+   * (pas de requête qui en dépende, donc pas de page qui se recompose après coup). Un identifiant absent est hors du
+   * Projet (référence externe) : il n'y a rien à ouvrir.
+   */
+  linked: Record<string, IssueRef>;
   comments: IssueComment[];
 }
 
 /** `GET /api/projects/:projectId/issues/:issueId` */
 export interface IssueResponse {
   issue: IssueDetail;
+}
+
+/* -------------------------------------------------------------------------------------------------------------------
+ * Chronologie d'un ticket : `GET /api/projects/:projectId/issues/:issueId/chronology`
+ *
+ * Les Transitions du ticket, lues dans l'historique Dolt du Projet (voir docs/adr/0001), avec les mêmes durées que les
+ * métriques : celles de `analyzeFlow`, en temps calendaire (ms), sur la même horloge que le Lead Time. Une requête à part
+ * de la fiche : lire l'historique du Projet est plus long (jusqu'à quelques secondes à froid) que lire un ticket, et sa
+ * panne (historique trop long, 503) ne doit pas priver de la fiche. Les instants sont des chaînes ISO 8601 en UTC.
+ * ---------------------------------------------------------------------------------------------------------------- */
+
+/**
+ * Comment le ticket s'est terminé. `delivered` (Livraison), `abandoned` (Abandon : doublon ou remplacé) et `closed` (fermé
+ * sans être une Livraison : une Epic, ou un ticket que l'historique ne documente pas) portent la date de la dernière clôture.
+ */
+export type IssueOutcome =
+  | { kind: 'open' }
+  | { kind: 'delivered'; at: string }
+  | { kind: 'abandoned'; at: string; cause: 'duplicate' | 'superseded' }
+  | { kind: 'closed'; at: string };
+
+/** Une Transition : le ticket prend ce statut à cet instant et le garde jusqu'à la suivante. */
+export interface IssueTransition {
+  status: string;
+  at: string;
+  /**
+   * Temps passé dans ce statut, jusqu'à la Transition suivante (ms). Nul pour la dernière : le ticket y est encore, ou y
+   * reste fermé. C'est l'interface qui compte le temps écoulé depuis, avec son horloge.
+   */
+  duration: number | null;
+}
+
+/**
+ * Où en est le ticket pendant une partie d'un Blocage, ce qui décide si elle compte dans le temps bloqué des métriques :
+ *   `work`            en statut de travail (en cours, rattaché à un agent, bloqué) : la part du Cycle Time passée en Blocage,
+ *                     celle que `IssueChronology.blockedTime` totalise ;
+ *   `dependencyWait`  ticket ouvert, jamais démarré : l'Attente de dépendance, hors du Cycle Time ;
+ *   `otherWait`       tout autre statut non fermé (revenu à ouvert après un démarrage, différé…) : hors du Cycle Time aussi.
+ */
+export type IssueBlockagePhaseKind = 'work' | 'dependencyWait' | 'otherWait';
+
+/** Une partie d'un Blocage pendant laquelle le ticket est dans la même phase. */
+export interface IssueBlockagePhase {
+  kind: IssueBlockagePhaseKind;
+  from: string;
+  /** Nul quand la phase dure encore. */
+  to: string | null;
+}
+
+/**
+ * Une période de Blocage : le ticket, non fermé, dépend d'au moins un ticket non fermé (dépendance `blocks` active), ou
+ * porte le statut bloqué. Les périodes qui se chevauchent n'en font qu'une. Un Blocage dure tant que le ticket attend, quel
+ * que soit son statut : celui d'un ticket encore ouvert est listé aussi, mais le temps bloqué ne compte que la part passée
+ * en travail (voir `phases`).
+ */
+export interface IssueBlockage {
+  from: string;
+  /** Nul quand le Blocage dure encore. */
+  to: string | null;
+  /** Les tickets non fermés dont il dépend pendant cette période, triés ; vide si seul le statut bloqué la cause. */
+  blockedBy: string[];
+  statusBlocked: boolean;
+  /**
+   * Les phases que le ticket traverse pendant ce Blocage, dans l'ordre, sans trou ni recouvrement : la première commence avec
+   * le Blocage et la dernière finit avec lui. Pour un ticket fermé, la somme des phases `work` de tous ses Blocages vaut
+   * `blockedTime`, et celle des phases `dependencyWait` l'Attente de dépendance des métriques.
+   */
+  phases: IssueBlockagePhase[];
+}
+
+export interface IssueChronology {
+  /**
+   * `history` : l'historique Dolt du Projet. `dates` : le ticket n'y figure pas (jamais commité, ou historique perdu) ; seules
+   * ses dates de création et de clôture sont connues (repli de l'ADR 0001), sans Cycle Time ni Blocage.
+   */
+  source: 'history' | 'dates';
+  /** Du premier statut (la création) au statut actuel. */
+  transitions: IssueTransition[];
+  blockages: IssueBlockage[];
+  outcome: IssueOutcome;
+  /** Création jusqu'à la dernière clôture (ms) ; nul tant que le ticket n'est pas fermé. */
+  leadTime: number | null;
+  /** Temps cumulé en statut de travail (ms) ; nul si le ticket n'est pas fermé ou n'a jamais été démarré. */
+  cycleTime: number | null;
+  /**
+   * Part du Cycle Time passée en Blocage (ms) ; nul si le ticket n'est pas fermé. Elle ne compte que le Blocage pendant le
+   * travail : les phases `work` des Blocages listés, pas leur durée entière (un ticket peut attendre avant d'être démarré).
+   */
+  blockedTime: number | null;
+  /** Nombre de Réouvertures. */
+  reopenings: number;
+}
+
+/** `GET /api/projects/:projectId/issues/:issueId/chronology` */
+export interface IssueChronologyResponse {
+  chronology: IssueChronology;
 }
 
 /** Corps des réponses d'erreur (même forme que celles de Fastify). */

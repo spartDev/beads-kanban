@@ -185,8 +185,8 @@ describe('palette ⌘K', () => {
     await user.keyboard('{Enter}');
 
     await waitFor(() => expect(pathname(router)).toBe('/p/bdesk/t/bdesk-38k.6'));
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(await screen.findByRole('heading', { level: 1, name: /Shell UI façon Linear/ })).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Palette de commandes' })).toBeNull();
+    expect(await screen.findByRole('heading', { level: 2, name: /Shell UI façon Linear/ })).toBeTruthy();
   });
 
   it('cherche un ticket par son titre, sans tenir compte des accents', async () => {

@@ -14,7 +14,9 @@
  * - Un raccourci peut ne valoir que dans certains états (`when`) : Échap qui désélectionne, quand quelque chose l'est. Sa
  *   condition fausse, il n'existe pas pour cette touche : rien ne se lance, rien n'est détourné, un raccourci enregistré
  *   plus tôt sur les mêmes touches peut la prendre.
- * - En cas de conflit sur les mêmes touches, le dernier raccourci enregistré l'emporte.
+ * - En cas de conflit sur les mêmes touches, le plus prioritaire (`priority`) l'emporte, et à priorité égale le dernier
+ *   enregistré. Sans `priority`, c'est donc l'ordre d'enregistrement qui décide, c'est-à-dire l'ordre où les composants se
+ *   montent : un raccourci de couche (un panneau posé sur la page) la déclare pour ne pas en dépendre.
  * - Une touche maintenue ne déclenche qu'une fois : les répétitions (`event.repeat`) d'un raccourci reconnu sont
  *   consommées sans rien lancer. Sinon ⌘K ouvrirait puis fermerait la palette en boucle, et la fin d'une
  *   séquence (`g k`) tenue enfoncée lancerait le raccourci à touche simple `k`.
@@ -44,6 +46,14 @@ export interface Shortcut {
    * gardent, et un raccourci enregistré plus tôt sur les mêmes touches peut la prendre. Sans elle, le raccourci vaut toujours.
    */
   when?: (event: KeyboardEvent) => boolean;
+  /**
+   * Départage deux raccourcis qui peuvent prendre les mêmes touches : le plus grand l'emporte, quel que soit l'ordre où ils ont
+   * été enregistrés ; à égalité, le dernier enregistré. Celui d'une couche posée sur la page (le panneau d'un ticket, dont
+   * Échap doit passer avant celui du tableau) le déclare : sans cela, il dépendrait de ce qui s'est monté avant ou après lui,
+   * et le tableau, qui enregistre les siens quand ses tickets arrivent, n'est pas toujours là avant. Une condition `when`
+   * fausse laisse la touche aux autres, quelle que soit la priorité. 0 par défaut.
+   */
+  priority?: number;
 }
 
 export interface ShortcutRegistry {
@@ -207,13 +217,14 @@ export function createShortcutRegistry({ isMac }: { isMac: boolean }): ShortcutR
   const startsWith = (entry: Entry, steps: string[]): boolean =>
     entry.steps.length > steps.length && steps.every((step, i) => step === entry.steps[i]);
 
-  // Le dernier enregistré gagne : on parcourt à l'envers.
-  const findLast = (predicate: (entry: Entry) => boolean): Entry | undefined => {
+  // Le plus prioritaire gagne, à égalité le dernier enregistré : on parcourt à l'envers, et il faut passer strictement devant.
+  const findBest = (predicate: (entry: Entry) => boolean): Entry | undefined => {
+    let best: Entry | undefined;
     for (let i = entries.length - 1; i >= 0; i--) {
       const entry = entries[i];
-      if (entry && predicate(entry)) return entry;
+      if (entry && predicate(entry) && (!best || (entry.shortcut.priority ?? 0) > (best.shortcut.priority ?? 0))) best = entry;
     }
-    return undefined;
+    return best;
   };
 
   return {
@@ -249,12 +260,12 @@ export function createShortcutRegistry({ isMac }: { isMac: boolean }): ShortcutR
 
       if (pending.length > 0) {
         const steps = [...pending, step];
-        const done = findLast((entry) => sameSteps(entry, steps) && allowed(entry, context, event));
+        const done = findBest((entry) => sameSteps(entry, steps) && allowed(entry, context, event));
         if (done) {
           clearPending();
           return fire(done);
         }
-        if (findLast((entry) => startsWith(entry, steps) && allowed(entry, context, event))) {
+        if (findBest((entry) => startsWith(entry, steps) && allowed(entry, context, event))) {
           pending = steps;
           clearTimeout(timer);
           timer = setTimeout(clearPending, SEQUENCE_TIMEOUT_MS);
@@ -264,9 +275,9 @@ export function createShortcutRegistry({ isMac }: { isMac: boolean }): ShortcutR
         clearPending();
       }
 
-      const single = findLast((entry) => sameSteps(entry, [step]) && allowed(entry, context, event));
+      const single = findBest((entry) => sameSteps(entry, [step]) && allowed(entry, context, event));
       if (single) return fire(single);
-      if (findLast((entry) => startsWith(entry, [step]) && allowed(entry, context, event))) {
+      if (findBest((entry) => startsWith(entry, [step]) && allowed(entry, context, event))) {
         pending = [step];
         timer = setTimeout(clearPending, SEQUENCE_TIMEOUT_MS);
         return true;

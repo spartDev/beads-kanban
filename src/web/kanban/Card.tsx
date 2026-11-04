@@ -1,10 +1,10 @@
 import { Bot, Clock, Lock } from 'lucide-react';
 import { Fragment, type ReactNode } from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import type { Issue } from '../data/types';
 import { statusLabel, typeMeta } from '../design/issue-palette';
 import { formatAge, formatDateTime } from '../lib/relativeTime';
-import { paths } from '../paths';
+import { parsePath, paths } from '../paths';
 import { PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
 import type { Lane } from './columns';
 import { shortTitle } from './epics';
@@ -34,6 +34,10 @@ export function Card({
 }) {
   const dated = lane === 'done' ? (issue.closedAt ?? issue.updatedAt) : issue.updatedAt;
   const age = formatAge(dated, now);
+  // Le ticket s'ouvre par-dessus ce tableau : son adresse garde les réglages du tableau (`?epic=`, `?done=`, `?col=`), et
+  // une carte ouverte pendant qu'un ticket l'est déjà remplace son entrée d'historique (« Retour » ferme le panneau).
+  const { pathname, search } = useLocation();
+  const panelOpen = parsePath(pathname).section === 'issue';
 
   return (
     <li
@@ -52,7 +56,8 @@ export function Card({
 
       <p className="wrap-anywhere text-ui text-ink">
         <Link
-          to={paths.issue(projectId, issue.id)}
+          to={{ pathname: paths.issue(projectId, issue.id), search }}
+          replace={panelOpen}
           data-card-link={issue.id}
           className="outline-none after:absolute after:inset-0 after:rounded-lg"
         >

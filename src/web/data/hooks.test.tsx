@@ -2,9 +2,9 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { issueDetail } from '../test/fixtures';
+import { chronology, issueDetail } from '../test/fixtures';
 import { ApiError } from './client';
-import { createQueryClient, issueQuery, queryKeys, shouldRetry, useIssue, useIssues } from './hooks';
+import { chronologyQuery, createQueryClient, issueQuery, queryKeys, shouldRetry, useChronology, useIssue, useIssues } from './hooks';
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -100,5 +100,53 @@ describe('issueQuery et useIssue (détail d’un ticket)', () => {
     expect(noIssue.result.current.fetchStatus).toBe('idle');
     expect(noProject.result.current.fetchStatus).toBe('idle');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('chronologyQuery et useChronology (Transitions d’un ticket)', () => {
+  it('rangent la chronologie sous le détail du ticket, donc sous la liste des tickets du Projet', () => {
+    const key = ['projects', 'bdesk', 'issues', 'bdesk-38k.6', 'chronology'];
+    expect(queryKeys.chronology('bdesk', 'bdesk-38k.6')).toEqual(key);
+    expect(chronologyQuery('bdesk', 'bdesk-38k.6').queryKey).toEqual(key);
+  });
+
+  it('suivent l’invalidation de la liste des tickets : un commit du Projet relit aussi la chronologie', async () => {
+    const client = createQueryClient();
+    client.setQueryData(queryKeys.chronology('bdesk', 'bdesk-38k.6'), { chronology: chronology() });
+
+    await client.invalidateQueries({ queryKey: queryKeys.issues('bdesk') });
+
+    expect(client.getQueryState(queryKeys.chronology('bdesk', 'bdesk-38k.6'))?.isInvalidated).toBe(true);
+  });
+
+  it('demandent GET /api/projects/:id/issues/:issueId/chronology, identifiants échappés, et rendent la chronologie', async () => {
+    const expected = chronology({ reopenings: 2 });
+    const fetchMock = vi.fn<(url: string) => Promise<Response>>(async () => jsonResponse({ chronology: expected }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useChronology('mon projet', 'a b/c'), { wrapper: wrapperFor(createQueryClient()) });
+
+    await waitFor(() => expect(result.current.data).toEqual(expected));
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/projects/mon%20projet/issues/a%20b%2Fc/chronology');
+  });
+
+  it('ne chargent rien tant que le Projet ou le ticket manque', () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ chronology: chronology() }));
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = wrapperFor(createQueryClient());
+
+    const noIssue = renderHook(() => useChronology('bdesk', undefined), { wrapper });
+    const noProject = renderHook(() => useChronology(undefined, 'bdesk-1'), { wrapper });
+
+    expect(noIssue.result.current.fetchStatus).toBe('idle');
+    expect(noProject.result.current.fetchStatus).toBe('idle');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('une requête qui affiche elle-même son 404', () => {
+  it('déclare la fiche et la chronologie d’un ticket : « Ticket introuvable » prend la place du bandeau d’actualisation', () => {
+    expect(issueQuery('bdesk', 'bdesk-38k.6').meta).toEqual({ handlesNotFound: true });
+    expect(chronologyQuery('bdesk', 'bdesk-38k.6').meta).toEqual({ handlesNotFound: true });
   });
 });

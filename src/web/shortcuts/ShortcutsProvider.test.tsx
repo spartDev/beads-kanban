@@ -283,3 +283,51 @@ describe('when : une condition d’application relue à chaque touche', () => {
     expect(lists.slice(rendered).every((list) => list === registered)).toBe(true);
   });
 });
+
+describe('priority : le raccourci d’une couche passe avant celui de la page, quel que soit l’ordre de montage', () => {
+  function Key({ id, run, priority }: { id: string; run: () => void; priority?: number }) {
+    useShortcut({ id, keys: 'escape', label: id, group: 'Test', run, priority });
+    return null;
+  }
+
+  it('lance le plus prioritaire même s’il est monté avant l’autre', async () => {
+    const user = userEvent.setup();
+    const layer = vi.fn();
+    const page = vi.fn();
+    render(
+      <ShortcutsProvider isMac>
+        <Key id="couche" run={layer} priority={1} />
+        <Key id="page" run={page} />
+      </ShortcutsProvider>,
+    );
+
+    await user.keyboard('{Escape}');
+
+    expect(layer).toHaveBeenCalledTimes(1);
+    expect(page).not.toHaveBeenCalled();
+  });
+
+  it('prend en compte une priorité qui change : le raccourci est ré-enregistré avec elle', async () => {
+    const user = userEvent.setup();
+    const first = vi.fn();
+    const second = vi.fn();
+    const view = render(
+      <ShortcutsProvider isMac>
+        <Key id="premier" run={first} />
+        <Key id="second" run={second} />
+      </ShortcutsProvider>,
+    );
+    await user.keyboard('{Escape}'); // à priorité égale, le dernier monté
+
+    view.rerender(
+      <ShortcutsProvider isMac>
+        <Key id="premier" run={first} priority={1} />
+        <Key id="second" run={second} />
+      </ShortcutsProvider>,
+    );
+    await user.keyboard('{Escape}');
+
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(first).toHaveBeenCalledTimes(1);
+  });
+});

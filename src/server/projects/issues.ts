@@ -1,4 +1,4 @@
-import type { Issue, IssueDetail } from '../../shared/api';
+import type { Issue, IssueDetail, IssueRef } from '../../shared/api';
 import type { CommentRecord, DependencyRecord, IssueRecord, IssueSummary } from '../dolt/reader';
 
 /**
@@ -38,14 +38,26 @@ export function buildIssues(summaries: IssueSummary[], dependencies: DependencyR
   }));
 }
 
+/**
+ * La fiche d'un ticket. `known` donne les tickets du Projet par identifiant (ceux de `buildIssues`) : c'est d'eux que
+ * `linked` tire les titres et les statuts des tickets que la fiche nomme.
+ */
 export function buildIssueDetail(
   issue: Issue,
   record: IssueRecord,
   dependencies: DependencyRecord[],
   labels: string[],
   comments: CommentRecord[],
+  known: ReadonlyMap<string, Issue>,
 ): IssueDetail {
   const byType = (a: { type: string }, b: { type: string }) => a.type.localeCompare(b.type);
+  const outgoing = dependencies.filter((d) => d.from === record.id);
+  const incoming = dependencies.filter((d) => d.to === record.id);
+  const linked: Record<string, IssueRef> = {};
+  for (const id of [issue.parentId, ...outgoing.map((d) => d.to), ...incoming.map((d) => d.from)]) {
+    const other = id === null || id === record.id ? undefined : known.get(id);
+    if (other) linked[other.id] = { id: other.id, title: other.title, type: other.type, status: other.status, priority: other.priority };
+  }
   return {
     ...issue,
     description: record.description,
@@ -54,14 +66,9 @@ export function buildIssueDetail(
     notes: record.notes,
     closeReason: record.closeReason,
     labels,
-    dependencies: dependencies
-      .filter((d) => d.from === record.id)
-      .map(({ to, type }) => ({ to, type }))
-      .sort((a, b) => byType(a, b) || a.to.localeCompare(b.to)),
-    dependents: dependencies
-      .filter((d) => d.to === record.id)
-      .map(({ from, type }) => ({ from, type }))
-      .sort((a, b) => byType(a, b) || a.from.localeCompare(b.from)),
+    dependencies: outgoing.map(({ to, type }) => ({ to, type })).sort((a, b) => byType(a, b) || a.to.localeCompare(b.to)),
+    dependents: incoming.map(({ from, type }) => ({ from, type })).sort((a, b) => byType(a, b) || a.from.localeCompare(b.from)),
+    linked,
     comments: comments.map((c) => ({ author: c.author, text: c.text, createdAt: c.createdAt.toISOString() })),
   };
 }

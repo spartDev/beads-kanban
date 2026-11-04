@@ -108,9 +108,14 @@ describe('buildIssueDetail', () => {
     const [issue] = buildIssues([summary('p-2')], []);
     if (!issue) throw new Error('ticket attendu');
 
-    const detail = buildIssueDetail(issue, record, dependencies, ['backend', 'urgent'], [
-      { author: 'tom', text: 'Un commentaire', createdAt: new Date('2026-10-20T12:12:28Z') },
-    ]);
+    const detail = buildIssueDetail(
+      issue,
+      record,
+      dependencies,
+      ['backend', 'urgent'],
+      [{ author: 'tom', text: 'Un commentaire', createdAt: new Date('2026-10-20T12:12:28Z') }],
+      new Map(),
+    );
 
     expect(detail).toMatchObject({
       id: 'p-2',
@@ -130,5 +135,50 @@ describe('buildIssueDetail', () => {
       { from: 'p-3', type: 'blocks' },
       { from: 'p-4', type: 'discovered-from' },
     ]);
+  });
+
+  describe('linked : les tickets que la fiche nomme', () => {
+    const summaries = [
+      summary('p-0', 'closed', { title: 'Socle', type: 'feature', priority: 1 }),
+      summary('p-1', 'open', { title: 'Epic des relations', type: 'epic', priority: 0 }),
+      summary('p-2'),
+      summary('p-3', 'in_progress', { title: 'Attend p-2' }),
+      summary('p-4', 'open', { title: 'Bug découvert', type: 'bug', priority: 3 }),
+      summary('p-8', 'open', { title: 'Sans rapport' }),
+    ];
+    const detailOf = (deps: DependencyRecord[]) => {
+      const all = buildIssues(summaries, deps);
+      const issue = all.find((i) => i.id === 'p-2');
+      if (!issue) throw new Error('ticket attendu');
+      return buildIssueDetail(issue, record, deps, [], [], new Map(all.map((i) => [i.id, i])));
+    };
+
+    it('donne, par identifiant, le titre, le type, le statut et la priorité du parent, des cibles et des sources des dépendances', () => {
+      const detail = detailOf([
+        dep('p-2', 'p-1', 'parent-child'),
+        dep('p-2', 'p-0'),
+        dep('p-3', 'p-2'),
+        dep('p-4', 'p-2', 'discovered-from'),
+        dep('p-8', 'p-1', 'parent-child'),
+      ]);
+
+      expect(detail.linked).toEqual({
+        'p-0': { id: 'p-0', title: 'Socle', type: 'feature', status: 'closed', priority: 1 },
+        'p-1': { id: 'p-1', title: 'Epic des relations', type: 'epic', status: 'open', priority: 0 },
+        'p-3': { id: 'p-3', title: 'Attend p-2', type: 'task', status: 'in_progress', priority: 2 },
+        'p-4': { id: 'p-4', title: 'Bug découvert', type: 'bug', status: 'open', priority: 3 },
+      });
+    });
+
+    it('ne nomme pas le ticket lui-même ni un ticket qui n’est pas dans le Projet', () => {
+      const detail = detailOf([dep('p-2', 'external:autre-projet:x-1'), dep('p-2', 'p-2', 'related')]);
+
+      expect(detail.linked).toEqual({});
+      expect(detail.dependencies).toHaveLength(2);
+    });
+
+    it('est vide pour un ticket sans relation', () => {
+      expect(detailOf([]).linked).toEqual({});
+    });
   });
 });
