@@ -50,6 +50,28 @@ export interface Issue {
   closedAt: string | null;
   /** Cibles des dépendances `blocks` non fermées ; toujours vide pour un ticket fermé. */
   blockedBy: string[];
+  /**
+   * Présent sur un ticket fermé qui est un Abandon : le doublon d'un autre ticket, ou un ticket qu'un autre a remplacé.
+   * Il est fermé sans être une Livraison. La règle est celle d'`analyzeFlow`, d'où viennent les métriques (`abandonOf`,
+   * src/domain/abandon.ts : une seule fonction pour les deux) : un lien `duplicates` ou `supersedes` actif posé sur le
+   * ticket lui-même, jamais le texte de sa raison de fermeture. Absent d'une Livraison, d'un ticket qui n'est pas fermé et
+   * d'une Epic.
+   */
+  abandon?: IssueAbandon;
+}
+
+/** Pourquoi un ticket fermé est un Abandon : il double un autre ticket (`duplicate`), ou un autre le remplace (`superseded`). */
+export type IssueAbandonCause = 'duplicate' | 'superseded';
+
+export interface IssueAbandon {
+  cause: IssueAbandonCause;
+  /**
+   * Le ticket dont celui-ci est le doublon, ou qui le remplace : la cible du lien d'Abandon, posé sur le ticket abandonné.
+   * Un ticket du Projet, ou une référence qui n'en est pas un (ticket d'un autre Projet, supprimé) : il n'y a alors rien à ouvrir.
+   * Quand un ticket porte plusieurs liens d'Abandon, c'est le premier posé qui compte (à instants égaux, la plus petite
+   * cible) : la cause que les métriques lui donnent aussi.
+   */
+  of: string;
 }
 
 /** `GET /api/projects/:projectId/issues` */

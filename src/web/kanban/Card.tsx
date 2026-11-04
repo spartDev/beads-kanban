@@ -5,7 +5,7 @@ import type { Issue } from '../data/types';
 import { statusLabel, typeMeta } from '../design/issue-palette';
 import { formatAge, formatDateTime } from '../lib/relativeTime';
 import { parsePath, paths } from '../paths';
-import { PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
+import { AbandonBadge, PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
 import type { Lane } from './columns';
 import { shortTitle } from './epics';
 
@@ -59,15 +59,16 @@ export function Card({
           to={{ pathname: paths.issue(projectId, issue.id), search }}
           replace={panelOpen}
           data-card-link={issue.id}
-          className="outline-none after:absolute after:inset-0 after:rounded-lg"
+          className="block min-h-6 outline-none after:absolute after:inset-0 after:rounded-lg"
         >
           {issue.title}
         </Link>
       </p>
 
-      {issue.status === 'hooked' || epic ? (
+      {issue.status === 'hooked' || epic || issue.abandon ? (
         // Les pastilles passent à la ligne plutôt que de serrer l'identifiant, qui ne doit jamais se couper en deux.
         <div className="flex min-w-0 flex-wrap items-center gap-1">
+          {issue.abandon ? <AbandonBadge abandon={issue.abandon} /> : null}
           {issue.status === 'hooked' ? <AgentBadge /> : null}
           {epic ? <EpicPill projectId={projectId} epic={epic} /> : null}
         </div>

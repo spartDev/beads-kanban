@@ -3,8 +3,7 @@
  * qui les sert, et la largeur des graphiques (jsdom ne mesure rien). Aucun test n'invente de forme : ce sont les types
  * du contrat (`src/shared/api.ts`) qui disent ce qu'une réponse contient.
  */
-import { configure, getConfig } from '@testing-library/react';
-import { afterAll, beforeAll, vi } from 'vitest';
+import { beforeAll, vi } from 'vitest';
 import type {
   MetricsBucket,
   MetricsCfdPoint,
@@ -18,6 +17,7 @@ import type {
   MetricsSlice,
   MetricsTrend,
 } from '../../shared/api';
+import { withAsyncTimeout } from '../test/asyncTimeout';
 import { httpFailure, stubApi, type HttpFailure } from '../test/render';
 
 export { httpFailure };
@@ -362,16 +362,13 @@ export function stubMetricsApi(
  * morceau chargé à la demande (`LazyMetricsView`) : dans un test, son premier affichage lit et évalue tout son module (visx, d3,
  * les graphiques), puis dessine les graphiques. On lit le module une fois, hors du délai d'un test ; et le premier affichage
  * d'un fichier, sous la charge de toute la suite en parallèle, dépasse la seconde que les `findBy…` accordent par défaut : le
- * délai est de 5 s pour ces fichiers, et rendu ensuite (il ne change rien aux tests qui réussissent).
+ * délai est de 5 s pour ces fichiers, et rendu ensuite (`withAsyncTimeout` ; il ne change rien aux tests qui réussissent).
  */
 export function warmUpMetricsPages(): void {
-  let previous = getConfig().asyncUtilTimeout;
+  withAsyncTimeout(5000);
   beforeAll(async () => {
-    previous = getConfig().asyncUtilTimeout;
-    configure({ asyncUtilTimeout: 5000 });
     await import('./MetricsView');
   });
-  afterAll(() => configure({ asyncUtilTimeout: previous }));
 }
 
 /** Les adresses de `/api/metrics` demandées jusqu'ici, dans l'ordre. */

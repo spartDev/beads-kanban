@@ -1,8 +1,10 @@
-import { Lock } from 'lucide-react';
+import { ArchiveX, Layers, Lock } from 'lucide-react';
 import { Fragment } from 'react';
+import { Link } from 'react-router';
 import type { IssueDetail } from '../data/types';
 import { statusLabel } from '../design/issue-palette';
-import { PriorityBadge, TypeBadge, TypeGlyph } from '../ui/IssueBadges';
+import { paths } from '../paths';
+import { AbandonBadge, PriorityBadge, TypeBadge, TypeGlyph } from '../ui/IssueBadges';
 import { IssueLink } from './IssueLink';
 
 /**
@@ -11,6 +13,9 @@ import { IssueLink } from './IssueLink';
  */
 export function IssueHeader({ issue, projectId }: { issue: IssueDetail; projectId: string }) {
   const parent = issue.parentId ? issue.linked[issue.parentId] : undefined;
+  // La page Epic (bdesk-38k.10) : celle de l'Epic elle-même, ou de l'Epic dont il est l'Enfant direct. Tout vient de la fiche
+  // (`linked` porte le type du parent) : le lien est là dès que le titre l'est, comme la ligne du Parent.
+  const epicId = issue.type === 'epic' ? issue.id : parent?.type === 'epic' ? parent.id : null;
 
   return (
     <div className="flex flex-col gap-2">
@@ -29,7 +34,11 @@ export function IssueHeader({ issue, projectId }: { issue: IssueDetail; projectI
         </div>
         <div className="flex items-center gap-1.5">
           <dt className="sr-only">Statut</dt>
-          <dd>{statusLabel(issue.status)}</dd>
+          <dd>
+            {statusLabel(issue.status)}
+            {/* Fermé sans être une Livraison : la phrase sous la liste dit pourquoi, la pastille n'a pas à le redire aux lecteurs d'écran. */}
+            {issue.abandon ? <AbandonBadge abandon={issue.abandon} withReason={false} className="ml-1.5 align-middle" /> : null}
+          </dd>
         </div>
         {issue.assignee ? (
           <div className="flex items-center gap-1.5">
@@ -60,7 +69,23 @@ export function IssueHeader({ issue, projectId }: { issue: IssueDetail; projectI
             </dd>
           </div>
         ) : null}
+        {epicId ? (
+          <div className="flex items-center gap-1.5">
+            <dt className="sr-only">Avancement</dt>
+            <dd>
+              <Link
+                to={paths.epics(projectId, epicId)}
+                title="Avancement, Enfants, Lead Time et prévision de l’Epic"
+                className="inline-flex items-center gap-1 rounded-md border border-line px-1.5 py-px text-xs text-ink-2 transition-colors hover:text-ink"
+              >
+                <Layers size={12} strokeWidth={2} aria-hidden="true" />
+                Page Epic
+              </Link>
+            </dd>
+          </div>
+        ) : null}
       </dl>
+      {issue.abandon ? <Abandoned abandon={issue.abandon} issue={issue} projectId={projectId} /> : null}
       <Blocking issue={issue} projectId={projectId} />
       {issue.labels.length > 0 ? (
         <ul aria-label="Étiquettes" className="flex flex-wrap gap-1.5">
@@ -72,6 +97,35 @@ export function IssueHeader({ issue, projectId }: { issue: IssueDetail; projectI
         </ul>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Un Abandon : de quel ticket il est le doublon, ou par lequel il est remplacé (avec un lien pour l'ouvrir, et son titre,
+ * que la fiche porte : `linked`). Une cible hors du Projet (référence externe, ticket supprimé) est nommée sans lien.
+ */
+function Abandoned({ abandon, issue, projectId }: { abandon: NonNullable<IssueDetail['abandon']>; issue: IssueDetail; projectId: string }) {
+  const target = issue.linked[abandon.of];
+  return (
+    <p className="flex items-start gap-1.5 text-ink-2">
+      <ArchiveX size={13} aria-hidden="true" className="mt-1 shrink-0 text-ink-3" />
+      <span className="min-w-0 wrap-anywhere">
+        {abandon.cause === 'duplicate' ? 'Doublon de' : 'Remplacé par'}{' '}
+        {target ? (
+          <>
+            <IssueLink projectId={projectId} id={abandon.of} className="font-mono text-xs text-ink hover:underline">
+              {abandon.of}
+            </IssueLink>{' '}
+            «&nbsp;{target.title}&nbsp;»
+          </>
+        ) : (
+          <>
+            <span className="font-mono text-xs text-ink">{abandon.of}</span> (hors du Projet)
+          </>
+        )}
+        . Fermé sans être une Livraison.
+      </span>
+    </p>
   );
 }
 

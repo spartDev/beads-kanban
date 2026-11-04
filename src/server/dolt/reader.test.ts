@@ -52,6 +52,24 @@ describe('toDependency', () => {
     ).toBe('b');
   });
 
+  it('date le lien du created_at de sa ligne, en UTC comme les autres dates Dolt', () => {
+    expect(toDependency({ issue_id: 'a', depends_on_issue_id: 'b', type: 'duplicates', created_at: '2026-10-05 09:01:02' })).toEqual({
+      from: 'a',
+      to: 'b',
+      type: 'duplicates',
+      createdAt: new Date('2026-10-05T09:01:02Z'),
+    });
+  });
+
+  it.each([
+    ['sans created_at (les lignes de l’historique n’en lisent pas)', { issue_id: 'a', depends_on_issue_id: 'b', type: 'blocks' }],
+    ['avec un created_at vide', { issue_id: 'a', depends_on_issue_id: 'b', type: 'blocks', created_at: '' }],
+    ['avec un created_at illisible', { issue_id: 'a', depends_on_issue_id: 'b', type: 'blocks', created_at: 'hier soir' }],
+    ['avec un created_at nul', { issue_id: 'a', depends_on_issue_id: 'b', type: 'blocks', created_at: null }],
+  ])('laisse le lien sans date pour une ligne %s, sans la rejeter : un lien mal daté ne rend pas le Projet illisible', (_name, row) => {
+    expect(toDependency(row)).toEqual({ from: 'a', to: 'b', type: 'blocks' });
+  });
+
   it.each([
     ['sans aucune cible', { issue_id: 'a', type: 'blocks' }],
     ['sans ticket source', { depends_on_id: 'b', type: 'blocks' }],

@@ -1,4 +1,7 @@
+import { type AbandonCause, abandonOf } from './abandon';
 import { type Interval, intersect, measure } from './intervals';
+
+export type { AbandonCause };
 
 export type TicketId = string;
 
@@ -33,8 +36,6 @@ export interface Transition {
   at: Date;
 }
 
-export type AbandonCause = 'duplicate' | 'superseded';
-
 export type Outcome =
   | { kind: 'delivered'; at: Date }
   | { kind: 'abandoned'; at: Date; cause: AbandonCause }
@@ -66,12 +67,6 @@ export interface TicketFlow {
 const WORK_STATUSES = new Set(['in_progress', 'hooked', 'blocked']);
 /** Statut de travail : en cours, rattaché à un agent, bloqué. Ce que le Cycle Time et le WIP comptent. */
 export const isWork = (status: string) => WORK_STATUSES.has(status);
-
-/** Liens posés par `bd duplicate` / `bd supersede` sur le ticket abandonné lui-même. */
-const ABANDON_LINKS = new Map<string, AbandonCause>([
-  ['duplicates', 'duplicate'],
-  ['supersedes', 'superseded'],
-]);
 
 /**
  * Le flux de chaque ticket : ses Transitions, son issue et ses durées (Lead Time, Cycle Time, temps bloqué, Attente de
@@ -145,13 +140,14 @@ function blockagePeriods(
   return [...periods(transitions, (s) => s === 'blocked'), ...byDependency];
 }
 
+/**
+ * L'issue d'un ticket fermé : une Epic n'est jamais une Livraison, un ticket que ses liens déclarent doublon ou remplacé est un
+ * Abandon (`abandonOf`, la règle que le kanban applique aussi), tout autre est une Livraison.
+ */
 function closedOutcome(ticket: TicketHistory, at: Date): Outcome {
   if (ticket.type === 'epic') return { kind: 'closed', at };
-  for (const d of ticket.dependencies) {
-    const cause = d.removedAt ? undefined : ABANDON_LINKS.get(d.type);
-    if (cause) return { kind: 'abandoned', at, cause };
-  }
-  return { kind: 'delivered', at };
+  const abandon = abandonOf(ticket.dependencies);
+  return abandon ? { kind: 'abandoned', at, cause: abandon.cause } : { kind: 'delivered', at };
 }
 
 /**

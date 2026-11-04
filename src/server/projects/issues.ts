@@ -1,17 +1,31 @@
+import { abandonOf, type AbandonLink } from '../../domain/abandon';
 import type { Issue, IssueDetail, IssueRef } from '../../shared/api';
 import type { CommentRecord, DependencyRecord, IssueRecord, IssueSummary } from '../dolt/reader';
+
+/** Un lien dont la ligne ne dit pas quand il a été posé passe avant tous les autres : ceux-là se départagent par leur cible. */
+const UNDATED = new Date(0);
 
 /**
  * Tickets du Projet au format de l'API. `blockedBy` liste les cibles des dépendances `blocks` qui ne sont pas
  * encore fermées ; un ticket fermé n'est plus bloqué. Une cible hors Projet (référence externe) ne peut pas
  * être évaluée : elle n'y figure pas.
+ *
+ * `abandon` marque un ticket fermé que ses liens déclarent doublon d'un autre ticket ou remplacé par lui, sauf une Epic, qui
+ * n'est jamais une Livraison et donc pas non plus un Abandon. C'est la règle du domaine (`abandonOf`), celle des métriques :
+ * ici sur les liens d'aujourd'hui, datés de leur pose (`createdAt`), quel que soit l'ordre des lignes. Un lien compte même
+ * quand sa cible n'est pas un ticket du Projet.
  */
 export function buildIssues(summaries: IssueSummary[], dependencies: DependencyRecord[]): Issue[] {
   const statusById = new Map(summaries.map((s) => [s.id, s.status]));
   const parents = new Map<string, string>();
   const blockers = new Map<string, string[]>();
+  const links = new Map<string, AbandonLink[]>();
 
-  for (const { from, to, type } of dependencies) {
+  for (const { from, to, type, createdAt } of dependencies) {
+    const link = { type, target: to, addedAt: createdAt ?? UNDATED };
+    const own = links.get(from);
+    if (own) own.push(link);
+    else links.set(from, [link]);
     const targetStatus = statusById.get(to);
     if (targetStatus === undefined) continue;
     if (type === 'parent-child') {
@@ -23,19 +37,23 @@ export function buildIssues(summaries: IssueSummary[], dependencies: DependencyR
     }
   }
 
-  return summaries.map((s) => ({
-    id: s.id,
-    title: s.title,
-    type: s.type,
-    status: s.status,
-    priority: s.priority,
-    assignee: s.assignee,
-    parentId: parents.get(s.id) ?? null,
-    createdAt: s.createdAt.toISOString(),
-    updatedAt: s.updatedAt.toISOString(),
-    closedAt: s.closedAt?.toISOString() ?? null,
-    blockedBy: s.status === 'closed' ? [] : (blockers.get(s.id) ?? []).sort(),
-  }));
+  return summaries.map((s) => {
+    const abandon = s.status === 'closed' && s.type !== 'epic' ? abandonOf(links.get(s.id) ?? []) : undefined;
+    return {
+      id: s.id,
+      title: s.title,
+      type: s.type,
+      status: s.status,
+      priority: s.priority,
+      assignee: s.assignee,
+      parentId: parents.get(s.id) ?? null,
+      createdAt: s.createdAt.toISOString(),
+      updatedAt: s.updatedAt.toISOString(),
+      closedAt: s.closedAt?.toISOString() ?? null,
+      blockedBy: s.status === 'closed' ? [] : (blockers.get(s.id) ?? []).sort(),
+      ...(abandon ? { abandon } : {}),
+    };
+  });
 }
 
 /**

@@ -211,7 +211,8 @@ describe('palette ⌘K', () => {
     await user.click(await within(dialog).findByRole('option', { name: /beads-desktop V1/ }));
 
     await waitFor(() => expect(pathname(router)).toBe('/p/bdesk/epics?epic=bdesk-38k'));
-    expect(await screen.findByText('Epic ouverte depuis la palette')).toBeTruthy();
+    // La page de l'Epic (bdesk-38k.10) : son titre est celui de l'Epic.
+    expect(await screen.findByRole('heading', { level: 1, name: /beads-desktop V1/ })).toBeTruthy();
   });
 
   it('change de Projet en gardant la section courante', async () => {

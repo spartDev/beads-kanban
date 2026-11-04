@@ -49,9 +49,9 @@ describe.skipIf(!hasBinary('dolt'))('lecteur Dolt sur une base dont le schéma a
     const dependencies = await readDependencies(db);
     expect(dependencies).toEqual(
       expect.arrayContaining([
-        { from: 't-2', to: 't-3', type: 'parent-child' },
-        { from: 't-3', to: 't-1', type: 'blocks' },
-        { from: 't-3', to: 't-4', type: 'blocks' },
+        { from: 't-2', to: 't-3', type: 'parent-child', createdAt: at('2026-10-02T10:00:00Z') },
+        { from: 't-3', to: 't-1', type: 'blocks', createdAt: at('2026-10-06T10:00:00Z') },
+        { from: 't-3', to: 't-4', type: 'blocks', createdAt: at('2026-10-08T10:00:00Z') },
       ]),
     );
     expect(dependencies).toHaveLength(3);

@@ -6,6 +6,8 @@
 export type {
   IgnoredFolder,
   Issue,
+  IssueAbandon,
+  IssueAbandonCause,
   IssueBlockage,
   IssueBlockagePhase,
   IssueBlockagePhaseKind,

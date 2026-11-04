@@ -1,4 +1,5 @@
 import {
+  ArchiveX,
   BookOpen,
   Bug,
   CircleDot,
@@ -11,6 +12,7 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react';
+import type { IssueAbandon } from '../data/types';
 import { isIssueType, priorityMeta, typeMeta, type IssueType } from '../design/issue-palette';
 import { cx } from '../lib/cx';
 
@@ -114,6 +116,43 @@ export function PriorityBadge({ priority, className }: { priority: number; class
       <PriorityGlyph priority={priority} />
       <span className="tnum">{meta.code}</span>
       <span className="sr-only">{meta.label}</span>
+    </span>
+  );
+}
+
+/** Le motif d'un Abandon, dit comme la fin d'une phrase : « doublon de bdesk-12 », « remplacé par bdesk-12 ». */
+export function abandonReason({ cause, of }: IssueAbandon): string {
+  return cause === 'duplicate' ? `doublon de ${of}` : `remplacé par ${of}`;
+}
+
+/**
+ * Pastille « Abandon » : le ticket est fermé parce qu'il double un autre ou qu'un autre le remplace. Rangé dans Terminé avec
+ * les Livraisons, il n'en est pas une : la pastille le dit sur la carte, dans le détail et dans l'avancement d'une Epic. Le
+ * motif et le ticket concerné se lisent à l'infobulle et aux lecteurs d'écran ; le détail du ticket les écrit en toutes lettres.
+ * Contour en pointillés et gris : ce n'est pas un travail livré, sans que ce soit une alerte.
+ */
+export function AbandonBadge({
+  abandon,
+  className,
+  withReason = true,
+}: {
+  abandon: IssueAbandon;
+  className?: string;
+  /** Dire le motif aux lecteurs d'écran (par défaut) ; faux quand une phrase voisine le dit déjà. */
+  withReason?: boolean;
+}) {
+  const reason = abandonReason(abandon);
+  return (
+    <span
+      title={`Abandon : ${reason}`}
+      className={cx(
+        'inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed border-line-strong bg-well px-1.5 text-micro font-medium text-ink-2',
+        className,
+      )}
+    >
+      <ArchiveX size={11} aria-hidden="true" />
+      Abandon
+      {withReason ? <span className="sr-only"> : {reason}</span> : null}
     </span>
   );
 }

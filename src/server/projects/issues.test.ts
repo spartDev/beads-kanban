@@ -18,6 +18,8 @@ function summary(id: string, status = 'open', extra: Partial<IssueSummary> = {})
 }
 
 const dep = (from: string, to: string, type = 'blocks'): DependencyRecord => ({ from, to, type });
+/** Un lien dont la ligne dit quand il a été posé (`created_at`). */
+const placed = (from: string, to: string, type: string, iso: string): DependencyRecord => ({ ...dep(from, to, type), createdAt: new Date(`${iso}Z`) });
 
 describe('buildIssues', () => {
   it('expose les dates en ISO 8601 UTC et reprend les champs du ticket', () => {
@@ -84,6 +86,95 @@ describe('buildIssues', () => {
     );
 
     expect(issues.map((i) => i.parentId)).toEqual([null, 'p-1', null]);
+  });
+});
+
+describe('buildIssues : l’Abandon d’un ticket fermé', () => {
+  /** Un ticket fermé, qui porte `links` (liens posés par `bd duplicate` / `bd supersede` : sur le ticket abandonné lui-même). */
+  const abandoned = (links: DependencyRecord[], extra: Partial<IssueSummary> = {}) =>
+    buildIssues([summary('p-1', 'closed', extra), summary('p-2'), summary('p-3')], links)[0];
+
+  it('est un doublon quand un lien duplicates actif part du ticket fermé', () => {
+    expect(abandoned([dep('p-1', 'p-2', 'duplicates')])?.abandon).toEqual({ cause: 'duplicate', of: 'p-2' });
+  });
+
+  it('est remplacé quand un lien supersedes actif part du ticket fermé', () => {
+    expect(abandoned([dep('p-1', 'p-2', 'supersedes')])?.abandon).toEqual({ cause: 'superseded', of: 'p-2' });
+  });
+
+  it('n’existe pas pour une Livraison : un ticket fermé sans lien d’Abandon n’a pas de propriété abandon', () => {
+    const [issue] = buildIssues([summary('p-1', 'closed')], []);
+
+    expect(issue).not.toHaveProperty('abandon');
+  });
+
+  it('ne tient pas compte des autres liens : bloque, parent, lié à, découvert à partir de', () => {
+    const links = ['blocks', 'parent-child', 'relates-to', 'related', 'discovered-from', 'waits-for'].map((type) => dep('p-1', 'p-2', type));
+
+    expect(abandoned(links)).not.toHaveProperty('abandon');
+  });
+
+  it('ne vient que du ticket abandonné : celui qu’un autre ticket duplique ou remplace est la cible, pas un Abandon', () => {
+    const [target] = buildIssues([summary('p-1', 'closed'), summary('p-2', 'closed')], [dep('p-2', 'p-1', 'duplicates'), dep('p-2', 'p-1', 'supersedes')]);
+
+    expect(target).not.toHaveProperty('abandon');
+  });
+
+  it('exige que le ticket soit fermé : un ticket rouvert garde son lien mais n’est plus un Abandon', () => {
+    for (const status of ['open', 'in_progress', 'hooked', 'blocked', 'deferred', 'pinned']) {
+      const [issue] = buildIssues([summary('p-1', status), summary('p-2')], [dep('p-1', 'p-2', 'duplicates')]);
+      expect(issue, status).not.toHaveProperty('abandon');
+    }
+  });
+
+  it('ne fait jamais d’une Epic un Abandon : elle n’est pas une Livraison, et ne le devient pas', () => {
+    expect(abandoned([dep('p-1', 'p-2', 'duplicates')], { type: 'epic' })).not.toHaveProperty('abandon');
+  });
+
+  it('reste un Abandon quand la cible n’est pas un ticket du Projet (référence externe, ticket supprimé) : la règle du domaine ne la vérifie pas', () => {
+    expect(abandoned([dep('p-1', 'external:autre:p-9', 'supersedes')])?.abandon).toEqual({ cause: 'superseded', of: 'external:autre:p-9' });
+    expect(abandoned([dep('p-1', 'p-disparu', 'duplicates')])?.abandon).toEqual({ cause: 'duplicate', of: 'p-disparu' });
+  });
+
+  // La règle est `abandonOf` (src/domain/abandon.ts) ; abandon-vs-flow.test.ts vérifie que les métriques disent la même chose.
+  it('retient le premier lien posé quand le ticket en porte plusieurs, quel que soit l’ordre des lignes : remplacé puis doublon est un remplacé', () => {
+    const superseded = placed('p-1', 'p-9', 'supersedes', '2026-10-05T09:01:00');
+    const duplicate = placed('p-1', 'p-2', 'duplicates', '2026-10-05T09:02:00');
+
+    expect(abandoned([superseded, duplicate])?.abandon).toEqual({ cause: 'superseded', of: 'p-9' });
+    expect(abandoned([duplicate, superseded])?.abandon).toEqual({ cause: 'superseded', of: 'p-9' });
+  });
+
+  it('retient le premier lien posé quand le ticket en porte plusieurs, quel que soit l’ordre des lignes : doublon puis remplacé est un doublon', () => {
+    const duplicate = placed('p-1', 'p-9', 'duplicates', '2026-10-05T09:01:00');
+    const superseded = placed('p-1', 'p-2', 'supersedes', '2026-10-05T09:02:00');
+
+    expect(abandoned([duplicate, superseded])?.abandon).toEqual({ cause: 'duplicate', of: 'p-9' });
+    expect(abandoned([superseded, duplicate])?.abandon).toEqual({ cause: 'duplicate', of: 'p-9' });
+  });
+
+  it('départage les liens posés au même instant, ou dont la ligne ne dit pas quand, par la plus petite cible : le même choix quel que soit l’ordre des lignes', () => {
+    const undated = [dep('p-1', 'p-9', 'supersedes'), dep('p-1', 'p-5', 'duplicates'), dep('p-1', 'p-2', 'duplicates'), dep('p-1', 'p-1.5', 'supersedes')];
+    const sameInstant = undated.map((link) => placed(link.from, link.to, link.type, '2026-10-05T09:00:00'));
+
+    for (const links of [undated, sameInstant]) {
+      for (const ordered of [links, [...links].reverse(), [links[2], links[0], links[3], links[1]] as DependencyRecord[]]) {
+        expect(abandoned(ordered)?.abandon, JSON.stringify(ordered.map((l) => l.to))).toEqual({ cause: 'superseded', of: 'p-1.5' });
+      }
+    }
+  });
+
+  it('lit le même Abandon dans la fiche que dans la liste, et nomme sa cible dans linked', () => {
+    const summaries = [summary('p-1', 'closed'), summary('p-2', 'open', { title: 'Le ticket de référence' })];
+    const links = [dep('p-1', 'p-2', 'duplicates')];
+    const all = buildIssues(summaries, links);
+    const issue = all[0];
+    if (!issue) throw new Error('ticket attendu');
+
+    const detail = buildIssueDetail(issue, { ...summary('p-1', 'closed'), description: '', design: '', acceptanceCriteria: '', notes: '', closeReason: '' }, links, [], [], new Map(all.map((i) => [i.id, i])));
+
+    expect(detail.abandon).toEqual({ cause: 'duplicate', of: 'p-2' });
+    expect(detail.linked['p-2']).toMatchObject({ id: 'p-2', title: 'Le ticket de référence' });
   });
 });
 

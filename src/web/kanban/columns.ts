@@ -1,4 +1,5 @@
 import { type Column, COLUMNS, columnFor } from '../../domain/columns';
+import { descendantIds } from '../../domain/epics';
 import type { Issue } from '../data/types';
 import { startOfLocalDay } from '../lib/localDay';
 
@@ -152,25 +153,6 @@ export interface Board {
 export interface BoardOptions extends PlacementOptions {
   /** Epic choisie : le tableau ne garde que ses Enfants, directs ou indirects. */
   epicId?: string | null;
-}
-
-/** Les Enfants d'un ticket, directs ou indirects (un Enfant d'Enfant, une Epic imbriquée) ; à l'abri des boucles. */
-export function descendantIds(rootId: string, issues: readonly Pick<Issue, 'id' | 'parentId'>[]): Set<string> {
-  const children = new Map<string, string[]>();
-  for (const { id, parentId } of issues) {
-    if (parentId !== null) children.set(parentId, [...(children.get(parentId) ?? []), id]);
-  }
-  const seen = new Set<string>([rootId]);
-  const descendants = new Set<string>();
-  for (const queue = [rootId]; queue.length > 0; ) {
-    for (const child of children.get(queue.shift() ?? '') ?? []) {
-      if (seen.has(child)) continue;
-      seen.add(child);
-      descendants.add(child);
-      queue.push(child);
-    }
-  }
-  return descendants;
 }
 
 /** Le tableau d'un Projet : chaque carte dans sa colonne, chaque colonne triée. */

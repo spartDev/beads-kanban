@@ -69,7 +69,9 @@ describe('groupRelations', () => {
     expect(groups.map((group) => [group.id, group.items.map((item) => item.id)])).toEqual([['related', ['a-1', 'a-2', 'a-3']]]);
   });
 
-  it('nomme les Abandons : doublon de, doublons, remplace, remplacé par', () => {
+  // Le lien d'Abandon est posé sur le ticket abandonné, et sa cible est celui qui le remplace (voir `AbandonCause`, src/domain/flow.ts) :
+  // le ticket qui porte un lien `supersedes` est « remplacé par » sa cible, celui qui en reçoit un « remplace » sa source.
+  it('nomme les Abandons : doublon de, doublons, remplacé par (sa cible), remplace (sa source)', () => {
     const groups = groupRelations({
       dependencies: [
         { to: 'a-1', type: 'duplicates' },
@@ -85,8 +87,8 @@ describe('groupRelations', () => {
     expect(groups.map((group) => [group.label, group.items.map((item) => item.id)])).toEqual([
       ['Doublon de', ['a-1']],
       ['A pour doublons', ['a-3']],
-      ['Remplace', ['a-2']],
-      ['Remplacé par', ['a-4']],
+      ['Remplacé par', ['a-2']],
+      ['Remplace', ['a-4']],
     ]);
   });
 

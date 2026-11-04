@@ -28,19 +28,26 @@ _Avoid_: statut blocked, bloqué (seul)
 Un ticket ouvert, jamais démarré ou revenu à ouvert, en Blocage.
 
 **Epic**:
-Un ticket de type epic qui regroupe des Enfants. Son avancement se mesure en nombre de Livraisons parmi ses Enfants ; elle n'est jamais elle-même une Livraison.
+Un ticket de type epic qui regroupe des Enfants. Son Avancement se mesure en nombre de Livraisons parmi ses Enfants à livrer ; elle n'est jamais elle-même une Livraison.
 _Avoid_: projet, initiative
 
 **Enfant**:
-Un ticket rattaché à un parent par un lien parent-enfant.
+Un ticket rattaché à un parent par un lien parent-enfant. Ceux d'une Epic le sont à tous les niveaux : l'Enfant d'un Enfant en fait partie.
 _Avoid_: sous-tâche
+
+**Enfant à livrer**:
+Un Enfant d'une Epic qu'il reste à livrer, ou qui l'a été : tous ses Enfants, sauf ses Epics imbriquées (elles regroupent des Enfants sans être livrées) et ses Abandons (fermés sans être livrés, ils n'ont plus rien à livrer).
+
+**Avancement**:
+Le nombre de Livraisons parmi les Enfants à livrer d'une Epic. Les Abandons n'y comptent ni comme livrés ni comme à livrer, pour qu'une Epic dont il ne reste rien à livrer atteigne 100 %.
+_Avoid_: progression
 
 **Livraison**:
 Un ticket (hors epic) fermé pour cause de travail terminé — ni doublon, ni remplacé. Un ticket compte pour une seule Livraison, datée de sa dernière clôture ; une Réouverture annule rétroactivement la Livraison précédente.
 _Avoid_: ticket fermé, done
 
 **Abandon**:
-Un ticket fermé parce qu'il est le doublon d'un autre ou qu'un autre ticket l'a remplacé. Un « won't fix » n'est pas un Abandon.
+Un ticket fermé parce qu'il est le doublon d'un autre ou qu'un autre ticket l'a remplacé. Il se reconnaît à un lien « doublon de » ou « remplacé par » posé sur lui-même, vers l'autre ticket, jamais au texte de sa raison de fermeture. S'il porte les deux, sa cause est celle du lien posé le premier. Un « won't fix » n'est pas un Abandon.
 _Avoid_: annulé, rejeté
 
 **Durée écoulée**:
@@ -62,6 +69,13 @@ _Avoid_: temps de dev, durée
 **Débit**:
 Nombre de Livraisons sur une période (équivalent de la Deployment Frequency DORA).
 _Avoid_: vélocité, throughput
+
+**Débit récent**:
+Le Débit d'une Epic sur ses 28 derniers jours, ou depuis sa création si elle est plus récente, sans jamais descendre sous 7 jours : sur une Epic de moins de 7 jours, la mesure remonte donc avant sa création. Ce sont les Livraisons de ses Enfants, sur une Durée écoulée. Sous 4 Livraisons, il n'y a pas assez de Débit pour en tirer un rythme.
+
+**Prévision de fin**:
+Fourchette de Durée écoulée que mettraient les Enfants restants d'une Epic à être livrés, au rythme de son Débit récent. Elle est d'autant plus large que les Livraisons sont peu nombreuses (plus ou moins la racine de leur nombre) : une prévision ne prétend pas à plus de précision que son rythme n'en a, et au-delà d'un an elle se contente de le dire, sans date. Elle suppose le rythme constant et aucun Enfant ajouté, n'est pas un engagement, et est masquée sans assez de Débit récent, pour une Epic fermée ou dont tout est livré.
+_Avoid_: date de fin, échéance
 
 **Bug d'origine**:
 Un ticket de type bug, créé à ou après la date d'une Livraison à laquelle il est relié par un lien « découvert à partir de » actif. Le ticket relié est autre que lui-même : un bug n'est jamais son propre Bug d'origine. Un bug créé avant cette Livraison, ou relié à un ticket qui n'est pas une Livraison (ouvert, Abandon), a été trouvé en cours de travail : il n'est l'origine d'aucun échec. Un bug relié à une Epic n'est l'origine d'aucun échec et n'est pas compté comme relié. Un bug en Abandon n'est jamais un Bug d'origine : il décrit le même défaut qu'un autre bug. Il transmet ses liens au bug qui le remplace ; pour ces liens, la date qui compte est celle de sa propre création, car c'est lui qui a constaté le défaut.
@@ -134,7 +148,8 @@ Partie d'un Blocage où le ticket reste dans la même situation : _avant le prem
 
 - Un **Projet** contient zéro ou plusieurs tickets
 - Les durées (**Lead Time**, **Cycle Time**, **Temps de rétablissement**, **Attente de dépendance**, **Attente en Prêt**, âge d'un ticket en cours) sont des **Durées écoulées** ; l'âge d'un **Prêt**, lui, est un **Âge calendaire**
-- Une **Epic** a des **Enfants** ; son avancement = **Livraisons** parmi ses Enfants
+- Une **Epic** a des **Enfants** ; son **Avancement** = **Livraisons** parmi ses **Enfants à livrer**
+- La **Prévision de fin** d'une **Epic** se tire de son **Débit récent**
 - Un **Bug d'origine** est relié à au moins une **Livraison**, qu'il met chacune en échec ; une **Livraison** peut avoir plusieurs Bugs d'origine
 - La **Vue globale** agrège tous les **Projets** suivis ; le kanban reste centré sur un **Projet**
 - Un **Blocage** se découpe en **phases** : seule celle en cours de travail compte dans le **Cycle Time** ; celle d'avant le premier démarrage est l'**Attente de dépendance**

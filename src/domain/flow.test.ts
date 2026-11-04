@@ -103,6 +103,17 @@ describe('analyzeFlow', () => {
     it('garde en Livraison un ticket qui n’a qu’un lien informatif', () => {
       expect(closedWith('relates-to')?.outcome.kind).toBe('delivered');
     });
+
+    // La règle est celle d'`abandonOf` (src/domain/abandon.ts), que le kanban applique aussi : ici, ce qu'en fait le flux.
+    it('retient la cause du premier lien posé quand le ticket porte un remplacement et un doublon, quelle que soit leur place dans la liste', () => {
+      const superseded = { type: 'supersedes', target: 'b', addedAt: at('2026-10-02T09:01') };
+      const duplicate = { type: 'duplicates', target: 'a', addedAt: at('2026-10-02T09:02') };
+      const closedWithLinks = (dependencies: TicketHistory['dependencies']) =>
+        analyzeFlow([ticket('old', [['open', '2026-10-01T09:00'], ['closed', '2026-10-02T09:00']], { dependencies })]).get('old')?.outcome;
+
+      expect(closedWithLinks([superseded, duplicate])).toMatchObject({ kind: 'abandoned', cause: 'superseded' });
+      expect(closedWithLinks([duplicate, superseded])).toMatchObject({ kind: 'abandoned', cause: 'superseded' });
+    });
   });
 
   describe('Cycle Time', () => {

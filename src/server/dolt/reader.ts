@@ -27,6 +27,12 @@ export interface DependencyRecord {
   from: string;
   to: string;
   type: string;
+  /**
+   * Quand le lien a été posé : le `created_at` de sa ligne, que `bd` écrit à la pose. La table ne rend pas ses lignes dans l'ordre
+   * de pose ; c'est cette date qui dit quel lien est le premier (l'Abandon d'un ticket qui en porte plusieurs, `abandonOf`).
+   * Absente quand la ligne ne la donne pas.
+   */
+  createdAt?: Date;
 }
 
 export interface CommentRecord {
@@ -45,7 +51,8 @@ export const TARGET_COLUMNS = ['depends_on_issue_id', 'depends_on_id', 'depends_
 export function toDependency(row: Row): DependencyRecord | null {
   const from = asText(row.issue_id);
   const to = TARGET_COLUMNS.map((column) => asText(row[column])).find((value) => value !== '');
-  return from && to ? { from, to, type: asText(row.type) } : null;
+  const createdAt = placedAt(row.created_at);
+  return from && to ? { from, to, type: asText(row.type), ...(createdAt ? { createdAt } : {}) } : null;
 }
 
 /** Préfixe des tickets (`issue_prefix` dans la table `config`), ou null s'il n'y est pas. */
@@ -130,4 +137,19 @@ function toSummary(row: Row): IssueSummary {
 /** Valeur texte d'une colonne ; NULL (absent de la sortie JSON) donne une chaîne vide. */
 export function asText(value: unknown): string {
   return typeof value === 'string' ? value : '';
+}
+
+/**
+ * La date de pose d'un lien (`created_at` de sa ligne) ; rien si la ligne n'en dit pas ou n'en dit qu'une illisible : un lien
+ * mal daté ne rend pas le Projet illisible. Les lignes de l'historique n'ont pas cette colonne, et il y en a des centaines de
+ * milliers : sans date, on rend aussitôt, sans rien lire ni lever d'exception.
+ */
+function placedAt(value: unknown): Date | undefined {
+  if (typeof value !== 'string' || value === '') return undefined;
+  try {
+    return parseDoltDate(value);
+  } catch (err) {
+    if (err instanceof DoltQueryError) return undefined;
+    throw err;
+  }
 }

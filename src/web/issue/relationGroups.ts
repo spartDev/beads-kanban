@@ -29,8 +29,9 @@ const KINDS: readonly { id: string; label: string; direction: 'to' | 'from'; typ
   { id: 'origin-of', label: 'À l’origine de', direction: 'from', types: ['discovered-from'] },
   { id: 'duplicate-of', label: 'Doublon de', direction: 'to', types: ['duplicates'] },
   { id: 'duplicates', label: 'A pour doublons', direction: 'from', types: ['duplicates'] },
-  { id: 'supersedes', label: 'Remplace', direction: 'to', types: ['supersedes'] },
-  { id: 'superseded-by', label: 'Remplacé par', direction: 'from', types: ['supersedes'] },
+  // Posé sur le ticket abandonné, le lien `supersedes` a pour cible celui qui le remplace : sortant, le ticket est remplacé par sa cible.
+  { id: 'superseded-by', label: 'Remplacé par', direction: 'to', types: ['supersedes'] },
+  { id: 'supersedes', label: 'Remplace', direction: 'from', types: ['supersedes'] },
 ];
 
 const KNOWN_TYPES = new Set(KINDS.flatMap((kind) => kind.types));

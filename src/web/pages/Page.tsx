@@ -3,16 +3,19 @@ import { cx } from '../lib/cx';
 
 /**
  * Cadre commun des pages : titre, phrase d'explication, contenu. Largeur de lecture limitée, sauf `wide` : le contenu
- * prend toute la largeur du panneau, avec des marges et des écarts plus serrés (le kanban).
+ * prend toute la largeur du panneau, avec des marges et des écarts plus serrés (le kanban). `eyebrow` : un lien de retour
+ * ou un fil d'Ariane, au-dessus du titre.
  */
 export function Page({
   title,
   description,
+  eyebrow,
   children,
   wide = false,
 }: {
   title: ReactNode;
   description?: ReactNode;
+  eyebrow?: ReactNode;
   children?: ReactNode;
   wide?: boolean;
 }) {
@@ -24,6 +27,7 @@ export function Page({
       )}
     >
       <header className="min-w-0">
+        {eyebrow ? <div className="mb-2 text-ui">{eyebrow}</div> : null}
         {/* wrap-anywhere : un id, un chemin ou un nom de fichier sans espace passe à la ligne au lieu d'être rogné. */}
         <h1 className="wrap-anywhere text-xl font-semibold tracking-[-0.02em] text-ink md:text-[22px] md:leading-7">{title}</h1>
         {description ? <p className="mt-1.5 max-w-[62ch] wrap-anywhere text-[14px] leading-6 text-ink-2">{description}</p> : null}

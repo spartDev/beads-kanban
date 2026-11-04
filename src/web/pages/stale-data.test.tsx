@@ -94,11 +94,11 @@ describe('un rafraîchissement des tickets en échec', () => {
   it('garde le décompte de la page Epics', async () => {
     const fetchMock = stubDefaultApi();
     const app = renderApp('/p/bdesk/epics');
-    expect(await screen.findByText(/Epics regroupant/)).toBeTruthy();
+    expect(await screen.findByText(/regroupant/)).toBeTruthy();
 
     await refreshFails(app, fetchMock, queryKeys.issues('bdesk'), '/api/projects/bdesk/issues');
 
-    expect(screen.getByText(/Epics regroupant/)).toBeTruthy();
+    expect(screen.getByText(/regroupant/)).toBeTruthy();
     expect(screen.queryByText('Impossible de charger les tickets')).toBeNull();
   });
 
