@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { analyzeChronologies, chronologyFromDates } from './chronology';
 import { analyzeFlow, isWork, type DependencyHistory, type TicketHistory } from './flow';
 import { intersect, measure, type Interval } from './intervals';
+import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing';
 
 const at = (iso: string) => new Date(`${iso}Z`);
 const iso = (value: string) => at(value).toISOString();
@@ -134,6 +135,35 @@ describe('Transitions', () => {
       iso('2026-10-02T09:00'),
       iso('2026-10-02T09:00'),
     ]);
+  });
+
+  it('date la Livraison et mesure le Lead Time comme la dernière Transition l’affiche, quand l’horloge de la clôture a reculé', () => {
+    const chronology = chronologyOf([
+      ticket('t-1', [
+        ['open', '2026-10-01T09:00'],
+        ['in_progress', '2026-10-02T09:00'],
+        ['closed', '2026-10-01T20:00'], // datée 13 h avant le démarrage
+      ]),
+    ]);
+
+    expect(chronology).toMatchObject({ leadTime: DAY, cycleTime: 0, outcome: { kind: 'delivered', at: iso('2026-10-02T09:00') } });
+  });
+
+  it('tient le Cycle Time dans le Lead Time, et les temps passés dans les statuts font le Lead Time, quand l’horloge d’un commit a reculé', () => {
+    const chronology = chronologyOf([
+      ticket('t-1', [
+        ['open', '2026-10-01T10:00'],
+        ['in_progress', '2026-10-01T05:00'], // l'horloge de ce commit est en retard de 5 h sur le précédent
+        ['closed', '2026-10-01T20:00'],
+      ]),
+    ]);
+
+    const spent = chronology?.transitions.reduce((total, t) => total + (t.duration ?? 0), 0);
+    expect({ leadTime: chronology?.leadTime, cycleTime: chronology?.cycleTime, spent }).toEqual({
+      leadTime: 10 * HOUR,
+      cycleTime: 10 * HOUR,
+      spent: 10 * HOUR,
+    });
   });
 
   it('ne connaît pas un ticket absent de l’historique, ni un ticket sans aucun statut', () => {
@@ -542,6 +572,81 @@ describe('Blocages', () => {
       // Le tirage au sort doit réellement exercer les cas : des Blocages, dont certains sur plusieurs phases.
       expect(blockagesChecked).toBeGreaterThan(100);
       expect(mixed).toBeGreaterThan(10);
+    });
+
+    it('reste d’accord avec les métriques sur une dépendance posée par un commit en retard, après le démarrage : la date de son commit la place avant', () => {
+      // c1 10:00 `t` est créé · c2 14:00 `t` est en cours · c3 « 11:00 » (horloge en retard) `t` est bloqué par `b` · c4 20:00 `t` est fermé.
+      // La date d'une dépendance est celle de son commit, que la borne des Transitions de `t` ne déplace pas (ADR 0001) : le Blocage
+      // commence à 11:00 et compte une phase d'Attente de dépendance, que la lignée ne confirme pas. Chronologie et métriques la disent pareil.
+      const tickets = [
+        ticket('b', [['open', '2026-10-01T09:00']]),
+        ticket(
+          't',
+          [
+            ['open', '2026-10-01T10:00'],
+            ['in_progress', '2026-10-01T14:00'],
+            ['closed', '2026-10-01T20:00'],
+          ],
+          { dependencies: [blocks('b', '2026-10-01T11:00')] },
+        ),
+      ];
+
+      const chronology = chronologyOf(tickets, 't');
+
+      expect(chronology?.blockages.map((blockage) => blockage.phases)).toEqual([
+        [
+          { kind: 'dependencyWait', from: iso('2026-10-01T11:00'), to: iso('2026-10-01T14:00') },
+          { kind: 'work', from: iso('2026-10-01T14:00'), to: iso('2026-10-01T20:00') },
+        ],
+      ]);
+      expect(chronology).toMatchObject({ blockedTime: 6 * HOUR, leadTime: 10 * HOUR, cycleTime: 6 * HOUR });
+      expect(analyzeFlow(tickets).get('t')?.dependencyWait).toBe(3 * HOUR);
+    });
+
+    it.each(CLOCKS)('retombe aussi sur les durées des métriques quand l’horloge d’un commit recule : temps passés, Cycle Time ≤ Lead Time, phases (%s)', (_, sharedClock) => {
+      // Comme ci-dessus, mais un instantané sur quatre est daté avant le précédent (horloge d'un commit en retard de 1 à 20 h).
+      const random = seededRandom(20_261_107);
+      const duration = (from: string, to: string | null) => (to === null ? 0 : Date.parse(to) - Date.parse(from));
+      let checked = 0;
+      let clockBack = 0;
+      let blockagesChecked = 0;
+      for (let round = 0; round < 400; round++) {
+        const tickets = randomHistories(random, { tickets: 4, clockBack: 25, sharedClock });
+        const flows = analyzeFlow(tickets);
+        const chronologies = analyzeChronologies(tickets);
+        for (const history of tickets) {
+          const flow = flows.get(history.id);
+          const chronology = chronologies.of(history.id);
+          const where = `${round}/${history.id}`;
+          if (!flow || !chronology) continue;
+          // Le temps passé dans un statut n'est jamais négatif, et les Transitions se suivent : leur somme est la vie du ticket.
+          const spent = chronology.transitions.map((transition) => transition.duration ?? 0);
+          for (const [index, time] of spent.entries()) expect(time, `${where} : Transition ${index}`).toBeGreaterThanOrEqual(0);
+          const first = Date.parse(chronology.transitions[0]?.at ?? '');
+          const last = Date.parse(chronology.transitions.at(-1)?.at ?? '');
+          expect(spent.reduce((total, time) => total + time, 0), `${where} : somme des temps passés`).toBe(last - first);
+          if (chronology.leadTime === null) continue; // pas fermé : ni durée de métrique, ni Blocage chiffré
+          checked++;
+          if (clockWentBack(history.statusSnapshots)) clockBack++;
+          expect(chronology.leadTime, `${where} : Lead Time`).toBe(last - first);
+          expect(chronology.cycleTime ?? 0, `${where} : Cycle Time ≤ Lead Time`).toBeLessThanOrEqual(chronology.leadTime);
+          expect(chronology.blockedTime ?? 0, `${where} : temps bloqué ≤ Cycle Time`).toBeLessThanOrEqual(chronology.cycleTime ?? 0);
+          const total = (kind: string) =>
+            chronology.blockages.flatMap((blockage) => blockage.phases).filter((phase) => phase.kind === kind).reduce((sum, phase) => sum + duration(phase.from, phase.to), 0);
+          expect(total('work'), `${where} : temps bloqué`).toBe(flow.blockedTime);
+          expect(total('dependencyWait'), `${where} : Attente de dépendance`).toBe(flow.dependencyWait);
+          for (const blockage of chronology.blockages) {
+            blockagesChecked++;
+            expect(duration(blockage.from, blockage.to), `${where} : Blocage`).toBeGreaterThanOrEqual(0);
+            expect(blockage.phases[0]?.from).toBe(blockage.from);
+            expect(blockage.phases.at(-1)?.to).toBe(blockage.to);
+            blockage.phases.forEach((phase, index) => expect(phase.from).toBe(index === 0 ? blockage.from : blockage.phases[index - 1]?.to));
+          }
+        }
+      }
+      expect(clockBack).toBeGreaterThan(300);
+      expect(blockagesChecked).toBeGreaterThan(300);
+      expect(checked).toBeGreaterThan(1000);
     });
   });
 

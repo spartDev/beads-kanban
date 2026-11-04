@@ -32,15 +32,14 @@ export interface TicketTimeline {
 const END = Number.POSITIVE_INFINITY;
 
 /**
- * Les Transitions en statuts datés, dont les dates ne reculent jamais : quand l'horloge d'un commit a reculé, le
- * changement a lieu au même instant que le précédent, et le dernier gagne.
+ * Les Transitions d'`analyzeFlow` en statuts datés (ms). Leurs dates ne reculent jamais : quand l'horloge d'un commit a
+ * reculé, `analyzeFlow` a daté son changement au même instant que le précédent (`TicketFlow.transitions`), et le dernier
+ * gagne. La règle n'est écrite qu'une fois, dans `analyzeFlow` : le CFD, le WIP, la chronologie et les métriques lisent
+ * les mêmes Transitions, celles du Lead Time et du Cycle Time. Les dates des dépendances, elles, restent celles de leurs
+ * commits (voir `analyzeFlow`).
  */
 export function stepsOf(transitions: Transition[]): Step[] {
-  let previous = Number.NEGATIVE_INFINITY;
-  return transitions.map(({ status, at }) => {
-    previous = Math.max(previous, at.getTime());
-    return { status, at: previous };
-  });
+  return transitions.map(({ status, at }) => ({ status, at: at.getTime() }));
 }
 
 /**

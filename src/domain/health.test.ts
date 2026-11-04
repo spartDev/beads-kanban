@@ -4,6 +4,7 @@ import type { PeriodSpec } from './calendar';
 import type { DependencyHistory } from './flow';
 import { computeHealth, STAGNANT_READY_AFTER } from './health';
 import { analyzeProject, type MetricsTicket } from './metrics';
+import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing';
 
 /**
  * La santé du flux : Efficacité du flux, Taux de Réouverture, Taux d'abandon, décomposition du Lead Time (avec l'Attente
@@ -629,7 +630,8 @@ describe('Décomposition du Lead Time, avec l’Attente de dépendance', () => {
   });
 
   it('garde les cinq parts positives et leur somme égale au Lead Time, même quand une horloge a reculé', () => {
-    // Un commit daté avant la création : le Cycle Time brut dépasserait le Lead Time. Aucune part n'est négative, la somme tient.
+    // Démarré à 09:00 d'après l'horloge d'un commit, une heure avant la création (10:00) : le démarrage tombe à la création, et le
+    // Cycle Time (1 h) ne dépasse pas le Lead Time (1 h). Il aurait compté 2 h (09:00 → 11:00) sans cela.
     const backwards = ticket('b', [
       ['open', '2026-10-19T10:00'],
       ['in_progress', '2026-10-19T09:00'],
@@ -638,13 +640,14 @@ describe('Décomposition du Lead Time, avec l’Attente de dépendance', () => {
 
     const { leadTimeBreakdown: parts } = healthOf([backwards]);
 
-    expect(parts.total).toBe(1 * HOUR);
+    expect(parts).toMatchObject({ total: 1 * HOUR, dependencyWait: 0, readyWait: 0, work: 1 * HOUR, blocked: 0, otherWait: 0 });
     for (const part of [parts.dependencyWait, parts.readyWait, parts.work, parts.blocked, parts.otherWait]) expect(part).toBeGreaterThanOrEqual(0);
     expect(parts.dependencyWait + parts.readyWait + parts.work + parts.blocked + parts.otherWait).toBe(parts.total);
   });
 
-  it('borne l’Attente de dépendance par le Lead Time quand l’horloge d’un commit a reculé : elle ne peut pas durer plus que le ticket', () => {
-    // Fermé à 11:00 (Lead Time 1 h) mais démarré, dit l'historique, à 13:00 : 3 h de Backlog bloqué avant ce « premier démarrage ».
+  it('garde l’Attente de dépendance dans le Lead Time quand l’horloge d’un commit a reculé : la clôture datée avant le démarrage tombe au démarrage', () => {
+    // `t` attend `b` de 10:00 à 13:00, son démarrage : 3 h de Backlog bloqué avant ce premier démarrage. Sa clôture est datée de 11:00,
+    // avant lui : l'horloge de son commit a reculé. Elle tombe à 13:00, et le Lead Time (3 h) est tout entier cette attente.
     const blocker = closed('b', '2026-10-19T09:00', '2026-10-19T14:00');
     const clockBack = ticket(
       't',
@@ -658,12 +661,13 @@ describe('Décomposition du Lead Time, avec l’Attente de dépendance', () => {
 
     const { leadTimeBreakdown: parts } = healthOf([blocker, clockBack]);
 
-    expect(parts).toMatchObject({ deliveries: 2, total: 6 * HOUR, dependencyWait: 1 * HOUR, readyWait: 5 * HOUR, work: 0, blocked: 0, otherWait: 0, waited: 1 });
+    // Avec `b` (5 h en Prêt, jamais bloqué) : 8 h de Lead Time cumulé.
+    expect(parts).toMatchObject({ deliveries: 2, total: 8 * HOUR, dependencyWait: 3 * HOUR, readyWait: 5 * HOUR, work: 0, blocked: 0, otherWait: 0, waited: 1 });
     expect(parts.dependencyWait + parts.readyWait + parts.work + parts.blocked + parts.otherWait).toBe(parts.total);
   });
 
-  it('borne l’Attente en Prêt par ce qui reste du Lead Time : jamais plus que le ticket n’a duré, même si les horloges se contredisent', () => {
-    // Prêt de 08:00 à 20:00 d'après la chronologie, mais fermé à 10:00 d'après l'horloge d'un commit en arrière : seul ce qui est avant la clôture compte.
+  it('date la Réouverture dont l’horloge a reculé au plus tôt de la clôture précédente : le temps fermé dure 0, et le Prêt remplit le Lead Time', () => {
+    // Ouvert 08:00, fermé 10:00, rouvert à 07:00 d'après l'horloge d'un commit en arrière (10:00), fermé 20:00 : Prêt de 08:00 à 20:00.
     const clockBack = ticket('c', [
       ['open', '2026-10-19T08:00'],
       ['closed', '2026-10-19T10:00'],
@@ -673,15 +677,13 @@ describe('Décomposition du Lead Time, avec l’Attente de dépendance', () => {
 
     const { leadTimeBreakdown: parts } = healthOf([clockBack]);
 
-    expect(parts.total).toBe(12 * HOUR);
-    expect(parts.readyWait).toBeLessThanOrEqual(parts.total);
+    expect(parts).toMatchObject({ total: 12 * HOUR, readyWait: 12 * HOUR, otherWait: 0 });
     expect(parts.dependencyWait + parts.readyWait + parts.work + parts.blocked + parts.otherWait).toBe(parts.total);
   });
 
-  it('borne l’Attente en Prêt par ce qui reste du Lead Time quand le Cycle Time brut, d’une horloge qui a reculé, en prend déjà une part', () => {
-    // Statuts : ouvert 08:00, en cours 07:00 (l'horloge a reculé), ouvert 09:00, fermé 12:00. Lead Time 4 h. L'historique brut compte 2 h de travail
-    // (07:00 → 09:00) ; la chronologie, dont les dates ne reculent jamais, 1 h de travail (08:00 → 09:00) puis 3 h Prêt : 2 h + 3 h > 4 h.
-    // L'Attente en Prêt ne prend que ce qui reste, 2 h, et l'autre attente n'est pas négative.
+  it('date au plus tôt de la Transition précédente le démarrage dont l’horloge a reculé : le travail ne commence pas avant la création', () => {
+    // Statuts : ouvert 08:00, en cours 07:00 (l'horloge a reculé : 08:00), ouvert 09:00, fermé 12:00. Lead Time 4 h : 1 h de travail (08:00 → 09:00)
+    // puis 3 h Prêt. Sans cela, le travail aurait compté 2 h (07:00 → 09:00) et le Prêt 3 h : 5 h pour un ticket qui en a duré 4.
     const clockBack = ticket('c', [
       ['open', '2026-10-19T08:00'],
       ['in_progress', '2026-10-19T07:00'],
@@ -691,13 +693,13 @@ describe('Décomposition du Lead Time, avec l’Attente de dépendance', () => {
 
     const { leadTimeBreakdown: parts } = healthOf([clockBack]);
 
-    expect(parts).toMatchObject({ deliveries: 1, total: 4 * HOUR, dependencyWait: 0, work: 2 * HOUR, blocked: 0, readyWait: 2 * HOUR, otherWait: 0 });
+    expect(parts).toMatchObject({ deliveries: 1, total: 4 * HOUR, dependencyWait: 0, work: 1 * HOUR, blocked: 0, readyWait: 3 * HOUR, otherWait: 0 });
   });
 
-  it('ne compte pas d’Attente en Prêt après la Livraison : un ticket rouvert dont la clôture est datée avant sa Réouverture (horloge en arrière)', () => {
-    // Ouvert 08:00, fermé 10:00, rouvert 14:00 (Prêt jusqu'à 18:00, où il est différé), puis fermé... à 12:00 : l'horloge du dernier commit a reculé. La Livraison
-    // est datée de 12:00, le Lead Time vaut 4 h. Seules comptent les 2 h Prêt d'avant 10:00 : le Prêt de 14:00 à 18:00 vient après la Livraison, et le temps
-    // fermé de 10:00 à 12:00 est de l'autre attente.
+  it('date au plus tôt de la Transition précédente la clôture d’un ticket rouvert dont l’horloge a reculé : le Prêt d’avant compte, jamais celui d’après', () => {
+    // Ouvert 08:00, fermé 10:00, rouvert 14:00 (Prêt jusqu'à 18:00, où il est différé), puis fermé... à 12:00 : l'horloge du dernier commit a reculé. La clôture
+    // tombe à 18:00, avec la Livraison et la fin du Lead Time (10 h) : 2 h Prêt avant la première clôture, 4 h fermé (l'autre attente), puis 4 h Prêt après la
+    // Réouverture. Aucun Prêt ne vient après la Livraison, qui est la dernière Transition.
     const clockBack = ticket('c', [
       ['open', '2026-10-19T08:00'],
       ['closed', '2026-10-19T10:00'],
@@ -708,7 +710,7 @@ describe('Décomposition du Lead Time, avec l’Attente de dépendance', () => {
 
     const { leadTimeBreakdown: parts } = healthOf([clockBack]);
 
-    expect(parts).toMatchObject({ deliveries: 1, total: 4 * HOUR, dependencyWait: 0, readyWait: 2 * HOUR, work: 0, blocked: 0, otherWait: 2 * HOUR });
+    expect(parts).toMatchObject({ deliveries: 1, total: 10 * HOUR, dependencyWait: 0, readyWait: 6 * HOUR, work: 0, blocked: 0, otherWait: 4 * HOUR });
   });
 
   it('additionne les cinq parts en Lead Time cumulé, et aucune n’est négative, sur des historiques tirés au hasard (horloges qui reculent comprises)', () => {
@@ -734,6 +736,39 @@ describe('Décomposition du Lead Time, avec l’Attente de dépendance', () => {
     expect(parts.deliveries).toBeGreaterThan(50);
     for (const part of [parts.dependencyWait, parts.readyWait, parts.work, parts.blocked, parts.otherWait]) expect(part).toBeGreaterThanOrEqual(0);
     expect(parts.dependencyWait + parts.readyWait + parts.work + parts.blocked + parts.otherWait).toBe(parts.total);
+  });
+
+  it.each(CLOCKS)('tient les parts dans le Lead Time sans que la décomposition ait à les corriger, horloges qui reculent comprises : elles ne se chevauchent pas (%s)', (_, sharedClock) => {
+    // La décomposition borne chaque part par ce qui reste du Lead Time. Cette garde ne doit jamais servir : l'Attente de dépendance et le
+    // Cycle Time (`analyzeFlow`) et l'Attente en Prêt (la chronologie du ticket) sont prises dans les périodes du ticket lui-même, dont les
+    // Transitions ne reculent jamais, même quand l'horloge d'un commit a reculé : leur somme tient dans le Lead Time telle quelle, quelles
+    // que soient les dates des dépendances. L'autre attente, le reste, n'est jamais négative.
+    const random = seededRandom(20_261_109);
+    let delivered = 0;
+    let clockBack = 0;
+    let ready = 0;
+    for (let round = 0; round < 300; round++) {
+      const histories = randomHistories(random, { tickets: 5, clockBack: 25, sharedClock });
+      const { tickets } = analyzeProject(histories.map((history) => ({ ...history, title: history.id, priority: 2 })));
+      for (const tracked of tickets) {
+        if (tracked.deliveredAt === null) continue;
+        delivered++;
+        if (clockWentBack(histories.find((history) => history.id === tracked.id)?.statusSnapshots ?? [])) clockBack++;
+        const { deliveredAt } = tracked;
+        const { segments } = tracked.timeline;
+        const readyWait = segments.reduce((total, segment, index) => {
+          if (segment.column !== 'ready') return total;
+          return total + Math.max(0, Math.min(segments[index + 1]?.from ?? deliveredAt, deliveredAt) - segment.from);
+        }, 0);
+        if (readyWait > 0) ready++;
+
+        const parts = (tracked.dependencyWait ?? NaN) + (tracked.cycleTime ?? 0) + readyWait;
+        expect(parts, `${round}/${tracked.id} : Attente de dépendance + Cycle Time + Attente en Prêt ≤ Lead Time`).toBeLessThanOrEqual(tracked.leadTime ?? NaN);
+      }
+    }
+    expect(delivered).toBeGreaterThan(1000);
+    expect(clockBack).toBeGreaterThan(300);
+    expect(ready).toBeGreaterThan(500);
   });
 
   it('additionne les Projets de la Vue globale', () => {

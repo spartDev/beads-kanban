@@ -13,7 +13,7 @@ L'agrégation de tous les Projets suivis, utilisée pour les métriques transver
 _Avoid_: dashboard global, multi-repo
 
 **Transition**:
-Un changement de statut d'un ticket, daté au moment où il a été enregistré dans l'historique du Projet.
+Un changement de statut d'un ticket, daté au moment où il a été enregistré dans l'historique du Projet, mais jamais avant la Transition précédente du ticket : quand l'horloge a reculé, elle prend la date de la précédente, et le statut d'avant dure 0, jamais moins.
 _Avoid_: événement, mouvement
 
 **Prêt**:
@@ -111,6 +111,17 @@ _Avoid_: ticket oublié, ticket périmé
 **Carte d'activité**:
 Nombre de Transitions d'une période selon le jour de la semaine (du lundi au dimanche) et l'heure, dans le fuseau de l'utilisateur. La création d'un ticket n'en est pas une : c'est une Arrivée.
 
+**Panneau de ticket**:
+Le détail d'un ticket, en lecture seule, ouvert depuis le kanban de son Projet. Il réunit les champs du ticket et sa Chronologie.
+_Avoid_: page de ticket
+
+**Chronologie**:
+La vie d'un ticket telle que son Panneau la raconte : ses Transitions avec le temps passé dans chaque statut, ses Blocages avec leurs phases, et ses durées (Lead Time, Cycle Time, temps bloqué en cours de travail), qui sont celles des métriques : le Panneau et la page Métriques disent la même chose. Elle est lue dans l'historique du Projet ; pour un ticket que cet historique ne connaît pas, on ne sait que ses dates de création et de clôture.
+_Avoid_: historique (c'est sa source : l'historique Dolt du Projet)
+
+**Phase d'un Blocage**:
+Partie d'un Blocage où le ticket reste dans la même situation : _avant le premier démarrage_ (l'Attente de dépendance), _en cours de travail_ (le temps bloqué, seule phase comptée dans le Cycle Time) ou _autre attente_ (tout autre statut non fermé). Deux phases voisines de même sorte n'en font qu'une.
+
 ## Relationships
 
 - Un **Projet** contient zéro ou plusieurs tickets
@@ -118,3 +129,5 @@ Nombre de Transitions d'une période selon le jour de la semaine (du lundi au di
 - Une **Epic** a des **Enfants** ; son avancement = **Livraisons** parmi ses Enfants
 - Un **Bug d'origine** est relié à au moins une **Livraison**, qu'il met chacune en échec ; une **Livraison** peut avoir plusieurs Bugs d'origine
 - La **Vue globale** agrège tous les **Projets** suivis ; le kanban reste centré sur un **Projet**
+- Un **Blocage** se découpe en **phases** : seule celle en cours de travail compte dans le **Cycle Time** ; celle d'avant le premier démarrage est l'**Attente de dépendance**
+- Le **Panneau de ticket** montre la **Chronologie** du ticket : ses **Transitions**, ses **Blocages** et leurs phases, avec les durées des métriques

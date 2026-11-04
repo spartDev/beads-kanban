@@ -1,4 +1,4 @@
-import type { AbandonCause, DependencyHistory, TicketFlow, TicketHistory, TicketId } from './flow';
+import { type AbandonCause, type DependencyHistory, recordedTransitions, type TicketFlow, type TicketHistory, type TicketId } from './flow';
 
 /** À quoi un bug est rattaché. */
 export interface BugAttribution {
@@ -48,7 +48,8 @@ const REPLACEMENT_LINKS: Record<AbandonCause, string> = { duplicate: 'duplicates
  * `flows` est le résultat de `analyzeFlow(tickets)`.
  *
  * Un ticket de type bug est le Bug d'origine d'une Livraison quand un lien discovered-from actif, posé sur le bug,
- * pointe vers elle et que le bug a été créé à ou après la date de cette Livraison. Un bug relié à plusieurs
+ * pointe vers elle et que le bug a été créé à ou après la date de cette Livraison. Ces deux dates sont celles que
+ * l'historique enregistre, non bornées (`isDeliveredBy`). Un bug relié à plusieurs
  * Livraisons est le Bug d'origine de chacune. Un lien vers un ticket ouvert ou en Abandon, ou posé par un bug trouvé
  * avant la Livraison, ne met aucune Livraison en échec mais compte comme « relié » : l'origine est renseignée. Sont
  * ignorés, et ne comptent pas comme « reliés » : un lien retiré, un lien vers le bug lui-même, vers une Epic (elle
@@ -71,6 +72,7 @@ export function analyzeFailures(tickets: TicketHistory[], flows: Map<TicketId, T
   // en dérivent tous deux, donc un `flows` qui ne correspond pas aux tickets ne peut pas les mettre en désaccord.
   const possibleOrigins = new Set(tickets.filter((t) => t.type !== 'epic' && flows.has(t.id)).map((t) => t.id));
   const replaced = replacedBugs(tickets, flows);
+  const byId = new Map(tickets.map((t) => [t.id, t]));
   const bugs = new Map<TicketId, BugAttribution>();
   for (const bug of tickets.filter((t) => t.type === 'bug' && !isAbandoned(flows.get(t.id)))) {
     const origins = new Set<TicketId>();
@@ -81,7 +83,7 @@ export function analyzeFailures(tickets: TicketHistory[], flows: Map<TicketId, T
       for (const { target } of activeLinks(source, bug.id)) {
         if (!possibleOrigins.has(target)) continue;
         origins.add(target);
-        if (createdAt && isDeliveredBy(flows.get(target), createdAt)) failedDeliveries.add(target);
+        if (createdAt && isDeliveredBy(flows.get(target), byId.get(target), createdAt)) failedDeliveries.add(target);
       }
     }
     bugs.set(bug.id, { linked: origins.size > 0, failedDeliveries: [...failedDeliveries] });
@@ -151,9 +153,17 @@ function isAbandoned(flow: TicketFlow | undefined): boolean {
   return flow?.outcome.kind === 'abandoned';
 }
 
-/** Le ticket est une Livraison datée au plus tard de `at` (égalité comprise). */
-function isDeliveredBy(flow: TicketFlow | undefined, at: Date): boolean {
-  return flow?.outcome.kind === 'delivered' && flow.outcome.at.getTime() <= at.getTime();
+/**
+ * Le ticket est une Livraison enregistrée au plus tard de `at` (égalité comprise). La date de la Livraison est celle de
+ * son dernier commit de clôture, telle que l'historique l'enregistre : non bornée (`recordedTransitions`), comme la date de
+ * création du bug, que sa propre borne ne déplace jamais (c'est sa première Transition). La borne d'`analyzeFlow` est propre à
+ * chaque ticket ; elle repousse la Livraison, quand l'horloge de sa clôture a reculé, et pourrait la dater après un bug qui lui
+ * est pourtant postérieur dans la lignée.
+ */
+function isDeliveredBy(flow: TicketFlow | undefined, history: TicketHistory | undefined, at: Date): boolean {
+  if (flow?.outcome.kind !== 'delivered' || !history) return false;
+  const closing = recordedTransitions(history.statusSnapshots).at(-1);
+  return closing?.status === 'closed' && closing.at.getTime() <= at.getTime();
 }
 
 function coverageOf(bugs: Map<TicketId, BugAttribution>): FailureCoverage {

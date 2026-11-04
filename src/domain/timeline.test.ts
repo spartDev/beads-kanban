@@ -275,6 +275,24 @@ describe('chronologie des colonnes', () => {
           { dependencies: [blocks('b1', '2026-10-01T09:00'), blocks('b2', '2026-10-01T15:00')] },
         ),
       ],
+      // L'horloge d'un commit recule : les deux chemins doivent dater les Transitions de la même façon.
+      'horloge qui recule pendant le travail': [
+        ticket('t', [
+          ['open', '2026-10-01T09:00'],
+          ['in_progress', '2026-10-01T12:00'],
+          ['blocked', '2026-10-01T10:00'], // bloqué à 12:00, au plus tôt : la Transition précédente
+          ['in_progress', '2026-10-01T15:00'],
+          ['closed', '2026-10-01T18:00'],
+        ]),
+      ],
+      'horloge qui recule avant le démarrage, avec une dépendance': [
+        ticket('b', [['open', '2026-10-01T09:00'], ['closed', '2026-10-01T14:00']]),
+        ticket(
+          't',
+          [['open', '2026-10-01T10:00'], ['in_progress', '2026-10-01T13:00'], ['closed', '2026-10-01T11:00']],
+          { dependencies: [blocks('b', '2026-10-01T10:00', '2026-10-01T13:00')] },
+        ),
+      ],
     };
 
     it.each(Object.entries(scenarios))('%s', (_, tickets) => {

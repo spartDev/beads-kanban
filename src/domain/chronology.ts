@@ -30,8 +30,10 @@ export function analyzeChronologies(tickets: TicketHistory[]): ProjectChronologi
   function build(id: TicketId): IssueChronology | undefined {
     const flow = flows.get(id);
     if (!flow || flow.transitions.length === 0) return undefined;
-    // Les dates d'une Transition ne reculent jamais : quand l'horloge d'un commit a reculé, le changement a lieu au même
-    // instant que le précédent (comme pour le CFD). Une durée n'est donc jamais négative.
+    // Les dates d'une Transition ne reculent jamais : quand l'horloge d'un commit a reculé, `analyzeFlow` date le changement
+    // au même instant que le précédent du ticket (comme pour le CFD). Le temps passé dans un statut n'est donc jamais négatif,
+    // et les temps passés s'additionnent en Lead Time, que le Cycle Time ne dépasse pas : ils se lisent sur les mêmes
+    // Transitions. Les Blocages croisent aussi les dates des dépendances, que cette borne ne touche pas (voir `analyzeFlow`).
     const steps = stepsById.get(id) ?? [];
     const transitions = steps.map(
       (step, i): IssueTransition => ({

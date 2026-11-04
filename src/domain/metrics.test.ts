@@ -10,6 +10,7 @@ import {
   type MetricsTicket,
   percentile,
 } from './metrics';
+import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing';
 
 const PARIS = 'Europe/Paris';
 /** Vendredi 23 octobre 2026, 20:00 à Paris. */
@@ -1397,5 +1398,72 @@ describe('Vue globale : agrégation des Projets', () => {
     expect(report.tiles.failureRate.coverage).toEqual({ bugs: 0, linked: 0, ratio: null });
     expect(report.slices).toEqual({ type: [], priority: [], project: [] });
     expect(report.cfd).toHaveLength(7);
+  });
+});
+
+describe('horloge de commit qui recule', () => {
+  // L'horloge d'un commit peut reculer : sa date précède alors celle du commit d'avant. Une Transition n'est jamais datée avant la
+  // précédente du même ticket (voir `analyzeFlow`) : Débit, Lead Time, Cycle Time et CFD lisent les mêmes dates, et le Cycle Time
+  // tient dans le Lead Time.
+  it('mesure un Cycle Time qui ne dépasse pas le Lead Time : tuiles et nuage de points', () => {
+    const report = metricsOf([worked('a', '2026-10-21T10:00', '2026-10-21T05:00', '2026-10-21T20:00')]); // démarré « 5 h avant » la création
+
+    expect(report.tiles.leadTime).toMatchObject({ median: 10 * HOUR, n: 1 });
+    expect(report.tiles.cycleTime).toMatchObject({ median: 10 * HOUR, n: 1 }); // 15 h sans cela
+    expect(report.cycleTimeScatter.map((point) => point.cycleTime)).toEqual([10 * HOUR]);
+  });
+
+  it('ne mesure jamais un Lead Time négatif : une clôture datée avant la création tombe à la création', () => {
+    const report = metricsOf([closed('a', '2026-10-21T10:00', '2026-10-20T10:00')]);
+
+    expect(report.tiles.leadTime).toMatchObject({ median: 0, n: 1 });
+    expect(report.buckets.find((bucket) => bucket.deliveries > 0)?.from).toBe('2026-10-21'); // livré le jour de sa création, pas la veille
+  });
+
+  it('compte la Livraison le jour où le CFD range le ticket en Terminé, même quand l’horloge de sa clôture a reculé', () => {
+    // Créé le 19, démarré le 21 à 08:00Z, mais sa clôture est datée du 20 : elle a eu lieu après le démarrage, donc le 21 au plus tôt.
+    const report = metricsOf([worked('a', '2026-10-19T08:00', '2026-10-21T08:00', '2026-10-20T09:00')]);
+
+    const deliveries = report.buckets.map((bucket) => bucket.deliveries);
+    const cumulative = deliveries.map((_, index) => deliveries.slice(0, index + 1).reduce((total, count) => total + count, 0));
+    expect(report.buckets.find((bucket) => bucket.deliveries > 0)?.from).toBe('2026-10-21');
+    expect(report.cfd.map((point) => point.done)).toEqual(cumulative);
+    expect(report.tiles.leadTime).toMatchObject({ median: 2 * DAY, n: 1 });
+  });
+
+  it.each(CLOCKS)('tient, sur des historiques tirés au hasard dont l’horloge recule, les durées d’une Livraison dans l’ordre : Lead Time ≥ Cycle Time ≥ temps bloqué, et ses dates avec (%s)', (_, sharedClock) => {
+    const random = seededRandom(20_261_108);
+    let delivered = 0;
+    let clockBack = 0;
+    let started = 0;
+    for (let round = 0; round < 300; round++) {
+      const histories = randomHistories(random, { tickets: 5, clockBack: 25, sharedClock });
+      const { tickets } = analyzeProject(histories.map((history) => ({ ...history, title: history.id, priority: 2 })));
+      for (const tracked of tickets) {
+        if (tracked.deliveredAt === null) continue;
+        delivered++;
+        const where = `${round}/${tracked.id}`;
+        if (clockWentBack(histories.find((history) => history.id === tracked.id)?.statusSnapshots ?? [])) clockBack++;
+        const [leadTime, cycleTime, blockedTime, dependencyWait] = [tracked.leadTime ?? NaN, tracked.cycleTime ?? 0, tracked.blockedTime ?? NaN, tracked.dependencyWait ?? NaN];
+        // Le Lead Time est l'écart entre les deux dates du ticket, créé avant d'être livré.
+        expect(tracked.deliveredAt - tracked.createdAt, `${where} : Lead Time`).toBe(leadTime);
+        expect(leadTime, `${where} : Lead Time`).toBeGreaterThanOrEqual(0);
+        expect(cycleTime, `${where} : Cycle Time ≤ Lead Time`).toBeLessThanOrEqual(leadTime);
+        expect(blockedTime, `${where} : temps bloqué ≤ Cycle Time`).toBeLessThanOrEqual(cycleTime);
+        expect(blockedTime, `${where} : temps bloqué`).toBeGreaterThanOrEqual(0);
+        expect(dependencyWait + cycleTime, `${where} : Attente de dépendance + Cycle Time ≤ Lead Time`).toBeLessThanOrEqual(leadTime);
+        expect(dependencyWait, `${where} : Attente de dépendance`).toBeGreaterThanOrEqual(0);
+        // Un ticket démarré l'est entre sa création et sa Livraison ; il a un Cycle Time, et inversement.
+        expect(tracked.cycleTime === null, `${where} : démarré ou non`).toBe(tracked.startedAt === null);
+        if (tracked.startedAt !== null) {
+          started++;
+          expect(tracked.startedAt, `${where} : démarrage`).toBeGreaterThanOrEqual(tracked.createdAt);
+          expect(tracked.startedAt, `${where} : démarrage`).toBeLessThanOrEqual(tracked.deliveredAt);
+        }
+      }
+    }
+    expect(clockBack).toBeGreaterThan(300);
+    expect(started).toBeGreaterThan(500);
+    expect(delivered).toBeGreaterThan(1000);
   });
 });

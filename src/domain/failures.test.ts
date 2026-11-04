@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeFailures } from './failures';
 import { analyzeFlow, type TicketHistory } from './flow';
+import { randomHistories, seededRandom } from './testing';
 
 const at = (iso: string) => new Date(`${iso}Z`);
 
@@ -540,6 +541,105 @@ describe('analyzeFailures', () => {
         expect(failures.originBugs.get('corrigé')).toEqual([]);
         expect(failures.bugs.get('corrigé')).toEqual({ linked: false, failedDeliveries: [] });
       });
+    });
+  });
+
+  describe('horloge de commit qui recule', () => {
+    // La borne qui rend les dates d'un ticket croissantes (`analyzeFlow`) est propre à ce ticket : elle ne dit rien d'un autre.
+    // Le Taux d'échec compare deux tickets, la Livraison et le bug : il lit leurs dates enregistrées, les deux de la même façon.
+    //   c1 09:00  `d` est créé                      c2 12:00  `d` est en cours
+    //   c3 « 10:00 »  `d` est fermé (l'horloge de ce commit est en retard de deux heures sur c2)
+    //   c4 11:00  le bug est créé, découvert à partir de `d`
+    // Dans la lignée, le bug est créé après la clôture de `d`. `analyzeFlow` date pourtant cette Livraison de 12:00, puisque la
+    // clôture vient après le démarrage de `d` (c2) ; le bug, lui, n'a pas de Transition précédente qui le borne.
+    const closedBehind = (closedAt = '2026-10-01T10:00') =>
+      ticket('d', [
+        ['open', '2026-10-01T09:00'],
+        ['in_progress', '2026-10-01T12:00'],
+        ['closed', closedAt],
+      ]);
+
+    it('compte le bug créé après la clôture dans la lignée comme Bug d’origine, bien que la borne date la Livraison après lui', () => {
+      const tickets = [closedBehind(), bug('bug', '2026-10-01T11:00', 'd')];
+      const flows = analyzeFlow(tickets);
+
+      const failures = analyzeFailures(tickets, flows);
+
+      expect(flows.get('d')?.outcome).toEqual({ kind: 'delivered', at: at('2026-10-01T12:00') }); // la borne est intacte
+      expect(failures.originBugs.get('d')).toEqual(['bug']);
+      expect(failures.bugs.get('bug')).toEqual({ linked: true, failedDeliveries: ['d'] });
+    });
+
+    it('ne compte pas un bug créé avant la clôture enregistrée : il a été trouvé en cours de travail, borne ou pas', () => {
+      const failures = analyze([closedBehind(), bug('bug', '2026-10-01T09:30', 'd')]);
+
+      expect(failures.originBugs.get('d')).toEqual([]);
+      expect(failures.bugs.get('bug')).toEqual({ linked: true, failedDeliveries: [] });
+    });
+
+    it('compte un bug créé à l’instant enregistré de la clôture : ils partagent un commit', () => {
+      const failures = analyze([closedBehind(), bug('bug', '2026-10-01T10:00', 'd')]);
+
+      expect(failures.originBugs.get('d')).toEqual(['bug']);
+    });
+
+    it('date la Livraison de la dernière clôture enregistrée d’un ticket rouvert : le bug créé entre la Réouverture et cette clôture n’en est pas un', () => {
+      // Fermé à 10:00, rouvert à 11:00, démarré à 12:00, puis refermé à « 11:30 » : l'horloge a reculé, la clôture est bornée à 12:00.
+      const reopened = ticket('d', [
+        ['open', '2026-10-01T09:00'],
+        ['closed', '2026-10-01T10:00'],
+        ['open', '2026-10-01T11:00'],
+        ['in_progress', '2026-10-01T12:00'],
+        ['closed', '2026-10-01T11:30'],
+      ]);
+
+      const failures = analyze([reopened, bug('before', '2026-10-01T11:15', 'd'), bug('after', '2026-10-01T11:45', 'd')]);
+
+      expect(failures.originBugs.get('d')).toEqual(['after']);
+    });
+
+    it('date de même façon les liens d’un bug en Abandon, que le bug qui le remplace reprend à la date de sa propre création', () => {
+      // `old` est créé à 11:00, après la clôture de `d`, et fermé comme doublon de `new`, qui hérite du lien.
+      const old = abandonedBug('old', '2026-10-01T11:00', 'duplicates', 'new', 'd');
+
+      const failures = analyze([closedBehind(), old, bug('new', '2026-10-20T09:00')]);
+
+      expect(failures.originBugs.get('d')).toEqual(['new']);
+    });
+
+    it('lit les dates enregistrées des deux tickets, que la borne de l’un déplace sans bouger l’autre : horloge partagée tirée au hasard', () => {
+      // Le résultat est celui que donnent les dates des commits, comparées entre elles : l'oracle les relit dans les instantanés.
+      const closingOf = (history?: TicketHistory) => {
+        const snapshots = history?.statusSnapshots ?? [];
+        let first = snapshots.length - 1;
+        if (snapshots[first]?.status !== 'closed') return undefined;
+        while (snapshots[first - 1]?.status === 'closed') first--;
+        return snapshots[first]?.at.getTime();
+      };
+      const random = seededRandom(20_261_110);
+      const seen = { links: 0, failed: 0, boundPastTheBug: 0 };
+      for (let round = 0; round < 300; round++) {
+        const tickets = randomHistories(random, { tickets: 8, clockBack: 40, sharedClock: true });
+        const flows = analyzeFlow(tickets);
+        const { originBugs } = analyzeFailures(tickets, flows);
+        for (const bugTicket of tickets.filter((ticketHistory) => ticketHistory.type === 'bug')) {
+          const createdAt = bugTicket.statusSnapshots[0]?.at.getTime() ?? Number.NaN;
+          for (const { target } of bugTicket.dependencies.filter((dependency) => dependency.type === 'discovered-from')) {
+            seen.links++;
+            const closing = closingOf(tickets.find((candidate) => candidate.id === target));
+            const expected = closing !== undefined && closing <= createdAt;
+            expect(originBugs.get(target)?.includes(bugTicket.id) ?? false, `${round}/${bugTicket.id} → ${target}`).toBe(expected);
+            if (!expected) continue;
+            seen.failed++;
+            const delivery = flows.get(target)?.outcome;
+            if (delivery?.kind === 'delivered' && delivery.at.getTime() > createdAt) seen.boundPastTheBug++;
+          }
+        }
+      }
+      // Le tirage au sort doit exercer le cas : des Livraisons que la borne date après un bug créé depuis leur clôture.
+      expect(seen.links).toBeGreaterThan(300);
+      expect(seen.failed).toBeGreaterThan(60);
+      expect(seen.boundPastTheBug).toBeGreaterThan(15);
     });
   });
 

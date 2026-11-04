@@ -161,9 +161,11 @@ function abandonmentOf(entries: Entry[], elapsed: Window, compared: Window): Met
  * l'Attente en Prêt (le temps en colonne Prêt, avant le démarrage ou après un retour à ouvert), et le reste, que l'on appelle
  * l'autre attente (Backlog après un premier démarrage, différé, fermé avant une Réouverture). Les trois premières mesures
  * viennent d'`analyzeFlow`, la quatrième de la chronologie du ticket : elles ne se chevauchent pas (l'attente de dépendance
- * est en statut ouvert et en Blocage, le Prêt en statut ouvert hors Blocage, le Cycle Time en statut de travail). Quand
- * l'horloge d'un commit a reculé, elles peuvent déborder le Lead Time : chaque part est bornée par ce qui reste, de sorte
- * qu'aucune n'est négative et que leur somme est toujours le Lead Time.
+ * est en statut ouvert et en Blocage, le Prêt en statut ouvert hors Blocage, le Cycle Time en statut de travail). Même quand
+ * l'horloge d'un commit a reculé, chacune est prise dans les périodes du ticket lui-même, dont les Transitions ne reculent
+ * jamais (`TicketFlow.transitions`) : elles tiennent donc dans le Lead Time, quelles que soient les dates des dépendances.
+ * Chaque part n'en est pas moins bornée par ce qui reste, par garde : aucune n'est négative et leur somme est toujours le Lead
+ * Time, quoi qu'il arrive.
  */
 function leadTimeBreakdownOf(entries: Entry[], window: Window): MetricsLeadTimeBreakdown {
   const parts = { deliveries: 0, total: 0, dependencyWait: 0, readyWait: 0, work: 0, blocked: 0, otherWait: 0 };
