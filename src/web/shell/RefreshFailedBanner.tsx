@@ -8,8 +8,12 @@ import { useCallback, useSyncExternalStore } from 'react';
  */
 const showsStaleData = (query: Query): boolean => query.state.status === 'error' && query.state.data !== undefined;
 
-/** Bandeau discret, sous la barre du haut. Rien (hors la zone d'annonce, vide) tant que tout se rafraîchit bien. */
-export function RefreshFailedBanner() {
+/**
+ * Bandeau discret, sous la barre du haut. Rien (hors la zone d'annonce, vide) tant que tout se rafraîchit bien. `muted` :
+ * un autre message explique déjà l'échec (les mises à jour en direct sont interrompues, voir `LiveUpdates`) ; le dire
+ * deux fois est redondant.
+ */
+export function RefreshFailedBanner({ muted }: { muted: boolean }) {
   const queryClient = useQueryClient();
   const cache = queryClient.getQueryCache();
   const subscribe = useCallback((notify: () => void) => cache.subscribe(notify), [cache]);
@@ -20,7 +24,7 @@ export function RefreshFailedBanner() {
     // Zone d'annonce présente dès le départ (une zone qui apparaît avec son contenu n'est pas toujours annoncée) ;
     // `aria-live` plutôt que `role="status"` : elle reste vide tant que tout va bien, sans polluer les « status » de la page.
     <div aria-live="polite" aria-atomic="true">
-      {stale > 0 ? (
+      {stale > 0 && !muted ? (
         <div className="flex items-center gap-2 border-b border-line bg-well px-4 py-1.5 text-xs text-ink-2">
           <TriangleAlert size={13} aria-hidden="true" className="shrink-0 text-danger" />
           <p className="min-w-0 flex-1 wrap-anywhere">

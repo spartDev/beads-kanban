@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { Notice } from '../ui/states';
 import { useNow } from '../lib/useNow';
 import { Card } from './Card';
+import { useCardFlash } from './cardFlash';
 import { Column } from './Column';
 import { ColumnSelector } from './ColumnSelector';
 import { buildBoard, defaultColumn, doneSince, onlyPaused, type Lane } from './columns';
@@ -65,6 +66,8 @@ export function Board({ project, issues }: { project: Project; issues: readonly 
     };
   }, [board]);
   useBoardShortcuts({ rootRef, lanes, column, onColumn: params.setColumn });
+  // Mises à jour en direct : la carte d'un ticket qui change (déplacée, nouvelle) s'éclaire un instant.
+  useCardFlash(rootRef, issues);
 
   // Ouvre le tiroir depuis l'état vide, et y amène le focus : le bouton de l'état vide disparaît une fois le tiroir ouvert.
   const showPaused = () => {

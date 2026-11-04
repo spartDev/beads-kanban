@@ -1,9 +1,12 @@
 import { STATUS_CODES } from 'node:http';
 import fastifyStatic from '@fastify/static';
-import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyServerOptions } from 'fastify';
 import type { ApiErrorBody } from '../shared/api';
 import { registerApi } from './api';
 import type { Config } from './config';
+import { createWatcherLog } from './live/log';
+import { registerLiveRoutes } from './live/routes';
+import { createHeadWatcher, type HeadWatcher } from './live/watcher';
 import { createMetricsService, type MetricsService } from './metrics/service';
 import { createProjectService, type ProjectService } from './projects/service';
 
@@ -23,6 +26,20 @@ export interface ServerOptions {
    * le proxy de Vite relaie les requêtes avec le Host du navigateur (`localhost:5173`), pas celui du serveur.
    */
   allowAnyLocalPort?: boolean;
+  /**
+   * Journal du serveur (l'option `logger` de Fastify). Absent : le serveur est muet. Le CLI y laisse passer les
+   * avertissements, dont ceux du sondage du direct : un Projet dont le HEAD ne se lit plus, puis son rétablissement.
+   */
+  logger?: FastifyServerOptions['logger'];
+  /** Mises à jour en direct : le flux SSE de chaque Projet (`GET /api/projects/:projectId/events`). */
+  live?: {
+    /** Observateur du HEAD des Projets ; par défaut, un sondage de `projects.head` qui s'arrête avec le serveur. */
+    watcher?: HeadWatcher;
+    /** Intervalle de ce sondage (défaut : `pollIntervalMs` de la configuration, sinon 3 s). */
+    intervalMs?: number;
+    /** Délai entre deux battements d'un flux ouvert (défaut : 20 s). */
+    heartbeatMs?: number;
+  };
 }
 
 export function buildServer({
@@ -31,8 +48,10 @@ export function buildServer({
   projects = createProjectService(config),
   metrics = createMetricsService(projects),
   allowAnyLocalPort = false,
+  logger = false,
+  live = {},
 }: ServerOptions): FastifyInstance {
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger });
 
   // Protection contre le DNS rebinding : une page web hostile peut faire pointer son propre nom de domaine sur
   // 127.0.0.1 et lire l'API depuis le navigateur de l'utilisateur. Sa requête porte alors son nom dans Host.
@@ -47,8 +66,24 @@ export function buildServer({
   });
 
   app.get('/api/health', async () => ({ status: 'ok' }));
-  // Plugin à part : le gestionnaire d'erreurs de l'API ne s'applique pas aux autres routes.
-  app.register((api) => registerApi(api, projects, metrics));
+
+  // Mises à jour en direct : le HEAD Dolt des Projets suivis par un flux ouvert est sondé, jamais celui des autres.
+  // Ses pannes vont au journal du serveur, une ligne par changement d'état.
+  const watcher =
+    live.watcher ??
+    createHeadWatcher({
+      head: (projectId) => projects.head(projectId),
+      intervalMs: live.intervalMs ?? config.pollIntervalMs,
+      ...createWatcherLog({ warn: (message) => app.log.warn(message) }),
+    });
+  if (!live.watcher) app.addHook('onClose', async () => watcher.close());
+
+  // Plugin à part : le gestionnaire d'erreurs de l'API ne s'applique pas aux autres routes. Le flux en direct est une route
+  // de l'API (`/api/projects/:projectId/events`) : il y est, et ses erreurs ont la même forme que celles des autres.
+  app.register(async (api) => {
+    await registerApi(api, projects, metrics);
+    registerLiveRoutes(api, projects, watcher, { heartbeatMs: live.heartbeatMs });
+  });
 
   if (webRoot) {
     app.register(fastifyStatic, { root: webRoot });

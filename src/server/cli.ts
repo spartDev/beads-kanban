@@ -18,7 +18,8 @@ const config = loadConfig();
 const webRoot = values.dev ? undefined : join(dirname(fileURLToPath(import.meta.url)), 'web');
 const port = Number(values.port);
 
-await startServer({ config, webRoot, port, allowAnyLocalPort: values.dev });
+// Journal du serveur : les avertissements seulement (un Projet dont la lecture échoue, par exemple), pas les requêtes.
+await startServer({ config, webRoot, port, allowAnyLocalPort: values.dev, logger: { level: 'warn' } });
 
 const url = `http://${HOST}:${port}`;
 console.log(`beads-desktop → ${url}`);

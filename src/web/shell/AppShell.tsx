@@ -1,9 +1,9 @@
 import { Outlet } from 'react-router';
+import { LiveUpdates } from '../live/LiveUpdates';
 import { CommandPalette } from '../palette/CommandPalette';
 import { ShortcutsProvider } from '../shortcuts/ShortcutsProvider';
 import { TooltipProvider } from '../ui/Tip';
 import { OverlayProvider } from './OverlayProvider';
-import { RefreshFailedBanner } from './RefreshFailedBanner';
 import { ShortcutsHelp } from './ShortcutsHelp';
 import { Sidebar } from './Sidebar';
 import { TabBar } from './TabBar';
@@ -45,7 +45,7 @@ function Layout() {
           className="relative flex min-h-0 flex-1 flex-col bg-panel pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:overflow-y-auto md:rounded-xl md:border md:border-line md:pb-0 md:shadow-panel"
         >
           <TopBar />
-          <RefreshFailedBanner />
+          <LiveUpdates />
           <div className="flex min-w-0 flex-1 flex-col">
             <Outlet />
           </div>

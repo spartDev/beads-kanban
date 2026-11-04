@@ -86,11 +86,12 @@ export function createProjectService(
 
   /**
    * La base du Projet ; rescanne si le Projet est inconnu ou illisible (ajouté ou réparé depuis), au plus une fois
-   * par `rescanIntervalMs` : le scan qui vient d'avoir lieu fait foi.
+   * par `rescanIntervalMs` : le scan qui vient d'avoir lieu fait foi. `lookupMaxAgeMs` : l'âge au-delà duquel le scan
+   * précédent n'est plus cru pour un Projet qu'il connaît et dit lisible.
    */
-  async function open(projectId: string): Promise<DoltDatabase> {
+  async function open(projectId: string, lookupMaxAgeMs = LOOKUP_MAX_AGE_MS): Promise<DoltDatabase> {
     const find = async (maxAgeMs: number) => (await discover(maxAgeMs)).projects.find((p) => p.id === projectId);
-    let project = await find(LOOKUP_MAX_AGE_MS);
+    let project = await find(lookupMaxAgeMs);
     if (project?.status !== 'ok') project = await find(rescanIntervalMs);
     if (!project) throw new ProjectNotFoundError(projectId);
     if (project.status !== 'ok' || !project.databasePath) {
@@ -100,8 +101,8 @@ export function createProjectService(
   }
 
   /** Une base qui échoue à répondre rend le Projet illisible, avec le message de dolt pour raison. */
-  async function read<T>(projectId: string, task: (db: DoltDatabase) => Promise<T>): Promise<T> {
-    const db = await open(projectId);
+  async function read<T>(projectId: string, task: (db: DoltDatabase) => Promise<T>, lookupMaxAgeMs?: number): Promise<T> {
+    const db = await open(projectId, lookupMaxAgeMs);
     try {
       return await task(db);
     } catch (err) {
@@ -142,7 +143,10 @@ export function createProjectService(
 
     histories: (projectId) => read(projectId, readTicketHistories),
 
-    head: (projectId) => read(projectId, readHead),
+    // Le sondage du direct (bdesk-38k.8) lit le HEAD de chaque Projet suivi toutes les quelques secondes : un Projet que le
+    // dernier scan connaît et dit lisible n'est pas redécouvert à cause de l'âge du scan (ce serait un processus dolt par
+    // Projet, tous les Projets lus pour sonder un seul). Un Projet inconnu ou illisible est cherché comme pour toute lecture.
+    head: (projectId) => read(projectId, readHead, Number.POSITIVE_INFINITY),
   };
 }
 

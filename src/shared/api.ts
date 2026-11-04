@@ -103,6 +103,24 @@ export interface ApiErrorBody {
 }
 
 /* -------------------------------------------------------------------------------------------------------------------
+ * Mises à jour en direct : `GET /api/projects/:projectId/events`
+ *
+ * Un flux d'événements serveur (SSE, `text/event-stream`) qui reste ouvert. Tant qu'il l'est, le serveur sonde le hash du
+ * HEAD Dolt du Projet (toutes les 3 s par défaut, `pollIntervalMs` dans la configuration) : chaque nouveau HEAD, donc
+ * chaque commit d'une écriture de bd, donne un événement `changed`. Plusieurs commits entre deux sondages n'en font qu'un.
+ * Aucune donnée de ticket ne transite : l'interface relit ce qu'elle affiche. Le flux envoie aussi un commentaire
+ * `: ping` toutes les 20 s pour rester ouvert. Un Projet inconnu est une 404 JSON, sans flux.
+ * ---------------------------------------------------------------------------------------------------------------- */
+
+/** Données de l'événement `changed`. */
+export interface LiveChangeEvent {
+  /** Identifiant du Projet. */
+  project: string;
+  /** Hash du nouveau HEAD Dolt. */
+  head: string;
+}
+
+/* -------------------------------------------------------------------------------------------------------------------
  * Métriques de flux : `GET /api/metrics`
  *
  *   ?project=<id>   Projet à mesurer ; répétable, absent pour la Vue globale (tous les Projets lisibles)

@@ -25,7 +25,7 @@ export function KanbanPage() {
       {issues.data ? (
         issues.data.length === 0 ? (
           <Notice icon={Inbox} title="Aucun ticket dans ce Projet">
-            Créez-en un avec <code>bd create</code> : il apparaîtra ici au prochain chargement.
+            Créez-en un avec <code>bd create</code> : il apparaîtra ici dans quelques secondes.
           </Notice>
         ) : (
           // `key` : un autre Projet est un autre tableau, qui choisit sa propre colonne d'ouverture sur mobile.
