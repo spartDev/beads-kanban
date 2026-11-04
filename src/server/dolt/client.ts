@@ -1,5 +1,19 @@
 import { type ExecFileException, execFile } from 'node:child_process';
-import { chmodSync, existsSync, lstatSync, mkdirSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DoltNotFoundError, DoltQueryError } from './errors';
@@ -40,7 +54,12 @@ export interface DoltClientOptions {
   /**
    * Dossier de configuration globale de dolt (`DOLT_ROOT_PATH`). Par défaut un dossier privé de l'app, qui
    * désactive l'envoi des métriques de dolt (un second processus par requête) ; un `DOLT_ROOT_PATH` déjà
-   * défini dans l'environnement est respecté.
+   * défini dans l'environnement est respecté. Ce dossier est partagé par tous les processus de l'app : son
+   * `config_global.json` n'est réécrit que s'il est périmé, et d'un coup (voir `writeFileAtomically`).
+   * S'il est inutilisable (lien symbolique, dossier d'un autre utilisateur, rien d'inscriptible…), dolt reçoit un dossier
+   * de repli jetable, propre au processus et configuré de même ; si même celui-là est impossible, les lectures échouent
+   * (`DoltQueryError`) sans lancer dolt. Il n'est jamais lancé sans `DOLT_ROOT_PATH` : il écrirait dans le `~/.dolt` de
+   * l'utilisateur, y rétablirait l'envoi de ses métriques d'usage et y laisserait ses fichiers.
    */
   rootPath?: string;
 }
@@ -63,10 +82,26 @@ export function createDoltClient(options: DoltClientOptions = {}): DoltClient {
     rootPath = process.env.DOLT_ROOT_PATH ? undefined : defaultRootPath(),
   } = options;
   const env = { ...process.env, ...(rootPath ? doltEnv(rootPath) : {}) };
+  // Sans DOLT_ROOT_PATH, dolt se rabat sur le ~/.dolt de l'utilisateur : il y crée ses fichiers et y rétablit l'envoi des métriques.
+  let refusal: DoltQueryError | undefined;
+  if (!env.DOLT_ROOT_PATH) {
+    try {
+      env.DOLT_ROOT_PATH = fallbackRootPath();
+    } catch (err) {
+      const reason = err instanceof Error ? String((err as NodeJS.ErrnoException).code ?? err.name) : 'erreur inconnue';
+      refusal = new DoltQueryError(
+        `Impossible de préparer un dossier de configuration privé pour dolt dans ${tmpdir()} (${reason}) : dolt n'est pas lancé, car il écrirait dans le ~/.dolt de l'utilisateur.`,
+        '',
+        false,
+        err,
+      );
+    }
+  }
   const limit = createLimiter(maxConcurrent, maxQueued);
 
   async function query(dir: string, sql: string): Promise<Row[]> {
     assertReadOnly(sql);
+    if (refusal) throw refusal;
     for (let attempt = 0; ; attempt++) {
       try {
         return await limit(() => run(binary, dir, sql, env, timeoutMs, maxOutputBytes));
@@ -213,19 +248,95 @@ function defaultRootPath(): string {
   return join(tmpdir(), `beads-desktop-dolt-${uid}`);
 }
 
+/** Le `config_global.json` de dolt : l'envoi des métriques est désactivé. */
+const DOLT_CONFIG = JSON.stringify({ 'metrics.disabled': 'true' });
+
 /**
- * Prépare un dossier de configuration dolt à nous, métriques désactivées ; sans effet s'il n'est inscriptible nulle
- * part ou s'il n'est pas à nous. Le dossier par défaut est à un emplacement prévisible du dossier temporaire :
- * quelqu'un d'autre a pu y mettre un lien symbolique, dont la cible serait alors écrasée.
+ * Prépare un dossier de configuration dolt à nous, métriques désactivées ; sans effet (`{}`) s'il n'est inscriptible nulle
+ * part ou s'il n'est pas à nous : `createDoltClient` se rabat alors sur `fallbackRootPath`. Le dossier par défaut est à un
+ * emplacement prévisible du dossier temporaire : quelqu'un d'autre a pu y mettre un lien symbolique, dont la cible serait
+ * alors écrasée.
  */
 function doltEnv(rootPath: string): NodeJS.ProcessEnv {
   try {
-    ensurePrivateDir(rootPath);
-    ensurePrivateDir(join(rootPath, '.dolt'));
-    writeFileSync(join(rootPath, '.dolt', 'config_global.json'), JSON.stringify({ 'metrics.disabled': 'true' }));
+    prepareRoot(rootPath);
     return { DOLT_ROOT_PATH: rootPath };
   } catch {
     return {};
+  }
+}
+
+/** Prépare `rootPath` pour dolt : un dossier réservé à son propriétaire dont le `config_global.json` désactive les métriques. Lève si c'est impossible. */
+function prepareRoot(rootPath: string): void {
+  ensurePrivateDir(rootPath);
+  ensurePrivateDir(join(rootPath, '.dolt'));
+  writeFileAtomically(join(rootPath, '.dolt', 'config_global.json'), DOLT_CONFIG);
+}
+
+/** Le dossier de repli de ce processus (voir `fallbackRootPath`). */
+let fallbackRoot: string | undefined;
+
+/**
+ * Le dossier de configuration où dolt se rabat quand celui qu'on voulait est inutilisable : un dossier jetable à nous, créé
+ * par `mkdtemp` (0700, nom aléatoire : ni partagé avec un autre processus, ni prévisible) et préparé comme les autres,
+ * métriques désactivées. Un seul par processus, créé au premier besoin et réutilisé tant qu'il existe ; il reste dans le
+ * dossier temporaire, que le système purge. Lève si même celui-là est impossible.
+ */
+function fallbackRootPath(): string {
+  if (fallbackRoot !== undefined && existsSync(fallbackRoot)) return fallbackRoot;
+  const root = mkdtempSync(join(tmpdir(), 'beads-desktop-dolt-repli-'));
+  try {
+    prepareRoot(root);
+  } catch (err) {
+    try {
+      rmSync(root, { recursive: true, force: true });
+    } catch {
+      // impossible à retirer : l'erreur d'origine est la seule utile
+    }
+    throw err;
+  }
+  return (fallbackRoot = root);
+}
+
+/**
+ * Met `content` dans `file` sans qu'un autre processus puisse jamais le voir vide ou partiel. Le dossier de configuration
+ * est partagé par tous les serveurs et tous les workers de test, et chaque `dolt` y relit `config_global.json` à son
+ * lancement : un fichier tronqué le temps d'une réécriture (`writeFileSync` l'ouvre avec troncature avant d'écrire) fait
+ * échouer ce `dolt` (« unexpected end of JSON input »).
+ * - Rien n'est écrit si le fichier est déjà à jour : c'est le cas courant, sans course possible ni droit d'écriture requis.
+ * - Sinon le contenu est écrit dans un fichier voisin au nom unique (même dossier, donc même volume), puis mis en place
+ *   par `rename`, atomique : un lecteur voit l'ancien fichier ou le nouveau. `rename` remplace aussi un lien symbolique
+ *   posé à cet endroit, au lieu d'en écraser la cible.
+ * Le fichier temporaire, que seul ce processus a créé (`wx`), est retiré si l'écriture ou le rename échoue.
+ */
+function writeFileAtomically(file: string, content: string): void {
+  if (isUpToDate(file, content)) return;
+  const temp = `${file}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+  const fd = openSync(temp, 'wx'); // échoue, sans rien créer, si le nom est déjà pris
+  try {
+    try {
+      writeFileSync(fd, content);
+    } finally {
+      closeSync(fd);
+    }
+    renameSync(temp, file);
+  } catch (err) {
+    try {
+      unlinkSync(temp);
+    } catch {
+      // déjà parti, ou impossible à retirer : l'erreur d'origine est la seule utile
+    }
+    throw err;
+  }
+}
+
+/** `file` est un vrai fichier (un lien symbolique n'est pas suivi, comme pour les dossiers) qui contient exactement `content`. */
+function isUpToDate(file: string, content: string): boolean {
+  try {
+    const info = lstatSync(file);
+    return info.isFile() && info.size === Buffer.byteLength(content) && readFileSync(file, 'utf8') === content;
+  } catch {
+    return false;
   }
 }
 

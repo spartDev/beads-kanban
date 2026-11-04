@@ -1,7 +1,23 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { basename, dirname, join } from 'node:path';
+import { createInterface } from 'node:readline';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDoltClient, DoltNotFoundError, DoltQueryError, parseDoltDate, sqlIdent, sqlString } from './client';
 import { ReadOnlyViolation } from './read-only';
 
@@ -19,6 +35,67 @@ function fakeDolt(body: string): { binary: string; dir: string; calls: () => num
 }
 
 const options = (binary: string) => ({ binary, retryDelayMs: 1, rootPath: join(tmpdir(), 'bdesk-fake-dolt-root') });
+
+/**
+ * Un lecteur de `config_global.json` dans un AUTRE processus, comme le `dolt` d'un autre serveur ou d'un autre worker de
+ * test qui relit ce fichier à son lancement. Il annonce « ready », attend sur son entrée la durée de lecture (ms), relit
+ * alors le fichier en boucle pendant cette durée, puis rend ses comptes. La durée se compte à partir du signal et non d'une
+ * heure de fin fixée d'avance : un lecteur que l'ordonnanceur réveille en retard lit quand même toute la durée. Une lecture
+ * qui n'est pas du JSON est ce que dolt refuse (« unexpected end of JSON input ») : fichier vide ou partiel. Un fichier
+ * absent est compté à part.
+ */
+const READER = `
+const { readFileSync } = require('node:fs');
+const file = process.argv[1];
+let reads = 0, absent = 0, unreadable = 0, sample = null;
+process.stdout.write('ready\\n');
+process.stdin.once('data', (chunk) => {
+  const deadline = Date.now() + Number(chunk);
+  while (Date.now() < deadline) {
+    for (let i = 0; i < 100; i++) {
+      reads++;
+      let text = '';
+      try { text = readFileSync(file, 'utf8'); JSON.parse(text); }
+      catch (error) { if (error.code === 'ENOENT') absent++; else { unreadable++; sample ??= text; } }
+    }
+  }
+  process.stdout.write(JSON.stringify({ reads, absent, unreadable, sample }) + '\\n', () => process.exit(0));
+});
+`;
+
+interface ReaderReport {
+  reads: number;
+  absent: number;
+  unreadable: number;
+  /** Le premier contenu illisible vu (vide ou partiel). */
+  sample: string | null;
+}
+
+/**
+ * Lance `count` lecteurs de `file` et, quand tous sont prêts, leur donne le signal de départ puis exécute
+ * `whileReading(deadline)` : le processus du test y est le seul écrivain. Il s'exécute en synchrone, donc sans jamais céder
+ * la main, jusqu'à l'heure `deadline` (ms depuis 1970), `durationMs` après le signal. Chaque lecteur lit `durationMs` à
+ * partir du moment où il reçoit le signal. Rend leurs comptes.
+ */
+async function readConcurrently(file: string, count: number, durationMs: number, whileReading: (deadline: number) => void): Promise<ReaderReport[]> {
+  const readers = Array.from({ length: count }, () => {
+    const child = spawn(process.execPath, ['-e', READER, file], { stdio: ['pipe', 'pipe', 'inherit'] });
+    return { child, lines: createInterface({ input: child.stdout })[Symbol.asyncIterator]() };
+  });
+  const nextLine = async ({ lines }: (typeof readers)[number]) => {
+    const { value, done } = await lines.next();
+    if (done) throw new Error('le lecteur s’est arrêté avant d’avoir rendu ses comptes');
+    return value as string;
+  };
+  try {
+    await Promise.all(readers.map(nextLine)); // « ready »
+    await Promise.all(readers.map(({ child }) => new Promise<void>((resolve, reject) => child.stdin.write(`${durationMs}\n`, (e) => (e ? reject(e) : resolve())))));
+    whileReading(Date.now() + durationMs);
+    return await Promise.all(readers.map(async (reader) => JSON.parse(await nextLine(reader)) as ReaderReport));
+  } finally {
+    for (const { child } of readers) child.kill();
+  }
+}
 
 describe.skipIf(process.platform === 'win32')('client dolt', () => {
   const empty = fakeDolt(`echo '{"rows": []}'`);
@@ -240,9 +317,25 @@ EOF`);
     const echoRoot = () => fakeDolt(`echo "{\\"rows\\": [{\\"root\\": \\"$DOLT_ROOT_PATH\\"}]}"`);
     const scratch = () => mkdtempSync(join(tmpdir(), 'bdesk-root-'));
     const mode = (path: string) => statSync(path).mode & 0o777;
+    /** root passe outre les droits des fichiers : les cas qui en dépendent n'ont rien à prouver pour lui. */
+    const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+    /** Le nom que `mkdtemp` donne au dossier de repli de dolt. */
+    const FALLBACK = /^beads-desktop-dolt-repli-/;
+    /** Le dossier temporaire de chaque test : ce qu'il crée (dossiers de configuration, dossier de repli de dolt compris) y est retiré à sa fin. */
+    let tmp = '';
+
+    beforeEach(() => {
+      tmp = mkdtempSync(join(tmpdir(), 'bdesk-tmp-'));
+      vi.stubEnv('TMPDIR', tmp);
+    });
 
     afterEach(() => {
       vi.unstubAllEnvs();
+      try {
+        rmSync(tmp, { recursive: true, force: true });
+      } catch {
+        // un dossier laissé en lecture seule par un test en échec : le dossier temporaire du système s'en chargera
+      }
     });
 
     it('crée un dossier privé, réservé à son propriétaire, où les métriques de dolt sont désactivées', async () => {
@@ -303,6 +396,424 @@ EOF`);
       expect(await createDoltClient({ binary: fake.binary }).open(fake.dir).query('select 1')).toEqual([{ root: mine }]);
 
       expect(existsSync(mine)).toBe(false);
+    });
+
+    // Le dossier par défaut est partagé par tous les serveurs et tous les workers de test, et chaque dolt y relit
+    // config_global.json à son lancement : un fichier vide ou partiel, même un instant, le fait échouer.
+    describe('config_global.json, relu par les dolt des autres processus', () => {
+      const CONFIG = JSON.stringify({ 'metrics.disabled': 'true' });
+      /** Même sens pour dolt, mais d'autres octets : le client doit le tenir pour périmé. */
+      const OTHER_BYTES = '{"metrics.disabled": "true"}';
+      const configIn = (rootPath: string) => join(rootPath, '.dolt', 'config_global.json');
+      const longAgo = new Date('2020-01-01T00:00:00Z');
+      const made: string[] = [];
+      /** Un dossier jetable, retiré en fin de test. */
+      const fresh = () => {
+        const dir = scratch();
+        made.push(dir);
+        return dir;
+      };
+      /** Remplace `file` d'un coup, comme il se doit : le harnais ne montre jamais de fichier partiel, seul le client testé le pourrait. */
+      const putAtomically = (file: string, content: string) => {
+        writeFileSync(`${file}.harnais`, content);
+        renameSync(`${file}.harnais`, file);
+      };
+
+      afterEach(() => {
+        for (const dir of made.splice(0)) {
+          try {
+            rmSync(dir, { recursive: true, force: true });
+          } catch {
+            // un dossier laissé en lecture seule par un test en échec : le dossier temporaire du système s'en chargera
+          }
+        }
+      });
+
+      it('ne laisse que config_global.json dans le dossier .dolt : aucun fichier temporaire', () => {
+        const rootPath = join(fresh(), 'dolt-root');
+
+        createDoltClient({ rootPath });
+
+        expect(readdirSync(join(rootPath, '.dolt'))).toEqual(['config_global.json']);
+        expect(readFileSync(configIn(rootPath), 'utf8')).toBe(CONFIG);
+      });
+
+      it.each([
+        ['vide (tronqué par une version précédente)', ''],
+        ['partiel', '{"metrics.dis'],
+        ['d’une autre forme', '{}'],
+        ['qui réactive les métriques', '{"metrics.disabled":"false"}'],
+        ['de même sens mais d’autres octets', OTHER_BYTES],
+      ])('remplace un fichier %s par la configuration voulue, sans fichier temporaire', (_label, stale) => {
+        const rootPath = join(fresh(), 'dolt-root');
+        mkdirSync(join(rootPath, '.dolt'), { recursive: true });
+        writeFileSync(configIn(rootPath), stale);
+
+        createDoltClient({ rootPath });
+
+        expect(readFileSync(configIn(rootPath), 'utf8')).toBe(CONFIG);
+        expect(readdirSync(join(rootPath, '.dolt'))).toEqual(['config_global.json']);
+      });
+
+      it('ne touche pas au fichier quand il est déjà à jour : ni réécrit, ni remplacé', () => {
+        const rootPath = join(fresh(), 'dolt-root');
+        createDoltClient({ rootPath });
+        const file = configIn(rootPath);
+        utimesSync(file, longAgo, longAgo); // une réécriture, même identique, daterait le fichier d'aujourd'hui
+        const before = statSync(file);
+
+        createDoltClient({ rootPath });
+
+        const after = statSync(file);
+        expect(after.mtimeMs).toBe(longAgo.getTime());
+        expect(after.ino).toBe(before.ino);
+        expect(readFileSync(file, 'utf8')).toBe(CONFIG);
+      });
+
+      // Deux processus qui remplacent le fichier en même temps ne doivent pas se marcher dessus : le fichier voisin où chacun
+      // écrit a un nom que l'autre ne peut pas deviner. Ici les noms prévisibles (suffixe fixe, numéro du processus) sont
+      // déjà pris par d'autres écrivains ; un client qui en réutiliserait un les écraserait, ou renoncerait.
+      it('écrit dans un fichier voisin au nom imprévisible : les noms prévisibles, déjà pris, ne sont ni écrasés ni retirés', async () => {
+        const rootPath = join(fresh(), 'dolt-root');
+        mkdirSync(join(rootPath, '.dolt'), { recursive: true });
+        const file = configIn(rootPath);
+        writeFileSync(file, '{}'); // périmé : le client doit le remplacer
+        const suffixes = ['.tmp', '.new', `.${process.pid}`, `.${process.pid}.tmp`, `.${process.pid}.new`];
+        for (const suffix of suffixes) writeFileSync(`${file}${suffix}`, `pris${suffix}`);
+        const fake = echoRoot();
+
+        expect(await createDoltClient({ binary: fake.binary, rootPath }).open(fake.dir).query('select 1')).toEqual([{ root: rootPath }]);
+
+        expect(readFileSync(file, 'utf8')).toBe(CONFIG);
+        for (const suffix of suffixes) expect(readFileSync(`${file}${suffix}`, 'utf8')).toBe(`pris${suffix}`);
+        expect(readdirSync(join(rootPath, '.dolt')).sort()).toEqual(['config_global.json', ...suffixes.map((suffix) => `config_global.json${suffix}`)].sort());
+      });
+
+      /** L'état où le harnais remet le fichier avant chaque création de client (et si les lecteurs ont le droit de le trouver absent). */
+      const states: [string, (file: string) => void, boolean][] = [
+        ['déjà à jour', () => undefined, false],
+        ['périmé à chaque tour', (file) => putAtomically(file, OTHER_BYTES), false],
+        ['absent à chaque tour', (file) => rmSync(file, { force: true }), true],
+      ];
+      // Le cas réel : plusieurs processus créent leur client pendant que les dolt des autres lisent le fichier. Un client
+      // qui tronquait le fichier avant de le réécrire le montrait vide un instant, et le dolt qui le lisait alors échouait
+      // (14 lectures de dolt sur 60 dans la reproduction). Ici les lecteurs sont de vrais processus qui relisent le fichier
+      // en boucle, et le processus du test crée des clients en boucle sans leur céder la main.
+      it.each(states)(
+        'les dolt qui relisent le fichier pendant que des clients se créent ne le voient jamais vide ou partiel : fichier %s',
+        async (_state, prepare, mayBeAbsent) => {
+          const rootPath = join(fresh(), 'dolt-root');
+          createDoltClient({ rootPath });
+          const file = configIn(rootPath);
+          let rounds = 0;
+
+          const reports = await readConcurrently(file, 2, 400, (deadline) => {
+            for (; Date.now() < deadline - 20; rounds++) {
+              prepare(file);
+              createDoltClient({ rootPath });
+            }
+          });
+
+          expect(rounds).toBeGreaterThan(0);
+          for (const report of reports) {
+            expect(report.reads, 'le lecteur a lu pendant que les clients se créaient').toBeGreaterThan(10);
+            expect(report.unreadable, `lectures sans JSON valide (premier contenu vu : ${JSON.stringify(report.sample)})`).toBe(0);
+            if (!mayBeAbsent) expect(report.absent).toBe(0);
+          }
+          expect(readFileSync(file, 'utf8')).toBe(CONFIG);
+          expect(readdirSync(join(rootPath, '.dolt'))).toEqual(['config_global.json']);
+        },
+        30_000,
+      );
+
+      it.skipIf(isRoot)('n’a besoin d’aucune écriture quand le fichier est à jour : un dossier de configuration en lecture seule convient', async () => {
+        const rootPath = join(fresh(), 'dolt-root');
+        createDoltClient({ rootPath });
+        chmodSync(configIn(rootPath), 0o400);
+        chmodSync(join(rootPath, '.dolt'), 0o500);
+        const fake = echoRoot();
+
+        try {
+          expect(await createDoltClient({ binary: fake.binary, rootPath }).open(fake.dir).query('select 1')).toEqual([{ root: rootPath }]);
+        } finally {
+          chmodSync(join(rootPath, '.dolt'), 0o700);
+        }
+      });
+
+      it.skipIf(isRoot)('n’échoue pas quand le dossier .dolt n’est pas inscriptible et que le fichier est périmé : rien ne traîne', async () => {
+        const rootPath = join(fresh(), 'dolt-root');
+        mkdirSync(join(rootPath, '.dolt'), { recursive: true });
+        writeFileSync(configIn(rootPath), '{}');
+        chmodSync(join(rootPath, '.dolt'), 0o500);
+        const fake = echoRoot();
+
+        try {
+          await expect(createDoltClient({ binary: fake.binary, rootPath }).open(fake.dir).query('select 1')).resolves.toHaveLength(1);
+          expect(readdirSync(join(rootPath, '.dolt'))).toEqual(['config_global.json']);
+        } finally {
+          chmodSync(join(rootPath, '.dolt'), 0o700);
+        }
+      });
+
+      it('n’échoue pas quand le fichier ne peut pas être remplacé, ne laisse aucun fichier temporaire et donne à dolt un autre dossier de configuration (le repli)', async () => {
+        const rootPath = join(fresh(), 'dolt-root');
+        mkdirSync(configIn(rootPath), { recursive: true }); // un dossier non vide à la place du fichier : rename ne peut pas le remplacer
+        writeFileSync(join(configIn(rootPath), 'occupant'), 'x');
+        const fake = echoRoot();
+
+        const [row] = await createDoltClient({ binary: fake.binary, rootPath }).open(fake.dir).query('select 1');
+
+        expect(row?.root).not.toBe(rootPath);
+        expect(readdirSync(join(rootPath, '.dolt'))).toEqual(['config_global.json']);
+        expect(readdirSync(configIn(rootPath))).toEqual(['occupant']);
+      });
+
+      it('n’échoue pas quand le dossier de configuration ne peut pas être créé', async () => {
+        const blocker = join(fresh(), 'un-fichier');
+        writeFileSync(blocker, 'x');
+        const fake = echoRoot();
+
+        const [row] = await createDoltClient({ binary: fake.binary, rootPath: join(blocker, 'dolt-root') }).open(fake.dir).query('select 1');
+
+        expect(row?.root).not.toBe(join(blocker, 'dolt-root'));
+        expect(readFileSync(blocker, 'utf8')).toBe('x');
+      });
+
+      // Même précaution que pour les dossiers (voir plus haut), au niveau du fichier : on remplace le lien, on ne l'écrase pas.
+      it.each([
+        ['un autre contenu', 'précieux'],
+        ['le contenu voulu', CONFIG],
+      ])('ne suit pas un lien symbolique posé à la place du fichier (cible : %s) : la cible n’est pas réécrite, le lien est remplacé', (_label, victimContent) => {
+        const rootPath = join(fresh(), 'dolt-root');
+        mkdirSync(join(rootPath, '.dolt'), { recursive: true });
+        const victim = join(fresh(), 'cible');
+        writeFileSync(victim, victimContent);
+        utimesSync(victim, longAgo, longAgo);
+        symlinkSync(victim, configIn(rootPath));
+
+        createDoltClient({ rootPath });
+
+        expect(lstatSync(configIn(rootPath)).isSymbolicLink()).toBe(false);
+        expect(readFileSync(configIn(rootPath), 'utf8')).toBe(CONFIG);
+        expect(readFileSync(victim, 'utf8')).toBe(victimContent);
+        expect(statSync(victim).mtimeMs).toBe(longAgo.getTime());
+        expect(readdirSync(join(rootPath, '.dolt'))).toEqual(['config_global.json']);
+      });
+    });
+
+    // Quand le dossier voulu est inutilisable, dolt ne doit jamais se rabattre sur le ~/.dolt de l'utilisateur : sans
+    // DOLT_ROOT_PATH il y crée config_global.json et eventsData/, et l'envoi de ses métriques d'usage n'est plus désactivé.
+    // Il reçoit alors un dossier de repli, à nous et jetable, préparé de même ; si même celui-là est impossible, aucun dolt
+    // n'est lancé. Le faux $HOME de ces tests doit rester vide.
+    describe('dossier de repli, quand le dossier de configuration voulu est inutilisable', () => {
+      let home = '';
+
+      beforeEach(() => {
+        home = scratch();
+        vi.stubEnv('HOME', home);
+        vi.stubEnv('DOLT_ROOT_PATH', undefined); // celui du développeur, s'il en a un, ne doit pas fausser les cas
+      });
+
+      /** Un exemplaire neuf du module : le dossier de repli est propre à un processus, un exemplaire neuf n'a pas encore le sien. */
+      const freshClient = () => {
+        vi.resetModules();
+        return import('./client');
+      };
+      /** Un faux dolt qui répond avec le DOLT_ROOT_PATH reçu et, comme le vrai, écrit dans $HOME/.dolt quand il n'en a pas. */
+      const homeBoundDolt = () =>
+        fakeDolt(
+          `if [ -z "$DOLT_ROOT_PATH" ]; then mkdir -p "$HOME/.dolt/eventsData" && echo '{}' > "$HOME/.dolt/config_global.json"; fi\n` +
+            `echo "{\\"rows\\": [{\\"root\\": \\"$DOLT_ROOT_PATH\\"}]}"`,
+        );
+      const fallbacksInTmp = () => readdirSync(tmp).filter((name) => FALLBACK.test(name));
+      /** Un chemin de configuration que rien ne peut créer : un fichier ordinaire en barre l'accès. */
+      const blockedRoot = () => {
+        const blocker = join(scratch(), 'un-fichier');
+        writeFileSync(blocker, 'x');
+        return join(blocker, 'dolt-root');
+      };
+      /** `root` est bien le dossier de repli : sous le dossier temporaire, réservé à son propriétaire, métriques de dolt désactivées. */
+      const expectFallbackRoot = (root: string) => {
+        expect(dirname(root)).toBe(tmp);
+        expect(basename(root)).toMatch(FALLBACK);
+        expect(mode(root)).toBe(0o700);
+        expect(mode(join(root, '.dolt'))).toBe(0o700);
+        expect(JSON.parse(readFileSync(join(root, '.dolt', 'config_global.json'), 'utf8'))).toEqual({ 'metrics.disabled': 'true' });
+      };
+      /** Exécute `task` sous l'`umask` donné, puis le remet. */
+      const withUmask = <T>(mask: number, task: () => T): T => {
+        const previous = process.umask(mask);
+        try {
+          return task();
+        } finally {
+          process.umask(previous);
+        }
+      };
+
+      /** Les façons dont le dossier voulu devient inutilisable : chacune rend le `rootPath` à donner au client. */
+      const unusable: [string, (base: string, victim: string) => string][] = [
+        ['un fichier ordinaire en barre l’accès', () => blockedRoot()],
+        [
+          'c’est un lien symbolique',
+          (base, victim) => {
+            symlinkSync(victim, join(base, 'dolt-root'));
+            return join(base, 'dolt-root');
+          },
+        ],
+        [
+          'son sous-dossier .dolt est un lien symbolique',
+          (base, victim) => {
+            mkdirSync(join(base, 'dolt-root'), { mode: 0o700 });
+            symlinkSync(victim, join(base, 'dolt-root', '.dolt'));
+            return join(base, 'dolt-root');
+          },
+        ],
+        [
+          'config_global.json ne peut pas être remplacé (un dossier non vide est à sa place)',
+          (base) => {
+            mkdirSync(join(base, 'dolt-root', '.dolt', 'config_global.json'), { recursive: true });
+            writeFileSync(join(base, 'dolt-root', '.dolt', 'config_global.json', 'occupant'), 'x');
+            return join(base, 'dolt-root');
+          },
+        ],
+      ];
+      it.each(unusable)('dolt reçoit un dossier de repli privé, métriques désactivées, et rien n’est écrit dans le dossier personnel : %s', async (_why, make) => {
+        const { createDoltClient } = await freshClient();
+        const victim = scratch();
+        const rootPath = make(scratch(), victim);
+        const fake = homeBoundDolt();
+
+        const [row] = await createDoltClient({ binary: fake.binary, rootPath }).open(fake.dir).query('select 1');
+
+        expect(readdirSync(home)).toEqual([]); // ni .dolt, ni config_global.json, ni eventsData/ dans $HOME
+        expect(readdirSync(victim)).toEqual([]);
+        expectFallbackRoot(String(row?.root));
+      });
+
+      it('écarte de même le dossier par défaut quand quelqu’un y a posé un lien symbolique : le dossier temporaire est à tout le monde', async () => {
+        const { createDoltClient } = await freshClient();
+        const victim = scratch();
+        symlinkSync(victim, join(tmp, `beads-desktop-dolt-${process.getuid?.() ?? 'user'}`));
+        const fake = homeBoundDolt();
+
+        const [row] = await createDoltClient({ binary: fake.binary }).open(fake.dir).query('select 1');
+
+        expect(readdirSync(home)).toEqual([]);
+        expect(readdirSync(victim)).toEqual([]);
+        expectFallbackRoot(String(row?.root));
+      });
+
+      it('en crée un seul par processus, que tous les clients se partagent', async () => {
+        const { createDoltClient } = await freshClient();
+        const fake = homeBoundDolt();
+        const roots = new Set<unknown>();
+
+        for (let i = 0; i < 3; i++) {
+          const [row] = await createDoltClient({ binary: fake.binary, rootPath: blockedRoot() }).open(fake.dir).query('select 1');
+          roots.add(row?.root);
+        }
+
+        expect(roots.size).toBe(1);
+        expect(fallbacksInTmp()).toHaveLength(1);
+        expectFallbackRoot(String([...roots][0]));
+      });
+
+      it('en refait un si le sien a disparu (le dossier temporaire a été nettoyé)', async () => {
+        const { createDoltClient } = await freshClient();
+        const fake = homeBoundDolt();
+        const [first] = await createDoltClient({ binary: fake.binary, rootPath: blockedRoot() }).open(fake.dir).query('select 1');
+        rmSync(String(first?.root), { recursive: true });
+
+        const [second] = await createDoltClient({ binary: fake.binary, rootPath: blockedRoot() }).open(fake.dir).query('select 1');
+
+        expectFallbackRoot(String(second?.root));
+        expect(fallbacksInTmp()).toHaveLength(1);
+      });
+
+      it('n’en partage pas un entre deux processus : son nom est aléatoire, donc ni commun ni prévisible', async () => {
+        const fake = homeBoundDolt();
+        const roots: string[] = [];
+
+        for (let worker = 0; worker < 2; worker++) {
+          const { createDoltClient } = await freshClient(); // un exemplaire neuf du module tient lieu d'un autre processus
+          const [row] = await createDoltClient({ binary: fake.binary, rootPath: blockedRoot() }).open(fake.dir).query('select 1');
+          roots.push(String(row?.root));
+        }
+
+        expect(roots[1]).not.toBe(roots[0]);
+        expect(fallbacksInTmp()).toHaveLength(2);
+        for (const root of roots) expectFallbackRoot(root);
+      });
+
+      it('n’en crée aucun quand le dossier voulu est utilisable', async () => {
+        const { createDoltClient } = await freshClient();
+        const rootPath = join(scratch(), 'dolt-root');
+        const fake = homeBoundDolt();
+
+        const [row] = await createDoltClient({ binary: fake.binary, rootPath }).open(fake.dir).query('select 1');
+
+        expect(row?.root).toBe(rootPath);
+        expect(fallbacksInTmp()).toEqual([]);
+        expect(readdirSync(home)).toEqual([]);
+      });
+
+      it('laisse à dolt le DOLT_ROOT_PATH de l’environnement, sans repli, quand le dossier voulu est inutilisable', async () => {
+        const { createDoltClient } = await freshClient();
+        const mine = join(scratch(), 'a-moi');
+        vi.stubEnv('DOLT_ROOT_PATH', mine);
+        const fake = homeBoundDolt();
+
+        const [row] = await createDoltClient({ binary: fake.binary, rootPath: blockedRoot() }).open(fake.dir).query('select 1');
+
+        expect(row?.root).toBe(mine);
+        expect(fallbacksInTmp()).toEqual([]);
+        expect(readdirSync(home)).toEqual([]);
+      });
+
+      it('traite un DOLT_ROOT_PATH vide de l’environnement comme absent : le repli, et non le dossier personnel', async () => {
+        const { createDoltClient } = await freshClient();
+        vi.stubEnv('DOLT_ROOT_PATH', '');
+        const fake = homeBoundDolt();
+
+        const [row] = await createDoltClient({ binary: fake.binary, rootPath: blockedRoot() }).open(fake.dir).query('select 1');
+
+        expect(readdirSync(home)).toEqual([]);
+        expectFallbackRoot(String(row?.root));
+      });
+
+      it('ne lance pas dolt quand même le dossier de repli est impossible : chaque lecture échoue par une DoltQueryError claire', async () => {
+        const { createDoltClient, DoltQueryError } = await freshClient();
+        const rootPath = blockedRoot();
+        const fake = homeBoundDolt();
+        vi.stubEnv('TMPDIR', join(scratch(), 'disparu')); // le dossier temporaire n'existe plus : mkdtemp échoue lui aussi
+
+        const db = createDoltClient({ binary: fake.binary, rootPath }).open(fake.dir); // ne lève pas : c'est la lecture qui échoue
+        const errors = [await db.query('select 1').catch((e: unknown) => e), await db.query('select 2').catch((e: unknown) => e)];
+
+        for (const error of errors) {
+          expect(error).toBeInstanceOf(DoltQueryError);
+          expect((error as Error).message).toContain('dossier de configuration');
+          expect((error as Error).message).toContain('~/.dolt');
+          expect((error as Error).cause).toBeInstanceOf(Error); // l'erreur d'origine reste à qui débogue
+        }
+        expect(fake.calls()).toBe(0);
+        expect(readdirSync(home)).toEqual([]);
+      });
+
+      // mkdtemp crée le dossier en 0700 moins l'umask : avec 0200 il n'est que lisible, on n'y écrit rien et sa préparation échoue.
+      // Le dossier créé pour rien ne doit pas rester. (`process.umask(masque)` exige le pool `forks` de vitest, son défaut.)
+      it.skipIf(isRoot)('ne laisse aucun dossier derrière lui quand le dossier de repli, créé, ne peut pas être préparé', async () => {
+        const { createDoltClient, DoltQueryError } = await freshClient();
+        const rootPath = blockedRoot();
+        const fake = homeBoundDolt();
+
+        const db = withUmask(0o200, () => createDoltClient({ binary: fake.binary, rootPath }).open(fake.dir));
+
+        await expect(db.query('select 1')).rejects.toBeInstanceOf(DoltQueryError);
+        expect(fallbacksInTmp()).toEqual([]);
+        expect(fake.calls()).toBe(0);
+        expect(readdirSync(home)).toEqual([]);
+      });
     });
   });
 
