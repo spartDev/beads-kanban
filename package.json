@@ -48,7 +48,7 @@
     "@visx/group": "4.0.0",
     "@visx/scale": "4.0.0",
     "@visx/shape": "4.0.0",
-    "cmdk": "^1.1.1",
+    "cmdk": "1.1.1",
     "fastify": "5",
     "lucide-react": "^1.60.0",
     "open": "10",

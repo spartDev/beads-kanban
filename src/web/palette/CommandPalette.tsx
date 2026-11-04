@@ -7,30 +7,49 @@ import { useNavigate } from 'react-router';
 import { queryKeys } from '../data/hooks';
 import { cx } from '../lib/cx';
 import { usePalette, type PaletteMode } from '../shell/OverlayProvider';
+import { useShortcutRegistry } from '../shortcuts/ShortcutsProvider';
 import { dialogOverlay, dialogSurface } from '../ui/dialog';
 import { Kbd } from '../ui/Kbd';
 import { Bead, EnterHint, groupClass, itemClass, ScopeChip, SectionGroup } from './PaletteGroups';
 import { usePaletteSections } from './usePaletteSections';
+import { usePendingEnter } from './usePendingEnter';
+import { useQuietRow } from './useQuietRow';
 
 export function CommandPalette() {
   const { open, mode, closePalette } = usePalette();
+  const shortcuts = useShortcutRegistry();
 
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && closePalette()}>
       <Dialog.Portal>
         <Dialog.Overlay className={dialogOverlay} />
-        <Dialog.Content className={dialogSurface} aria-describedby="palette-description">
+        <Dialog.Content
+          className={dialogSurface}
+          aria-describedby="palette-description"
+          // Fermée, la palette reste montée le temps de son animation de sortie, et sa couche Radix, encore la plus haute, prend
+          // Échap et le consomme (`preventDefault`) avant que le registre le voie : le panneau qu'un choix vient d'ouvrir resterait
+          // ouvert. Elle rend alors la touche au registre, qui applique ses règles de focus (le focus est dans une boîte de dialogue) :
+          // seul Échap du panneau d'un ticket (`issue.close`, `allowInInput`) la reçoit par ce chemin, pas la désélection du tableau
+          // (`kanban.deselect`), qui ne traverse ni boîte de dialogue ni couche. Ouverte, la palette la garde pour se fermer.
+          onEscapeKeyDown={(event) => {
+            if (!open) shortcuts.handleKeyDown(event);
+          }}
+        >
           <Dialog.Title className="sr-only">Palette de commandes</Dialog.Title>
           <Dialog.Description id="palette-description" className="sr-only">
             Cherchez un Projet, une Epic ou un ticket, ou lancez une commande. Flèches pour choisir, Entrée pour ouvrir.
           </Dialog.Description>
-          {/* Monté seulement à l'ouverture : la saisie repart à zéro et rien n'est chargé tant que la palette est fermée. */}
-          <PaletteBody mode={mode} onClose={closePalette} />
+          {/* Monté à l'ouverture et retiré à la fin de l'animation de sortie : la saisie repart à zéro et rien n'est chargé tant que la palette est
+              retirée. Rouverte pendant cette animation, elle est encore montée : elle garde sa saisie. */}
+          <PaletteBody open={open} mode={mode} onClose={closePalette} />
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
   );
 }
+
+/** La valeur cmdk de la ligne « Chercher … dans tous les Projets ». */
+const WIDEN_VALUE = 'action:search-all';
 
 /** Verbe affiché dans le pied de la palette, selon la ligne sélectionnée. */
 const ACTION_LABELS: readonly (readonly [prefix: string, label: string])[] = [
@@ -38,12 +57,12 @@ const ACTION_LABELS: readonly (readonly [prefix: string, label: string])[] = [
   ['project:', 'Changer de Projet'],
   ['epic:', 'Ouvrir l’Epic'],
   ['issue:', 'Ouvrir le ticket'],
-  ['action:search-all', 'Élargir la recherche'],
+  [WIDEN_VALUE, 'Élargir la recherche'],
   ['action:retry', 'Réessayer'],
   ['action:', 'Exécuter'],
 ];
 
-function PaletteBody({ mode, onClose }: { mode: PaletteMode; onClose: () => void }) {
+function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode; onClose: () => void }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -66,6 +85,8 @@ function PaletteBody({ mode, onClose }: { mode: PaletteMode; onClose: () => void
     currentProject,
     canWiden,
     loadingTickets,
+    ticketsPending,
+    exactPath,
     failedProjects,
     empty,
     projectsStatus,
@@ -73,6 +94,13 @@ function PaletteBody({ mode, onClose }: { mode: PaletteMode; onClose: () => void
 
   const actionLabel = ACTION_LABELS.find(([prefix]) => selected.startsWith(prefix))?.[1] ?? 'Ouvrir';
   const hasRows = resultCount > 0 || canWiden || failedProjects.length > 0;
+  const holdEnter = usePendingEnter({ open, search, selected, pending: ticketsPending, targetPath: exactPath, go });
+  // Revenue après le délai (voir `canWiden`), « Chercher … dans tous les Projets » est la seule ligne tant que les tickets chargent. cmdk
+  // la sélectionnerait d'office, et elle garderait la sélection quand les tickets arrivent au-dessus : Entrée élargirait la recherche au lieu
+  // d'ouvrir le ticket tapé. Elle reste donc là sans être sélectionnée (flèche, survol ou clic la choisissent), et les tickets prennent la
+  // sélection à leur arrivée comme toute première ligne : rien n'était en surbrillance, rien ne saute.
+  const onlyWiden = canWiden && ticketsPending && resultCount === 0 && failedProjects.length === 0;
+  const quiet = useQuietRow({ quiet: onlyWiden, present: canWiden, row: WIDEN_VALUE, selected, select: setSelected });
 
   return (
     <Command
@@ -82,8 +110,12 @@ function PaletteBody({ mode, onClose }: { mode: PaletteMode; onClose: () => void
       // Sans les raccourcis « vim » de cmdk : Ctrl+K y est « ligne précédente », et le registre ne verrait plus
       // l'événement. Sous Windows et Linux, Ctrl+K doit refermer la palette comme ⌘K sur macOS.
       vimBindings={false}
-      value={selected}
-      onValueChange={setSelected}
+      {...quiet.commandProps}
+      // Entrée n'a rien à prendre quand aucune ligne n'est sélectionnée (les tickets chargent) : cmdk n'en fait rien, nous retenons la
+      // demande (voir `usePendingEnter`). Celle qui valide une composition (IME) n'en est pas une : même garde que cmdk.
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && !event.nativeEvent.isComposing && event.keyCode !== 229 && selected === '') holdEnter();
+      }}
       className="flex max-h-[min(34rem,calc(100dvh-1.5rem))] flex-col md:max-h-[min(34rem,calc(100dvh-12vh-2rem))]"
     >
       <div className="flex items-center gap-3 border-b border-line px-4">
@@ -91,7 +123,10 @@ function PaletteBody({ mode, onClose }: { mode: PaletteMode; onClose: () => void
         <Command.Input
           autoFocus
           value={query}
-          onValueChange={setQuery}
+          onValueChange={(value) => {
+            quiet.typed();
+            setQuery(value);
+          }}
           placeholder={
             mode === 'projects' ? 'Changer de Projet' : 'Chercher un ticket, une Epic, un Projet ou une commande'
           }
@@ -151,7 +186,7 @@ function PaletteBody({ mode, onClose }: { mode: PaletteMode; onClose: () => void
 
         {canWiden ? (
           <Command.Group heading="Élargir" className={groupClass}>
-            <Command.Item value="action:search-all" onSelect={() => setSearchAll(true)} className={itemClass}>
+            <Command.Item value={WIDEN_VALUE} onSelect={() => setSearchAll(true)} className={itemClass}>
               <Bead />
               <Globe size={16} strokeWidth={1.8} aria-hidden="true" className="shrink-0 text-ink-3" />
               <span className="min-w-0 flex-1 truncate">Chercher « {search} » dans tous les Projets</span>

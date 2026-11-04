@@ -1,6 +1,6 @@
 import { useQueries, type UseQueryResult } from '@tanstack/react-query';
 import { Keyboard, LayoutGrid, type LucideIcon } from 'lucide-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { isEpic, isReadable } from '../data/helpers';
 import { issuesQuery, useProjects } from '../data/hooks';
 import type { Issue, IssuesResponse, Project } from '../data/types';
@@ -10,10 +10,21 @@ import { SECTIONS, useRouteInfo, useTabsProject } from '../shell/navigation';
 import { useShortcutsHelp, type PaletteMode } from '../shell/OverlayProvider';
 import { THEME_OPTIONS } from '../theme/options';
 import { useTheme } from '../theme/ThemeProvider';
-import { rank, type Searchable } from './search';
+import { normalize, rank, type Searchable } from './search';
 
 /** Combien de lignes par rubrique : au-delà, on invite à affiner la recherche. */
 const LIMITS = { projects: 8, epics: 6, issues: 40, recents: 6 } as const;
+
+/**
+ * Au bout de ce délai sans réponse des tickets du Projet courant, compté depuis la dernière frappe (et pas avant que les tickets soient
+ * demandés : il faut la liste des Projets pour savoir lesquels lire), « Chercher … dans tous les Projets » est proposé quand même : sans
+ * lui, une liste qui tarde ou ne répond jamais priverait de la recherche globale (la Vue globale resterait le seul recours). Depuis la
+ * dernière frappe : la ligne ne se montre pas au milieu de la saisie, mais quand on attend.
+ * 2 s : bien au-delà des ≈ 250 ms d'une lecture à froid, pour que la ligne ne vienne jamais pendant un chargement ordinaire ; au-delà des
+ * ≈ 1,0 à 1,7 s d'un échec suivi de sa nouvelle tentative (`shouldRetry`, une seconde de pause), dont « Réessayer » s'occupe ; assez court pour
+ * qu'on ne croie pas la palette figée.
+ */
+const WIDEN_AFTER_MS = 2_000;
 
 export interface ScopedIssue {
   issue: Issue;
@@ -51,10 +62,21 @@ export interface PaletteSections {
   /** Les tickets se cherchent dans tous les Projets (Vue globale, ou sur demande) plutôt que dans le Projet courant. */
   everywhere: boolean;
   currentProject: Project | undefined;
-  /** Proposer d'étendre la recherche de tickets à tous les Projets. */
+  /**
+   * Proposer d'étendre la recherche de tickets à tous les Projets, une fois ceux du Projet courant chargés — ou, à défaut de réponse,
+   * `WIDEN_AFTER_MS` après la dernière frappe.
+   */
   canWiden: boolean;
   /** Des tickets sont en chargement et aucun n'est encore là. */
   loadingTickets: boolean;
+  /**
+   * Les tickets ne sont pas tous là : la lecture d'au moins un Projet de la portée n'a pas répondu (ni liste, ni échec), ou la liste des
+   * Projets, qui dit lesquels lire, n'est pas encore arrivée (la portée est vide en attendant : rien n'est en cours de lecture, et
+   * pourtant les tickets manquent).
+   */
+  ticketsPending: boolean;
+  /** Chemin du ticket ou de l'Epic dont l'id est exactement la saisie, s'il y en a un seul parmi les lignes listées. */
+  exactPath: string | undefined;
   /** Projets dont les tickets n'ont pas pu être chargés (un rafraîchissement raté qui garde ses tickets n'en fait pas partie). */
   failedProjects: Project[];
   /** Rien à lister ni à proposer : la palette dit pourquoi. */
@@ -85,6 +107,38 @@ const rowCount = (section: PaletteSection): number =>
 
 const byRecency = (a: ScopedIssue, b: ScopedIssue): number =>
   b.issue.updatedAt.localeCompare(a.issue.updatedAt);
+
+/**
+ * Vrai quand `waiting` dure depuis `delayMs` sans que `restartKey` ait changé (le décompte repart à chaque changement, tant qu'il n'est pas
+ * venu à échéance : une fois vrai, ça reste vrai tant que `waiting` dure). Retombe dès que `waiting` cesse ; l'attente suivante repart de zéro.
+ */
+function useWaitedFor(waiting: boolean, delayMs: number, restartKey: string): boolean {
+  const [elapsed, setElapsed] = useState(false);
+  useEffect(() => {
+    if (!waiting) {
+      setElapsed(false);
+      return undefined;
+    }
+    const timer = setTimeout(() => setElapsed(true), delayMs);
+    return () => clearTimeout(timer);
+  }, [waiting, delayMs, restartKey]);
+  return waiting && elapsed;
+}
+
+/** Chemin de l'unique ticket (ou Epic) listé dont l'id est exactement la saisie, à la casse et aux accents près ; rien s'il y en a plusieurs. */
+function exactIssuePath(sections: PaletteSection[], search: string): string | undefined {
+  const typed = normalize(search);
+  const hits: string[] = [];
+  for (const section of sections) {
+    if (section.id !== 'epics' && section.id !== 'issues') continue;
+    for (const { issue, project } of section.items) {
+      if (normalize(issue.id) !== typed) continue;
+      // Les mêmes adresses que celles des lignes (`EpicRow`, `IssueRow`).
+      hits.push(section.id === 'epics' ? paths.epics(project.id, issue.id) : paths.issue(project.id, issue.id));
+    }
+  }
+  return hits.length === 1 ? hits[0] : undefined;
+}
 
 function combineIssueResults(results: UseQueryResult<IssuesResponse, Error>[]) {
   return {
@@ -252,7 +306,16 @@ export function usePaletteSections({
     return { sections: found, resultCount: found.reduce((total, section) => total + rowCount(section), 0) };
   }, [mode, search, allProjects, commands, epics, tickets]);
 
-  const canWiden = mode === 'all' && !everywhere && readable.length > 1 && search.length > 0;
+  const exactPath = useMemo(() => exactIssuePath(sections, search), [sections, search]);
+
+  // Proposé quand le Projet n'a plus rien à répondre : tant que ses tickets se chargent, un résultat peut encore arriver, et Entrée
+  // ne doit pas prendre cette ligne de repli à sa place. Mais une liste qui tarde ne doit pas priver de la recherche globale : après
+  // `WIDEN_AFTER_MS` sans réponse depuis la dernière frappe, la ligne revient. Seule ligne de la liste, elle n'est pas sélectionnée d'office (voir
+  // `onlyWiden` dans `CommandPalette`) : les tickets qui arrivent ensuite prennent la sélection, sans qu'elle saute, et Entrée ouvre le
+  // ticket tapé. Entrée pressée avant n'est pas perdue non plus : `usePendingEnter` ouvre le ticket qu'elle attendait.
+  const widenable = mode === 'all' && !everywhere && readable.length > 1 && search.length > 0;
+  const waitedTooLong = useWaitedFor(widenable && issueResults.loading, WIDEN_AFTER_MS, search);
+  const canWiden = widenable && (!issueResults.loading || waitedTooLong);
   const failedProjects = issueResults.failed.flatMap((index) => (scope[index] ? [scope[index]] : []));
 
   return {
@@ -263,6 +326,8 @@ export function usePaletteSections({
     currentProject,
     canWiden,
     loadingTickets: mode === 'all' && issueResults.loading && tickets.length === 0,
+    ticketsPending: issueResults.loading || (mode !== 'projects' && projectsQuery.isLoading),
+    exactPath,
     failedProjects,
     empty: resultCount === 0 && !canWiden && !issueResults.loading && failedProjects.length === 0,
     // Les Projets d'abord : un rafraîchissement raté garde la liste affichée.
