@@ -88,10 +88,33 @@ _Avoid_: régression
 **Taux d'abandon**:
 Part des Abandons parmi les tickets fermés sur une période.
 
+**Taux de Réouverture**:
+Part des clôtures d'une période (Transitions vers fermé) que suit une Réouverture. Un ticket fermé, rouvert puis refermé compte deux clôtures, dont seule la première est suivie d'une Réouverture ; la Livraison, elle, est la dernière.
+_Avoid_: taux de régression
+
+**Écart Arrivées–Débit**:
+Arrivées moins Débit sur une période. Positif, il arrive plus de tickets qu'il n'en est livré.
+
+**Répartition par type**:
+Part de chaque type de ticket (bug, feature, task, chore…) parmi les Arrivées, les Livraisons et le WIP d'une période.
+
+**Attente en Prêt**:
+Temps passé dans la colonne Prêt entre la création d'un ticket et sa dernière clôture, avant un premier démarrage comme après un retour à ouvert ; composante du Lead Time. Le ticket pouvait être démarré et ne l'était pas.
+
+**Décomposition du Lead Time**:
+Le Lead Time cumulé des Livraisons d'une période, réparti en cinq parts qui s'additionnent : Attente de dépendance, Attente en Prêt, travail (Cycle Time hors Blocage), Blocage (dans le Cycle Time) et autre attente (le reste : Backlog après un premier démarrage, différé, fermé avant une Réouverture).
+
+**Prêt qui stagne**:
+Un Prêt qui l'est depuis plus de 14 jours calendaires (14 jours pile ne stagne pas). L'âge d'un Prêt est le temps calendaire écoulé depuis qu'il l'est devenu : création, fin de son Blocage, retour à ouvert ou Réouverture. Il se compte sur le calendrier de l'utilisateur, dans son fuseau : un changement d'heure ne l'allonge ni ne le raccourcit.
+_Avoid_: ticket oublié, ticket périmé
+
+**Carte d'activité**:
+Nombre de Transitions d'une période selon le jour de la semaine (du lundi au dimanche) et l'heure, dans le fuseau de l'utilisateur. La création d'un ticket n'en est pas une : c'est une Arrivée.
+
 ## Relationships
 
 - Un **Projet** contient zéro ou plusieurs tickets
-- Toutes les durées (**Lead Time**, **Cycle Time**, **Temps de rétablissement**) sont mesurées en temps calendaire, dans le fuseau de l'utilisateur
+- Toutes les durées (**Lead Time**, **Cycle Time**, **Temps de rétablissement**, **Attente de dépendance**, **Attente en Prêt**, âge d'un **Prêt**) sont mesurées en temps calendaire, dans le fuseau de l'utilisateur
 - Une **Epic** a des **Enfants** ; son avancement = **Livraisons** parmi ses Enfants
 - Un **Bug d'origine** est relié à au moins une **Livraison**, qu'il met chacune en échec ; une **Livraison** peut avoir plusieurs Bugs d'origine
 - La **Vue globale** agrège tous les **Projets** suivis ; le kanban reste centré sur un **Projet**

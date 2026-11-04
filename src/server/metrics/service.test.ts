@@ -527,3 +527,113 @@ describe('service de métriques', () => {
     });
   });
 });
+
+describe('service de métriques : santé du flux', () => {
+  /** Un historique à la main : ses statuts et ses liens. */
+  const history = (id: string, statuses: [string, string][], extra: Partial<TicketHistory> = {}): TicketHistory => ({
+    id,
+    type: 'task',
+    statusSnapshots: statuses.map(([status, iso]) => ({ status, at: at(iso) })),
+    dependencies: [],
+    ...extra,
+  });
+
+  /**
+   * a : a-1 livré (le 21), a-2 son doublon fermé (Abandon), a-3 ouvert et Prêt depuis le 22 à 12:00Z.
+   * b : b-1 démarré le 20 et livré le 21 (24 h de Cycle Time, sans Blocage), b-2 ouvert et Prêt depuis le 22 à 20:00Z.
+   */
+  const healthWorld = (): Record<string, FakeProject> => ({
+    a: {
+      histories: [
+        history('a-1', [['open', '2026-10-20T08:00'], ['closed', '2026-10-21T08:00']]),
+        history('a-2', [['open', '2026-10-20T09:00'], ['closed', '2026-10-21T09:00']], {
+          dependencies: [{ type: 'duplicates', target: 'a-1', addedAt: at('2026-10-21T09:00') }],
+        }),
+        history('a-3', [['open', '2026-10-22T12:00']]),
+      ],
+      issues: [issueOf('a-1'), issueOf('a-2'), issueOf('a-3')],
+    },
+    b: {
+      histories: [
+        history('b-1', [['open', '2026-10-19T10:00'], ['in_progress', '2026-10-20T10:00'], ['closed', '2026-10-21T10:00']]),
+        history('b-2', [['open', '2026-10-22T20:00']]),
+      ],
+      issues: [issueOf('b-1'), issueOf('b-2')],
+    },
+  });
+
+  it('mesure la santé de la Vue globale sur l’union des Projets, avec la période et le fuseau des autres métriques', async () => {
+    const { service } = fakeProjects(healthWorld());
+
+    const { health, asOf } = await createMetricsService(service, options).compute({ projects: [], ...week });
+
+    expect(asOf).toBe(NOW.toISOString());
+    // Fermés : a-1 et b-1 (Livraisons), a-2 (doublon) → 1 Abandon sur 3.
+    expect(health.abandonment).toMatchObject({ closed: 3, abandoned: 1, duplicates: 1, superseded: 0, rate: 1 / 3 });
+    expect(health.efficiency).toMatchObject({ n: 1, cycleTime: DAY, blockedTime: 0, ratio: 1 });
+    expect(health.reopening).toMatchObject({ closures: 3, reopened: 0, rate: 0 });
+    // Lead Times : a-1 24 h (le 20 à 08:00Z au 21 à 08:00Z), b-1 48 h (le 19 à 10:00Z au 21 à 10:00Z).
+    // Prêt de bout en bout, sauf le travail de b-1 : a-1 24 h Prêt, b-1 24 h Prêt avant son démarrage puis 24 h de travail.
+    expect(health.leadTimeBreakdown).toMatchObject({ deliveries: 2, total: 3 * DAY, readyWait: 2 * DAY, work: DAY, otherWait: 0 });
+    // Les Prêts de chaque Projet, du plus ancien au plus récent : a-3 (depuis le 22 à 12:00Z), puis b-2 (20:00Z).
+    expect(health.readyAges.tickets.map((t) => [t.project, t.id, t.age])).toEqual([
+      ['a', 'a-3', NOW.getTime() - at('2026-10-22T12:00').getTime()],
+      ['b', 'b-2', NOW.getTime() - at('2026-10-22T20:00').getTime()],
+    ]);
+    // Transitions hors création : a-1 (1), a-2 (1), b-1 (2).
+    expect(health.activity.total).toBe(4);
+  });
+
+  it('ne mesure que les Projets demandés', async () => {
+    const { service } = fakeProjects(healthWorld());
+
+    const { health } = await createMetricsService(service, options).compute({ projects: ['b'], ...week });
+
+    expect(health.abandonment).toMatchObject({ closed: 1, abandoned: 0, rate: 0 });
+    expect(health.readyAges.tickets.map((t) => t.id)).toEqual(['b-2']);
+  });
+
+  it('lit les jours et les heures de la carte d’activité dans le fuseau du service', async () => {
+    const { service } = fakeProjects(healthWorld());
+
+    const paris = await createMetricsService(service, { now: () => NOW, timeZone: 'Europe/Paris' }).compute({ projects: ['b'], ...week });
+    const utc = await createMetricsService(service, { now: () => NOW, timeZone: 'UTC' }).compute({ projects: ['b'], ...week });
+
+    // b-1 passe en cours le mardi 20 à 10:00Z (12:00 à Paris), et se ferme le mercredi 21 à 10:00Z (12:00).
+    expect(paris.health.activity.cells[1]?.[12]).toBe(1);
+    expect(utc.health.activity.cells[1]?.[10]).toBe(1);
+    expect(paris.health.activity.cells[2]?.[12]).toBe(1);
+  });
+
+  it('vieillit les Prêts avec l’heure sans relire l’historique : le cache ne fige que l’analyse, pas le temps', async () => {
+    const { service, calls } = fakeProjects(healthWorld());
+    let clock = NOW;
+    const metrics = createMetricsService(service, { now: () => clock, timeZone: 'Europe/Paris' });
+
+    const first = await metrics.compute({ projects: ['a'], ...week });
+    clock = new Date(NOW.getTime() + 3_600_000);
+    const later = await metrics.compute({ projects: ['a'], ...week });
+
+    expect(later.health.readyAges.tickets[0]?.age).toBe((first.health.readyAges.tickets[0]?.age ?? 0) + 3_600_000);
+    expect(calls.histories).toEqual(['a']);
+  });
+
+  it('laisse un Projet illisible hors de la santé du flux, sans la faire échouer', async () => {
+    const { service } = fakeProjects({ ...healthWorld(), hcp: { status: 'unreadable', reason: 'Base absente', name: 'HCP' } });
+
+    const { health, unreadable } = await createMetricsService(service, options).compute({ projects: [], ...week });
+
+    expect(unreadable.map((p) => p.id)).toEqual(['hcp']);
+    expect(health.abandonment.closed).toBe(3);
+  });
+
+  it('rend une santé vide mais valide quand aucun Projet n’a pu être mesuré', async () => {
+    const { service } = fakeProjects({ hcp: { status: 'unreadable', reason: 'Base absente', name: 'HCP' } });
+
+    const { health } = await createMetricsService(service, options).compute({ projects: ['hcp'], ...week });
+
+    expect(health.efficiency.ratio).toBeNull();
+    expect(health.readyAges.tickets).toEqual([]);
+    expect(health.activity.cells).toHaveLength(7);
+  });
+});

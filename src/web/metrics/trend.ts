@@ -36,6 +36,16 @@ export interface Measure {
 
 const MINUTE = 60_000;
 
+/**
+ * L'Efficacité du flux écrite : « 100 % » seulement quand elle vaut exactement 1, c'est-à-dire sans le moindre Blocage. Une part
+ * qui arrondirait à 100 % sans l'être (3,5 s de Blocage sur 124 j de Cycle Time) s'écrit « > 99,9 % » : « 100 % » dirait qu'il
+ * n'y a pas eu de Blocage, alors qu'il y en a eu.
+ */
+export function formatEfficiency(ratio: number | null | undefined): string {
+  const text = formatPercent(ratio, { precise: true });
+  return typeof ratio === 'number' && ratio < 1 && text === `100${NBSP}%` ? `> 99,9${NBSP}%` : text;
+}
+
 export const MEASURES = {
   /** Débit : un nombre de Livraisons. */
   count: {
@@ -75,6 +85,46 @@ export const MEASURES = {
     speak: (value) => formatDecimal(value, 1),
     speakDelta: (magnitude) => formatDecimal(magnitude, 1),
     negligible: (delta) => Math.abs(delta) < 0.05,
+    showRatio: true,
+  },
+  /** Efficacité du flux : une part de 0 à 1, dont l'écart se lit en points ; plus haute, c'est mieux. Jamais « 100 % » avec du Blocage. */
+  efficiency: {
+    polarity: 'higher-is-better',
+    format: formatEfficiency,
+    formatDelta: formatPoints,
+    speak: formatEfficiency,
+    speakDelta: spokenPoints,
+    negligible: (delta) => Math.abs(delta) < 0.0005,
+    showRatio: false,
+  },
+  /** Taux d'abandon : une part de 0 à 1 lue en points, ni bonne ni mauvaise à la hausse (fermer des doublons relève de la bonne hygiène). */
+  abandonment: {
+    polarity: 'neutral',
+    format: (value) => formatPercent(value, { precise: true }),
+    formatDelta: formatPoints,
+    speak: (value) => formatPercent(value, { precise: true }),
+    speakDelta: spokenPoints,
+    negligible: (delta) => Math.abs(delta) < 0.0005,
+    showRatio: false,
+  },
+  /** Écart Arrivées–Débit : un nombre de tickets signé, sans bon ni mauvais sens (tout dépend de ce que l'équipe vise). */
+  balance: {
+    polarity: 'neutral',
+    format: (value) => formatSigned(value),
+    formatDelta: (delta) => formatSigned(delta),
+    speak: (value) => formatSigned(value),
+    speakDelta: formatCount,
+    negligible: (delta) => Math.abs(delta) < 0.5,
+    showRatio: false,
+  },
+  /** Un nombre de tickets dont moins, c'est mieux (les Prêts qui stagnent). */
+  fewer: {
+    polarity: 'lower-is-better',
+    format: formatCount,
+    formatDelta: (delta) => formatSigned(delta),
+    speak: formatCount,
+    speakDelta: formatCount,
+    negligible: (delta) => Math.abs(delta) < 0.5,
     showRatio: true,
   },
 } as const satisfies Record<string, Measure>;

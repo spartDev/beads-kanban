@@ -11,7 +11,9 @@ import type {
   MetricsCycleTimePoint,
   MetricsDateRange,
   MetricsDurationTile,
+  MetricsHealth,
   MetricsInProgressTicket,
+  MetricsReadyTicket,
   MetricsResponse,
   MetricsSlice,
   MetricsTrend,
@@ -117,6 +119,84 @@ const slice = (key: string, label: string, overrides: Partial<MetricsSlice> = {}
   ...overrides,
 });
 
+const ready = (id: string, type: string, priority: number, project: string, since: string, age: number): MetricsReadyTicket => ({
+  id,
+  title: `Prêt ${id}`,
+  type,
+  priority,
+  project,
+  since,
+  age,
+  stagnant: age > 14 * DAY,
+});
+
+/** Les Prêts à `AS_OF`, du plus ancien au plus récent : trois stagnent (plus de 14 jours). */
+const readyTickets: MetricsReadyTicket[] = [
+  ready('mpm-r1', 'chore', 3, 'mpm', '2026-09-23T09:00:00.000Z', 40 * DAY + 10 * HOUR),
+  ready('mpm-r2', 'bug', 1, 'mpm', '2026-10-16T09:00:00.000Z', 17 * DAY + 10 * HOUR),
+  ready('bdesk-r3', 'feature', 2, 'bdesk', '2026-10-18T09:00:00.000Z', 15 * DAY + 10 * HOUR),
+  ready('mpm-r4', 'task', 2, 'mpm', '2026-10-30T09:00:00.000Z', 3 * DAY + 10 * HOUR),
+  ready('bdesk-r5', 'task', 2, 'bdesk', '2026-11-02T14:00:00.000Z', 5 * HOUR),
+];
+
+/** 7 jours de 24 heures : mardi à jeudi aux heures de bureau, un peu le lundi et le vendredi, le week-end à peine. */
+function activityCells(): number[][] {
+  const cells = Array.from({ length: 7 }, () => new Array<number>(24).fill(0));
+  const fill = (day: number, hours: number[], count: number) => hours.forEach((hour) => (cells[day]![hour] = count));
+  fill(0, [9, 10, 14, 15], 2); // lundi
+  fill(1, [9, 10, 11, 14, 15, 16], 5); // mardi
+  fill(2, [9, 10, 11, 14, 15, 16], 4); // mercredi
+  fill(3, [9, 10, 11, 14, 15], 6); // jeudi
+  fill(3, [20], 1);
+  fill(4, [9, 10, 14], 2); // vendredi
+  fill(5, [11], 1); // samedi
+  return cells;
+}
+
+const sumOf = (cells: number[][]) => cells.flat().reduce((total, count) => total + count, 0);
+
+/**
+ * La santé du flux de la Vue globale sur 7 jours : 15 Livraisons démarrées (31 j de Cycle Time dont 2,5 j de Blocage), 21
+ * clôtures dont 2 suivies d'une Réouverture, 20 tickets fermés dont 2 Abandons, 6 Livraisons qui ont attendu une
+ * dépendance, 5 Prêts dont 3 stagnent, 100 Transitions.
+ */
+export function healthFixture(overrides: Partial<MetricsHealth> = {}): MetricsHealth {
+  const cells = activityCells();
+  const ratio = (31 * DAY - 2.5 * DAY) / (31 * DAY);
+  return {
+    efficiency: { n: 15, cycleTime: 31 * DAY, blockedTime: 2.5 * DAY, ratio, blockedDeliveries: 3, trend: trendOf(ratio, 0.97) },
+    reopening: { closures: 21, reopened: 2, rate: 2 / 21, trend: trendOf(2 / 21, 0.04) },
+    abandonment: { closed: 20, abandoned: 2, duplicates: 1, superseded: 1, rate: 0.1, trend: trendOf(0.1, 0.05) },
+    leadTimeBreakdown: {
+      deliveries: 18,
+      total: 120 * DAY,
+      dependencyWait: 21 * DAY,
+      readyWait: 52 * DAY,
+      work: 28.5 * DAY,
+      blocked: 2.5 * DAY,
+      otherWait: 16 * DAY,
+      waited: 6,
+      waits: { median: 2.1 * DAY, p85: 6 * DAY, n: 6 },
+    },
+    readyAges: { stagnantAfter: 14 * DAY, tickets: readyTickets, stagnant: 3, trend: trendOf(3, 2) },
+    activity: { cells, total: sumOf(cells) },
+    ...overrides,
+  };
+}
+
+/** La santé d'un Projet sans Livraison, sans clôture, sans Prêt ni Transition : tout est indéfini ou à zéro. */
+export function emptyHealthFixture(overrides: Partial<MetricsHealth> = {}): MetricsHealth {
+  return {
+    efficiency: { n: 0, cycleTime: 0, blockedTime: 0, ratio: null, blockedDeliveries: 0, trend: noTrend },
+    reopening: { closures: 0, reopened: 0, rate: null, trend: noTrend },
+    abandonment: { closed: 0, abandoned: 0, duplicates: 0, superseded: 0, rate: null, trend: noTrend },
+    leadTimeBreakdown: { deliveries: 0, total: 0, dependencyWait: 0, readyWait: 0, work: 0, blocked: 0, otherWait: 0, waited: 0, waits: { median: null, p85: null, n: 0 } },
+    readyAges: { stagnantAfter: 14 * DAY, tickets: [], stagnant: 0, trend: trendOf(0, 0) },
+    activity: { cells: Array.from({ length: 7 }, () => new Array<number>(24).fill(0)), total: 0 },
+    ...overrides,
+  };
+}
+
 /**
  * Une réponse de la Vue globale sur 7 jours : deux Projets, des Livraisons presque tous les jours, un Taux d'échec non
  * significatif (Couverture de 19 %), un temps de rétablissement sans bug critique livré, un ticket de 189 jours en cours.
@@ -172,6 +252,7 @@ export function metricsFixture(overrides: Partial<MetricsResponse> = {}): Metric
         slice('mpm', 'My-Prompt-Manager', { throughput: 16, wip: 3, coverage: { bugs: 36, linked: 13, ratio: 13 / 36 } }),
       ],
     },
+    health: healthFixture(),
     ...overrides,
   };
 }
@@ -195,6 +276,7 @@ export function emptyMetricsFixture(overrides: Partial<MetricsResponse> = {}): M
     cfd: cfd.map((row) => ({ ...row, backlog: 0, ready: 0, inProgress: 0, blocked: 0, done: 0 })),
     inProgress: [],
     slices: { type: [], priority: [], project: [slice('bdesk', 'beads-desktop', { throughput: 0, arrivals: 0, wip: 0, failureRate: null, leadTime: { median: null, p85: null, n: 0 }, cycleTime: { median: null, p85: null, n: 0 }, coverage: { bugs: 0, linked: 0, ratio: null } })] },
+    health: emptyHealthFixture(),
     ...overrides,
   });
 }

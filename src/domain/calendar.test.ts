@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, bucketsOf, dayOf, daysOf, InvalidPeriodError, MIN_CUSTOM_DAY, type PeriodSpec, resolvePeriod, startOfDay } from './calendar';
+import { addDays, bucketsOf, calendarElapsed, dayOf, daysOf, InvalidPeriodError, MIN_CUSTOM_DAY, type PeriodSpec, resolvePeriod, startOfDay } from './calendar';
 
 const instant = (iso: string) => new Date(iso).getTime();
 const HOUR = 3_600_000;
@@ -402,5 +402,53 @@ describe('buckets', () => {
     expect(buckets).toHaveLength(6);
     expect(week).toMatchObject({ to: '2026-10-25', days: 7 });
     expect(((week?.end ?? 0) - (week?.start ?? 0)) / HOUR).toBe(169);
+  });
+});
+
+describe('temps calendaire écoulé', () => {
+  // Les attendus viennent de zoneinfo (Python) : l'écart des heures du mur, pas le code testé.
+  const DAY = 24 * HOUR;
+  const elapsed = (from: string, to: string, timeZone = PARIS) => calendarElapsed(instant(from), instant(to), timeZone);
+
+  it('vaut la durée réelle quand aucun changement d’heure ne s’intercale, et toujours en UTC et dans un fuseau à décalage fractionnaire', () => {
+    expect(elapsed('2026-10-12T08:00:00Z', '2026-10-14T20:30:15.250Z')).toBe(2 * DAY + 12 * HOUR + 30 * 60_000 + 15_250);
+    expect(elapsed('2026-10-20T10:00:00Z', '2026-11-03T11:00:00Z', 'UTC')).toBe(14 * DAY + HOUR);
+    expect(elapsed('2026-10-20T10:00:00Z', '2026-11-03T11:00:00Z', 'Asia/Kolkata')).toBe(14 * DAY + HOUR); // UTC+5:30, sans changement d’heure
+  });
+
+  it('ne compte pas l’heure en plus du passage à l’heure d’hiver : du mardi 20 octobre 12:00 au mardi 3 novembre 12:00, 14 jours pile', () => {
+    // 12:00 CEST (10:00Z) puis 12:00 CET (11:00Z) : 14 j 1 h sur l'horloge réelle.
+    expect(elapsed('2026-10-20T10:00:00Z', '2026-11-03T11:00:00Z')).toBe(14 * DAY);
+    expect(elapsed('2026-10-20T10:00:00Z', '2026-11-03T11:00:00.001Z')).toBe(14 * DAY + 1); // et la milliseconde suivante dépasse
+  });
+
+  it('ne retire pas l’heure en moins du passage à l’heure d’été : du mardi 17 mars 12:00 au mardi 31 mars 12:00, 14 jours pile', () => {
+    // 12:00 CET (11:00Z) puis 12:00 CEST (10:00Z) : 13 j 23 h seulement sur l'horloge réelle.
+    expect(elapsed('2026-03-17T11:00:00Z', '2026-03-31T10:00:00Z')).toBe(14 * DAY);
+    expect(elapsed('2026-03-28T11:00:00Z', '2026-03-29T10:00:00Z')).toBe(DAY); // le jour de 23 h compte pour un jour
+  });
+
+  it('lit l’heure du mur des deux bouts, y compris le jour même du changement d’heure', () => {
+    // Le dimanche 25 octobre dure 25 h : de minuit (CEST) à midi (CET), 12 h de mur pour 13 h réelles.
+    expect(elapsed('2026-10-24T22:00:00Z', '2026-10-25T11:00:00Z')).toBe(12 * HOUR);
+    // Du dimanche 25 octobre 12:00 CET au dimanche 8 novembre 12:00 CET : aucun changement d'heure entre les deux.
+    expect(elapsed('2026-10-25T11:00:00Z', '2026-11-08T11:00:00Z')).toBe(14 * DAY);
+    expect(elapsed('2026-10-25T11:00:00Z', '2026-11-08T11:30:00Z')).toBe(14 * DAY + 30 * 60_000);
+  });
+
+  it('suit le fuseau demandé, pas celui de l’environnement : Los Angeles change d’heure le 1er novembre', () => {
+    // 25 octobre 12:00 PDT (19:00Z) au 8 novembre 12:00 PST (20:00Z).
+    expect(elapsed('2026-10-25T19:00:00Z', '2026-11-08T20:00:00Z', 'America/Los_Angeles')).toBe(14 * DAY);
+    expect(elapsed('2026-10-25T19:00:00Z', '2026-11-08T20:00:00Z', PARIS)).toBe(14 * DAY + HOUR); // à Paris : 20:00 puis 21:00 CET, sans changement d’heure entre les deux
+  });
+
+  it('suit un changement d’heure d’une demi-heure : Lord Howe, le 5 avril', () => {
+    // 4 avril 12:00 (UTC+11) au 6 avril 12:00 (UTC+10:30) : 2 jours de mur, 2 j 30 min réelles.
+    expect(elapsed('2026-04-04T01:00:00Z', '2026-04-06T01:30:00Z', 'Australia/Lord_Howe')).toBe(2 * DAY);
+  });
+
+  it('n’est jamais négatif : dans l’heure répétée de l’automne, 02:15 CET suit 02:45 CEST de 30 minutes réelles', () => {
+    expect(elapsed('2026-10-25T00:45:00Z', '2026-10-25T01:15:00Z')).toBe(0);
+    expect(elapsed('2026-10-25T12:00:00Z', '2026-10-24T12:00:00Z')).toBe(0); // et à l'envers
   });
 });

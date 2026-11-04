@@ -1,4 +1,5 @@
 import { type PeriodSpec, resolvePeriod } from '../../domain/calendar';
+import { computeHealth } from '../../domain/health';
 import { analyzeProject, computeMetrics, type MetricsInput, type ProjectAnalysis } from '../../domain/metrics';
 import type { MetricsResponse, MetricsUnreadableProject, Project } from '../../shared/api';
 import { ProjectNotFoundError, type ProjectService, ProjectUnreadableError } from '../projects/service';
@@ -128,6 +129,7 @@ export function createMetricsService(
         projects: measured.map(({ id, name }) => ({ id, name })),
         unreadable,
         ...computeMetrics(measured, { period, now: at, timeZone }),
+        health: computeHealth(measured, { period, now: at, timeZone }),
       };
     },
   };

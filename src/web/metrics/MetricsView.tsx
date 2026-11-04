@@ -7,20 +7,26 @@ import { cx } from '../lib/cx';
 import { paths } from '../paths';
 import { ErrorNotice, Notice } from '../ui/states';
 import { useMetrics } from './api';
+import { ActivityPanel } from './ActivityMap';
 import { AgePanel } from './AgeChart';
+import { BalancePanel } from './BalanceChart';
+import { BreakdownPanel } from './BreakdownChart';
 import { CfdPanel } from './CfdChart';
 import { SectionHeading } from './ChartParts';
 import { describeComparison } from './comparison';
 import { CycleTimePanel } from './CycleTimeChart';
 import { dayInZone } from './format';
+import { HealthTiles } from './HealthTiles';
 import { MetricsSkeleton } from './MetricsSkeleton';
 import { AddressNotices, UnreadableProjects } from './Notices';
 import { parseMetricsParams, withDimension, withPeriod, type Dimension, type PeriodChoice, type Scope } from './params';
+import { ReadyAgePanel } from './ReadyAgeChart';
 import { SliceTable } from './SliceTable';
 import { describeSlices } from './slices';
 import { ThroughputPanel } from './ThroughputChart';
 import { MetricTiles } from './Tiles';
 import { MetricsToolbar } from './Toolbar';
+import { TypeMixPanel } from './TypeMixChart';
 import { useSeriesContext } from './useSeriesContext';
 import './metrics.css';
 
@@ -31,8 +37,9 @@ export type MetricsScope = { kind: 'global' } | { kind: 'project'; project: { id
 const todayHere = (): string => dayInZone(new Date().toISOString(), Intl.DateTimeFormat().resolvedOptions().timeZone);
 
 /**
- * Les métriques de flux d'un Projet ou de la Vue globale : réglages (période, découpage), tuiles, graphiques et tableau du
- * découpage. La période et le découpage vivent dans l'adresse (`?range=`, `?from=&to=`, `?by=`) : un lien les partage.
+ * Les métriques de flux d'un Projet ou de la Vue globale : réglages (période, découpage), tuiles, graphiques, santé du flux
+ * (cinq tuiles, puis cinq cartes d'analyse : bdesk-38k.13) et tableau du découpage. La période et le découpage vivent dans
+ * l'adresse (`?range=`, `?from=&to=`, `?by=`) : un lien les partage.
  * Chaque changement remplace l'entrée de l'historique, comme au kanban : « Retour » quitte la page.
  *
  * Un rafraîchissement qui échoue garde les chiffres à l'écran (TanStack Query conserve `data`) : le bandeau du shell le
@@ -108,6 +115,7 @@ function Content({ data, by, ctx, projectHref }: { data: MetricsResponse; by: Di
     [data.period, data.asOf],
   );
   const chartsId = useId();
+  const flowId = useId();
   const showProject = data.projects.length > 1;
   const { median, p85 } = data.tiles.cycleTime;
 
@@ -147,6 +155,37 @@ function Content({ data, by, ctx, projectHref }: { data: MetricsResponse; by: Di
               </div>
               <div className="min-w-0 @min-[56rem]:col-span-2">
                 <AgePanel tickets={data.inProgress} dimension={by} ctx={ctx} projectOrder={projectOrder} median={median} p85={p85} showProject={showProject} />
+              </div>
+            </div>
+          </section>
+
+          <HealthTiles tiles={data.tiles} health={data.health} comparison={comparison} />
+
+          <section aria-labelledby={flowId} className="flex min-w-0 flex-col gap-3">
+            <SectionHeading id={flowId}>Analyse du flux</SectionHeading>
+            <div className="grid min-w-0 gap-3 @min-[56rem]:grid-cols-2">
+              <div className="min-w-0">
+                <BalancePanel buckets={data.buckets} unit={data.bucket} running={comparison.running} asOfTime={comparison.asOfTime} />
+              </div>
+              <div className="min-w-0">
+                <BreakdownPanel breakdown={data.health.leadTimeBreakdown} />
+              </div>
+              <div className="min-w-0">
+                <TypeMixPanel slices={data.slices.type} />
+              </div>
+              <div className="min-w-0">
+                <ActivityPanel activity={data.health.activity} timeZone={data.timeZone} />
+              </div>
+              <div className="min-w-0 @min-[56rem]:col-span-2">
+                <ReadyAgePanel
+                  ages={data.health.readyAges}
+                  dimension={by}
+                  ctx={ctx}
+                  projectOrder={projectOrder}
+                  showProject={showProject}
+                  timeZone={data.timeZone}
+                  moment={comparison.running ? `à ${comparison.asOfTime}` : 'à la fin de la période'}
+                />
               </div>
             </div>
           </section>

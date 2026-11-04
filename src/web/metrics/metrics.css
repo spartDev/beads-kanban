@@ -22,6 +22,13 @@
   /* Couleur d'un Projet quand le découpage est « Projet » : seule la teinte change, celle de sa pastille. */
   --series-l: 0.62;
   --series-c: 0.14;
+
+  /* La carte d'activité : cinq niveaux d'une même teinte (celle de la colonne Prêt), du vide au plus chargé. */
+  --activity-0: var(--press);
+  --activity-1: oklch(0.9 0.04 258);
+  --activity-2: oklch(0.8 0.08 258);
+  --activity-3: oklch(0.68 0.12 258);
+  --activity-4: oklch(0.52 0.15 258);
 }
 
 :root[data-theme='dark'] {
@@ -35,4 +42,9 @@
 
   --series-l: 0.74;
   --series-c: 0.13;
+
+  --activity-1: oklch(0.33 0.05 258);
+  --activity-2: oklch(0.43 0.08 258);
+  --activity-3: oklch(0.56 0.12 258);
+  --activity-4: oklch(0.72 0.14 258);
 }

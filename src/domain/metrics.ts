@@ -19,7 +19,7 @@ import type {
 import { addDays, type BucketSpan, bucketsOf, daysOf, type Period, type PeriodSpec, resolvePeriod, startOfDay } from './calendar';
 import { type Column, COLUMNS } from './columns';
 import { analyzeFailures } from './failures';
-import { analyzeFlow, isWork, type TicketHistory } from './flow';
+import { type AbandonCause, analyzeFlow, isWork, type TicketHistory } from './flow';
 import { buildTimeline, columnAt, isWorking, statusAt, stepsOf, type TicketTimeline } from './timeline';
 
 /**
@@ -60,6 +60,14 @@ export interface TrackedTicket {
   failed: boolean;
   /** Premier passage en statut de travail. */
   startedAt: number | null;
+  /** Date de l'Abandon (dernière clôture) ; null si le ticket n'en est pas un. */
+  abandonedAt: number | null;
+  /** Pourquoi : un doublon, ou un ticket remplacé. */
+  abandonCause: AbandonCause | null;
+  /** Part du Cycle Time passée en Blocage, pour une Livraison. */
+  blockedTime: number | null;
+  /** Attente de dépendance (Backlog avant le premier démarrage), pour une Livraison. */
+  dependencyWait: number | null;
   timeline: TicketTimeline;
 }
 
@@ -139,6 +147,10 @@ export function analyzeProject(tickets: MetricsTicket[]): ProjectAnalysis {
         cycleTime: deliveredAt === null ? null : flow.cycleTime,
         failed: (failures.originBugs.get(ticket.id)?.length ?? 0) > 0,
         startedAt: steps.find((step) => isWork(step.status))?.at ?? null,
+        abandonedAt: flow.outcome.kind === 'abandoned' ? flow.outcome.at.getTime() : null,
+        abandonCause: flow.outcome.kind === 'abandoned' ? flow.outcome.cause : null,
+        blockedTime: deliveredAt === null ? null : flow.blockedTime,
+        dependencyWait: deliveredAt === null ? null : flow.dependencyWait,
         timeline: buildTimeline(ticket, steps, stepsById),
       },
     ];
@@ -316,7 +328,7 @@ function wipAverage(entries: Entry[], from: number, to: number): number {
 }
 
 /** Évolution par rapport à la période précédente. */
-function trend(current: number | null, previous: number | null): MetricsTrend {
+export function trend(current: number | null, previous: number | null): MetricsTrend {
   if (current === null || previous === null) return { previous, delta: null, ratio: null };
   const delta = current - previous;
   return { previous, delta, ratio: previous === 0 ? null : delta / previous };

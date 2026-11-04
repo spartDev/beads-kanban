@@ -366,6 +366,148 @@ export interface MetricsSlices {
   project: MetricsSlice[];
 }
 
+/* -------------------------------------------------------------------------------------------------------------------
+ * Santé du flux (bdesk-38k.13) : `MetricsResponse.health`
+ *
+ * Les métriques de flux additionnelles, calculées avec les mêmes règles que les précédentes : sur la période courante
+ * de `period.start` à `asOf`, comparée à la précédente de `previousPeriod.start` à `previousAsOf` (même durée écoulée),
+ * en temps calendaire, Epics exclues, sur l'union des tickets des Projets mesurés. Sept métriques, dont deux déjà servies
+ * par l'API : « Arrivées vs Débit » (`tiles.arrivals`, `tiles.throughput` et les `buckets`) et « Répartition par type »
+ * (`slices.type`). Les cinq autres sont ici, avec la décomposition du Lead Time qui porte l'Attente de dépendance :
+ *
+ *   efficiency          Efficacité du flux : part du Cycle Time des Livraisons passée hors Blocage
+ *   reopening           Taux de Réouverture : part des clôtures suivies d'une Réouverture
+ *   abandonment         Taux d'abandon : part des Abandons parmi les tickets fermés
+ *   leadTimeBreakdown   Décomposition du Lead Time : Attente de dépendance, Attente en Prêt, travail, Blocage, autre attente
+ *   readyAges           âge des Prêts (en jours calendaires du fuseau), et ceux qui stagnent
+ *   activity            Carte d'activité : Transitions par jour de la semaine et heure
+ *
+ * Comme le Taux d'échec, un résultat appartient à la période de sa date : une Livraison, un Abandon ou une clôture à celle
+ * de son instant ; un Prêt, à l'état du ticket à `asOf`. Une Réouverture est rattachée à la clôture qu'elle suit, donc à la
+ * période de cette clôture, même si elle a lieu plus tard (comme un Bug d'origine, trouvé après la Livraison).
+ * ---------------------------------------------------------------------------------------------------------------- */
+
+/** Efficacité du flux : la part du Cycle Time des Livraisons de la période passée hors Blocage. */
+export interface MetricsFlowEfficiency {
+  /** Livraisons mesurées : celles de la période qui ont été démarrées au moins une fois (comme le Cycle Time). */
+  n: number;
+  /** Cycle Time cumulé de ces Livraisons (ms). */
+  cycleTime: number;
+  /** Part de ce Cycle Time passée en Blocage (ms), au plus `cycleTime`. */
+  blockedTime: number;
+  /** `(cycleTime − blockedTime) / cycleTime`, de 0 à 1 ; null sans Cycle Time cumulé. */
+  ratio: number | null;
+  /** Parmi les `n` Livraisons, celles dont le Cycle Time compte du Blocage. */
+  blockedDeliveries: number;
+  /** Tendance du `ratio` ; la différence est en points de proportion (0,05 = 5 points). */
+  trend: MetricsTrend;
+}
+
+/** Taux de Réouverture : la part des clôtures de la période que suit une Réouverture. */
+export interface MetricsReopening {
+  /** Clôtures de la période : les Transitions vers fermé, datées de leur instant. */
+  closures: number;
+  /** Parmi elles, celles qu'une Réouverture suit, même après la période (la dernière clôture d'un ticket fermé n'en a jamais). */
+  reopened: number;
+  /** `reopened / closures`, de 0 à 1 ; null sans clôture. */
+  rate: number | null;
+  /** Tendance du `rate` ; la différence est en points de proportion. */
+  trend: MetricsTrend;
+}
+
+/** Taux d'abandon : la part des Abandons parmi les tickets fermés de la période. */
+export interface MetricsAbandonment {
+  /** Tickets fermés de la période : Livraisons et Abandons, datés de leur dernière clôture. */
+  closed: number;
+  /** Parmi eux, les Abandons : `duplicates` + `superseded`. */
+  abandoned: number;
+  /** Abandons dont la cause est un doublon (lien `duplicates`). */
+  duplicates: number;
+  /** Abandons dont la cause est un remplacement (lien `supersedes`). */
+  superseded: number;
+  /** `abandoned / closed`, de 0 à 1 ; null sans ticket fermé. */
+  rate: number | null;
+  /** Tendance du `rate` ; la différence est en points de proportion. */
+  trend: MetricsTrend;
+}
+
+/**
+ * Décomposition du Lead Time des Livraisons de la période. Les cinq parts s'additionnent : `total` est la somme des
+ * Lead Times (celui de la tuile en est la médiane), et chaque part est la somme de celles des Livraisons, en ms.
+ */
+export interface MetricsLeadTimeBreakdown {
+  /** Livraisons de la période. */
+  deliveries: number;
+  /** Lead Time cumulé de ces Livraisons ; vaut `dependencyWait + readyWait + work + blocked + otherWait`. */
+  total: number;
+  /** Attente de dépendance : le temps en Backlog avant le premier démarrage. */
+  dependencyWait: number;
+  /** Attente en Prêt : le temps passé dans la colonne Prêt (ouvert, sans dépendance bloquante en suspens), avant ou après un démarrage. */
+  readyWait: number;
+  /** Travail : le Cycle Time hors Blocage. */
+  work: number;
+  /** Blocage dans le Cycle Time (statut bloqué, ou dépendance non fermée pendant le travail). */
+  blocked: number;
+  /** Autre attente : le reste, c'est-à-dire un ticket en Backlog après un premier démarrage, différé, ou fermé avant une Réouverture. */
+  otherWait: number;
+  /** Livraisons qui ont attendu une dépendance avant leur premier démarrage. */
+  waited: number;
+  /** Médiane et P85 de l'Attente de dépendance de ces Livraisons seulement (`n` vaut `waited`). */
+  waits: MetricsDurationStats;
+}
+
+/** Un ticket Prêt à `asOf` : ouvert, et sans dépendance bloquante en suspens. */
+export interface MetricsReadyTicket {
+  id: string;
+  title: string;
+  type: string;
+  /** 0 (critique) à 4 (minimale). */
+  priority: number;
+  /** Identifiant du Projet. */
+  project: string;
+  /** L'instant où le ticket est devenu Prêt : sa création, la fin de son Blocage, son retour à ouvert ou sa Réouverture. */
+  since: string;
+  /**
+   * Le temps calendaire écoulé entre `since` et `asOf` (ms) : l'écart de leurs heures du mur dans le fuseau de la réponse, un jour
+   * de 23 h ou de 25 h (changement d'heure) comptant pour 24 h. Hors changement d'heure, c'est `asOf` moins `since`.
+   */
+  age: number;
+  /** Prêt depuis plus longtemps que `readyAges.stagnantAfter` : `age` > `stagnantAfter`, strictement. */
+  stagnant: boolean;
+}
+
+/** Âge des Prêts à `asOf`, et ceux qui stagnent. */
+export interface MetricsReadyAges {
+  /** Un Prêt stagne au-delà de cet âge : 14 jours calendaires (ms), comptés comme `age`. */
+  stagnantAfter: number;
+  /** Les Prêts à `asOf`, du plus ancien au plus récent. */
+  tickets: MetricsReadyTicket[];
+  /** Combien d'entre eux stagnent. */
+  stagnant: number;
+  /** Tendance du nombre de Prêts qui stagnent : à `asOf` contre à `previousAsOf`. */
+  trend: MetricsTrend;
+}
+
+/**
+ * Carte d'activité : les Transitions de la période (la création d'un ticket n'en est pas une), rangées par jour de la semaine
+ * et par heure du jour dans le fuseau `timeZone` de la réponse.
+ */
+export interface MetricsActivity {
+  /** `cells[jour][heure]` : 7 jours, du lundi (0) au dimanche (6), de 24 heures chacun (0 pour 00:00–00:59). */
+  cells: number[][];
+  /** Somme des `cells`. */
+  total: number;
+}
+
+export interface MetricsHealth {
+  efficiency: MetricsFlowEfficiency;
+  reopening: MetricsReopening;
+  abandonment: MetricsAbandonment;
+  leadTimeBreakdown: MetricsLeadTimeBreakdown;
+  readyAges: MetricsReadyAges;
+  activity: MetricsActivity;
+}
+
 /** Ce que le domaine calcule : tout ce qu'affiche la page Métriques, hors Projets. */
 export interface MetricsReport {
   range: MetricsRange;
@@ -422,4 +564,6 @@ export interface MetricsResponse extends MetricsReport {
   projects: MetricsProject[];
   /** Les Projets lisibles en moins : ils sont listés ici sans faire échouer le reste. */
   unreadable: MetricsUnreadableProject[];
+  /** Santé du flux (bdesk-38k.13) : calculée par `computeHealth`, à côté de `computeMetrics`, sur la même période. */
+  health: MetricsHealth;
 }

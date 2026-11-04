@@ -13,7 +13,7 @@ const TONE_CLASSES: Record<TrendTone, string> = { good: 'text-(--good)', bad: 't
 
 const lowerFirst = (sentence: string) => sentence.charAt(0).toLowerCase() + sentence.slice(1);
 
-const plural = (count: number, singular: string, many = `${singular}s`) => `${formatCount(count)} ${count > 1 ? many : singular}`;
+export const plural = (count: number, singular: string, many = `${singular}s`) => `${formatCount(count)} ${count > 1 ? many : singular}`;
 
 /**
  * Les six tuiles de la page : Débit, Lead Time, Cycle Time, Taux d'échec, Temps de rétablissement, WIP. Chacune donne
@@ -60,13 +60,13 @@ export function MetricTiles({ tiles, comparison }: { tiles: MetricsTiles; compar
 }
 
 /** Le cadre d'une tuile : son titre, la taille de l'échantillon, son contenu. Pointillé quand la valeur est indicative. */
-function Tile({ title, sample, indicative = false, children }: { title: string; sample?: string; indicative?: boolean; children: ReactNode }) {
+export function Tile({ title, sample, indicative = false, className, children }: { title: string; sample?: string; indicative?: boolean; className?: string; children: ReactNode }) {
   const titleId = useId();
   return (
     <article
       aria-labelledby={titleId}
       data-indicative={indicative ? '' : undefined}
-      className={cx('flex min-w-0 flex-col gap-2 rounded-lg border p-3', indicative ? 'border-dashed border-line-strong bg-well' : 'border-line bg-panel')}
+      className={cx('flex min-w-0 flex-col gap-2 rounded-lg border p-3', indicative ? 'border-dashed border-line-strong bg-well' : 'border-line bg-panel', className)}
     >
       <header className="flex flex-wrap items-baseline justify-between gap-x-2">
         <h3 id={titleId} className="min-w-0 text-ui font-medium text-ink-2">
@@ -84,7 +84,7 @@ function Tile({ title, sample, indicative = false, children }: { title: string; 
 }
 
 /** Une valeur en grand, et ce qu'elle mesure en dessous. */
-function Value({ children, caption, muted = false }: { children: ReactNode; caption?: ReactNode; muted?: boolean }) {
+export function Value({ children, caption, muted = false }: { children: ReactNode; caption?: ReactNode; muted?: boolean }) {
   return (
     <div className="flex flex-col">
       <p data-value="" className={cx('tnum text-[26px] font-semibold leading-8 tracking-[-0.02em] wrap-anywhere', muted ? 'text-ink-3' : 'text-ink')}>
@@ -100,7 +100,7 @@ function Value({ children, caption, muted = false }: { children: ReactNode; capt
  * dégrade, neutre pour un WIP ; jamais la couleur seule (flèche, signe, phrase pour les lecteurs d'écran). Une
  * infobulle rappelle à quoi la valeur est comparée.
  */
-function Trend({ trend, measure, comparison, label, hasValue = true }: { trend: MetricsTrend; measure: Measure; comparison: Comparison; label?: string; hasValue?: boolean }) {
+export function Trend({ trend, measure, comparison, label, hasValue = true }: { trend: MetricsTrend; measure: Measure; comparison: Comparison; label?: string; hasValue?: boolean }) {
   const view = describeTrend(trend, measure);
   if (view.direction === 'none') {
     if (view.previous !== null) return <p className="text-micro text-ink-3 tnum">Avant : {view.previous}</p>;

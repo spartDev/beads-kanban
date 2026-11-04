@@ -141,6 +141,21 @@ describe.each(THEMES)('thème $name', ({ tokens, numbers }) => {
     expect(failures).toEqual([]);
   });
 
+  it(`le contour de chaque niveau de la carte d’activité atteint ${GRAPHIC_MIN}:1 sur le panneau, et deux niveaux voisins se distinguent`, () => {
+    const levels = ['activity-1', 'activity-2', 'activity-3', 'activity-4'];
+    const failures: string[] = [];
+    for (const name of levels) {
+      const ratio = contrastRatio(toSrgb(outline(token(tokens, name), ink)), panel);
+      if (ratio < GRAPHIC_MIN) failures.push(`--${name} : ${ratio.toFixed(2)}:1`);
+    }
+    for (let i = 1; i < levels.length; i++) {
+      const [lower, upper] = [levels[i - 1] as string, levels[i] as string];
+      const gap = distance(token(tokens, lower), token(tokens, upper));
+      if (gap < 0.08) failures.push(`--${lower} / --${upper} : ${gap.toFixed(3)}`);
+    }
+    expect(failures).toEqual([]);
+  });
+
   it('distingue les colonnes voisines du CFD', () => {
     const order = ['flow-done', 'flow-progress', 'flow-blocked', 'flow-ready', 'flow-backlog'];
     const failures: string[] = [];

@@ -269,3 +269,14 @@ function offsetAt(instant: number, timeZone: string): number {
   const { year, month, day, hour, minute, second } = wallClock(instant, timeZone);
   return Date.UTC(year, month - 1, day, hour, minute, second) - Math.floor(instant / 1000) * 1000;
 }
+
+/**
+ * Le temps calendaire écoulé entre deux instants (ms) : l'écart de leurs heures du mur dans le fuseau, où chaque jour compte
+ * 24 h. Un changement d'heure ne s'y voit pas : du mardi 12:00 au mardi 12:00 deux semaines plus tard, c'est 14 jours, que les
+ * horloges aient avancé ou reculé d'une heure entre-temps (l'horloge réelle en compterait 14 j moins ou plus une heure). C'est
+ * ainsi que l'utilisateur compte « 14 jours » sur son calendrier. Jamais négatif : l'heure répétée de l'automne n'est pas
+ * dans l'ordre du mur (02:45 puis, une demi-heure plus tard, 02:15).
+ */
+export function calendarElapsed(from: number, to: number, timeZone: string): number {
+  return Math.max(0, to + offsetAt(to, timeZone) - (from + offsetAt(from, timeZone)));
+}

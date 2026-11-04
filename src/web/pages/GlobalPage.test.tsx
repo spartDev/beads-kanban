@@ -42,9 +42,28 @@ describe('la Vue globale', () => {
 
     expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?range=30d']);
     expect(screen.getByRole('heading', { level: 1, name: 'Vue globale' })).toBeTruthy();
-    expect(screen.getAllByRole('article')).toHaveLength(6);
+    expect(screen.getAllByRole('article')).toHaveLength(11);
     expect(plain(page().getByRole('article', { name: 'Débit' }).textContent)).toContain('18Livraisons sur la période');
     await waitFor(() => expect(document.title).toBe('Vue globale · beads-desktop'));
+  });
+
+  it('montre la santé du flux de l’ensemble des Projets, et nomme le Projet de chaque Prêt', async () => {
+    api();
+    await loaded();
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Santé du flux' })).toBeTruthy();
+    for (const tile of ['Arrivées vs Débit', 'Efficacité du flux', 'Taux de Réouverture', 'Taux d’abandon', 'Prêts qui stagnent']) {
+      expect(page().getByRole('article', { name: tile })).toBeTruthy();
+    }
+    const ready = within(page().getByRole('list', { name: 'Prêts, du plus ancien au plus récent' }));
+    // Les Prêts de deux Projets dans une même liste : on dit lequel est lequel.
+    expect(ready.getAllByRole('listitem').map((item) => /My-Prompt-Manager|beads-desktop/.exec(plain(item.textContent))?.[0])).toEqual([
+      'My-Prompt-Manager',
+      'My-Prompt-Manager',
+      'beads-desktop',
+      'My-Prompt-Manager',
+      'beads-desktop',
+    ]);
   });
 
   it('découpe par Projet par défaut, avec une ligne par Projet mesuré', async () => {
@@ -83,7 +102,7 @@ describe('la Vue globale', () => {
     await loaded();
 
     expect(screen.getByText('Un Projet illisible, absent de ces chiffres')).toBeTruthy();
-    expect(screen.getAllByRole('article')).toHaveLength(6);
+    expect(screen.getAllByRole('article')).toHaveLength(11);
   });
 
   it('garde la liste des Projets suivis, avec leur état et les dossiers ignorés', async () => {

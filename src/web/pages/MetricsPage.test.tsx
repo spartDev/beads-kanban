@@ -56,8 +56,14 @@ describe('la page Métriques d’un Projet', () => {
 
     expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?project=bdesk&range=30d']);
     expect(screen.getByRole('heading', { level: 1, name: 'Métriques' })).toBeTruthy();
-    expect(screen.getAllByRole('article')).toHaveLength(6);
+    // Six indicateurs, puis cinq tuiles de santé du flux.
+    expect(screen.getAllByRole('article')).toHaveLength(11);
     for (const chart of ['Flux cumulé', 'Débit', 'Cycle Time', 'Âge des tickets en cours']) {
+      expect(screen.getByRole('region', { name: chart })).toBeTruthy();
+    }
+    expect(screen.getByRole('heading', { level: 2, name: 'Santé du flux' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 2, name: 'Analyse du flux' })).toBeTruthy();
+    for (const chart of ['Arrivées et Débit cumulés', 'Décomposition du Lead Time', 'Répartition par type', 'Carte d’activité', 'Prêts qui stagnent']) {
       expect(screen.getByRole('region', { name: chart })).toBeTruthy();
     }
     expect(screen.getByRole('heading', { level: 2, name: 'Découpage par type' })).toBeTruthy();
@@ -72,6 +78,78 @@ describe('la page Métriques d’un Projet', () => {
     expect(plain(debit.textContent)).toContain('18Livraisons sur la période');
     expect(plain(page().getByRole('article', { name: 'Lead Time' }).textContent)).toContain('6,9 jmédiane');
     expect(plain(page().getByRole('article', { name: 'WIP' }).textContent)).toContain('11en cours à 20:00');
+  });
+
+  it('affiche les sept métriques de flux additionnelles de la réponse, telles quelles', async () => {
+    api();
+    await loaded();
+
+    // 1. Arrivées vs Débit : 20 Arrivées pour 18 Livraisons.
+    expect(plain(page().getByRole('article', { name: 'Arrivées vs Débit' }).textContent)).toContain('+2Arrivées moins Débit');
+    expect(page().getByRole('region', { name: 'Arrivées et Débit cumulés' })).toBeTruthy();
+    // 2. Répartition par type.
+    expect(page().getByRole('region', { name: 'Répartition par type' })).toBeTruthy();
+    // 3. Efficacité du flux.
+    expect(plain(page().getByRole('article', { name: 'Efficacité du flux' }).textContent)).toContain('91,9 %du Cycle Time hors Blocage');
+    // 4. Taux de Réouverture.
+    expect(plain(page().getByRole('article', { name: 'Taux de Réouverture' }).textContent)).toContain('9,5 %2 sur 21 clôtures suivies d’une Réouverture');
+    // 5. Âge des Prêts qui stagnent.
+    expect(plain(page().getByRole('article', { name: 'Prêts qui stagnent' }).textContent)).toContain('3sur 5 Prêts, depuis plus de 14 j');
+    expect(within(page().getByRole('list', { name: 'Prêts, du plus ancien au plus récent' })).getAllByRole('listitem')).toHaveLength(5);
+    // 6. Carte d'activité.
+    expect(page().getByRole('img', { name: /^Carte d’activité : 100 Transitions/ })).toBeTruthy();
+    // 7. Taux d'abandon.
+    expect(plain(page().getByRole('article', { name: 'Taux d’abandon' }).textContent)).toContain('10 %2 sur 20 tickets fermés');
+    // Et l'Attente de dépendance, dans la décomposition du Lead Time.
+    expect(page().getByText(/^6 Livraisons sur 18 ont attendu une dépendance/)).toBeTruthy();
+  });
+
+  it('dit qu’il n’y a rien à mesurer plutôt que de montrer des zéros, pour chaque métrique de flux additionnelle', async () => {
+    api(() => emptyMetricsFixture());
+    await loaded();
+
+    expect(plain(page().getByRole('article', { name: 'Efficacité du flux' }).textContent)).toContain('Aucune Livraison démarrée sur la période.');
+    expect(plain(page().getByRole('article', { name: 'Taux de Réouverture' }).textContent)).toContain('Aucune clôture sur la période.');
+    expect(plain(page().getByRole('article', { name: 'Taux d’abandon' }).textContent)).toContain('Aucun ticket fermé sur la période.');
+    expect(plain(page().getByRole('article', { name: 'Prêts qui stagnent' }).textContent)).toContain('Aucun ticket Prêt.');
+    expect(screen.getByText('Aucune Arrivée ni Livraison sur cette période.')).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'Décomposition du Lead Time' })).getByText('Aucune Livraison sur la période.')).toBeTruthy();
+    expect(within(screen.getByRole('region', { name: 'Décomposition du Lead Time' })).queryByText('Données du graphique')).toBeNull();
+    expect(screen.getByText('Aucune Arrivée, Livraison ni ticket en cours sur cette période.')).toBeTruthy();
+    expect(screen.getByText('Aucune Transition sur cette période.')).toBeTruthy();
+  });
+
+  it('lit la répartition par type dans le découpage par type, quel que soit le découpage choisi pour le tableau', async () => {
+    api();
+    const { user } = await loaded();
+
+    await user.click(within(screen.getByRole('group', { name: 'Découper par' })).getByRole('radio', { name: 'Priorité' }));
+    await screen.findByRole('heading', { level: 2, name: 'Découpage par priorité' });
+
+    const mix = within(page().getByRole('region', { name: 'Répartition par type' }));
+    expect(mix.getByRole('img', { name: (name) => plain(name).startsWith('Livraisons : 10 Bugs') })).toBeTruthy();
+    expect(mix.queryByText('P1')).toBeNull();
+  });
+
+  it('dit à quel instant les Prêts sont mesurés : maintenant tant que la période court, sa fin quand elle est terminée', async () => {
+    api();
+    const running = await loaded();
+    expect(page().getByText(/^Les tickets ouverts sans dépendance bloquante en suspens à 20:00,/)).toBeTruthy();
+    running.unmount();
+
+    api(() => metricsFixture({ range: 'custom', asOf: '2026-11-02T23:00:00.000Z', previousAsOf: '2026-10-26T23:00:00.000Z' }));
+    await loaded('/p/bdesk/metrics?from=2026-10-27&to=2026-11-02');
+    expect(page().getByText(/^Les tickets ouverts sans dépendance bloquante en suspens à la fin de la période,/)).toBeTruthy();
+  });
+
+  it('colore les Prêts selon le découpage choisi, comme les âges et le nuage', async () => {
+    api();
+    const { user } = await loaded();
+
+    await user.click(within(screen.getByRole('group', { name: 'Découper par' })).getByRole('radio', { name: 'Priorité' }));
+
+    const ready = within(page().getByRole('region', { name: 'Prêts qui stagnent' }));
+    expect(await ready.findByRole('list', { name: 'Couleurs : priorité' })).toBeTruthy();
   });
 
   it('annonce le chargement comme un statut nommé, puis le retire', async () => {
@@ -258,7 +336,7 @@ describe('états de la page Métriques', () => {
     const notice = screen.getByText('Un Projet illisible, absent de ces chiffres');
     expect(notice).toBeTruthy();
     expect(plain(notice.closest('[role="status"]')?.textContent)).toContain('My-Prompt-Manager : Base Dolt verrouillée par un autre processus');
-    expect(screen.getAllByRole('article')).toHaveLength(6);
+    expect(screen.getAllByRole('article')).toHaveLength(11);
   });
 
   it('dit qu’aucun Projet n’a pu être mesuré, au lieu de montrer des zéros', async () => {
@@ -337,7 +415,7 @@ describe('états de la page Métriques', () => {
     await act(() => queryClient.refetchQueries({ queryKey: metricsKey({ project: 'bdesk', period: { kind: 'preset', range: '30d' } }), exact: true }).catch(() => undefined));
     await waitFor(() => expect(screen.getByText(/Actualisation impossible/)).toBeTruthy());
 
-    expect(screen.getAllByRole('article')).toHaveLength(6);
+    expect(screen.getAllByRole('article')).toHaveLength(11);
     expect(screen.queryByText('Impossible de calculer les métriques')).toBeNull();
   });
 

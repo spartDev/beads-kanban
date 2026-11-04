@@ -207,10 +207,12 @@ describe('API des métriques', () => {
     expect(body.cfd).toHaveLength(30);
     expect(Object.keys(body).sort()).toEqual(
       [
-        'asOf', 'bucket', 'buckets', 'cfd', 'cycleTimeScatter', 'generatedAt', 'inProgress', 'period', 'previousAsOf', 'previousPeriod',
+        'asOf', 'bucket', 'buckets', 'cfd', 'cycleTimeScatter', 'generatedAt', 'health', 'inProgress', 'period', 'previousAsOf', 'previousPeriod',
         'projects', 'range', 'slices', 'tiles', 'timeZone', 'unreadable',
       ].sort(),
     );
+    // Santé du flux (bdesk-38k.13) : un ajout au contrat, les clés précédentes sont inchangées.
+    expect(Object.keys(body.health).sort()).toEqual(['abandonment', 'activity', 'efficiency', 'leadTimeBreakdown', 'readyAges', 'reopening']);
   });
 
   it('transmet les Projets (paramètre répété) et la période au service', async () => {
