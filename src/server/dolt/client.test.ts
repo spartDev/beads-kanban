@@ -867,7 +867,8 @@ EOF`);
     expect(empty.calls()).toBe(before);
   });
 
-  it.each(['select * from issues', 'select 1 -- un commentaire', 'with t as (select 1) select * from t'])(
+  // Aucun commentaire n'est admis (bdesk-38k.56, B4) : une marque de commentaire dans une chaîne n'en est pas un.
+  it.each(['select * from issues', "select '-- pas un commentaire'", 'with t as (select 1) select * from t'])(
     'laisse passer une lecture : %s',
     async (sql) => {
       await expect(emptyDb().query(sql)).resolves.toEqual([]);

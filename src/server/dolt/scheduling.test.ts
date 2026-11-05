@@ -79,13 +79,13 @@ describe.skipIf(process.platform === 'win32')('ordonnancement des lectures Dolt'
     });
 
     it('les passe à dolt dans une seule transaction en lecture seule, chaque requête fermée par un saut de ligne et un point-virgule', async () => {
-      // Une requête qui finit par un commentaire de fin de ligne avalerait le « ; » et la requête suivante sans ce saut de ligne.
+      // Le saut de ligne referme un commentaire de fin de ligne, qui avalerait sinon le « ; » et la requête suivante. Le garde n'en admet plus aucun (bdesk-38k.56, B4) : ce séparateur reste une précaution.
       const fake = fakeDolt(`a=$(printf '%s' "$*" | tr '\\n' '~')\nprintf '{}\\n\\n{"rows": [{"args": "%s"}]}\\n{}\\n\\n' "$a"`);
       const db = createDoltClient(options(fake.binary)).open(fake.dir);
 
-      const [first] = await queryAll(db, ['select 1 -- fin de ligne', 'select 2']);
+      const [first] = await queryAll(db, ['select 1 as a', 'select 2']);
 
-      expect(first?.[0]?.args).toBe('sql -r json -q start transaction read only; select 1 -- fin de ligne~;~select 2');
+      expect(first?.[0]?.args).toBe('sql -r json -q start transaction read only; select 1 as a~;~select 2');
     });
 
     it('ne lance rien pour une liste vide', async () => {

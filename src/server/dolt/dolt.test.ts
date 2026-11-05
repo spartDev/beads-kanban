@@ -258,9 +258,12 @@ describe.skipIf(!hasBinary('dolt'))('lecture seule sur une vraie base Dolt', () 
     expect(existsSync(target)).toBe(false);
   });
 
-  it('lit toujours : commentaires, WITH RECURSIVE, SHOW, DESCRIBE, EXPLAIN', async () => {
-    expect(await db.query('select a from t -- un commentaire')).toEqual([{ a: 1 }]);
-    expect(await db.query("select a /* l'apostrophe */ from t # et un autre")).toEqual([{ a: 1 }]);
+  it('lit toujours : marques de commentaire dans une chaîne, WITH RECURSIVE, SHOW, DESCRIBE, EXPLAIN ; ne lit aucun commentaire', async () => {
+    expect(await db.query("select a, '-- l''apostrophe /* # */' as m from t")).toEqual([{ a: 1, m: "-- l'apostrophe /* # */" }]);
+    // Aucun commentaire n'est admis (bdesk-38k.56, B4) : le découpeur d'instructions de dolt et son analyseur les lisent différemment.
+    for (const comment of ['select a from t -- un commentaire', "select a /* l'apostrophe */ from t", 'select a from t # et un autre']) {
+      await expect(db.query(comment)).rejects.toThrow('lecture seule');
+    }
     expect(
       await db.query('with recursive l (n) as (select 1 union all select n + 1 from l where n < 3) select n from l'),
     ).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }]);
@@ -344,10 +347,10 @@ describe.skipIf(!hasBinary('dolt'))('lectures groupées et abandonnées sur une 
     expect(grouped[2]).toEqual([{ b: 'deux' }]);
   });
 
-  it('une requête qui finit par un commentaire de fin de ligne n’avale pas la suivante', async () => {
-    const results = await queryAll(db, ['select 1 as a -- fin', 'select 2 as b # autre fin', 'select 3 as c']);
+  it('refuse une requête qui finit par un commentaire de fin de ligne, au lieu de la laisser avaler la suivante (aucun commentaire n’est admis : bdesk-38k.56, B4)', async () => {
+    await expect(queryAll(db, ['select 1 as a -- fin', 'select 2 as b # autre fin', 'select 3 as c'])).rejects.toThrow('lecture seule');
 
-    expect(results).toEqual([[{ a: 1 }], [{ b: 2 }], [{ c: 3 }]]);
+    expect(await queryAll(db, ['select 1 as a', 'select 2 as b', 'select 3 as c'])).toEqual([[{ a: 1 }], [{ b: 2 }], [{ c: 3 }]]);
   });
 
   it('refuse le groupe dont une requête n’est pas une lecture : rien n’est écrit', async () => {
