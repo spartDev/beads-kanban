@@ -15,6 +15,7 @@ import { usePaletteSections } from './usePaletteSections';
 import { usePendingEnter } from './usePendingEnter';
 import { useQuietRow } from './useQuietRow';
 import { useSelectionGuard } from './useSelectionGuard';
+import { useSelectionInView } from './useSelectionInView';
 
 export function CommandPalette() {
   const { open, mode, closePalette } = usePalette();
@@ -61,8 +62,10 @@ function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode
   const [searchAll, setSearchAll] = useState(false);
   const [selected, setSelected] = useState('');
   const root = useRef<HTMLDivElement>(null);
-  // cmdk annonce une ligne active périmée après ses sélections d'office : voir `useActiveDescendant`.
+  // cmdk annonce une ligne active périmée après ses sélections d'office : voir `useActiveDescendant`. Il défile aussi vers la ligne d'avant
+  // au lieu de la nouvelle : voir `useSelectionInView`.
   useActiveDescendant(root);
+  useSelectionInView(root);
 
   const go = useCallback(
     (to: string) => {

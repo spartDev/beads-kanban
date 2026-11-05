@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { issuesQuery, queryKeys } from '../data/hooks';
 import { routes } from '../routes';
 import { OverlayProvider, usePalette } from '../shell/OverlayProvider';
@@ -1640,5 +1640,224 @@ describe('survol et clic quasi simultanés sur « Chercher … dans tous les Pro
     await user.keyboard('{Enter}');
     await waitFor(() => expect(pathname(router)).toBe('/p/mpm/t/mpm-12'));
     await release();
+  });
+});
+
+describe('la ligne sélectionnée est amenée dans la zone visible de la liste : celle qui l’est vraiment, pas celle que cmdk lisait avant son rendu', () => {
+  // jsdom ne fait pas de mise en page : « la ligne est visible » ne s'y mesure pas. On y vérifie ce qui y mène, sur quoi la liste est invitée à
+  // défiler (`scrollIntoView`, espionné) ; la mise en page réelle a été mesurée dans un navigateur (bdesk-38k.41). cmdk 1.1.1 défile lui-même
+  // après chaque choix qui n'est pas un survol, mais vers la ligne que le DOM montrait sélectionnée à cet instant : après une sélection
+  // d'office, c'est celle d'avant (voir `useSelectionInView`). Le dernier appel est donc celui qui compte.
+  let scrolls: { target: Element; options: unknown }[] = [];
+  let scrollSpy: { mockRestore: () => void };
+  beforeEach(() => {
+    scrolls = [];
+    scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function (this: Element, options?: boolean | ScrollIntoViewOptions) {
+      scrolls.push({ target: this, options });
+    });
+  });
+  afterEach(() => {
+    scrollSpy.mockRestore();
+  });
+
+  /** Ce que désigne un élément : la valeur de sa ligne, ou son en-tête de groupe. */
+  const valueOf = (element: Element | null | undefined) =>
+    element ? (element.getAttribute('data-value') ?? `en-tête « ${element.textContent} »`) : undefined;
+  /** Sur quoi la liste a été invitée à défiler en dernier. */
+  const lastScrolled = () => valueOf(scrolls.at(-1)?.target);
+  const chosen = (dialog: HTMLElement) => within(dialog).queryAllByRole('option').find(selected);
+  const rowOf = (dialog: HTMLElement, value: string) => dialog.querySelector<HTMLElement>(`[cmdk-item][data-value="${value}"]`)!;
+
+  /** Tape `text` touche à touche : chaque fois que la ligne sélectionnée change, la liste a été invitée à défiler vers elle en dernier. */
+  async function typeAndExpectChosenRowRevealed(dialog: HTMLElement, user: ReturnType<typeof userEvent.setup>, text: string) {
+    for (const character of text) {
+      const before = chosen(dialog);
+      scrolls = [];
+      await user.keyboard(character);
+      await settle();
+      const now = chosen(dialog);
+      expect(now, `une ligne est sélectionnée après « ${character} »`).toBeDefined();
+      if (now !== before) expect(lastScrolled(), `après « ${character} »`).toBe(valueOf(now));
+    }
+  }
+
+  it('les tickets arrivent sous la ligne sélectionnée, puis la frappe suivante en choisit une autre d’office : c’est la nouvelle qui est amenée', async () => {
+    const release = holdIssueLists(stubDefaultApi());
+    const { dialog, user } = await openPalette('/p/bdesk/kanban');
+    await user.keyboard('bdesk');
+    await waitFor(() => expect(selected(rowOf(dialog, 'project:bdesk'))).toBe(true));
+    await release();
+    await within(dialog).findByRole('option', { name: /Shell UI façon Linear/ });
+    expect(selected(rowOf(dialog, 'project:bdesk'))).toBe(true); // la surbrillance ne saute pas à l'arrivée des tickets (règle de bdesk-38k.21)
+    scrolls = [];
+
+    await user.keyboard('-'); // « bdesk- » : l'Epic passe devant le Projet, qui reste dans la liste, plus bas
+
+    await waitFor(() => expect(selected(rowOf(dialog, 'epic:bdesk/bdesk-38k'))).toBe(true));
+    await settle();
+    expect(lastScrolled()).toBe('epic:bdesk/bdesk-38k');
+  });
+
+  it('Fin sélectionne la dernière ligne, puis la frappe suivante sélectionne d’office la première : elle est amenée, la liste ne reste pas en bas', async () => {
+    stubDefaultApi();
+    const { dialog, user } = await openPalette('/p/bdesk/kanban');
+    await user.keyboard('bdesk-3');
+    await within(dialog).findByRole('option', { name: /Shell UI façon Linear/ });
+    await user.keyboard('{End}');
+    await waitFor(() => expect(selected(widenOption(dialog))).toBe(true));
+    scrolls = [];
+
+    await user.keyboard('8');
+
+    await waitFor(() => expect(selected(rowOf(dialog, 'epic:bdesk/bdesk-38k'))).toBe(true));
+    await settle();
+    expect(lastScrolled()).toBe('epic:bdesk/bdesk-38k');
+  });
+
+  it('Kanban, « bdesk-38k » tapé touche à touche : à chaque changement de la ligne sélectionnée, c’est vers elle que la liste est invitée à défiler', async () => {
+    stubDefaultApi();
+    const { dialog, user } = await openPalette('/p/bdesk/kanban');
+
+    await typeAndExpectChosenRowRevealed(dialog, user, 'bdesk-38k');
+
+    expect(chosen(dialog)?.getAttribute('data-value')).toBe('epic:bdesk/bdesk-38k');
+  });
+
+  it('sous StrictMode (comme en développement, où React rejoue les effets au montage), la ligne sélectionnée est amenée de même', async () => {
+    stubDefaultApi();
+    const router = createMemoryRouter(routes, { initialEntries: ['/p/bdesk/kanban'] });
+    const user = userEvent.setup();
+    render(
+      <StrictMode>
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <ThemeProvider>
+            <RouterProvider router={router} />
+          </ThemeProvider>
+        </QueryClientProvider>
+      </StrictMode>,
+    );
+    await screen.findByRole('navigation', { name: 'Navigation principale' });
+    await user.keyboard('{Control>}k{/Control}');
+    const dialog = await screen.findByRole('dialog', { name: 'Palette de commandes' });
+
+    await typeAndExpectChosenRowRevealed(dialog, user, 'bdesk-38k');
+
+    expect(chosen(dialog)?.getAttribute('data-value')).toBe('epic:bdesk/bdesk-38k');
+  });
+
+  it('refermée puis rouverte, la palette amène encore la ligne sélectionnée', async () => {
+    stubDefaultApi();
+    const { dialog, user } = await openPalette('/p/bdesk/kanban');
+    await user.keyboard('38k');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(dialog.isConnected).toBe(false));
+    await user.keyboard('{Control>}k{/Control}');
+    const reopened = await screen.findByRole('dialog', { name: 'Palette de commandes' });
+
+    await typeAndExpectChosenRowRevealed(reopened, user, 'bdesk-38k');
+  });
+
+  it('plusieurs lignes disparaissent d’un coup, dont la sélectionnée : la première ligne restante, choisie par la palette, est amenée', async () => {
+    stubDefaultApi();
+    const { dialog, user, queryClient } = await openPalette('/p/bdesk/kanban');
+    await user.keyboard('bdesk');
+    const tickets = await within(dialog).findAllByRole('option', { name: /bdesk-38k\.|bdesk-b7q/ });
+    await user.hover(tickets[0]!); // la sélectionnée est la première des lignes qui vont partir
+    await waitFor(() => expect(selected(tickets[0]!)).toBe(true));
+    scrolls = [];
+
+    act(() => {
+      queryClient.setQueryData(queryKeys.issues('bdesk'), { issues: [] }); // un rafraîchissement : tous les tickets du Projet partent à la fois
+    });
+
+    await waitFor(() => expect(within(dialog).queryByRole('option', { name: /bdesk-b7q/ })).toBeNull());
+    await waitFor(() => expect(chosen(dialog)).toBeDefined());
+    await settle();
+    expect(chosen(dialog)?.getAttribute('data-value')).toBe('project:bdesk');
+    expect(lastScrolled()).toBe('project:bdesk');
+  });
+
+  it('flèches, Début, Fin, et le bouclage de la liste : chaque ligne choisie au clavier est amenée', async () => {
+    stubDefaultApi();
+    const { dialog, user } = await openPalette('/p/bdesk/kanban');
+    await user.keyboard('38k');
+    await within(dialog).findByRole('option', { name: /Kanban par Projet/ });
+
+    for (const key of ['{ArrowDown}', '{ArrowDown}', '{ArrowUp}', '{End}', '{ArrowDown}', '{ArrowUp}', '{Home}']) {
+      scrolls = [];
+      await user.keyboard(key);
+      await settle();
+      expect(lastScrolled(), key).toBe(valueOf(chosen(dialog)));
+    }
+  });
+
+  it('le survol sélectionne la ligne sans faire défiler la liste ; une flèche, ensuite, amène la ligne qu’elle choisit', async () => {
+    stubDefaultApi();
+    const { dialog, user } = await openPalette('/p/bdesk/kanban');
+    await user.keyboard('38k');
+    const row = await within(dialog).findByRole('option', { name: /Kanban par Projet/ });
+    scrolls = [];
+
+    await user.hover(row);
+
+    await waitFor(() => expect(selected(row)).toBe(true));
+    await settle();
+    expect(scrolls.map(({ target }) => valueOf(target))).toEqual([]);
+
+    await user.keyboard('{ArrowDown}');
+
+    await settle();
+    expect(chosen(dialog)).not.toBe(row);
+    expect(lastScrolled()).toBe(valueOf(chosen(dialog)));
+  });
+
+  it('des tickets arrivent sans changer la ligne sélectionnée : la liste n’est pas invitée à défiler', async () => {
+    const release = holdIssueLists(stubDefaultApi());
+    const { dialog, user } = await openPalette('/p/bdesk/kanban');
+    await user.keyboard('bdesk');
+    await waitFor(() => expect(selected(rowOf(dialog, 'project:bdesk'))).toBe(true));
+    scrolls = [];
+
+    await release();
+    await within(dialog).findByRole('option', { name: /Shell UI façon Linear/ });
+    await settle();
+
+    expect(scrolls.map(({ target }) => valueOf(target))).toEqual([]);
+  });
+
+  it('un rafraîchissement retire la ligne sélectionnée : la nouvelle sélection est amenée, même choisie ailleurs dans la liste ; un autre rafraîchissement autour d’elle ne fait rien défiler', async () => {
+    stubDefaultApi();
+    const { dialog, user, queryClient } = await openPalette('/p/bdesk/kanban');
+    await user.keyboard('38k');
+    await within(dialog).findByRole('option', { name: /Kanban par Projet/ });
+    for (let press = 0; press < 10 && chosen(dialog)?.getAttribute('data-value') !== 'issue:bdesk/bdesk-38k.7'; press++) {
+      await user.keyboard('{ArrowDown}');
+    }
+    expect(chosen(dialog)?.getAttribute('data-value')).toBe('issue:bdesk/bdesk-38k.7'); // choisie au clavier, loin de la première ligne
+    scrolls = [];
+
+    const withoutIt = bdeskIssues.filter(({ id }) => id !== 'bdesk-38k.7');
+    act(() => {
+      queryClient.setQueryData(queryKeys.issues('bdesk'), { issues: withoutIt }); // un rafraîchissement l'a retirée
+    });
+
+    await waitFor(() => expect(within(dialog).queryByRole('option', { name: /Kanban par Projet/ })).toBeNull());
+    await waitFor(() => expect(chosen(dialog)).toBeDefined());
+    await settle();
+    // Le but est que la ligne sélectionnée soit toujours visible : la palette en a choisi une autre (la première), elle est amenée, quel que soit
+    // l'endroit où l'utilisateur avait fait défiler la liste (le hook ne lit aucune position).
+    expect(chosen(dialog)?.getAttribute('data-value')).toBe('epic:bdesk/bdesk-38k');
+    expect(lastScrolled()).toBe('epic:bdesk/bdesk-38k');
+    scrolls = [];
+
+    const later = issue({ id: 'bdesk-38k.9', title: 'Un ticket arrivé plus tard' });
+    act(() => {
+      queryClient.setQueryData(queryKeys.issues('bdesk'), { issues: [...withoutIt, later] }); // un autre rafraîchissement : un ticket arrive, la sélection reste
+    });
+
+    await within(dialog).findByRole('option', { name: /Un ticket arrivé plus tard/ });
+    await settle();
+    expect(chosen(dialog)?.getAttribute('data-value')).toBe('epic:bdesk/bdesk-38k'); // la sélection n'a pas bougé…
+    expect(scrolls.map(({ target }) => valueOf(target))).toEqual([]); // … et la liste non plus
   });
 });
