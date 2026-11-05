@@ -1,5 +1,6 @@
 import * as Tooltip from '@radix-ui/react-tooltip';
 import type { ReactElement, ReactNode } from 'react';
+import { isFocusReturning } from '../lib/focus';
 import { ShortcutKeys } from './Kbd';
 
 export const TooltipProvider = ({ children }: { children: ReactNode }) => (
@@ -8,7 +9,11 @@ export const TooltipProvider = ({ children }: { children: ReactNode }) => (
   </Tooltip.Provider>
 );
 
-/** Infobulle accessible au clavier et au survol ; `shortcut` ajoute les touches associées. */
+/**
+ * Infobulle accessible au clavier et au survol ; `shortcut` ajoute les touches associées. Elle ne s'ouvre pas quand le focus est rendu au
+ * bouton par programme (la palette ou l'aide qu'il a ouverte se referme) : l'utilisateur sait ce qu'il vient d'activer, et l'infobulle
+ * prendrait le prochain Échap.
+ */
 export function Tip({
   label,
   shortcut,
@@ -22,7 +27,15 @@ export function Tip({
 }) {
   return (
     <Tooltip.Root>
-      <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
+      <Tooltip.Trigger
+        asChild
+        onFocus={(event) => {
+          // Radix n'ouvre pas l'infobulle quand le gestionnaire du focus empêche l'événement par défaut.
+          if (isFocusReturning()) event.preventDefault();
+        }}
+      >
+        {children}
+      </Tooltip.Trigger>
       <Tooltip.Portal>
         <Tooltip.Content
           side={side}

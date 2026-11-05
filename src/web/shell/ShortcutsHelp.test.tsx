@@ -1,7 +1,9 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { useEffect } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ShortcutsProvider, useShortcut } from '../shortcuts/ShortcutsProvider';
+import { withHeldExitAnimations } from '../test/exitAnimation';
 import { OverlayProvider, useShortcutsHelp } from './OverlayProvider';
 import { ShortcutsHelp } from './ShortcutsHelp';
 
@@ -111,5 +113,64 @@ describe('aide des raccourcis', () => {
     const help = await screen.findByRole('dialog', { name: 'Raccourcis clavier' });
     expect(within(help).getByText('Premier').closest('li')?.textContent).toBe('PremierGpuisG');
     expect(error.mock.calls.map((call) => String(call[0]))).not.toContainEqual(expect.stringMatching(/same key|unique "key"/));
+  });
+});
+
+describe('l’aide rend Échap au registre des raccourcis dès qu’elle se ferme, et pas avant', () => {
+  const exit = withHeldExitAnimations();
+
+  /** Une page qui n'a qu'un raccourci Échap valable partout, même dans une boîte de dialogue, et un bouton pour ouvrir l'aide. */
+  function Page({ onEscape }: { onEscape: () => void }) {
+    const { show } = useShortcutsHelp();
+    useShortcut({ id: 'test.escape', keys: 'escape', label: 'Échap de la page', group: 'Test', allowInInput: true, run: onEscape });
+    return (
+      <button type="button" onClick={show}>
+        Ouvrir l’aide
+      </button>
+    );
+  }
+
+  function renderPage(onEscape: () => void) {
+    render(
+      <ShortcutsProvider isMac>
+        <OverlayProvider>
+          <Page onEscape={onEscape} />
+          <ShortcutsHelp />
+        </OverlayProvider>
+      </ShortcutsProvider>,
+    );
+    return userEvent.setup();
+  }
+
+  it('ouverte, l’aide garde Échap pour se fermer ; fermée mais encore là, elle le rend à la page', async () => {
+    const onEscape = vi.fn();
+    const user = renderPage(onEscape);
+    await user.click(screen.getByRole('button', { name: 'Ouvrir l’aide' }));
+    const help = await screen.findByRole('dialog', { name: 'Raccourcis clavier' });
+
+    await user.keyboard('{Escape}');
+
+    expect(help.getAttribute('data-state')).toBe('closed');
+    expect(help.isConnected).toBe(true); // l'animation de sortie n'est pas finie : la boîte de dialogue est encore là
+    expect(onEscape).not.toHaveBeenCalled();
+
+    await user.keyboard('{Escape}');
+
+    expect(onEscape).toHaveBeenCalledTimes(1);
+    exit.finish();
+    expect(screen.queryByRole('dialog', { hidden: true })).toBeNull();
+  });
+
+  it('une fois retirée, elle rend le focus au bouton qui l’a ouverte', async () => {
+    const user = renderPage(vi.fn());
+    const opener = screen.getByRole('button', { name: 'Ouvrir l’aide' });
+    await user.click(opener);
+    await screen.findByRole('dialog', { name: 'Raccourcis clavier' });
+    await user.keyboard('{Escape}');
+    expect(document.activeElement).not.toBe(opener); // le focus est encore dans la boîte de dialogue qui se retire
+
+    exit.finish();
+
+    await waitFor(() => expect(document.activeElement).toBe(opener));
   });
 });

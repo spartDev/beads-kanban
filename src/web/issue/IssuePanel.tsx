@@ -109,6 +109,8 @@ export function IssuePanel() {
     <div
       ref={panelRef}
       role="dialog"
+      // Ce que la palette et l'aide cherchent pour lui rendre le focus quand l'élément d'origine a disparu (voir `OverlayProvider`).
+      data-issue-panel=""
       aria-labelledby={loading ? idId : `${idId} ${titleId}`}
       aria-modal={narrow}
       tabIndex={-1}

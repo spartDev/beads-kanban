@@ -2,10 +2,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { queryKeys } from '../data/hooks';
 import { OverlayProvider, usePalette } from '../shell/OverlayProvider';
 import { ShortcutsProvider, useShortcut } from '../shortcuts/ShortcutsProvider';
+import { withHeldExitAnimations } from '../test/exitAnimation';
 import { bdeskIssues, issue, mpmIssues, projects, projectsResponse } from '../test/fixtures';
 import { renderApp, stubApi } from '../test/render';
 import { ThemeProvider } from '../theme/ThemeProvider';
@@ -84,52 +85,6 @@ describe('ARIA de la palette : la listbox ne contient que des options', () => {
 
 /** Le panneau d'un ticket. Tant que la palette n'est pas retirée, elle cache la page aux technologies d'assistance : `hidden`. */
 const panel = (title: RegExp) => screen.findByRole('dialog', { name: title, hidden: true });
-
-const EXIT_ANIMATION = 'palette-out';
-
-/**
- * jsdom ne joue aucune animation CSS : Radix y retire une boîte de dialogue à l'instant où elle se ferme. Un navigateur la garde
- * montée le temps de son animation de sortie (`data-[state=closed]:animate-…`, 90 ms), et sa couche, encore la plus haute, réagit
- * alors à Échap. Ce faux `getComputedStyle` donne une animation de sortie à tout élément fermé (c'est ce que Radix lit pour savoir
- * s'il doit attendre) ; `finish` la termine, comme le ferait le navigateur.
- */
-function holdExitAnimations() {
-  const real = window.getComputedStyle;
-  const spy = vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
-    const style = real.call(window, element, pseudo);
-    return new Proxy(style, {
-      get(target, property) {
-        if (property === 'animationName') return element.getAttribute('data-state') === 'closed' ? EXIT_ANIMATION : 'none';
-        const value: unknown = Reflect.get(target, property, target);
-        return typeof value === 'function' ? value.bind(target) : value;
-      },
-    });
-  });
-  return {
-    finish() {
-      act(() => {
-        for (const element of document.querySelectorAll('[data-state="closed"]')) {
-          const end = new Event('animationend', { bubbles: true });
-          Object.defineProperty(end, 'animationName', { value: EXIT_ANIMATION });
-          element.dispatchEvent(end);
-        }
-      });
-    },
-    restore: () => spy.mockRestore(),
-  };
-}
-
-/** Garde les animations de sortie pendant chaque test du bloc qui l'appelle. */
-function withHeldExitAnimations() {
-  let held: ReturnType<typeof holdExitAnimations> | undefined;
-  beforeEach(() => {
-    held = holdExitAnimations();
-  });
-  afterEach(() => {
-    held?.restore();
-  });
-  return { finish: () => held?.finish() };
-}
 
 describe('Échap pendant que la palette se retire : la touche revient à la page, elle n’est pas avalée', () => {
   const exit = withHeldExitAnimations();

@@ -5,11 +5,13 @@ import type { Shortcut } from '../shortcuts/registry';
 import { useShortcutList } from '../shortcuts/ShortcutsProvider';
 import { dialogOverlay, dialogSurface } from '../ui/dialog';
 import { ShortcutKeys } from '../ui/Kbd';
-import { useShortcutsHelp } from './OverlayProvider';
+import { useOverlayContent, useShortcutsHelp } from './OverlayProvider';
 
 /** Liste des raccourcis enregistrés, par rubrique : elle s'enrichit toute seule des raccourcis des pages. */
 export function ShortcutsHelp() {
   const { open, show, close } = useShortcutsHelp();
+  // Échap rendu au registre des raccourcis pendant l'animation de sortie, focus rendu à l'élément d'origine : voir `useOverlayContent`.
+  const overlay = useOverlayContent(open);
   const shortcuts = useShortcutList();
   const groups = new Map<string, Shortcut[]>();
   for (const shortcut of shortcuts) {
@@ -20,7 +22,7 @@ export function ShortcutsHelp() {
     <Dialog.Root open={open} onOpenChange={(next) => (next ? show() : close())}>
       <Dialog.Portal>
         <Dialog.Overlay className={dialogOverlay} />
-        <Dialog.Content className={dialogSurface} aria-describedby="shortcuts-help-description">
+        <Dialog.Content className={dialogSurface} aria-describedby="shortcuts-help-description" {...overlay}>
           <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
             <div>
               <Dialog.Title className="text-[15px] font-semibold text-ink">Raccourcis clavier</Dialog.Title>

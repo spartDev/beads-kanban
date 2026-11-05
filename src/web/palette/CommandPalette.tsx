@@ -6,8 +6,7 @@ import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { queryKeys } from '../data/hooks';
 import { cx } from '../lib/cx';
-import { usePalette, type PaletteMode } from '../shell/OverlayProvider';
-import { useShortcutRegistry } from '../shortcuts/ShortcutsProvider';
+import { useOverlayContent, usePalette, type PaletteMode } from '../shell/OverlayProvider';
 import { dialogOverlay, dialogSurface } from '../ui/dialog';
 import { Kbd } from '../ui/Kbd';
 import { Bead, EnterHint, groupClass, itemClass, ScopeChip, SectionGroup } from './PaletteGroups';
@@ -17,24 +16,14 @@ import { useQuietRow } from './useQuietRow';
 
 export function CommandPalette() {
   const { open, mode, closePalette } = usePalette();
-  const shortcuts = useShortcutRegistry();
+  // Échap rendu au registre des raccourcis pendant l'animation de sortie, focus rendu à l'élément d'origine : voir `useOverlayContent`.
+  const overlay = useOverlayContent(open);
 
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && closePalette()}>
       <Dialog.Portal>
         <Dialog.Overlay className={dialogOverlay} />
-        <Dialog.Content
-          className={dialogSurface}
-          aria-describedby="palette-description"
-          // Fermée, la palette reste montée le temps de son animation de sortie, et sa couche Radix, encore la plus haute, prend
-          // Échap et le consomme (`preventDefault`) avant que le registre le voie : le panneau qu'un choix vient d'ouvrir resterait
-          // ouvert. Elle rend alors la touche au registre, qui applique ses règles de focus (le focus est dans une boîte de dialogue) :
-          // seul Échap du panneau d'un ticket (`issue.close`, `allowInInput`) la reçoit par ce chemin, pas la désélection du tableau
-          // (`kanban.deselect`), qui ne traverse ni boîte de dialogue ni couche. Ouverte, la palette la garde pour se fermer.
-          onEscapeKeyDown={(event) => {
-            if (!open) shortcuts.handleKeyDown(event);
-          }}
-        >
+        <Dialog.Content className={dialogSurface} aria-describedby="palette-description" {...overlay}>
           <Dialog.Title className="sr-only">Palette de commandes</Dialog.Title>
           <Dialog.Description id="palette-description" className="sr-only">
             Cherchez un Projet, une Epic ou un ticket, ou lancez une commande. Flèches pour choisir, Entrée pour ouvrir.
