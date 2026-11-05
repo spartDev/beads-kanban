@@ -1,3 +1,4 @@
+import { isInvisibleText } from '../lib/invisibleText';
 import type { Issue, Project } from './types';
 
 export const isReadable = (project: Project): boolean => project.status === 'ok';
@@ -7,16 +8,13 @@ export const isEpic = (issue: Issue): boolean => issue.type === 'epic';
 /** Ce que l'interface écrit à la place du titre d'un ticket qui n'en a pas. */
 const UNTITLED = 'Sans titre';
 
-/** Des blancs (`\s` : l'espace insécable aussi) et des caractères de mise en forme invisibles (catégorie Unicode `Cf` : U+200B à U+200D, U+2060, U+00AD, U+FEFF…), et rien d'autre. */
-const BLANK = /^[\s\p{Cf}]*$/u;
-
 /**
- * Un titre qui ne dit rien : vide, fait d'espaces, ou fait de caractères sans largeur (une base modifiée à la main, un copier-coller). `trim()` ne suffit pas : il retire
- * les blancs et U+FEFF, mais pas U+200B à U+200D, U+2060 ni U+00AD, qui laissent un nom accessible invisible, que lecteurs d'écran et axe ne signalent pas. La règle est
- * écrite ici : `ticketTitle` (le ticket) la suit, et `epicName` (l'Epic, dans `kanban/epics.ts`) y ajoute les titres de séparateurs seuls, dont son nom ne tire rien. Pour un ticket,
- * un titre de séparateurs seuls (« - », « : ») et une autre ponctuation (« ??? », « … ») sont ce que l'auteur a écrit : ils ne sont pas vides.
+ * Un titre qui ne dit rien : vide, fait d'espaces, ou fait de caractères qu'on ne voit pas (une base modifiée à la main, un copier-coller). La règle n'est pas écrite ici : c'est celle des textes
+ * invisibles (`isInvisibleText`, dans `lib/invisibleText`, où elle est dite et justifiée), que `Page` et `Notice` suivent aussi. `trim()` ne suffit pas : voir là. `ticketTitle` (le ticket) la suit, et
+ * `epicName` (l'Epic, dans `kanban/epics.ts`) y ajoute les titres de séparateurs seuls, dont son nom ne tire rien. Pour un ticket, un titre de séparateurs seuls (« - », « : ») et une autre
+ * ponctuation (« ??? », « … ») sont ce que l'auteur a écrit : ils ne sont pas vides.
  */
-export const isBlankTitle = (title: string): boolean => BLANK.test(title);
+export const isBlankTitle = (title: string): boolean => isInvisibleText(title);
 
 /**
  * Le texte sans ses caractères sans largeur (catégorie `Cf`) : ce qu'on en lit à l'écran, pour compter ou comparer des titres. Jamais pour les écrire : un liant sans chasse

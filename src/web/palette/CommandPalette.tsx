@@ -43,6 +43,13 @@ export function CommandPalette() {
 /** La valeur cmdk de la ligne « Chercher … dans tous les Projets ». */
 const WIDEN_VALUE = 'action:search-all';
 
+/**
+ * Les noms des régions de statut de la palette, qui n'ont pas de titre à l'écran où les prendre. Les deux messages visibles (l'attente des tickets, la liste vide) rendent compte de la recherche, et ne
+ * sont jamais là ensemble ; le décompte que seuls les lecteurs d'écran lisent est un autre statut. La liste des résultats, elle, est nommée « Suggestions » par cmdk.
+ */
+const SEARCH_STATE = 'État de la recherche';
+const RESULT_COUNT = 'Nombre de résultats';
+
 /** Verbe affiché dans le pied de la palette, selon la ligne sélectionnée. */
 const ACTION_LABELS: readonly (readonly [prefix: string, label: string])[] = [
   ['nav:', 'Aller à'],
@@ -138,7 +145,7 @@ function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode
 
       {/* Les messages d'état sont hors de la listbox : elle ne contient que des options (WAI-ARIA). */}
       {loadingTickets ? (
-        <p role="status" className="px-4 py-2.5 text-ink-3">
+        <p role="status" aria-label={SEARCH_STATE} className="px-4 py-2.5 text-ink-3">
           Chargement des tickets…
         </p>
       ) : null}
@@ -151,7 +158,7 @@ function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode
       ) : null}
 
       {empty ? (
-        <p role="status" className="px-4 py-10 text-center text-ink-3 wrap-anywhere">
+        <p role="status" aria-label={SEARCH_STATE} className="px-4 py-10 text-center text-ink-3 wrap-anywhere">
           {projectsStatus === 'ready'
             ? search
               ? `Aucun résultat pour « ${search} ».`
@@ -212,7 +219,7 @@ function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode
           fermer
         </span>
       </div>
-      <div className="sr-only" role="status" aria-live="polite">
+      <div className="sr-only" role="status" aria-label={RESULT_COUNT} aria-live="polite">
         {search ? `${resultCount} résultats` : ''}
       </div>
     </Command>

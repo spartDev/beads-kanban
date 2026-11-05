@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
+import { createContext, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
 import { cx } from '../lib/cx';
 import { Skeleton } from '../ui/states';
 import { outlineOf } from './palette';
@@ -35,6 +35,12 @@ export function ChartFrame({
   );
 }
 
+/**
+ * L'identifiant du titre de la carte qui contient le graphique : de quoi nommer de ce titre (`aria-labelledby`) une région du graphique, sans le répéter à l'écran (`EmptyChart`). Absent hors d'une
+ * carte : la région n'a alors pas de nom.
+ */
+export const ChartTitleId = createContext<string | undefined>(undefined);
+
 /** Une carte de graphique : titre, phrase d'explication, réglages, légende, dessin, et le tableau de ses données. */
 export function ChartCard({
   title,
@@ -67,7 +73,7 @@ export function ChartCard({
         {actions}
       </header>
       {legend}
-      {children}
+      <ChartTitleId value={titleId}>{children}</ChartTitleId>
       {data ? (
         <details className="group text-micro">
           <summary className="inline-flex cursor-default list-none items-center gap-1 font-medium text-ink-2 hover:text-ink [&::-webkit-details-marker]:hidden">

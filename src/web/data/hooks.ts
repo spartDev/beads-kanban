@@ -1,5 +1,6 @@
 import { QueryClient, queryOptions, useQuery } from '@tanstack/react-query';
 import { ApiError, apiGet } from './client';
+import { namedProjects } from './projectNames';
 import type { IssueChronologyResponse, IssueResponse, IssuesResponse, ProjectsResponse } from './types';
 
 export const queryKeys = {
@@ -60,9 +61,12 @@ export function chronologyQuery(projectId: string, issueId: string) {
   });
 }
 
-/** Projets suivis (lisibles ou non) et dossiers ignorés. */
+/**
+ * Projets suivis (lisibles ou non) et dossiers ignorés. Le nom d'un Projet dont le dossier n'a pas de nom qu'on voie y est « Sans titre » (`namedProjects`) : aucun écran n'a à le réécrire, et
+ * le fil d'Ariane, la barre latérale, l'onglet et le titre de sa page disent la même chose.
+ */
 export function useProjects() {
-  return useQuery(projectsQuery());
+  return useQuery({ ...projectsQuery(), select: namedProjects });
 }
 
 /** Tickets d'un Projet. Inactif tant que `projectId` est absent. */

@@ -1,6 +1,7 @@
 import { queryOptions, useQuery } from '@tanstack/react-query';
 import type { MetricsResponse } from '../../shared/api';
 import { apiGet } from '../data/client';
+import { withProjectLabels, withProjectNames } from '../data/projectNames';
 import { metricsPath, periodKey, type PeriodChoice } from './params';
 
 /**
@@ -37,6 +38,19 @@ export function metricsQuery(request: MetricsRequest) {
 }
 
 /**
+ * La réponse, son Projet partout où elle le nomme sous son nom écrit : « Sans titre » pour un dossier dont on ne verrait pas le nom (voir `data/projectNames`). Le serveur le nomme à trois
+ * endroits : les Projets mesurés (`projects`), ceux qui ne se lisent pas (`unreadable`) et le libellé de chaque ligne du découpage par Projet (`slices.project`), que le tableau des métriques par
+ * Projet écrit dans le lien de sa ligne. La même réponse quand aucun nom ne change.
+ */
+function namedMetrics(response: MetricsResponse): MetricsResponse {
+  const projects = withProjectNames(response.projects);
+  const unreadable = withProjectNames(response.unreadable);
+  const byProject = withProjectLabels(response.slices.project);
+  if (projects === response.projects && unreadable === response.unreadable && byProject === response.slices.project) return response;
+  return { ...response, projects, unreadable, slices: byProject === response.slices.project ? response.slices : { ...response.slices, project: byProject } };
+}
+
+/**
  * Les métriques d'un Projet ou de la Vue globale. Changer de période garde les chiffres précédents à l'écran en attendant
  * les suivants (`isPlaceholderData`), pour que la page ne clignote pas ; changer de Projet ne les garde pas : les
  * chiffres d'un autre Projet sous le titre de celui-ci seraient faux.
@@ -46,5 +60,6 @@ export function useMetrics(request: MetricsRequest) {
   return useQuery({
     ...metricsQuery(request),
     placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[1] === scope ? previous : undefined),
+    select: namedMetrics,
   });
 }

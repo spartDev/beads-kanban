@@ -4,12 +4,12 @@ import { GridRows } from '@visx/grid';
 import { Group } from '@visx/group';
 import { scaleLinear } from '@visx/scale';
 import { AreaStack, LinePath } from '@visx/shape';
-import { useMemo, useState } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import type { MetricsCfdPoint } from '../../shared/api';
 import { cx } from '../lib/cx';
 import { Button } from '../ui/Button';
 import { cfdMax, cfdSummary, FLOW_SERIES, stackKeys, toCfdRows, type CfdRow, type FlowKey } from './cfd';
-import { ChartCard, ChartFrame, ChartTooltip, DataTable, Legend, pointerIn, Swatch, useActive } from './ChartParts';
+import { ChartCard, ChartFrame, ChartTitleId, ChartTooltip, DataTable, Legend, pointerIn, Swatch, useActive } from './ChartParts';
 import { AXIS_TEXT } from './axes';
 import { formatCount, formatDay } from './format';
 import { outlineOf } from './palette';
@@ -197,10 +197,14 @@ function CfdTable({ rows }: { rows: readonly CfdRow[] }) {
   );
 }
 
-/** Un graphique sans rien à montrer : une phrase à la place du dessin, à la hauteur d'un petit encart. */
+/**
+ * Un graphique sans rien à montrer : une phrase à la place du dessin, à la hauteur d'un petit encart. C'est une région de statut, nommée du titre de la carte du graphique (`ChartTitleId`) : la phrase
+ * (« Aucun ticket Prêt. ») ne dit pas de quoi elle parle.
+ */
 export function EmptyChart({ children }: { children: string }) {
+  const titleId = useContext(ChartTitleId);
   return (
-    <p role="status" className="grid min-h-24 place-items-center rounded-md border border-dashed border-line-strong px-4 py-6 text-center text-ui text-ink-2">
+    <p role="status" aria-labelledby={titleId} className="grid min-h-24 place-items-center rounded-md border border-dashed border-line-strong px-4 py-6 text-center text-ui text-ink-2">
       {children}
     </p>
   );

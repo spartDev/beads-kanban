@@ -20,6 +20,9 @@ export const BLANK_TITLES = [
   ['fait d’un lien de mots (U+2060)', '⁠'],
   ['fait d’un trait d’union conditionnel (U+00AD)', '­'],
   ['mêlé d’espaces et de caractères sans largeur', ' ​\t⁠ '],
+  // Ce que la police laisse blanc sans que `trim()` ni la catégorie `Cf` le disent (bdesk-38k.65).
+  ['fait d’un blanc braille (U+2800)', '\u2800'],
+  ['fait d’un remplisseur hangul (U+3164)', '\u3164'],
 ] as const;
 
 /** Trois de ces titres, un par genre (vide, blanc, sans largeur) : de quoi éprouver un endroit qui monte toute l'application sans la monter dix fois. */

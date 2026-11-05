@@ -12,6 +12,7 @@ import type {
   MetricsDurationTile,
   MetricsHealth,
   MetricsInProgressTicket,
+  MetricsProject,
   MetricsReadyTicket,
   MetricsResponse,
   MetricsSlice,
@@ -220,6 +221,22 @@ export function emptyHealthFixture(overrides: Partial<MetricsHealth> = {}): Metr
     activity: { cells: Array.from({ length: 7 }, () => new Array<number>(24).fill(0)), total: 0 },
     ...overrides,
   };
+}
+
+/**
+ * La réponse d'une Vue globale dont les Projets mesurés sont `projects` (bdesk-38k.65, revue). Le serveur la compose ainsi (`slicesOf`, `domain/metrics.ts`) : le découpage par Projet a une ligne par
+ * Projet mesuré, et son libellé est le nom du Projet, écrit une deuxième fois à côté de `projects`. Les chiffres sont ceux de la première ligne de `metricsFixture`, pour chacune : seuls les noms
+ * et les identifiants comptent ici. `overrides` remplace des morceaux entiers, comme pour `metricsFixture`.
+ */
+export function metricsOf(projects: MetricsProject[], overrides: Partial<MetricsResponse> = {}): MetricsResponse {
+  const base = metricsFixture();
+  const model = base.slices.project[0];
+  if (!model) throw new Error('metricsFixture devait avoir un découpage par Projet.');
+  return metricsFixture({
+    projects,
+    slices: { ...base.slices, project: projects.map(({ id, name }) => ({ ...model, key: id, label: name })) },
+    ...overrides,
+  });
 }
 
 /**
