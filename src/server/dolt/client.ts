@@ -30,14 +30,17 @@ export type Row = Record<string, unknown>;
  * Les voies des lectures (bdesk-38k.20). Chacune a ses places et sa file : une voie pleine ne retarde pas les autres, et ce dont
  * tout dépend ne fait pas la queue derrière ce qui dure.
  */
-export type Lane = 'normal' | 'light' | 'analysis';
+export type Lane = 'normal' | 'light' | 'analysis' | 'discovery';
 
 /** Comment une lecture est ordonnancée. */
 export interface QueryOptions {
   /**
    * La voie de la lecture (défaut : `normal`, au plus `maxConcurrent` processus : tickets, fiches).
    * - `light` (au plus `maxLight` processus) : une lecture de quelques dizaines de millisecondes dont tout le reste dépend, le
-   *   hash du HEAD, qui invalide les caches, et le préfixe des tickets, que lit la découverte des Projets, que toute requête attend ;
+   *   hash du HEAD, qui invalide les caches ;
+   * - `discovery` (au plus `maxDiscovery` processus) : le préfixe des tickets, que lit chaque scan des Projets, une lecture par Projet
+   *   (quarante pour quarante Projets) : à part, pour que la lecture du HEAD d'une demande arrivée pendant un scan ne fasse pas la queue
+   *   derrière toutes (bdesk-38k.28) ;
    * - `analysis` (au plus `maxAnalysis` processus) : une lecture lourde de l'historique, dont le résultat est partagé par toutes
    *   les requêtes du Projet (cache par HEAD) : elle ne fait pas la queue derrière les lectures d'un seul ticket, ni ne la leur fait faire.
    */
@@ -97,6 +100,8 @@ export interface DoltClientOptions {
   maxConcurrent?: number;
   /** Nombre maximal de processus `dolt` simultanés pour les lectures légères (voie `light`), en plus de `maxConcurrent` (défaut : 4). */
   maxLight?: number;
+  /** Nombre maximal de processus `dolt` simultanés pour la lecture du préfixe des Projets par la découverte (voie `discovery`), en plus des autres voies (défaut : 4, comme la voie `light` qui la portait : un scan n'en est pas ralenti). */
+  maxDiscovery?: number;
   /** Nombre maximal de processus `dolt` simultanés pour les lectures d'historique (voie `analysis`), en plus de `maxConcurrent` (défaut : 6, comme avant : le calcul à froid des métriques de plusieurs Projets n'en est pas ralenti). */
   maxAnalysis?: number;
   /** Nombre maximal de lectures en attente d'un processus libre, dans chaque voie (défaut : 1000) ; au-delà, elles échouent aussitôt. */
@@ -129,6 +134,7 @@ export function createDoltClient(options: DoltClientOptions = {}): DoltClient {
     maxOutputBytes = 512 * 1024 * 1024,
     maxConcurrent = 6,
     maxLight = 4,
+    maxDiscovery = 4,
     maxAnalysis = 6,
     maxQueued = 1000,
     rootPath = process.env.DOLT_ROOT_PATH ? undefined : defaultRootPath(),
@@ -149,10 +155,11 @@ export function createDoltClient(options: DoltClientOptions = {}): DoltClient {
       );
     }
   }
-  // Trois voies, chacune avec sa file : le HEAD et le préfixe ne font pas la queue derrière des lectures lourdes, ni l'historique derrière les fiches.
+  // Quatre voies, chacune avec sa file : le HEAD ne fait pas la queue derrière des lectures lourdes ni derrière les préfixes d'un scan, ni l'historique derrière les fiches.
   const limits: Record<Lane, ReturnType<typeof createLimiter>> = {
     normal: createLimiter(maxConcurrent, maxQueued),
     light: createLimiter(maxLight, maxQueued),
+    discovery: createLimiter(maxDiscovery, maxQueued),
     analysis: createLimiter(maxAnalysis, maxQueued),
   };
   /** Les lectures qui attendent encore une place, par voie, base et requêtes : les identiques les rejoignent (voir `DoltDatabase`). */

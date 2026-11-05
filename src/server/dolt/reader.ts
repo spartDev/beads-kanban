@@ -56,11 +56,11 @@ export function toDependency(row: Row): DependencyRecord | null {
 }
 
 /**
- * Préfixe des tickets (`issue_prefix` dans la table `config`), ou null s'il n'y est pas. Voie `light` : c'est elle que
- * lance la découverte des Projets, que toute requête attend.
+ * Préfixe des tickets (`issue_prefix` dans la table `config`), ou null s'il n'y est pas. Voie `discovery` : c'est la lecture que
+ * lance chaque scan des Projets, une par Projet, et la voie du HEAD (`light`) ne doit pas faire la queue derrière elles.
  */
 export async function readIssuePrefix(db: DoltDatabase): Promise<string | null> {
-  const rows = await db.query("select `value` from config where `key` = 'issue_prefix'", { lane: 'light' });
+  const rows = await db.query("select `value` from config where `key` = 'issue_prefix'", { lane: 'discovery' });
   return asText(rows[0]?.value) || null;
 }
 

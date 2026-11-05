@@ -79,6 +79,8 @@ export function createProjectService(
   { dolt = createDoltClient(), rescanIntervalMs = RESCAN_MIN_INTERVAL_MS }: ProjectServiceOptions = {},
 ): ProjectService {
   let latest: { at: number; settled: boolean; discovery: Promise<Discovery> } | undefined;
+  /** Le dernier scan achevé, même périmé ou remplacé par un scan en cours : de quoi servir un Projet connu pendant qu'un scan le revérifie. */
+  let known: Discovery | undefined;
 
   /** Le dernier scan s'il a moins de `maxAgeMs` ou s'il est encore en cours (tous les appelants le partagent). */
   function discover(maxAgeMs: number): Promise<Discovery> {
@@ -86,8 +88,9 @@ export function createProjectService(
       const scan = { at: Date.now(), settled: false, discovery: discoverProjects(config, { dolt }) };
       latest = scan;
       scan.discovery.then(
-        () => {
+        (discovery) => {
           scan.settled = true;
+          known = discovery;
         },
         () => {
           scan.settled = true;
@@ -99,11 +102,21 @@ export function createProjectService(
   }
 
   /**
-   * La base du Projet ; rescanne si le Projet est inconnu ou illisible (ajouté ou réparé depuis), au plus une fois
-   * par `rescanIntervalMs` : le scan qui vient d'avoir lieu fait foi. `lookupMaxAgeMs` : l'âge au-delà duquel le scan
-   * précédent n'est plus cru pour un Projet qu'il connaît et dit lisible.
+   * La base du Projet. Un Projet que le dernier scan achevé connaît et dit lisible est lu aussitôt, sans attendre aucun scan
+   * (stale-while-revalidate, bdesk-38k.28) : ni celui qui tourne, que toute demande arrivée pendant ce temps attendait entier (de l'ordre
+   * de 2 s pour 40 Projets), ni celui que son âge rend dû (`lookupMaxAgeMs`), qui part alors en arrière-plan. Si ce scan retire le Projet
+   * (dossier supprimé, masqué), la lecture réussit tant que sa base existe, ou échoue en Projet illisible ; il devient inconnu (404)
+   * quand le scan finit. L'échec d'un scan que personne n'attend ne concerne personne : le suivant réessaie (`discover`).
+   *
+   * Un Projet inconnu, ou illisible au dernier scan, attend le scan : c'est lui qui dit s'il a été ajouté ou réparé depuis. Il en lance
+   * un s'il n'y en a pas, au plus une fois par `rescanIntervalMs` : le scan qui vient d'avoir lieu fait foi.
    */
   async function open(projectId: string, lookupMaxAgeMs = LOOKUP_MAX_AGE_MS): Promise<DoltDatabase> {
+    const stale = known?.projects.find((p) => p.id === projectId);
+    if (stale?.status === 'ok' && stale.databasePath) {
+      void discover(lookupMaxAgeMs).catch(() => undefined);
+      return dolt.open(stale.databasePath);
+    }
     const find = async (maxAgeMs: number) => (await discover(maxAgeMs)).projects.find((p) => p.id === projectId);
     let project = await find(lookupMaxAgeMs);
     if (project?.status !== 'ok') project = await find(rescanIntervalMs);

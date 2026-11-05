@@ -197,8 +197,8 @@ describe('ProjectService.head : le sondage ne lance aucune découverte (bdesk-38
     dolt.calls.length = 0;
 
     elapse(31_000);
-    await service.issues('a');
+    await service.issues('a'); // servie d'après le dernier scan : le rescan part en arrière-plan, elle ne l'attend pas (bdesk-38k.28)
 
-    expect(dolt.calls.filter((call) => kind(call.sql) === 'prefix')).toHaveLength(1);
+    await vi.waitFor(() => expect(dolt.calls.filter((call) => kind(call.sql) === 'prefix')).toHaveLength(1), { timeout: 10_000 });
   });
 });

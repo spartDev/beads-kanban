@@ -129,10 +129,11 @@ describe.skipIf(process.platform === 'win32')('rafale de fiches (bdesk-38k.20)',
 });
 
 /**
- * Un rescan de nombreux Projets (relecture de bdesk-38k.20, remarque r3) : chaque scan lit le préfixe de tous les Projets, par la
- * voie `light` qu'il partage avec le HEAD. Le HEAD n'y fait pourtant pas la queue derrière ces lectures : celui d'une demande déjà
- * admise est passé devant (chaque voie est servie dans l'ordre d'arrivée), et une demande qui arrive pendant le scan l'attend avant de
- * lire quoi que ce soit (mesuré sur 40 Projets : une voie à part ne change rien, voir l'ADR 0003). Ce test garde le premier de ces ordres.
+ * Un rescan de nombreux Projets (relecture de bdesk-38k.20, remarque r3) : chaque scan lit le préfixe de tous les Projets. Ces lectures
+ * passaient par la voie `light`, celle du HEAD : le HEAD d'une demande déjà admise passait devant (chaque voie est servie dans l'ordre
+ * d'arrivée), celui d'une demande arrivée pendant le scan faisait la queue derrière toutes. Depuis bdesk-38k.28, le préfixe a sa voie
+ * (`discovery`), que le HEAD ne rencontre jamais (`rescan-voies.test.ts`) ; ce test garde l'ordre de la demande admise juste avant le
+ * rescan, avec une seule place de découverte pour que les lectures de préfixe se suivent.
  */
 describe.skipIf(process.platform === 'win32')('rescan de nombreux Projets (bdesk-38k.20)', { timeout: 60_000 }, () => {
   afterEach(() => {
@@ -160,10 +161,10 @@ describe.skipIf(process.platform === 'win32')('rescan de nombreux Projets (bdesk
       writeFileSync(join(beads, 'metadata.json'), JSON.stringify({ backend: 'dolt', database: 'dolt', dolt_mode: 'embedded', dolt_database: name }));
     }
     const fake = slowPrefixes();
-    // Une seule place légère : les six lectures de préfixe d'un scan se suivent, et le HEAD ne peut passer qu'en tête.
+    // Une seule place de découverte : les six lectures de préfixe d'un scan se suivent, et le HEAD part avant la deuxième.
     const projects = createProjectService(
       { roots: [root], projects: [], hiddenProjects: [] },
-      { dolt: createDoltClient({ binary: fake.binary, maxLight: 1, rootPath: join(tmpdir(), 'bdesk-fake-dolt-root') }) },
+      { dolt: createDoltClient({ binary: fake.binary, maxLight: 1, maxDiscovery: 1, rootPath: join(tmpdir(), 'bdesk-fake-dolt-root') }) },
     );
     await projects.head('p'); // premier scan : six lectures de préfixe, puis le HEAD
     expect(fake.prefixReads()).toBe(6);

@@ -202,13 +202,13 @@ function groupedDb(answer: (sql: string) => Row[] = () => []) {
 }
 
 describe('lectures légères (bdesk-38k.20)', () => {
-  it('le HEAD et le préfixe passent par la voie légère : tout le reste en dépend, ils ne font pas la queue derrière les lectures lourdes', async () => {
+  it('le HEAD passe par la voie légère et le préfixe par celle de la découverte : ni l’un ni l’autre ne fait la queue derrière les lectures lourdes, ni le HEAD derrière les lectures de préfixe d’un scan (bdesk-38k.28)', async () => {
     const { db, options } = groupedDb((sql) => (sql.includes('hashof') ? [{ head: 'h1' }] : [{ value: 'xx' }]));
 
     await readHead(db);
     await readIssuePrefix(db);
 
-    expect(options).toEqual([{ lane: 'light' }, { lane: 'light' }]);
+    expect(options).toEqual([{ lane: 'light' }, { lane: 'discovery' }]);
   });
 });
 
