@@ -311,13 +311,41 @@ describe('lectures regroupées et abandonnables (bdesk-38k.20)', () => {
     expect(seen.processes).toBe(1);
   });
 
-  it('lit le HEAD par la voie `light`, sans signal : une lecture de quelques dizaines de millisecondes ne s’interrompt pas', async () => {
+  it('lit le HEAD par la voie `light`, sans signal quand le demandeur n’en a pas (le sondage du direct)', async () => {
     const { dolt, seen } = groupingDolt();
 
     expect(await serviceFor(dolt).head('a')).toBe('h1');
 
     expect(seen.lanes).toEqual(['light']);
     expect(seen.signals).toEqual([undefined]);
+  });
+
+  it('donne le signal du demandeur à la lecture du HEAD : encore en file dans la voie `light`, elle en sort (bdesk-38k.42)', async () => {
+    const { dolt, seen } = groupingDolt();
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    expect(await serviceFor(dolt).head('a', { signal })).toBe('h1');
+
+    expect(seen.lanes).toEqual(['light']);
+    expect(seen.signals).toEqual([signal]);
+  });
+
+  it('un abandon pendant la lecture du HEAD est une ReadAborted, pas un Projet illisible ; un signal déjà abandonné ne lit rien', async () => {
+    const hanging = groupingDolt(answer, true);
+    const service = serviceFor(hanging.dolt);
+    const controller = new AbortController();
+    const reading = service.head('a', { signal: controller.signal }).catch((e: unknown) => e);
+    await sleep(20); // la lecture est partie
+
+    controller.abort();
+    const error = await reading;
+
+    expect(error).toBeInstanceOf(ReadAborted);
+    expect(error).not.toBeInstanceOf(ProjectUnreadableError);
+    const before = hanging.seen.processes;
+    await expect(service.head('a', { signal: controller.signal })).rejects.toBeInstanceOf(ReadAborted);
+    expect(hanging.seen.processes).toBe(before);
   });
 
   it('lit l’historique par la voie des analyses, mais pas le préfixe, le HEAD ni les fiches', async () => {

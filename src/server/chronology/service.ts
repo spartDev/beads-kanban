@@ -17,8 +17,9 @@ export interface ChronologyService {
   /**
    * La chronologie du ticket. Un ticket qui n'est pas dans le Projet lève `IssueNotFoundError` ; un Projet inconnu ou
    * illisible lève `ProjectNotFoundError` ou `ProjectUnreadableError`, comme toute lecture du Projet. Un demandeur qui part
-   * (`options.signal`) est libéré aussitôt (`ReadAborted`) ; la lecture de l'historique qu'il attendait n'est abandonnée que si
-   * personne d'autre ne l'attend, et seulement après le délai de grâce (un processus déjà lancé va au bout, son résultat est jeté).
+   * (`options.signal`) est libéré aussitôt (`ReadAborted`) ; la lecture du HEAD qu'il attendait, encore en file, en sort aussitôt si personne d'autre
+   * ne l'attend (bdesk-38k.42) ; celle de l'historique n'est abandonnée que si personne d'autre ne l'attend, et seulement après le délai de grâce
+   * (un processus déjà lancé va au bout, son résultat est jeté).
    */
   chronology(projectId: string, issueId: string, options?: ReadOptions): Promise<IssueChronology>;
 }

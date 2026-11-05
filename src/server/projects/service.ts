@@ -55,9 +55,11 @@ export interface ProjectService {
   histories(projectId: string, options?: ReadOptions): Promise<TicketHistory[]>;
   /**
    * Hash du dernier commit Dolt du Projet : change à chaque commit, donc clé d'invalidation des calculs. Lecture de la voie `light`, qui ne fait pas la
-   * queue derrière les autres (voir `QueryOptions.lane`), et sans abandon : quelques dizaines de millisecondes.
+   * queue derrière les autres (voir `QueryOptions.lane`) : quelques dizaines de millisecondes. Un demandeur qui part (`options.signal`) est libéré aussitôt
+   * (`ReadAborted`) ; sa lecture quitte la file de la voie si elle n'est pas partie, et si elle l'est elle va au bout, sans être tuée (ADR 0003,
+   * bdesk-38k.42). Sans signal (le sondage du direct), elle n'est jamais retirée.
    */
-  head(projectId: string): Promise<string>;
+  head(projectId: string, options?: ReadOptions): Promise<string>;
 }
 
 export interface ProjectServiceOptions {
@@ -235,7 +237,7 @@ export function createProjectService(
     // Le sondage du direct (bdesk-38k.8) lit le HEAD de chaque Projet suivi toutes les quelques secondes : un Projet que le
     // dernier scan connaît et dit lisible n'est pas redécouvert à cause de l'âge du scan (ce serait un processus dolt par
     // Projet, tous les Projets lus pour sonder un seul). Un Projet inconnu ou illisible est cherché comme pour toute lecture.
-    head: (projectId) => read(projectId, readHead, { lookupMaxAgeMs: Number.POSITIVE_INFINITY }),
+    head: (projectId, { signal } = {}) => read(projectId, readHead, { signal, lookupMaxAgeMs: Number.POSITIVE_INFINITY }),
   };
 }
 

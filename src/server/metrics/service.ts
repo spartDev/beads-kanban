@@ -20,7 +20,7 @@ export interface MetricsService {
    * Les métriques des Projets demandés. Un Projet que la liste des Projets ne connaît pas lève `ProjectNotFoundError`,
    * une période invalide `InvalidPeriodError` ; un Projet illisible, ou qui disparaît entre la liste et sa lecture, est
    * listé dans la réponse sans faire échouer le reste. Un demandeur qui part (`options.signal`) est libéré aussitôt par une
-   * `ReadAborted` ; les lectures qu'il attendait ne sont abandonnées que si personne d'autre ne les attend : celle des tickets
+   * `ReadAborted` ; les lectures qu'il attendait ne sont abandonnées que si personne d'autre ne les attend : celles du HEAD et des tickets
    * aussitôt, celle de l'historique après le délai de grâce (un processus déjà lancé va au bout, son résultat est jeté).
    */
   compute(query: MetricsQuery, options?: ReadOptions): Promise<MetricsResponse>;
