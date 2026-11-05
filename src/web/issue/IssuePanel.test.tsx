@@ -224,6 +224,119 @@ describe('le panneau d’un ticket : les états', () => {
   });
 });
 
+describe('le panneau d’un ticket : jamais de titre vide (bdesk-38k.25)', () => {
+  /**
+   * Les titres du panneau qui n'ont pas de nom accessible. Un titre vide est une violation d'accessibilité (axe `empty-heading`) :
+   * le squelette du titre, posé dans le `<h2>` pendant le chargement de la fiche, en faisait un.
+   */
+  const unnamedHeadings = (dialog: HTMLElement) => {
+    const named = within(dialog).queryAllByRole('heading', { name: /\S/ });
+    return within(dialog)
+      .queryAllByRole('heading')
+      .filter((heading) => !named.includes(heading));
+  };
+  /** Ce qui nomme le dialogue (`aria-labelledby`) : chaque élément désigné doit exister, sinon le nom se déduit d'un titre absent. */
+  const namingElements = (dialog: HTMLElement) =>
+    (dialog.getAttribute('aria-labelledby') ?? '')
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((id) => document.getElementById(id));
+  /** La fiche du ticket est lente à arriver : sa réponse, et elle seule (ni la liste, ni la chronologie), attend `release()`. */
+  function holdDetail(fetchMock: ReturnType<typeof stubApi>) {
+    const healthy = fetchMock.getMockImplementation();
+    if (!healthy) throw new Error('holdDetail attend le mock renvoyé par stubApi.');
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fetchMock.mockImplementation(async (input) => {
+      if (/\/issues\/[^/]+$/.test(String(input))) await gate;
+      return healthy(input);
+    });
+    return release;
+  }
+
+  it('tant que la fiche charge, n’a aucun titre vide : le dialogue se nomme par l’identifiant du ticket, déjà connu par l’adresse', async () => {
+    const fetchMock = stubDefaultApi();
+    const release = holdDetail(fetchMock);
+    renderApp('/p/bdesk/t/bdesk-38k.6');
+
+    const loading = await screen.findByRole('dialog', { name: 'bdesk-38k.6' });
+
+    expect(within(loading).getByRole('status', { name: 'Chargement du ticket' })).toBeTruthy();
+    expect(unnamedHeadings(loading)).toEqual([]);
+    expect(namingElements(loading)).not.toContain(null);
+
+    release();
+    const loaded = await openPanel(/^bdesk-38k\.6 Shell UI façon Linear/);
+    expect(within(loaded).getByRole('heading', { level: 2, name: /Shell UI façon Linear/ })).toBeTruthy();
+    expect(unnamedHeadings(loaded)).toEqual([]);
+    expect(namingElements(loaded)).toHaveLength(2); // l'identifiant et le titre, tous deux là
+    expect(namingElements(loaded)).not.toContain(null);
+  });
+
+  it('en passant à un autre ticket depuis le panneau, ne garde pas le titre de l’ancien et n’en rend pas un vide pendant le chargement', async () => {
+    const fetchMock = stubDefaultApi();
+    const { user } = renderApp('/p/bdesk/t/bdesk-38k.6');
+    const first = await openPanel(/Shell UI façon Linear/);
+    const release = holdDetail(fetchMock);
+
+    await user.click(within(first).getByRole('link', { name: /Epic : beads-desktop V1/ }));
+
+    const loading = await screen.findByRole('dialog', { name: 'bdesk-38k' });
+    expect(within(loading).getByRole('status', { name: 'Chargement du ticket' })).toBeTruthy();
+    expect(within(loading).queryByText(/Shell UI façon Linear/)).toBeNull();
+    expect(unnamedHeadings(loading)).toEqual([]);
+    expect(namingElements(loading)).not.toContain(null);
+
+    release();
+    await openPanel(/^bdesk-38k beads-desktop V1/);
+  });
+
+  it('quand on réessaie après un échec, redevient un panneau qui charge, sans titre vide ni « Ticket indisponible » périmé, puis donne le titre', async () => {
+    stubApi({ projects: projectsResponse, issues: { bdesk: bdeskIssues }, details: { 'bdesk/bdesk-38k.6': new Error('database is locked') } });
+    const { user } = renderApp('/p/bdesk/t/bdesk-38k.6');
+    const failed = await openPanel(/Ticket indisponible/);
+    const release = holdDetail(stubDefaultApi()); // le serveur est rétabli, mais lent
+
+    await user.click(within(failed).getByRole('button', { name: /Réessayer/ }));
+
+    const loading = await screen.findByRole('dialog', { name: 'bdesk-38k.6' });
+    expect(within(loading).getByRole('status', { name: 'Chargement du ticket' })).toBeTruthy();
+    expect(within(loading).queryByText('Ticket indisponible')).toBeNull();
+    expect(unnamedHeadings(loading)).toEqual([]);
+    expect(namingElements(loading)).not.toContain(null);
+
+    release();
+    await openPanel(/^bdesk-38k\.6 Shell UI façon Linear/);
+  });
+
+  it('quand la fiche ne peut pas être lue (500), dit « Ticket indisponible » dans un titre nommé : le dialogue se nomme par l’identifiant et ce titre', async () => {
+    stubApi({ projects: projectsResponse, issues: { bdesk: new Error('database is locked') } });
+    renderApp('/p/bdesk/t/bdesk-38k.6');
+
+    const dialog = await openPanel('bdesk-38k.6 Ticket indisponible');
+
+    expect(within(dialog).getByRole('heading', { level: 2, name: 'Ticket indisponible' })).toBeTruthy();
+    expect(within(dialog).getByRole('alert')).toBeTruthy();
+    expect(unnamedHeadings(dialog)).toEqual([]);
+    expect(namingElements(dialog)).toHaveLength(2);
+    expect(namingElements(dialog)).not.toContain(null);
+  });
+
+  it('quand le ticket n’existe pas (404), dit « Ticket introuvable » dans un titre nommé : le dialogue se nomme par l’identifiant et ce titre', async () => {
+    stubDefaultApi();
+    renderApp('/p/bdesk/t/inexistant');
+
+    const dialog = await openPanel('inexistant Ticket introuvable');
+
+    expect(within(dialog).getByRole('heading', { level: 2, name: 'Ticket introuvable' })).toBeTruthy();
+    expect(unnamedHeadings(dialog)).toEqual([]);
+    expect(namingElements(dialog)).toHaveLength(2);
+    expect(namingElements(dialog)).not.toContain(null);
+  });
+});
+
 describe('le panneau d’un ticket : un rafraîchissement qui échoue', () => {
   /** Le serveur rend le ticket introuvable ou flanche au prochain rafraîchissement ; les données en cache restent. */
   async function refresh(app: ReturnType<typeof renderApp>, fetchMock: ReturnType<typeof stubApi>, reply: Response | 'down') {

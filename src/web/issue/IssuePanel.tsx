@@ -39,6 +39,8 @@ const NARROW_SCREEN = '(max-width: 767.98px)';
  *   Échap le ferme et ⌘K ouvre la palette, la navigation d'un écran étroit ; ni l'aide ni « g … » ne passent derrière un écran plein.
  * - Les deux requêtes sont indépendantes : la fiche, et la chronologie, plus lente (`Chronology`). Un 404, au chargement
  *   comme à un rafraîchissement, dit « Ticket introuvable » au lieu de garder la fiche périmée.
+ * - Tant que la fiche charge, le panneau n'a pas de titre à dire : un squelette en tient la place, sans `<h2>` (un titre vide est une
+ *   violation d'accessibilité, axe `empty-heading`), et le dialogue se nomme par l'identifiant seul, que l'adresse donne déjà.
  */
 export function IssuePanel() {
   const project = useProject();
@@ -46,6 +48,8 @@ export function IssuePanel() {
   const query = useIssue(project.id, issueId);
   const issue = query.data;
   const gone = query.error instanceof ApiError && query.error.status === 404;
+  // Ni fiche, ni échec : pas de titre à écrire encore (`query.isPending` n'est jamais vrai avec une fiche ou une erreur).
+  const loading = query.isPending;
   const { close, destination } = useClosePanel(project.id);
   const palette = usePalette();
   const help = useShortcutsHelp();
@@ -105,7 +109,7 @@ export function IssuePanel() {
     <div
       ref={panelRef}
       role="dialog"
-      aria-labelledby={`${idId} ${titleId}`}
+      aria-labelledby={loading ? idId : `${idId} ${titleId}`}
       aria-modal={narrow}
       tabIndex={-1}
       className="fixed inset-0 z-40 flex animate-[panel-fade-in_140ms_ease-out] flex-col bg-panel outline-none md:inset-y-2 md:left-auto md:right-2 md:w-[min(42rem,calc(100vw-1rem))] md:animate-[panel-in_160ms_cubic-bezier(0.2,0.8,0.2,1)] md:rounded-xl md:border md:border-line md:shadow-float"
@@ -115,9 +119,15 @@ export function IssuePanel() {
           <p id={idId} className="wrap-anywhere font-mono text-xs font-medium text-ink-3">
             {issueId}
           </p>
-          <h2 id={titleId} className="mt-0.5 wrap-anywhere text-[17px] font-semibold leading-6 tracking-[-0.01em] text-ink">
-            {gone ? 'Ticket introuvable' : issue ? issue.title : query.isPending ? <Skeleton className="h-6 w-2/3" /> : 'Ticket indisponible'}
-          </h2>
+          {loading ? (
+            // Pas de `<h2>` avant le titre : vide, il serait une violation (axe `empty-heading`). Le squelette prend sa place, avec sa
+            // marge et sa hauteur d'une ligne (`leading-6`) : l'en-tête garde sa forme quand le titre arrive.
+            <Skeleton className="mt-0.5 h-6 w-2/3" />
+          ) : (
+            <h2 id={titleId} className="mt-0.5 wrap-anywhere text-[17px] font-semibold leading-6 tracking-[-0.01em] text-ink">
+              {gone ? 'Ticket introuvable' : issue ? issue.title : 'Ticket indisponible'}
+            </h2>
+          )}
         </div>
         <div className="-mr-1.5 -mt-0.5 flex shrink-0 items-center gap-1">
           {/* À côté du bouton, pas dedans : le texte visible d'un bouton doit figurer dans son nom (WCAG 2.5.3), et celui-ci n'en a pas. */}
@@ -160,7 +170,7 @@ export function IssuePanel() {
             <Relations issue={issue} projectId={project.id} />
             <Comments comments={issue.comments} />
           </>
-        ) : query.isPending ? (
+        ) : loading ? (
           <div role="status" aria-busy="true" aria-label="Chargement du ticket" className="flex flex-col gap-3">
             <Skeleton className="h-4 w-48" />
             <Skeleton className="h-4 w-32" />
