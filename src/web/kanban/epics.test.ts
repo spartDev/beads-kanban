@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Issue } from '../data/types';
 import { issue } from '../test/fixtures';
-import { epicChoices, epicLabels, shortTitle } from './epics';
+import { epicChoices, epicLabels, epicName, epicShortName, shortTitle } from './epics';
 
 const at = (id: string, extra: Partial<Issue> = {}) => issue({ id, title: `Titre ${id}`, ...extra });
 
@@ -93,5 +93,45 @@ describe('epicLabels : de quoi reconnaître chaque Epic dans le filtre', () => {
 
   it('garde un titre vide lisible : l’identifiant', () => {
     expect(labels(epic('a', ''), epic('b', 'Autre'))).toEqual({ a: 'a', b: 'Autre' });
+  });
+});
+
+/**
+ * Comment l’interface nomme une Epic là où elle la désigne (pastille de la carte, lien Parent et lien « Page Epic » du panneau, infobulle de
+ * ce lien) : par son titre, ou par son identifiant quand elle n’en a pas (bdesk-38k.39). Une seule règle, que tous ces endroits appellent.
+ */
+describe('epicName et epicShortName : le nom d’une Epic', () => {
+  const epic = (title: string, id = 'bdesk-e1') => ({ id, title });
+
+  it('nomme une Epic par son titre, entier ou court', () => {
+    expect(epicName(epic('Shell UI : thèmes, navigation et raccourcis'))).toBe('Shell UI : thèmes, navigation et raccourcis');
+    expect(epicShortName(epic('Shell UI : thèmes, navigation et raccourcis'))).toBe('Shell UI');
+  });
+
+  it('range les espaces du titre comme le titre court', () => {
+    expect(epicName(epic('  Espaces   superflus  '))).toBe('Espaces superflus');
+    expect(epicShortName(epic('  Espaces   superflus  '))).toBe('Espaces superflus');
+  });
+
+  it.each([
+    ['vide', ''],
+    ['fait d’espaces', '   '],
+    ['fait d’espaces insécables', '\u00a0\u00a0'],
+    ['fait de tabulations et de retours à la ligne', '\t\n \r\n'],
+  ])('nomme par son identifiant une Epic dont le titre est %s', (_kind, title) => {
+    expect(epicName(epic(title))).toBe('bdesk-e1');
+    expect(epicShortName(epic(title))).toBe('bdesk-e1');
+  });
+
+  it('n’abrège jamais l’identifiant : coupé, il ne nommerait plus rien', () => {
+    const long = 'sanofi-ai-standards-cross-project-h3w';
+    expect(long.length).toBeGreaterThan(24);
+    expect(epicShortName(epic('', long))).toBe(long);
+    expect(epicName(epic('   ', long))).toBe(long);
+  });
+
+  it('dit la même chose que le filtre Epic pour une Epic sans titre', () => {
+    const untitled = at('bdesk-vide', { type: 'epic', title: '' });
+    expect(epicName(untitled)).toBe(epicLabels([untitled]).get('bdesk-vide'));
   });
 });

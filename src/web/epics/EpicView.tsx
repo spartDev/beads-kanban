@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router';
 import { epicChildren, epicProgress, epicTree, groupByColumn } from '../../domain/epics';
 import type { Issue, Project } from '../data/types';
 import { statusLabel } from '../design/issue-palette';
+import { epicName } from '../kanban/epics';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useNow } from '../lib/useNow';
 import { Page, SectionTitle } from '../pages/Page';
@@ -30,7 +31,9 @@ export function EpicView({ project, epic, issues }: { project: Project; epic: Is
   const now = useNow();
   const [params, setParams] = useSearchParams();
   const view = parseView(params.get(VIEW_PARAM));
-  useDocumentTitle(epic.title, project.name);
+  // Le titre de la page et celui de l'onglet disent le nom de l'Epic (`epicName`) : son identifiant quand elle n'a pas de titre, jamais un titre vide
+  // (axe `empty-heading`) ni un onglet qui commence par « · ».
+  useDocumentTitle(epicName(epic), project.name);
 
   // D'une Epic à l'autre (le lien d'une Epic imbriquée), la page est la même et le panneau de contenu du shell garde son
   // défilement : on repart du haut, comme pour une nouvelle page. Changer seulement d'affichage ne touche à rien.
@@ -58,7 +61,7 @@ export function EpicView({ project, epic, issues }: { project: Project; epic: Is
     );
 
   return (
-    <Page title={epic.title} eyebrow={<BackToEpics projectId={project.id} />}>
+    <Page title={epicName(epic)} eyebrow={<BackToEpics projectId={project.id} />}>
       <div className="flex flex-col gap-2">
         <dl className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-ink-2">
           <div className="flex items-center gap-1.5">

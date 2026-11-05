@@ -26,6 +26,12 @@ import { useClosePanel } from './useClosePanel';
 const NARROW_SCREEN = '(max-width: 767.98px)';
 
 /**
+ * Le titre d'un ticket qui n'en a pas (titre vide, ou fait d'espaces) : pas de `<h2>` vide (axe `empty-heading`). Ce n'est pas son identifiant, qui est déjà juste
+ * au-dessus, et que le dialogue (nommé par l'identifiant puis le titre) dirait deux fois.
+ */
+const UNTITLED = 'Sans titre';
+
+/**
  * Le panneau d'un ticket (`/p/<projet>/t/<id>`), posé sur le kanban : un panneau latéral sur desktop, l'écran entier sur
  * mobile. Lecture seule. Sa vie tient à l'adresse : il s'ouvre quand elle l'est (carte, lien, adresse collée), « Retour »
  * ou Échap le ferment (voir `useClosePanel`).
@@ -45,9 +51,12 @@ const NARROW_SCREEN = '(max-width: 767.98px)';
  *   lui voler le focus. Sur écran étroit (`aria-modal="true"`, la page est inerte), il garde le clavier comme la palette et l'aide :
  *   Échap le ferme et ⌘K ouvre la palette, la navigation d'un écran étroit ; ni l'aide ni « g … » ne passent derrière un écran plein.
  * - Les deux requêtes sont indépendantes : la fiche, et la chronologie, plus lente (`Chronology`). Un 404, au chargement
- *   comme à un rafraîchissement, dit « Ticket introuvable » au lieu de garder la fiche périmée.
+ *   comme à un rafraîchissement, dit « Ticket introuvable » au lieu de garder la fiche périmée, et en donne les deux raisons possibles : l'identifiant
+ *   est celui d'un autre Projet, ou bd n'a pas encore enregistré le ticket (l'application ne montre que ce que bd a enregistré, voir « Dernier commit »
+ *   dans CONTEXT.md) ; dans ce second cas seulement, il s'affiche ici dès qu'il l'est, la fiche étant relue à chaque mise à jour du Projet.
  * - Tant que la fiche charge, le panneau n'a pas de titre à dire : un squelette en tient la place, sans `<h2>` (un titre vide est une
- *   violation d'accessibilité, axe `empty-heading`), et le dialogue se nomme par l'identifiant seul, que l'adresse donne déjà.
+ *   violation d'accessibilité, axe `empty-heading`), et le dialogue se nomme par l'identifiant seul, que l'adresse donne déjà. Un ticket qui n'a pas
+ *   de titre se titre « Sans titre » (`UNTITLED`), pour la même raison.
  */
 export function IssuePanel() {
   const project = useProject();
@@ -172,7 +181,7 @@ export function IssuePanel() {
               tabIndex={-1}
               className="mt-0.5 w-fit max-w-full wrap-anywhere rounded-sm text-[17px] font-semibold leading-6 tracking-[-0.01em] text-ink focus-visible:outline-offset-1"
             >
-              {gone ? 'Ticket introuvable' : issue ? issue.title : 'Ticket indisponible'}
+              {gone ? 'Ticket introuvable' : issue ? issue.title.trim() || UNTITLED : 'Ticket indisponible'}
             </h2>
           )}
         </div>
@@ -210,7 +219,8 @@ export function IssuePanel() {
               title={`Aucun ticket « ${issueId} » dans ${project.name}`}
               action={<Button onClick={close}>Retour {destination}</Button>}
             >
-              L’identifiant est peut-être celui d’un autre Projet : la palette (⌘K) peut chercher dans tous les Projets.
+              <p>L’identifiant est peut-être celui d’un autre Projet : la palette (⌘K) peut chercher dans tous les Projets.</p>
+              <p className="mt-1">Le ticket n’est peut-être pas encore enregistré par bd ; dans ce cas, il s’affichera ici dès qu’il le sera.</p>
             </Notice>
           ) : issue ? (
             <>

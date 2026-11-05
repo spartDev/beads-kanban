@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 import { epicChildren, epicOf, epicProgress, type EpicProgress } from '../../domain/epics';
 import type { Issue } from '../data/types';
 import { isEpic } from '../data/helpers';
-import { epicChoices, indexById } from '../kanban/epics';
+import { epicChoices, epicName, indexById } from '../kanban/epics';
 import { formatPercent } from '../metrics/format';
 import { paths } from '../paths';
 import { TypeGlyph } from '../ui/IssueBadges';
@@ -30,7 +30,7 @@ function EpicItem({ projectId, epic, progress }: { projectId: string; epic: Issu
         <span className="text-xs text-ink-3">{progress.children === 0 ? 'Aucun Enfant' : `Aucun Enfant à livrer (${counted(progress.abandoned, 'Abandon')})`}</span>
       ) : (
         <span className="flex items-center gap-3">
-          <ProgressBar delivered={progress.delivered} total={progress.total} label={`Avancement de ${epic.title}`} valueText={progressSentence(progress)} className="flex-1" />
+          <ProgressBar delivered={progress.delivered} total={progress.total} label={`Avancement de ${epicName(epic)}`} valueText={progressSentence(progress)} className="flex-1" />
           <span className="tnum shrink-0 text-xs text-ink-2">
             {progress.delivered} sur {progress.total}
             <span className="sr-only"> Livraisons</span>

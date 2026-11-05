@@ -3,7 +3,7 @@ import { Fragment } from 'react';
 import { Link } from 'react-router';
 import type { IssueDetail } from '../data/types';
 import { statusLabel } from '../design/issue-palette';
-import { shortTitle } from '../kanban/epics';
+import { epicName, epicShortName } from '../kanban/epics';
 import { paths } from '../paths';
 import { AbandonBadge, PriorityBadge, TypeBadge, TypeGlyph } from '../ui/IssueBadges';
 import { IssueLink } from './IssueLink';
@@ -17,7 +17,8 @@ export function IssueHeader({ issue, projectId }: { issue: IssueDetail; projectI
   const parent = issue.parentId ? issue.linked[issue.parentId] : undefined;
   // La page Epic (bdesk-38k.10, bdesk-38k.29) : celle du ticket quand il en est une, sinon celle de l'Epic la plus proche au-dessus de lui, à tous
   // les niveaux, que le serveur nomme dans la fiche (`epic` : la règle de la pastille des cartes, `epicOf`). Tout vient de la fiche : le lien
-  // est là dès que le titre l'est, comme la ligne du Parent, et il nomme l'Epic comme la pastille (« Epic : … »).
+  // est là dès que le titre l'est, comme la ligne du Parent, et il nomme l'Epic comme la pastille (« Epic : … »). Ce nom, comme celui du lien Parent,
+  // est celui de `epicName` et `epicShortName` : le titre, ou l'identifiant d'une Epic qui n'en a pas.
   const pageEpic = issue.type === 'epic' ? { id: issue.id, title: issue.title } : issue.epic;
 
   return (
@@ -57,11 +58,11 @@ export function IssueHeader({ issue, projectId }: { issue: IssueDetail; projectI
                 <IssueLink
                   projectId={projectId}
                   id={parent.id}
-                  title={parent.title}
+                  title={epicName(parent)}
                   className="inline-flex max-w-full items-center gap-1 rounded-md border border-line bg-well px-1.5 py-px text-xs text-ink-2 transition-colors hover:text-ink"
                 >
                   <TypeGlyph type="epic" size={12} />
-                  <span className="sr-only">Epic :</span> <span className="min-w-0 truncate">{parent.title}</span>
+                  <span className="sr-only">Epic :</span> <span className="min-w-0 truncate">{epicName(parent)}</span>
                 </IssueLink>
               ) : (
                 <IssueLink projectId={projectId} id={issue.parentId} className="hover:text-ink hover:underline">
@@ -78,11 +79,11 @@ export function IssueHeader({ issue, projectId }: { issue: IssueDetail; projectI
             <dd>
               <Link
                 to={paths.epics(projectId, pageEpic.id)}
-                title={`Avancement, Enfants, Lead Time et prévision de l’Epic «\u00a0${pageEpic.title}\u00a0»`}
+                title={`Avancement, Enfants, Lead Time et prévision de l’Epic «\u00a0${epicName(pageEpic)}\u00a0»`}
                 className="inline-flex items-center gap-1 rounded-md border border-line px-1.5 py-px text-xs text-ink-2 transition-colors hover:text-ink"
               >
                 <Layers size={12} strokeWidth={2} aria-hidden="true" />
-                Page Epic : {shortTitle(pageEpic.title) || pageEpic.id}
+                Page Epic : {epicShortName(pageEpic)}
               </Link>
             </dd>
           </div>

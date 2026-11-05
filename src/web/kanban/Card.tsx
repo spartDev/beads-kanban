@@ -7,7 +7,7 @@ import { formatAge, formatDateTime } from '../lib/relativeTime';
 import { parsePath, paths } from '../paths';
 import { AbandonBadge, PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
 import type { Lane } from './columns';
-import { shortTitle } from './epics';
+import { epicName, epicShortName } from './epics';
 
 /** Combien d'identifiants bloquants la carte nomme avant de compter le reste. */
 const NAMED_BLOCKERS = 2;
@@ -111,16 +111,16 @@ function AgentBadge() {
   );
 }
 
-/** Pastille de l'Epic : son titre court, et un lien vers elle. Le titre entier est en infobulle. */
+/** Pastille de l'Epic : son titre court, et un lien vers elle. Le titre entier est en infobulle. Sans titre, son identifiant la nomme (`epicName`). */
 function EpicPill({ projectId, epic }: { projectId: string; epic: Issue }) {
   return (
     <Link
       to={paths.epics(projectId, epic.id)}
-      title={epic.title}
+      title={epicName(epic)}
       className="relative z-10 inline-flex max-w-full items-center gap-1 rounded-md border border-line bg-well px-1.5 py-px text-xs text-ink-2 transition-colors hover:text-ink"
     >
       <TypeGlyph type="epic" size={12} />
-      <span className="sr-only">Epic :</span> <span className="min-w-0 truncate">{shortTitle(epic.title)}</span>
+      <span className="sr-only">Epic :</span> <span className="min-w-0 truncate">{epicShortName(epic)}</span>
     </Link>
   );
 }

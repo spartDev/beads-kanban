@@ -1,4 +1,4 @@
-import type { Issue } from '../data/types';
+import type { Issue, IssueEpic } from '../data/types';
 import { isEpic } from '../data/helpers';
 import { compareIssues } from './columns';
 
@@ -38,6 +38,26 @@ export function epicChoices(issues: readonly Issue[]): { open: Issue[]; closed: 
 }
 
 const collapseSpaces = (title: string): string => title.trim().replace(/\s+/g, ' ');
+
+/** Le nom d'une Epic : son titre, mis sous la forme que donne `form`, ou son identifiant quand elle n'en a pas. La règle est ici, et ici seulement. */
+const named = (epic: IssueEpic, form: (title: string) => string): string => form(epic.title) || epic.id;
+
+/**
+ * Le nom d'une Epic là où l'interface la désigne : son titre, ou son identifiant quand elle n'en a pas (titre vide, ou fait d'espaces). Sans cela
+ * la pastille de sa carte et le lien Parent du panneau diraient « Epic : » sans rien derrière, et l'infobulle du lien vers sa page citerait « » entre
+ * guillemets. Le filtre Epic (`epicLabels`) nomme de même une Epic sans titre.
+ */
+export function epicName(epic: IssueEpic): string {
+  return named(epic, collapseSpaces);
+}
+
+/**
+ * Le nom court d'une Epic, pour une pastille ou un lien : son titre court (`shortTitle`), ou son identifiant quand elle n'a pas de titre. L'identifiant
+ * n'est jamais abrégé : coupé, il ne nommerait plus rien.
+ */
+export function epicShortName(epic: IssueEpic): string {
+  return named(epic, shortTitle);
+}
 
 /**
  * Le libellé de chaque Epic dans le filtre, par identifiant : son titre, suivi de son identifiant quand une autre Epic
