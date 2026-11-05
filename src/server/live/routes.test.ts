@@ -353,7 +353,22 @@ describe('contrôle de l’en-tête Host (DNS rebinding)', () => {
 
 describe('contrôle de l’en-tête Origin (relecture bdesk-38k.8)', () => {
   // Un EventSource de l'application elle-même (même origine) n'envoie pas d'Origin ; une page d'une autre origine, si.
-  it.each(['https://evil.example', 'http://evil.example:5179', 'http://localhost.evil.com', 'http://127.0.0.1.evil.com', 'null', 'http://0.0.0.0:5179', 'http://[::1]:5179', 'ftp://localhost', 'pas une origine'])(
+  // `http://localhost:5173`, `http://localhost` et `https://localhost:8443` sont locales mais ne sont pas celles du serveur (bdesk-38k.64) :
+  // une autre application locale, ou un autre port, n'ouvre pas le flux. Le serveur de ce test écoute sur un port libre quelconque.
+  it.each([
+    'https://evil.example',
+    'http://evil.example:5179',
+    'http://localhost.evil.com',
+    'http://127.0.0.1.evil.com',
+    'null',
+    'http://0.0.0.0:5179',
+    'http://[::1]:5179',
+    'ftp://localhost',
+    'pas une origine',
+    'http://localhost:5173',
+    'http://localhost',
+    'https://localhost:8443',
+  ])(
     'refuse l’origine %s avec un 403 en JSON : pas de flux, pas d’abonnement',
     async (origin) => {
       const { service } = fakeProjects({ alpha: 'h1' });
@@ -370,20 +385,32 @@ describe('contrôle de l’en-tête Origin (relecture bdesk-38k.8)', () => {
     },
   );
 
-  it.each(['http://127.0.0.1:5179', 'http://localhost:5179', 'http://localhost:5173', 'http://localhost', 'https://localhost:8443', 'HTTP://LOCALHOST:5179'])(
-    'laisse passer l’origine locale %s (l’application, ou son serveur de développement)',
-    async (origin) => {
+  it.each(['http://127.0.0.1:PORT', 'http://localhost:PORT', 'HTTP://LOCALHOST:PORT'])(
+    'laisse passer l’origine du serveur, %s (PORT : son port d’écoute)',
+    async (template) => {
       const { service } = fakeProjects({ alpha: 'h1' });
       const fake = fakeWatcher();
       const { port } = await listen({ config, projects: service, live: { watcher: fake.watcher } });
 
-      const stream = await openStream(port, EVENTS('alpha'), { origin });
+      const stream = await openStream(port, EVENTS('alpha'), { origin: template.replace('PORT', String(port)) });
       await stream.waitFor('retry:');
 
       expect(stream.status).toBe(200);
       expect(fake.state.subscribed).toEqual(['alpha']);
     },
   );
+
+  it('en développement, laisse passer l’origine du serveur de Vite : n’importe quel port local (allowAnyLocalPort)', async () => {
+    const { service } = fakeProjects({ alpha: 'h1' });
+    const fake = fakeWatcher();
+    const { port } = await listen({ config, projects: service, live: { watcher: fake.watcher }, allowAnyLocalPort: true });
+
+    const stream = await openStream(port, EVENTS('alpha'), { host: 'localhost:5173', origin: 'http://localhost:5173', 'sec-fetch-site': 'same-origin' });
+    await stream.waitFor('retry:');
+
+    expect(stream.status).toBe(200);
+    expect(fake.state.subscribed).toEqual(['alpha']);
+  });
 
   it('refuse avant de chercher le Projet : un Projet inconnu ne se distingue pas d’un Projet connu pour une autre origine', async () => {
     const { service } = fakeProjects({ alpha: 'h1' });

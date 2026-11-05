@@ -1,6 +1,6 @@
 import { STATUS_CODES } from 'node:http';
 import fastifyStatic from '@fastify/static';
-import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyServerOptions } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyServerOptions } from 'fastify';
 import type { ApiErrorBody } from '../shared/api';
 import { registerApi } from './api';
 import type { Config } from './config';
@@ -8,6 +8,7 @@ import { createWatcherLog } from './live/log';
 import { registerLiveRoutes } from './live/routes';
 import { createHeadWatcher, type HeadWatcher } from './live/watcher';
 import { createMetricsService, type MetricsService } from './metrics/service';
+import { isOwnRequest } from './origin';
 import { createProjectService, type ProjectService } from './projects/service';
 
 export const HOST = '127.0.0.1';
@@ -27,8 +28,9 @@ export interface ServerOptions {
    */
   metrics?: MetricsService;
   /**
-   * Accepte n'importe quel port dans l'en-tête Host (toujours sur localhost ou 127.0.0.1). Pour le développement :
-   * le proxy de Vite relaie les requêtes avec le Host du navigateur (`localhost:5173`), pas celui du serveur.
+   * Accepte n'importe quel port dans l'en-tête Host, et dans l'en-tête Origin quand la requête en a un (toujours sur localhost ou
+   * 127.0.0.1). Pour le développement : le proxy de Vite relaie les requêtes avec les en-têtes du navigateur, le Host (`localhost:5173`)
+   * comme `Origin` et `Sec-Fetch-Site`, pas ceux du serveur.
    */
   allowAnyLocalPort?: boolean;
   /**
@@ -65,12 +67,17 @@ export function buildServer({
   // 127.0.0.1 et lire l'API depuis le navigateur de l'utilisateur. Sa requête porte alors son nom dans Host.
   app.addHook('onRequest', async (req, reply) => {
     if (isLocalHost(req.headers.host, listeningPort(app), allowAnyLocalPort)) return;
-    const body: ApiErrorBody = {
-      statusCode: 403,
-      error: STATUS_CODES[403] ?? 'Forbidden',
-      message: "Hôte non autorisé : l'application n'est joignable que par 127.0.0.1 ou localhost.",
-    };
-    return reply.code(403).send(body);
+    return forbid(reply, "Hôte non autorisé : l'application n'est joignable que par 127.0.0.1 ou localhost.");
+  });
+
+  // Protection contre les pages d'un autre site (bdesk-38k.64) : sans lire la réponse, une page ouverte dans le navigateur de l'utilisateur
+  // fait quand même travailler l'API (`<img>`, `fetch` en `no-cors`, formulaire, navigation : lectures Dolt, calcul des métriques, caches). Toute
+  // route de l'API refuse ce que n'a pas fait partir l'application elle-même : voir `isOwnRequest` pour `Origin`, `Sec-Fetch-Site` et `Sec-Purpose`. Après le contrôle
+  // de l'en-tête Host, qu'une origine locale ne rachète pas. Pas de ligne au journal : une requête refusée (4xx) n'est pas une panne (ADR 0002).
+  app.addHook('onRequest', async (req, reply) => {
+    if (!isApiRoute(req)) return;
+    if (isOwnRequest(req.headers, { port: listeningPort(app), anyPort: allowAnyLocalPort })) return;
+    return forbid(reply, "Origine non autorisée : l'API n'est jointe que par l'application elle-même (127.0.0.1 ou localhost).");
   });
 
   app.get('/api/health', async () => ({ status: 'ok' }));
@@ -109,6 +116,22 @@ export async function startServer(options: ServerOptions & { port?: number }): P
   const app = buildServer(options);
   await app.listen({ host: HOST, port: options.port ?? DEFAULT_PORT });
   return app;
+}
+
+/** Un 403 en JSON, de la forme des autres erreurs de l'API. */
+function forbid(reply: FastifyReply, message: string): FastifyReply {
+  const body: ApiErrorBody = { statusCode: 403, error: STATUS_CODES[403] ?? 'Forbidden', message };
+  return reply.code(403).send(body);
+}
+
+/**
+ * Une route de l'API, telle que le routeur l'a trouvée : `req.routeOptions.url` est son modèle (`/api/projects/:projectId/issues`), jamais
+ * l'adresse demandée. Fastify décode l'adresse avant de chercher la route (`/%61pi/projects` est la route `/api/projects`) : lire le début de
+ * l'adresse brute laisserait passer ce que le routeur sert quand même. Une adresse sans route (404) ne fait aucun travail : rien à refuser.
+ */
+function isApiRoute(req: FastifyRequest): boolean {
+  const url = req.routeOptions.url;
+  return url !== undefined && (url === '/api' || url.startsWith('/api/'));
 }
 
 /** Le port sur lequel le serveur écoute, inconnu tant qu'il n'écoute pas (tests avec `app.inject`). */
