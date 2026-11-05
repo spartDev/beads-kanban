@@ -318,7 +318,8 @@ describe('le panneau d’un ticket : jamais de titre vide (bdesk-38k.25)', () =>
   });
 
   it('quand la fiche ne peut pas être lue (500), dit « Ticket indisponible » dans un titre nommé : le dialogue se nomme par l’identifiant et ce titre', async () => {
-    stubApi({ projects: projectsResponse, issues: { bdesk: new Error('database is locked') } });
+    // La fiche seule échoue (500) ; la liste des tickets du Projet, elle, se lit : en faisant échouer la liste, le faux serveur ferait échouer la fiche par ricochet.
+    stubApi({ projects: projectsResponse, issues: { bdesk: bdeskIssues }, details: { 'bdesk/bdesk-38k.6': new Error('database is locked') } });
     renderApp('/p/bdesk/t/bdesk-38k.6');
 
     const dialog = await openPanel('bdesk-38k.6 Ticket indisponible');
@@ -328,6 +329,7 @@ describe('le panneau d’un ticket : jamais de titre vide (bdesk-38k.25)', () =>
     expect(unnamedHeadings(dialog)).toEqual([]);
     expect(namingElements(dialog)).toHaveLength(2);
     expect(namingElements(dialog)).not.toContain(null);
+    expect(await screen.findByRole('region', { name: 'En cours' })).toBeTruthy(); // le tableau dessous se lit : seule la fiche est en échec
   });
 
   it('quand le ticket n’existe pas (404), dit « Ticket introuvable » dans un titre nommé : le dialogue se nomme par l’identifiant et ce titre', async () => {

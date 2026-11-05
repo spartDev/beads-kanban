@@ -1,5 +1,5 @@
 import { CircleAlert, RefreshCw } from 'lucide-react';
-import { Fragment, useId } from 'react';
+import { Fragment, useId, type MouseEvent } from 'react';
 import { ApiError, describeError } from '../data/client';
 import { useChronology } from '../data/hooks';
 import type { IssueBlockage, IssueBlockagePhase, IssueBlockagePhaseKind, IssueChronology, IssueTransition } from '../data/types';
@@ -11,6 +11,7 @@ import { formatDuration, spokenDuration } from '../metrics/format';
 import { Button } from '../ui/Button';
 import { Notice, Skeleton } from '../ui/states';
 import { IssueLink } from './IssueLink';
+import { focusPanelOf, keepFocusInPanel } from './panelFocus';
 import { Section } from './Section';
 
 /** Les intitulés des trois durées, dits par la chronologie et par sa silhouette. */
@@ -37,40 +38,52 @@ export function Chronology({ projectId, issueId }: { projectId: string; issueId:
 
   return (
     <Section title="Chronologie">
-      {query.data && !gone ? (
-        <ChronologyBody projectId={projectId} chronology={query.data} />
-      ) : query.isError ? (
-        <Unavailable error={query.error} onRetry={() => void query.refetch()} />
-      ) : (
-        // La silhouette a la forme et à peu près la hauteur de ce qui va arriver (trois durées, la phrase et trois Transitions) :
-        // le texte qui suit la chronologie ne saute pas quand elle s'affiche. Les cases portent leurs intitulés, qui sont connus :
-        // un intitulé long passe à la ligne sur un écran étroit, et la case a alors la hauteur qu'elle aura.
-        <div role="status" aria-busy="true" aria-label="Chargement de la chronologie" className="flex flex-col gap-3">
-          <div className="grid grid-cols-3 gap-2">
-            {[LEAD_TIME, CYCLE_TIME, BLOCKED_TIME].map((label) => (
-              <div key={label} className="flex min-w-0 flex-col gap-0.5 rounded-lg border border-line bg-well px-3 py-2">
-                <span className="text-xs text-ink-3">{label}</span>
-                <Skeleton className="my-0.5 h-4 w-3/5" />
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-col gap-1">
-            <Skeleton className="h-5 w-1/2" />
-            <Skeleton className="h-4 w-1/3" />
-          </div>
-          <div className="flex flex-col gap-3">
-            {[0, 1, 2].map((row) => (
-              <div key={row} className="flex gap-3">
-                <Skeleton className="mx-0.5 mt-1.5 size-2 shrink-0 rounded-full" />
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <Skeleton className="h-5 w-2/3" />
-                  <Skeleton className="h-4 w-1/4" />
+      {/* Une enveloppe par état (`key`) : quand l'état change, elle part avec ce qu'elle contient, et `keepFocusInPanel` rend au panneau le focus qu'elle y avait
+          (le bouton « Réessayer » que le squelette remplace). `contents` : elle ne dessine aucune boîte. */}
+      <div key={query.data && !gone ? 'body' : query.isError ? 'unavailable' : 'loading'} ref={keepFocusInPanel} className="contents">
+        {query.data && !gone ? (
+          <ChronologyBody projectId={projectId} chronology={query.data} />
+        ) : query.isError ? (
+          <Unavailable
+            error={query.error}
+            onRetry={(event) => {
+              // Le panneau prend le focus aussi quand le bouton ne l'a pas pris (un toucher, un lecteur d'écran, Safari) ; quand le bouton l'a, c'est
+              // `keepFocusInPanel` qui le rend au panneau, dès que le squelette remplace l'avis, quelle que soit la cause du rechargement.
+              focusPanelOf(event.currentTarget);
+              void query.refetch();
+            }}
+          />
+        ) : (
+          // La silhouette a la forme et à peu près la hauteur de ce qui va arriver (trois durées, la phrase et trois Transitions) :
+          // le texte qui suit la chronologie ne saute pas quand elle s'affiche. Les cases portent leurs intitulés, qui sont connus :
+          // un intitulé long passe à la ligne sur un écran étroit, et la case a alors la hauteur qu'elle aura.
+          <div role="status" aria-busy="true" aria-label="Chargement de la chronologie" className="flex flex-col gap-3">
+            <div className="grid grid-cols-3 gap-2">
+              {[LEAD_TIME, CYCLE_TIME, BLOCKED_TIME].map((label) => (
+                <div key={label} className="flex min-w-0 flex-col gap-0.5 rounded-lg border border-line bg-well px-3 py-2">
+                  <span className="text-xs text-ink-3">{label}</span>
+                  <Skeleton className="my-0.5 h-4 w-3/5" />
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+            <div className="flex flex-col gap-1">
+              <Skeleton className="h-5 w-1/2" />
+              <Skeleton className="h-4 w-1/3" />
+            </div>
+            <div className="flex flex-col gap-3">
+              {[0, 1, 2].map((row) => (
+                <div key={row} className="flex gap-3">
+                  <Skeleton className="mx-0.5 mt-1.5 size-2 shrink-0 rounded-full" />
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <Skeleton className="h-5 w-2/3" />
+                    <Skeleton className="h-4 w-1/4" />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </Section>
   );
 }
@@ -79,7 +92,7 @@ export function Chronology({ projectId, issueId }: { projectId: string; issueId:
  * La chronologie n'a pas pu être lue. La fiche, elle, l'a été : le Projet n'est pas « illisible », c'est son historique
  * qui l'est (trop long, base verrouillée). Le titre dit donc ce qui manque, et la cause suit.
  */
-function Unavailable({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+function Unavailable({ error, onRetry }: { error: unknown; onRetry: (event: MouseEvent<HTMLButtonElement>) => void }) {
   const described = describeError(error);
   return (
     <Notice
