@@ -4,11 +4,24 @@ import type { IgnoredFolder, Project, ProjectMode } from '../../shared/api';
 import type { Config } from '../config';
 import { createDoltClient, type DoltClient } from '../dolt/client';
 import { readIssuePrefix } from '../dolt/reader';
+import { databaseFingerprint } from './fingerprint';
+
+/**
+ * Ce qu'un scan a lu dans la base d'un Projet : le préfixe des tickets qu'elle porte (`null` : elle n'en a pas), et l'empreinte de la base
+ * (voir `databaseFingerprint`) prise AVANT cette lecture. Une écriture qui arrive pendant la lecture change donc l'empreinte sans que le
+ * préfixe lu en tienne compte : le scan suivant relit, il ne garde jamais un préfixe d'avant l'écriture sous l'empreinte d'après.
+ */
+export interface PrefixRead {
+  fingerprint: string;
+  prefix: string | null;
+}
 
 /** Un Projet découvert, avec l'emplacement de sa base (absent quand elle est introuvable). */
 export interface DiscoveredProject extends Project {
   /** Dossier de la base Dolt, celui où lancer `dolt sql`. */
   databasePath?: string;
+  /** Pour le scan suivant (voir `DiscoveryOptions.previous`) : absent d'un Projet illisible, ou dont la base n'a pas d'empreinte. Jamais exposé par l'API. */
+  prefixRead?: PrefixRead;
 }
 
 export interface Discovery {
@@ -19,6 +32,12 @@ export interface Discovery {
 
 export interface DiscoveryOptions {
   dolt?: DoltClient;
+  /**
+   * Le dernier scan achevé (bdesk-38k.43) : le préfixe d'un Projet dont la base a la même empreinte qu'à ce scan n'est pas relu, il en est
+   * repris. Ne sont relus que les Projets nouveaux, ceux dont le scan précédent n'a pu lire la base, et ceux dont la base a changé (le
+   * préfixe peut changer : `bd rename-prefix`) ou n'a pas d'empreinte. Sans lui, tout est lu, comme avant.
+   */
+  previous?: Discovery;
 }
 
 /** Profondeur de scan sous une racine : `racine/projet` et `racine/groupe/projet`. */
@@ -30,7 +49,7 @@ const SKIPPED_FOLDERS = new Set(['node_modules']);
  * ajoutés à la main, moins ceux masqués. Seuls les workspaces Dolt sont des Projets ; les autres sont
  * listés à part avec la raison pour laquelle ils sont ignorés.
  */
-export async function discoverProjects(config: Config, { dolt = createDoltClient() }: DiscoveryOptions = {}): Promise<Discovery> {
+export async function discoverProjects(config: Config, { dolt = createDoltClient(), previous }: DiscoveryOptions = {}): Promise<Discovery> {
   // Masqués par chemin canonique (sur macOS, /var et /tmp sont des liens vers /private/…), comme les dossiers trouvés.
   const hidden = new Set(await Promise.all(config.hiddenProjects.map(canonicalPath)));
   const scanned = (await Promise.all(config.roots.map((root) => findWorkspaces(resolve(root))))).flat();
@@ -49,7 +68,10 @@ export async function discoverProjects(config: Config, { dolt = createDoltClient
   }
   const folders = [...byRealPath].map(([real, paths]) => paths.find((p) => p === real) ?? paths[0]).filter((p) => p !== undefined);
 
-  const workspaces = await Promise.all(folders.map(async (path) => ({ path, workspace: await inspectWorkspace(path, dolt) })));
+  // Par dossier de base, jamais par empreinte : des copies d'une base ont les mêmes octets, et ce sont des Projets.
+  const lastRead = new Map<string, PrefixRead>();
+  for (const { databasePath, prefixRead } of previous?.projects ?? []) if (databasePath && prefixRead) lastRead.set(databasePath, prefixRead);
+  const workspaces = await Promise.all(folders.map(async (path) => ({ path, workspace: await inspectWorkspace(path, dolt, lastRead) })));
 
   const projects: Omit<DiscoveredProject, 'id'>[] = [];
   for (const { path, workspace } of workspaces) {
@@ -68,8 +90,8 @@ type Workspace =
   | { kind: 'ignored'; reason: string }
   | { kind: 'dolt'; project: Omit<DiscoveredProject, 'id' | 'name' | 'path'> };
 
-/** Lit `.beads/` d'un dossier : Projet Dolt (lisible ou non) ou workspace ignoré. */
-async function inspectWorkspace(path: string, dolt: DoltClient): Promise<Workspace> {
+/** Lit `.beads/` d'un dossier : Projet Dolt (lisible ou non) ou workspace ignoré. `lastRead` : ce que le scan précédent a lu, par dossier de base. */
+async function inspectWorkspace(path: string, dolt: DoltClient, lastRead: ReadonlyMap<string, PrefixRead>): Promise<Workspace> {
   const beads = join(path, '.beads');
   const metadata = await readJson(join(beads, 'metadata.json'));
   if (metadata === undefined) {
@@ -108,9 +130,16 @@ async function inspectWorkspace(path: string, dolt: DoltClient): Promise<Workspa
     );
   }
 
+  // L'empreinte est prise avant la lecture, jamais après : une écriture qui tombe entre les deux la change sans que le préfixe lu la voie.
+  const fingerprint = await databaseFingerprint(databasePath);
+  const before = lastRead.get(databasePath);
   try {
-    const prefix = await readIssuePrefix(dolt.open(databasePath));
-    return { kind: 'dolt', project: { prefix: prefix ?? fallbackPrefix, mode, status: 'ok', databasePath } };
+    const prefix = fingerprint !== undefined && before?.fingerprint === fingerprint ? before.prefix : await readIssuePrefix(dolt.open(databasePath));
+    // `prefix ?? fallbackPrefix` ne se garde pas : le repli vient de config.yaml, que le scan relit à chaque fois, pas de la base.
+    return {
+      kind: 'dolt',
+      project: { prefix: prefix ?? fallbackPrefix, mode, status: 'ok', databasePath, ...(fingerprint === undefined ? {} : { prefixRead: { fingerprint, prefix } }) },
+    };
   } catch (err) {
     return unreadable((err as Error).message, databasePath);
   }

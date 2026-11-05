@@ -78,18 +78,25 @@ export function createProjectService(
   config: Config,
   { dolt = createDoltClient(), rescanIntervalMs = RESCAN_MIN_INTERVAL_MS }: ProjectServiceOptions = {},
 ): ProjectService {
+  /** `at` : l'instant où le scan a fini, celui où il a commencé tant qu'il dure. Une fenêtre (`maxAgeMs`) se compte depuis la FIN d'un scan : un scan plus long qu'elle serait sinon périmé à l'instant où il rend son résultat. */
   let latest: { at: number; settled: boolean; discovery: Promise<Discovery> } | undefined;
-  /** Le dernier scan achevé, même périmé ou remplacé par un scan en cours : de quoi servir un Projet connu pendant qu'un scan le revérifie. */
+  /**
+   * Le dernier scan achevé, même périmé ou remplacé par un scan en cours : de quoi servir un Projet connu pendant qu'un scan le revérifie, et de quoi
+   * repartir : le scan suivant n'en relit que ce qui a changé (`previous`, bdesk-38k.43). Un scan qui échoue ne le remplace pas.
+   */
   let known: Discovery | undefined;
 
   /** Le dernier scan s'il a moins de `maxAgeMs` ou s'il est encore en cours (tous les appelants le partagent). */
   function discover(maxAgeMs: number): Promise<Discovery> {
     if (!latest || (latest.settled && Date.now() - latest.at > maxAgeMs)) {
-      const scan = { at: Date.now(), settled: false, discovery: discoverProjects(config, { dolt }) };
+      // Un scan repart du dernier scan achevé : il ne relit que le préfixe des Projets nouveaux, illisibles ou dont la base a changé (bdesk-38k.43),
+      // ce qui le ramène de l'ordre de 3 s à quelques dizaines de millisecondes pour 40 Projets (un processus dolt par Projet relu : 98 % du temps d'un scan).
+      const scan = { at: Date.now(), settled: false, discovery: discoverProjects(config, { dolt, previous: known }) };
       latest = scan;
       scan.discovery.then(
         (discovery) => {
           scan.settled = true;
+          scan.at = Date.now(); // relecture de bdesk-38k.43 : la demande faite aussitôt après un scan de plus de 2 s en lançait un autre
           known = discovery;
         },
         () => {
