@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { focusTitleOf, showsSkeletonTitle, titleOf } from '../lib/zoneFocus';
+import { focusTitleWhenReady, showsSkeletonTitle, titleOf } from '../lib/zoneFocus';
 import { INVISIBLE_TEXTS, VISIBLE_TEXTS } from '../test/invisibleTexts';
 import { Skeleton } from '../ui/states';
 import { Page } from './Page';
@@ -139,14 +139,17 @@ describe('Page : le nom du titre d’un squelette', () => {
       expect(showsSkeletonTitle(main)).toBe(false);
     });
 
-    it('le focus va à la zone, pas au titre du squelette, qui n’est pas focalisable', () => {
+    it('le focus reste à la zone, pas au titre du squelette, qui n’est pas focalisable', () => {
       const main = inMain(null);
       const title = screen.getByRole('heading', { name: 'Chargement…' });
+      main.setAttribute('tabindex', '-1');
+      main.focus(); // la zone a le focus, que « Réessayer » lui a rendu
 
-      expect(focusTitleOf(title)).toBe(true);
+      const stop = focusTitleWhenReady(main);
 
       expect(document.activeElement).toBe(main);
       expect(title.hasAttribute('tabindex')).toBe(false);
+      stop();
     });
   });
 });

@@ -28,6 +28,16 @@ export interface LiveConnectionOptions {
   /** L'état de la connexion a changé (jamais deux fois le même d'affilée). */
   onState: (state: LiveState) => void;
   /**
+   * Un essai de connexion a échoué : le flux a signalé une erreur, coupure en route ou réponse refusée, que la connexion soit déjà perdue ou non. `onState` ne dit « perdue » qu'une
+   * fois ; celui-ci dit chaque échec, pour qui attend l'issue d'un essai précis (le bouton « Reconnecter ») : un essai qui échoue alors que la connexion est déjà perdue ne change rien
+   * à l'état, et rien d'autre ne le signale. Pas appelé pour un flux que la connexion a remplacé, fermé ou mis en pause : il n'a plus rien à dire.
+   *
+   * `attempt` : le numéro de l'essai qui échoue. Chaque flux ouvert est un essai, numéroté de 1 en 1 (le premier, celui que `reconnect` lance, celui que la connexion rouvre après un refus,
+   * celui de la reprise) ; les coupures que le navigateur retente sur le même flux sont de son essai. L'échec arrive à l'interface au rendu suivant : sans le numéro, qui presse « Reconnecter »
+   * dans le même rendu ne saurait pas si l'échec qu'il reçoit est celui de l'essai qu'il a demandé, ou d'un essai d'avant.
+   */
+  onFailure?: (attempt: number) => void;
+  /**
    * Le navigateur a abandonné le flux : la réponse a été refusée (404 d'un Projet disparu, 502 du proxy…), sans qu'`EventSource`
    * dise pourquoi. L'appelant peut vérifier ce que le serveur sait encore du Projet ; la connexion, elle, se rouvre de plus
    * en plus tard tant que l'appelant ne la ferme pas. Pas appelé pour une coupure en route, que le navigateur retente seul.
@@ -48,8 +58,11 @@ export interface LiveConnection {
   pause(): void;
   /** Rouvre aussitôt après `pause`. */
   resume(): void;
-  /** Rouvre tout de suite, sans attendre le délai (bouton « Reconnecter »). */
-  reconnect(): void;
+  /**
+   * Rouvre tout de suite, sans attendre le délai (bouton « Reconnecter »). Rend le numéro de l'essai ainsi lancé, celui que `onFailure` dira s'il échoue ; sans effet (en pause, fermée),
+   * celui du dernier essai.
+   */
+  reconnect(): number;
 }
 
 const DEFAULT_INITIAL_BACKOFF_MS = 1_000;
@@ -62,6 +75,7 @@ export function connectLive({
   onChange,
   onOpen,
   onState,
+  onFailure,
   onRefused,
   createSource = (address) => new EventSource(address),
   backoff = {},
@@ -74,6 +88,7 @@ export function connectLive({
   let state: LiveState | undefined;
   let paused = startPaused;
   let closed = false;
+  let attempt = 0; // le numéro du dernier flux ouvert : chaque essai de connexion a le sien
 
   function setState(next: LiveState): void {
     if (state === next) return;
@@ -91,6 +106,7 @@ export function connectLive({
   function open(): void {
     forgetSource();
     if (closed || paused) return;
+    const mine = ++attempt;
     const current = createSource(url);
     source = current;
     // Un flux remplacé ou fermé n'a plus rien à nous dire, même s'il parle encore.
@@ -108,6 +124,7 @@ export function connectLive({
     current.addEventListener('error', () => {
       if (!alive()) return;
       setState('lost');
+      onFailure?.(mine);
       if (current.readyState !== CLOSED) return; // le navigateur rouvre le flux de lui-même
       forgetSource();
       timer = setTimeout(open, delay);
@@ -137,9 +154,10 @@ export function connectLive({
       open();
     },
     reconnect() {
-      if (closed || paused) return;
+      if (closed || paused) return attempt;
       delay = initialMs;
       open();
+      return attempt;
     },
   };
 }

@@ -534,6 +534,71 @@ describe('la porte du Projet, sur la page d’une Epic dont les tickets ne sont 
 
     expect(document.activeElement).toBe(document.body);
   });
+
+  // L'attente du titre de l'Epic est celle de cette page-là : l'utilisateur qui va sur une autre page du Projet (un raccourci, un lien, « Retour ») ne demande pas
+  // qu'on lise le titre de celle-ci (bdesk-38k.57).
+  it('un raccourci mène à une autre page du Projet pendant l’attente (g k) : le titre de cette page ne prend pas le focus, le contenu principal le garde', async () => {
+    const { user, release } = await retryWithIssuesHeld();
+
+    await user.keyboard('gk');
+    await screen.findByRole('heading', { level: 1, name: 'Kanban' });
+    await settle();
+    expect(document.activeElement).toBe(main());
+    release();
+    await screen.findByRole('region', { name: 'En cours' });
+    await settle();
+
+    expect(document.activeElement).toBe(main());
+  });
+
+  it('une navigation qui ne passe pas par le clavier (un lien, « Retour ») mène à la liste des Epics pendant l’attente : le titre de la page qui arrive ne prend pas le focus non plus', async () => {
+    const { router, release } = await retryWithIssuesHeld();
+
+    await act(() => router.navigate('/p/bdesk/epics'));
+    await screen.findByRole('heading', { level: 1, name: 'Epics' });
+    release();
+    await screen.findByRole('list', { name: 'Epics ouvertes' });
+    await settle();
+
+    expect(document.activeElement).toBe(main());
+  });
+});
+
+// Entre l'appui sur « Réessayer » et la fin de la relecture, la demande est celle de la page où le bouton a été pressé : l'utilisateur qui va ailleurs (« Retour », un lien, un raccourci) ne
+// demande pas qu'on lise le titre de la page où il arrive. L'attente du titre, elle, s'arrête déjà à la navigation (voir plus haut) : c'est la même règle, avant que l'attente ne commence
+// (bdesk-38k.57).
+describe('la porte du Projet : l’utilisateur va ailleurs entre l’appui sur « Réessayer » et la fin de la relecture', () => {
+  it.each([
+    ['la page d’une Epic', 'la porte du Projet, sur la page d’une Epic', '/p/bdesk/kanban', () => screen.findByRole('region', { name: 'En cours' })],
+    ['le kanban', 'la porte du Projet, sur le kanban', '/p/bdesk/epics', () => screen.findByRole('list', { name: 'Epics ouvertes' })],
+  ] as const)('« Réessayer » est pressé sur %s, la liste des Projets se relit encore, et l’utilisateur va sur une autre page : le titre de celle-ci ne prend pas le focus, le contenu principal le garde', async (_page, name, to, arrives) => {
+    const gate = SITES.find((site) => site.name === name)!;
+    const { user, srv, router } = await open(gate);
+    const release = srv.hold(PROJECTS, 'ok'); // le serveur est rétabli, mais lent
+    await pressRetry(gate, user);
+    await reloading(gate);
+    expect(document.activeElement).toBe(main());
+
+    await act(() => router.navigate(to)); // « Retour », un lien : la porte attend toujours ses Projets
+    release();
+    await arrives();
+    await settle();
+
+    expect(document.activeElement).toBe(main());
+  });
+
+  it('il n’est allé nulle part : la page demandée arrive, et son titre prend le focus (la garde de la règle)', async () => {
+    const gate = SITES.find((site) => site.name === 'la porte du Projet, sur le kanban')!;
+    const { user, srv } = await open(gate);
+    const release = srv.hold(PROJECTS, 'ok');
+    await pressRetry(gate, user);
+    await reloading(gate);
+
+    release();
+    await gate.arrived();
+
+    await waitFor(() => expect(document.activeElement).toBe(gate.title()));
+  });
 });
 
 describe('la porte du Projet, sur le panneau d’un ticket', () => {
@@ -711,6 +776,90 @@ describe('le bandeau « actualisation impossible » : son « Réessayer » dispa
 
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: 'Kanban' })));
   });
+
+  it('« Réessayer » est pressé, la relecture dure encore, et l’utilisateur va sur la liste des Epics (g e) : le bandeau part avec le focus vers le contenu principal, le titre de cette page ne le prend pas (bdesk-38k.57)', async () => {
+    const { user, srv, retry } = await staleBanner();
+    const release = srv.hold(PROJECTS, 'ok'); // le serveur est rétabli, mais lent
+    act(() => retry().focus());
+    await user.keyboard('{Enter}');
+
+    await user.keyboard('ge');
+    await screen.findByRole('heading', { level: 1, name: 'Epics' });
+    release();
+
+    await bannerGone();
+    await settle();
+    expect(document.activeElement).toBe(main());
+  });
+
+  describe('la page dont le bandeau parle charge encore son titre (la page d’une Epic dont les tickets arrivent) (bdesk-38k.57)', () => {
+    const epicTitle = () => screen.getByRole('heading', { level: 1, name: /^beads-desktop V1/ });
+
+    /**
+     * La page d'une Epic charge ses tickets sous un titre de squelette, pendant que la relecture de la liste des Projets échoue : le bandeau dit que les données peuvent
+     * être périmées, et le serveur est ensuite rétabli. `release()` fait arriver les tickets de l'Epic.
+     */
+    async function staleBannerOnLoadingEpic() {
+      const fetchMock = stubDefaultApi();
+      const srv = server(fetchMock);
+      const release = srv.hold(ISSUES, 'ok');
+      const app = renderApp('/p/bdesk/epics?epic=bdesk-38k');
+      await screen.findByRole('status', { name: 'Chargement de l’Epic' });
+      srv.fail(PROJECTS);
+      await act(() => app.queryClient.refetchQueries({ queryKey: queryKeys.projects, exact: true }).catch(() => undefined));
+      await waitFor(() => expect(app.queryClient.getQueryState(queryKeys.projects)?.status).toBe('error'));
+      await screen.findByText(/Actualisation impossible/);
+      srv.ok();
+      return { ...app, release, retry: () => screen.getByRole('button', { name: /Réessayer/ }) };
+    }
+
+    it('« Réessayer » rétablit tout : le contenu principal garde le focus, pas le titre du squelette, puis le titre de l’Epic le prend à son arrivée', async () => {
+      const { user, release, retry } = await staleBannerOnLoadingEpic();
+      act(() => retry().focus());
+
+      await user.keyboard('{Enter}');
+
+      await bannerGone();
+      await settle();
+      expect(document.activeElement).toBe(main()); // ni le squelette, qui n'est pas un titre, ni le corps de la page
+      expect(main().querySelector('h1[data-skeleton]')).toBeTruthy();
+      release();
+      await screen.findByRole('heading', { level: 1, name: /^beads-desktop V1/ });
+      await waitFor(() => expect(document.activeElement).toBe(epicTitle()));
+    });
+
+    it('il met le focus ailleurs pendant l’attente : l’Epic qui arrive ne le reprend pas', async () => {
+      const { user, release, retry } = await staleBannerOnLoadingEpic();
+      act(() => retry().focus());
+      await user.keyboard('{Enter}');
+      await bannerGone();
+      const link = within(screen.getByRole('navigation', { name: 'Navigation principale' })).getByRole('link', { name: /^Vue globale/ });
+      act(() => link.focus());
+
+      release();
+      await screen.findByRole('heading', { level: 1, name: /^beads-desktop V1/ });
+      await settle();
+
+      expect(document.activeElement).toBe(link);
+    });
+
+    it('un raccourci mène à une autre page du Projet pendant l’attente (g k) : le titre de cette page ne prend pas le focus', async () => {
+      const { user, release, retry } = await staleBannerOnLoadingEpic();
+      act(() => retry().focus());
+      await user.keyboard('{Enter}');
+      await bannerGone();
+      await settle();
+      expect(document.activeElement).toBe(main());
+
+      await user.keyboard('gk');
+      await screen.findByRole('heading', { level: 1, name: 'Kanban' });
+      release();
+      await screen.findByRole('region', { name: 'En cours' });
+      await settle();
+
+      expect(document.activeElement).toBe(main());
+    });
+  });
 });
 
 describe('le bandeau « mises à jour en direct interrompues » : son « Reconnecter » disparaît au retour de la connexion', () => {
@@ -761,6 +910,59 @@ describe('le bandeau « mises à jour en direct interrompues » : son « Reconne
     await settle();
 
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Reconnecter' }));
+  });
+
+  // Le flux était déjà perdu : un essai qui échoue encore ne change pas son état, et n'en est pas moins l'issue de ce « Reconnecter » (bdesk-38k.57). La connexion qui revient
+  // plus tard, d'elle-même, n'est pas une demande de l'utilisateur.
+  describe.each([
+    ['la coupure continue : le navigateur retente le même flux', { retrying: true }],
+    ['la réponse est refusée : le flux est fermé, la connexion le rouvre d’elle-même au bout d’un délai', { retrying: false }],
+  ] as const)('« Reconnecter » est pressé et l’essai échoue : %s', (_case, failure) => {
+    async function pressedAndFailed() {
+      await lostBanner();
+      act(() => screen.getByRole('button', { name: 'Reconnecter' }).focus());
+      act(() => screen.getByRole('button', { name: 'Reconnecter' }).click());
+      act(() => FakeEventSource.latest.fail(failure));
+      await settle();
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Reconnecter' })); // le bandeau est resté, avec son bouton
+      // Réponse refusée : le flux est fermé, et la connexion en rouvre un d'elle-même au bout de 1 s (une minuterie réelle : celles de ce fichier ne sont pas simulées). Cet essai-là
+      // n'est celui de personne.
+      if (!failure.retrying) await waitFor(() => expect(FakeEventSource.alive).toHaveLength(1));
+    }
+
+    it('la connexion revient d’elle-même : le bouton rend le focus au contenu principal, le titre ne le prend pas', async () => {
+      await pressedAndFailed();
+
+      act(() => FakeEventSource.latest.open());
+
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Reconnecter' })).toBeNull());
+      await settle();
+      expect(document.activeElement).toBe(main());
+    });
+
+    it('« Reconnecter » est pressé de nouveau et la connexion revient : c’est cette demande-là, le titre prend le focus', async () => {
+      await pressedAndFailed();
+      act(() => screen.getByRole('button', { name: 'Reconnecter' }).click());
+
+      act(() => FakeEventSource.latest.open());
+
+      await waitFor(() => expect(screen.queryByRole('button', { name: 'Reconnecter' })).toBeNull());
+      expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: 'Kanban' }));
+    });
+  });
+
+  it('« Reconnecter » est pressé, le nouvel essai est encore en cours, et l’utilisateur va sur la liste des Epics (g e) : quand l’essai aboutit, le titre de cette page ne prend pas le focus (bdesk-38k.57)', async () => {
+    const { user } = await lostBanner();
+    act(() => screen.getByRole('button', { name: 'Reconnecter' }).focus());
+    act(() => screen.getByRole('button', { name: 'Reconnecter' }).click()); // rouvre le flux tout de suite : l'essai est en cours
+
+    await user.keyboard('ge');
+    await screen.findByRole('heading', { level: 1, name: 'Epics' });
+    act(() => FakeEventSource.latest.open()); // l'essai aboutit
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Reconnecter' })).toBeNull());
+    await settle();
+    expect(document.activeElement).toBe(main());
   });
 
   it('le focus est ailleurs quand le bandeau part : il n’est pas repris', async () => {

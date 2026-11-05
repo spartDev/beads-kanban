@@ -169,6 +169,59 @@ describe('connexion', () => {
     expect(FakeEventSource.instances).toHaveLength(2);
     expect(FakeEventSource.alive).toHaveLength(1);
   });
+
+  // `status` ne répète pas « perdue » : un essai qui échoue alors que la connexion est déjà perdue ne le change pas, et un simple compteur d'échecs ne dirait pas de quel essai ils sont : quand
+  // « Reconnecter » est pressé dans le même rendu qu'un échec, on ne saurait pas si c'est celui de l'essai demandé. Le hook rend donc le numéro du dernier essai qui a échoué, et `reconnect`
+  // celui de l'essai qu'il lance (bdesk-38k.57).
+  it('dit le numéro du dernier essai qui a échoué (0 au départ), et reconnect rend celui de l’essai qu’il lance', () => {
+    countingApi();
+    const { result } = renderLive('bdesk');
+    expect(result.current.failedAttempt).toBe(0);
+    act(() => FakeEventSource.latest.open());
+    expect(result.current.failedAttempt).toBe(0);
+
+    act(() => FakeEventSource.latest.fail({ retrying: true }));
+    expect(result.current.failedAttempt).toBe(1);
+
+    let attempt: number | undefined;
+    act(() => {
+      attempt = result.current.reconnect();
+    });
+    expect(attempt).toBe(2);
+    expect(result.current.failedAttempt).toBe(1); // l'essai 2 n'a pas d'issue
+    act(() => FakeEventSource.latest.fail({ retrying: true }));
+
+    expect(result.current.failedAttempt).toBe(2);
+  });
+
+  it('un autre Projet repart de zéro : ses essais ont leur propre numérotation, un échec de l’autre ne vaut pas pour eux', () => {
+    countingApi();
+    const { result, rerender } = renderLive('bdesk');
+    act(() => FakeEventSource.latest.fail({ retrying: true }));
+    act(() => result.current.reconnect());
+    act(() => FakeEventSource.latest.fail({ retrying: true }));
+    expect(result.current.failedAttempt).toBe(2);
+
+    rerender({ id: 'mpm' });
+
+    expect(result.current.failedAttempt).toBe(0);
+    act(() => FakeEventSource.latest.fail({ retrying: true }));
+    expect(result.current.failedAttempt).toBe(1); // l'essai 1 du nouveau flux, et non un « 2 » de l'ancien
+  });
+
+  it('ne change pas pour ce qui aboutit, ni pour l’échec d’un flux que la connexion a remplacé', () => {
+    countingApi();
+    const { result } = renderLive('bdesk');
+    const first = FakeEventSource.latest;
+    act(() => first.fail({ retrying: true }));
+    act(() => result.current.reconnect());
+
+    act(() => first.fail({ retrying: true })); // un retard du flux remplacé
+    act(() => FakeEventSource.latest.open());
+
+    expect(result.current.failedAttempt).toBe(1);
+    expect(result.current.status).toBe('live');
+  });
 });
 
 describe('un commit du Projet (événement « changed »)', () => {

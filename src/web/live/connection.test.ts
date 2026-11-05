@@ -473,6 +473,195 @@ describe('reconnect (bouton « Reconnecter »)', () => {
   });
 });
 
+describe('échec d’un essai (onFailure) : « perdue » n’est dit qu’une fois, chaque échec l’est (bdesk-38k.57)', () => {
+  // Un essai qui échoue alors que la connexion est déjà perdue ne change pas son état : `onState` n'en dit rien. Qui attend l'issue d'un essai précis (le bouton
+  // « Reconnecter ») la lit ici.
+  it('dit chaque échec du flux, même quand la connexion est déjà perdue et que l’état ne change plus', () => {
+    const onFailure = vi.fn();
+    const { states } = connect({ onFailure });
+    sources()[0]?.open();
+
+    sources()[0]?.fail({ retrying: true });
+    sources()[0]?.fail({ retrying: true }); // le navigateur retente, et échoue de nouveau
+    sources()[0]?.fail({ retrying: true });
+
+    expect(onFailure).toHaveBeenCalledTimes(3);
+    expect(states).toEqual(['connecting', 'live', 'lost']);
+  });
+
+  it('dit aussi un refus (le flux est fermé pour de bon), et l’échec de la toute première connexion', async () => {
+    const onFailure = vi.fn();
+    connect({ onFailure });
+
+    sources()[0]?.fail({ retrying: false });
+    expect(onFailure).toHaveBeenCalledTimes(1);
+    await elapse(1_000);
+    sources()[1]?.fail({ retrying: false });
+
+    expect(onFailure).toHaveBeenCalledTimes(2);
+  });
+
+  it('ne dit rien de l’ouverture, ni d’un événement « changed »', () => {
+    const onFailure = vi.fn();
+    connect({ onFailure });
+
+    sources()[0]?.open();
+    sources()[0]?.emit('changed');
+
+    expect(onFailure).not.toHaveBeenCalled();
+  });
+
+  it('« Reconnecter » : l’essai qu’il lance échoue alors que la connexion était déjà perdue : l’échec est dit, l’état « perdue » n’est pas répété', () => {
+    const onFailure = vi.fn();
+    const { connection, states } = connect({ onFailure });
+    sources()[0]?.open();
+    sources()[0]?.fail({ retrying: true });
+    expect(onFailure).toHaveBeenCalledTimes(1);
+
+    connection.reconnect();
+    expect(onFailure).toHaveBeenCalledTimes(1); // l'essai est lancé : il n'a pas encore d'issue
+    sources()[1]?.fail({ retrying: true });
+
+    expect(onFailure).toHaveBeenCalledTimes(2);
+    expect(states).toEqual(['connecting', 'live', 'lost']);
+  });
+
+  it('« Reconnecter » : l’essai qu’il lance aboutit : pas d’échec, l’état repasse en direct', () => {
+    const onFailure = vi.fn();
+    const { connection, states } = connect({ onFailure });
+    sources()[0]?.open();
+    sources()[0]?.fail({ retrying: true });
+    connection.reconnect();
+
+    sources()[1]?.open();
+
+    expect(onFailure).toHaveBeenCalledTimes(1); // celui de la coupure, pas de l'essai
+    expect(states).toEqual(['connecting', 'live', 'lost', 'live']);
+  });
+
+  it('ne dit rien d’un flux remplacé, fermé ou mis en pause : il n’a plus rien à dire', () => {
+    const onFailure = vi.fn();
+    const { connection } = connect({ onFailure });
+    const first = sources()[0];
+    connection.reconnect(); // `first` est remplacé
+
+    first?.fail({ retrying: false });
+    expect(onFailure).not.toHaveBeenCalled();
+
+    connection.pause();
+    sources()[1]?.fail({ retrying: true });
+    expect(onFailure).not.toHaveBeenCalled();
+
+    connection.resume();
+    connection.close();
+    sources()[2]?.fail({ retrying: true });
+    expect(onFailure).not.toHaveBeenCalled();
+  });
+
+  it('est facultatif', () => {
+    connect();
+
+    expect(() => sources()[0]?.fail({ retrying: true })).not.toThrow();
+  });
+});
+
+// Un échec n'arrive à l'interface qu'au rendu suivant : quand l'utilisateur presse « Reconnecter » dans le même rendu, rien ne dit si l'échec qu'on reçoit est celui de l'essai qu'il a demandé
+// ou d'un essai d'avant. Chaque flux ouvert est donc un essai, numéroté, et l'échec dit de quel essai il est (bdesk-38k.57).
+describe('numéro d’essai : chaque flux ouvert est un essai, et l’échec dit duquel il est', () => {
+  it('le premier flux est l’essai 1 : son échec le dit', () => {
+    const onFailure = vi.fn();
+    connect({ onFailure });
+
+    sources()[0]?.fail({ retrying: true });
+
+    expect(onFailure).toHaveBeenCalledTimes(1);
+    expect(onFailure).toHaveBeenLastCalledWith(1);
+  });
+
+  it('les coupures que le navigateur retente sur le même flux sont de l’essai de ce flux', () => {
+    const onFailure = vi.fn();
+    connect({ onFailure });
+    sources()[0]?.open();
+
+    sources()[0]?.fail({ retrying: true });
+    sources()[0]?.fail({ retrying: true });
+    sources()[0]?.fail({ retrying: true });
+
+    expect(onFailure.mock.calls).toEqual([[1], [1], [1]]);
+  });
+
+  it('un flux que la connexion rouvre elle-même après un refus est l’essai suivant', async () => {
+    const onFailure = vi.fn();
+    connect({ onFailure });
+
+    sources()[0]?.fail({ retrying: false });
+    await elapse(1_000);
+    sources()[1]?.fail({ retrying: false });
+    await elapse(2_000);
+    sources()[2]?.fail({ retrying: false });
+
+    expect(onFailure.mock.calls).toEqual([[1], [2], [3]]);
+  });
+
+  it('reconnect() rend le numéro de l’essai qu’il lance, et l’échec de cet essai le porte', () => {
+    const onFailure = vi.fn();
+    const { connection } = connect({ onFailure });
+    sources()[0]?.open();
+    sources()[0]?.fail({ retrying: true });
+
+    const attempt = connection.reconnect();
+    sources()[1]?.fail({ retrying: true });
+
+    expect(attempt).toBe(2);
+    expect(onFailure.mock.calls).toEqual([[1], [2]]);
+  });
+
+  it('l’échec tardif du flux que reconnect() a remplacé n’est pas dit : seul l’essai qu’on a demandé a une issue', () => {
+    const onFailure = vi.fn();
+    const { connection } = connect({ onFailure });
+    sources()[0]?.open();
+    sources()[0]?.fail({ retrying: true });
+    expect(onFailure).toHaveBeenCalledTimes(1);
+
+    const attempt = connection.reconnect();
+    sources()[0]?.fail({ retrying: true }); // un retard du flux remplacé
+
+    expect(attempt).toBe(2);
+    expect(onFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it('reconnect() sans effet (connexion en pause, fermée) ne lance aucun essai : il rend le numéro du dernier', () => {
+    const { connection } = connect();
+
+    connection.pause();
+    expect(connection.reconnect()).toBe(1);
+    connection.close();
+    expect(connection.reconnect()).toBe(1);
+  });
+
+  it('une connexion démarrée en pause n’a lancé aucun essai : le premier flux, à la reprise, est l’essai 1', () => {
+    const onFailure = vi.fn();
+    const { connection } = connect({ paused: true, onFailure });
+    expect(connection.reconnect()).toBe(0); // rien n'est ouvert, rien à numéroter
+
+    connection.resume();
+    sources()[0]?.fail({ retrying: true });
+
+    expect(onFailure).toHaveBeenLastCalledWith(1);
+  });
+
+  it('la reprise après une pause ouvre l’essai suivant', () => {
+    const onFailure = vi.fn();
+    const { connection } = connect({ onFailure });
+    connection.pause();
+
+    connection.resume();
+    sources()[1]?.fail({ retrying: true });
+
+    expect(onFailure).toHaveBeenLastCalledWith(2);
+  });
+});
+
 describe('flux par défaut', () => {
   it('utilise EventSource quand aucune fabrique n’est donnée', () => {
     vi.stubGlobal('EventSource', FakeEventSource);

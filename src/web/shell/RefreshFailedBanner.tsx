@@ -2,7 +2,8 @@ import { useQueryClient, type Query } from '@tanstack/react-query';
 import { RefreshCw, TriangleAlert } from 'lucide-react';
 import { useCallback, useSyncExternalStore, type MouseEvent } from 'react';
 import { ApiError } from '../data/client';
-import { focusTitleOf, keepFocusInZone, zoneOf } from '../lib/zoneFocus';
+import { focusContainer } from '../lib/focus';
+import { focusTitleWhenReady, keepFocusInZone, locationOf, zoneOf } from '../lib/zoneFocus';
 
 /**
  * Une page qui affiche elle-même le 404 de sa requête (« Ticket introuvable », voir `HANDLES_NOT_FOUND`) ne montre plus
@@ -32,16 +33,23 @@ export function RefreshFailedBanner({ muted }: { muted: boolean }) {
   const stale = useSyncExternalStore(subscribe, staleCount);
 
   // « Réessayer » : si la relecture rétablit tout, le bandeau part et le titre de la page prend le focus que son bouton tenait, comme après le « Réessayer » d'une
-  // page. Le titre ne le prend que sur cette demande-là. Quand le bandeau part sans elle (les mises à jour en direct sont interrompues et il se tait, une relecture
-  // automatique réussit), le bouton rend le focus au contenu principal (voir `keepFocusInZone`) : personne n'a demandé qu'on lise le titre. S'il reste des
-  // données périmées, le bandeau reste, avec son bouton et son focus. Le bandeau part avant ou après la fin de la relecture : le focus est encore sur le bouton, ou
-  // déjà au contenu principal ; s'il est ailleurs, l'utilisateur l'a mis là, et on n'y touche pas.
+  // page. Le titre ne le prend que sur cette demande-là, et dès qu'il existe : si la page n'a encore que le titre d'un squelette (la page d'une Epic dont les tickets se
+  // chargent), le contenu principal garde le focus, et le titre de la page qui arrive le prend (voir `focusTitleWhenReady`). Quand le bandeau part sans elle (les mises à jour en
+  // direct sont interrompues et il se tait, une relecture automatique réussit), le bouton rend le focus au contenu principal (voir `keepFocusInZone`) : personne n'a demandé
+  // qu'on lise le titre. S'il reste des données périmées, le bandeau reste, avec son bouton et son focus. Le bandeau part avant ou après la fin de la relecture : le focus est
+  // encore sur le bouton (le contenu principal le prend alors, comme il l'aurait pris au départ du bandeau), ou déjà au contenu principal ; s'il est ailleurs, l'utilisateur l'a
+  // mis là, et on n'y touche pas. La demande est celle de la page où « Réessayer » a été pressé : si l'utilisateur est allé sur une autre pendant la relecture (« Retour », un lien, un
+  // raccourci), le focus n'est pas déplacé pour son titre ; le bouton le rend au contenu principal en partant, comme toujours.
   const retry = (event: MouseEvent<HTMLButtonElement>) => {
     const button = event.currentTarget;
     const zone = zoneOf(button);
+    const page = zone === null ? null : locationOf(zone);
     void queryClient.refetchQueries({ type: 'active', predicate: showsStaleData }).then(() => {
-      const focus = document.activeElement;
-      if (zone !== null && staleCount() === 0 && (focus === button || focus === zone)) focusTitleOf(zone);
+      if (zone === null || staleCount() !== 0 || locationOf(zone) !== page) return;
+      if (document.activeElement === button) focusContainer(zone);
+      // La fonction que `focusTitleWhenReady` rend, qui arrêterait l'attente, n'est pas gardée : rien ici n'a à l'arrêter avant son terme (le titre arrive, le focus quitte la zone, ou
+      // la page change), et elle ne retient que le contenu principal, qui reste. L'observateur est coupé à la première mutation qui suit l'un de ces trois cas.
+      if (document.activeElement === zone) focusTitleWhenReady(zone);
     });
   };
 

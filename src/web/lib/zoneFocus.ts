@@ -36,23 +36,33 @@ export function showsSkeletonTitle(zone: Element): boolean {
   return zone.querySelector(`h1${SKELETON}, h2${SKELETON}`) !== null;
 }
 
+/**
+ * La page que montre la zone : l'adresse (chemin et paramètres) que le shell écrit sur le contenu principal (`data-location`, voir `AppShell`), ou `null` pour une zone qui n'en
+ * dit rien (la barre latérale). Elle est écrite dans le même rendu que la page : quand l'observateur de mutations de `focusTitleWhenReady` s'exécute, juste après ce rendu, c'est
+ * l'adresse de la page qui vient d'arriver, jamais celle de la précédente. C'est donc le document qui dit qu'on a changé de page : la zone ne connaît pas le routeur, et un effet qui
+ * l'interrogerait pourrait s'exécuter après l'observateur, quand le titre de la nouvelle page a déjà pris le focus.
+ */
+export function locationOf(zone: Element): string | null {
+  return zone.closest('[data-location]')?.getAttribute('data-location') ?? null;
+}
+
 /** Donne le focus à la zone qui contient `from`. `tabindex="-1"` ne lui est posé que le temps qu'elle l'a (voir `focusContainer`). */
 export function focusZoneOf(from: Element): boolean {
   return focusContainer(zoneOf(from));
 }
 
-/** Donne le focus au titre de la zone qui contient `from`, sinon à la zone : un titre à lire plutôt qu'un conteneur muet. */
-export function focusTitleOf(from: Element): boolean {
-  const zone = zoneOf(from);
-  return (zone !== null && focusContainer(titleOf(zone))) || focusContainer(zone);
-}
-
 /**
  * Donne le focus au titre de la zone, s'il a le focus encore (l'utilisateur ne l'a pas mis ailleurs) et dès que ce titre existe : tant que la zone n'a que le
  * titre d'un squelette (la porte du Projet qui ouvre la page d'une Epic, dont les tickets se chargent encore), la zone le garde, et le titre de la page qui arrive
- * le prend. L'attente s'arrête dès que le focus quitte la zone, quand le titre est donné, ou par la fonction rendue.
+ * le prend. L'attente s'arrête dès que le focus quitte la zone, quand le titre est donné, quand la zone montre une autre page que celle qu'on attendait (l'utilisateur
+ * a pris un raccourci, un lien, « Retour » : le titre de celle-ci n'est pas celui qu'il a demandé, voir `locationOf`), ou par la fonction rendue.
+ *
+ * `page` : la page où le focus a été demandé. « Réessayer » et « Reconnecter » en retiennent l'adresse (`locationOf`) en étant pressés, et la donnent à l'issue, qui arrive plus tard :
+ * si la zone en montre une autre alors, l'utilisateur est allé ailleurs entre l'appui et l'issue, la demande ne vaut plus, et rien n'est fait (le titre d'une page qui existe déjà
+ * n'est pas pris non plus). Sans elle, la page est celle que la zone montre à l'appel, la demande étant faite à l'instant.
  */
-export function focusTitleWhenReady(zone: HTMLElement): () => void {
+export function focusTitleWhenReady(zone: HTMLElement, page: string | null = locationOf(zone)): () => void {
+  if (locationOf(zone) !== page) return () => undefined;
   const take = () => {
     if (document.activeElement === zone) focusContainer(titleOf(zone));
   };
@@ -61,7 +71,7 @@ export function focusTitleWhenReady(zone: HTMLElement): () => void {
     return () => undefined;
   }
   const watch = new MutationObserver(() => {
-    if (document.activeElement !== zone) {
+    if (document.activeElement !== zone || locationOf(zone) !== page) {
       watch.disconnect();
       return;
     }

@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router';
+import { Outlet, useLocation } from 'react-router';
 import { LiveUpdates } from '../live/LiveUpdates';
 import { CommandPalette } from '../palette/CommandPalette';
 import { ShortcutsProvider } from '../shortcuts/ShortcutsProvider';
@@ -29,6 +29,7 @@ export function AppShell() {
  */
 function Layout() {
   useGlobalShortcuts();
+  const { pathname, search } = useLocation();
 
   return (
     <div className="flex min-h-dvh overflow-x-clip md:h-dvh md:overflow-hidden">
@@ -46,6 +47,9 @@ function Layout() {
           // ce qui l'avait dans la page disparaît parce que la page se recharge (« Réessayer », voir `zoneFocus`) : pas de contour, et un nom, que le lecteur
           // d'écran dit alors (comme le lien « Aller au contenu » qui y mène).
           aria-label="Contenu"
+          // La page qu'il montre (chemin et paramètres, sans l'ancre), écrite dans le même rendu que la page : `focusTitleWhenReady` attend le titre d'une page, et s'arrête quand
+          // l'utilisateur va sur une autre (voir `locationOf`, `zoneFocus`).
+          data-location={pathname + search}
           className="relative flex min-h-0 flex-1 flex-col bg-panel pb-[calc(3.5rem+env(safe-area-inset-bottom))] outline-none md:overflow-y-auto md:rounded-xl md:border md:border-line md:pb-0 md:shadow-panel"
         >
           <TopBar />

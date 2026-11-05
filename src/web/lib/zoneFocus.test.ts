@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  focusTitleOf,
   focusTitleWhenReady,
   focusZoneOf,
   keepFocusIn,
@@ -115,8 +114,8 @@ describe('titleOf : le titre d’une zone', () => {
   });
 });
 
-describe('focusZoneOf et focusTitleOf', () => {
-  it('donnent le focus à la zone, ou à son titre, sans jamais le rendre focalisable en permanence', () => {
+describe('focusZoneOf', () => {
+  it('donne le focus à la zone, puis `focusTitleWhenReady` à son titre, sans jamais les rendre focalisables en permanence', () => {
     const $ = html(
       '<main><h1 id="titre">Page</h1><section id="zone" data-focus-zone><h2 id="intertitre">Section</h2><div id="avis"></div></section></main><button id="ailleurs">Ailleurs</button>',
     );
@@ -125,7 +124,7 @@ describe('focusZoneOf et focusTitleOf', () => {
     expect(document.activeElement).toBe($('#zone'));
     expect($('#zone').getAttribute('tabindex')).toBe('-1');
 
-    expect(focusTitleOf($('#avis'))).toBe(true);
+    focusTitleWhenReady($('#zone'));
     expect(document.activeElement).toBe($('#intertitre'));
     expect($('#zone').hasAttribute('tabindex')).toBe(false); // la zone l'a rendu en passant le focus au titre
 
@@ -133,28 +132,11 @@ describe('focusZoneOf et focusTitleOf', () => {
     expect($('#intertitre').hasAttribute('tabindex')).toBe(false); // le titre non plus
   });
 
-  it('focusTitleOf donne le focus à la zone quand elle n’a pas de titre', () => {
-    const $ = html('<main><div id="avis"></div></main>');
-
-    expect(focusTitleOf($('#avis'))).toBe(true);
-
-    expect(document.activeElement).toBe($('main'));
-  });
-
-  it('focusTitleOf ne donne pas le focus au titre d’un squelette : la zone le garde', () => {
-    const $ = html('<main><h1 id="squelette" data-skeleton></h1><div id="avis"></div></main>');
-
-    expect(focusTitleOf($('#avis'))).toBe(true);
-
-    expect(document.activeElement).toBe($('main'));
-  });
-
   it('rien ne prend le focus sans zone : il reste où il est', () => {
     const $ = html('<button id="ailleurs">Ailleurs</button><div id="avis"></div>');
     $('#ailleurs').focus();
 
     expect(focusZoneOf($('#avis'))).toBe(false);
-    expect(focusTitleOf($('#avis'))).toBe(false);
 
     expect(document.activeElement).toBe($('#ailleurs'));
   });

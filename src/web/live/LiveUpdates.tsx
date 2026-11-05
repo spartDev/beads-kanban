@@ -21,12 +21,12 @@ export function LiveUpdates() {
   const { data } = useProjects();
   const project = projectId ? data?.projects.find((candidate) => candidate.id === projectId) : undefined;
   const followed = project && isReadable(project) && section !== 'metrics' ? project.id : undefined;
-  const { status, reconnect } = useLiveUpdates(followed);
+  const { status, failedAttempt, reconnect } = useLiveUpdates(followed);
 
   return (
     <>
       <RefreshFailedBanner muted={status === 'lost'} />
-      <LiveBanner status={status} onReconnect={reconnect} />
+      <LiveBanner status={status} failedAttempt={failedAttempt} onReconnect={reconnect} />
     </>
   );
 }
