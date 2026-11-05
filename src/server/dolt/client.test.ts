@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createDoltClient, DoltNotFoundError, DoltQueryError, parseDoltDate, sqlIdent, sqlString } from './client';
+import { createDoltClient, DoltNotFoundError, DoltQueryError, parseDoltDate, parseDoltInteger, sqlIdent, sqlString } from './client';
 import { fakeDolt } from '../testing/fake-dolt';
 import { ReadOnlyViolation } from './read-only';
 
@@ -898,5 +898,76 @@ describe('aides SQL', () => {
     expect(() => parseDoltDate('pas une date')).toThrow(DoltQueryError);
     expect(() => parseDoltDate(null)).toThrow(DoltQueryError);
     expect(() => parseDoltDate(42)).toThrow(DoltQueryError);
+  });
+});
+
+describe('entiers de Dolt (bdesk-38k.44)', () => {
+  // Dolt rend un entier en nombre quand il lit les fichiers lui-même, en chaîne de chiffres quand un `dolt sql-server` tourne pour la base.
+  it.each([0, 1, 4, -3, 12_345, Number.MAX_SAFE_INTEGER, Number.MIN_SAFE_INTEGER])('lit le nombre %j', (value) => {
+    expect(parseDoltInteger(value, 'priority')).toBe(value);
+  });
+
+  it.each([
+    ['0', 0],
+    ['1', 1],
+    ['4', 4],
+    ['-3', -3],
+    ['12345', 12_345],
+    ['9007199254740991', Number.MAX_SAFE_INTEGER],
+    ['-9007199254740991', Number.MIN_SAFE_INTEGER],
+  ])('lit la chaîne %j, comme la rend un dolt sql-server', (value, expected) => {
+    expect(parseDoltInteger(value, 'priority')).toBe(expected);
+  });
+
+  it.each([undefined, null])('rend undefined pour NULL, que la sortie JSON ne donne pas (%j) : le défaut de la colonne est à l’appelant', (value) => {
+    expect(parseDoltInteger(value, 'priority')).toBeUndefined();
+  });
+
+  // Une valeur qui n'est pas un entier vient d'une base qui n'a pas le format attendu : on ne la prend ni pour 0, ni pour NaN, ni pour une valeur par défaut.
+  const INVALID: unknown[] = [
+    '',
+    ' ',
+    '2 ',
+    ' 2',
+    '+2',
+    '02',
+    '-0',
+    '1.5',
+    '2.0',
+    '1e3',
+    '0x10',
+    'deux',
+    'haute',
+    'null',
+    'NaN',
+    'Infinity',
+    '٣', // un chiffre qui n'est pas ASCII
+    '9007199254740992', // hors de la plage où un nombre représente exactement chaque entier
+    '9007199254740993',
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    2 ** 53,
+    true,
+    false,
+    {},
+    [],
+    [2],
+  ];
+  it.each(INVALID.map((value) => [value]))('refuse %j, sans le lire comme un entier', (value) => {
+    expect(() => parseDoltInteger(value, 'priority')).toThrow('Entier Dolt invalide');
+  });
+
+  it('nomme la colonne et la valeur refusée, sans en citer plus de quarante caractères', () => {
+    expect(() => parseDoltInteger('haute', 'priority')).toThrow('Entier Dolt invalide (priority) : « haute »');
+    expect(() => parseDoltInteger(1.5, 'restart')).toThrow('Entier Dolt invalide (restart) : 1.5');
+    expect(() => parseDoltInteger({ a: [1] }, 'restart')).toThrow('Entier Dolt invalide (restart) : {"a":[1]}');
+    expect(() => parseDoltInteger('x'.repeat(500), 'priority')).toThrow(`Entier Dolt invalide (priority) : « ${'x'.repeat(40)}… »`);
+    expect(() => parseDoltInteger('x'.repeat(500), 'priority')).not.toThrow('x'.repeat(41));
+  });
+
+  it('signale une valeur invalide par une DoltQueryError (503 avec la raison), pas par une erreur interne (500)', () => {
+    expect(() => parseDoltInteger('haute', 'priority')).toThrow(DoltQueryError);
+    expect(() => parseDoltInteger({}, 'priority')).toThrow(DoltQueryError);
   });
 });

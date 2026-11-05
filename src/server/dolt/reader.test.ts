@@ -197,6 +197,61 @@ describe('l’état des tickets est celui du dernier commit (bdesk-38k.36)', () 
   });
 });
 
+/**
+ * Derrière un `dolt sql-server`, `dolt sql -r json` rend les entiers en chaînes (`"priority":"0"`), là où la lecture directe des fichiers
+ * les rend en nombres (bdesk-38k.44) : le lecteur lit les deux de même, et ne prend pas une priorité illisible pour la valeur par défaut.
+ */
+describe('la priorité arrive en chaîne derrière un dolt sql-server (bdesk-38k.44)', () => {
+  /** La ligne d'un ticket ; sans `priority` quand elle est `undefined`, comme une colonne NULL, absente de la sortie JSON. */
+  const ticket = (priority?: unknown): Row => ({
+    id: 'xx-1',
+    title: 'T',
+    issue_type: 'task',
+    status: 'open',
+    ...(priority === undefined ? {} : { priority }),
+    created_at: '2026-10-19 16:46:38',
+    updated_at: '2026-10-19 16:46:38',
+  });
+
+  it.each([
+    ['0', 0],
+    ['1', 1],
+    ['2', 2],
+    ['3', 3],
+    ['4', 4],
+  ])('lit la priorité « %s » du tableau comme %i, celle que rend un nombre', async (raw, expected) => {
+    const [fromString] = await readIssueSummaries(fakeDb([ticket(raw)]));
+    const [fromNumber] = await readIssueSummaries(fakeDb([ticket(expected)]));
+
+    expect(fromString?.priority).toBe(expected);
+    expect(fromString).toEqual(fromNumber);
+  });
+
+  it('lit de même celle de la fiche, seule ou groupée, et celle des lectures groupées du tableau', async () => {
+    const answer = (sql: string): Row[] => (sql.includes('from issues') ? [ticket('0')] : []);
+
+    expect((await readIssue(fakeDb([ticket('0')]), 'xx-1'))?.priority).toBe(0);
+    expect((await readIssueParts(groupedDb(answer).db, 'xx-1')).record?.priority).toBe(0);
+    expect((await readIssueBase(groupedDb(answer).db)).summaries.map((s) => s.priority)).toEqual([0]);
+  });
+
+  it('garde 2 pour une priorité absente (NULL) : le défaut de bd, que la sortie JSON de Dolt ne donne pas', async () => {
+    expect((await readIssueSummaries(fakeDb([ticket()])))[0]?.priority).toBe(2);
+    expect((await readIssueSummaries(fakeDb([ticket(null)])))[0]?.priority).toBe(2);
+  });
+
+  // Une priorité qui n'est pas un entier vient d'une base qui n'a pas le format attendu : le Projet est illisible (503, avec la raison),
+  // il n'est pas lu avec une priorité inventée, que rien à l'écran ne distinguerait d'un vrai P2.
+  it.each(['haute', '', '2.5', ' 2', 'P2', '1e1', true, {}, 2.5])('refuse la priorité %j au lieu de la lire comme 2', async (priority) => {
+    const refused = (read: Promise<unknown>) => expect(read).rejects.toThrow(/Entier Dolt invalide \(priority\)/);
+
+    await refused(readIssueSummaries(fakeDb([ticket(priority)])));
+    await refused(readIssue(fakeDb([ticket(priority)]), 'xx-1'));
+    await refused(readIssueBase(groupedDb((sql) => (sql.includes('from issues') ? [ticket(priority)] : [])).db));
+    await expect(readIssueSummaries(fakeDb([ticket(priority)]))).rejects.toBeInstanceOf(DoltQueryError);
+  });
+});
+
 describe('readHead', () => {
   it('lit le hash du dernier commit : il change à chaque nouveau commit Dolt', async () => {
     const db = fakeDb([{ head: 'u050lk7o6a7uiav2gkh0gr3e6dl4vupt' }]);

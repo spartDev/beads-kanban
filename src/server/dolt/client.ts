@@ -23,7 +23,14 @@ import { assertReadOnly, READ_ONLY_PREFIX } from './read-only';
 
 export { DoltNotFoundError, DoltQueryError };
 
-/** Ligne de résultat de `dolt sql -r json` : les colonnes NULL sont absentes de l'objet. */
+/**
+ * Ligne de résultat de `dolt sql -r json` : les colonnes NULL sont absentes de l'objet. Le type des autres valeurs dépend de la façon dont dolt a lu
+ * la base (bdesk-38k.44) : quand un `dolt sql-server` tourne pour elle, le CLI s'y connecte de lui-même et toutes les valeurs non NULL arrivent en
+ * chaînes (entiers `"0"`, booléens `"1"`, nombres à virgule, `time`, et une colonne JSON, rendue par son texte), là où la lecture directe des fichiers
+ * les rend en nombres, et le JSON en objet. Les textes, les dates et les décimaux sont les mêmes chaînes des deux côtés. Une colonne entière se lit donc
+ * par `parseDoltInteger`, jamais par `typeof … === 'number'` ni par `=== 1` ; qui lira une colonne JSON (aucune ne l'est : `dependencies.metadata` n'est
+ * pas utilisée) devra accepter l'objet comme le texte.
+ */
 export type Row = Record<string, unknown>;
 
 /**
@@ -605,4 +612,28 @@ export function parseDoltDate(value: unknown): Date {
   const date = typeof value === 'string' ? new Date(`${value.replace(' ', 'T')}Z`) : new Date(Number.NaN);
   if (Number.isNaN(date.getTime())) throw new DoltQueryError(`Date Dolt invalide : ${String(value)}`);
   return date;
+}
+
+/**
+ * Un entier de Dolt (`priority`, `restart`…) : un nombre quand dolt lit les fichiers lui-même, une chaîne de chiffres (`"priority":"0"`) quand un
+ * `dolt sql-server` tourne pour la base (voir `Row`). Les deux se lisent de même ; NULL, absent de la sortie JSON, rend `undefined` : le défaut de
+ * la colonne est à l'appelant.
+ *
+ * Toute autre valeur (texte, décimal, booléen, entier que le nombre ne représente pas exactement, écriture qui n'est pas celle de Dolt comme « 02 »,
+ * « 2.0 » ou « 1e3 ») vient d'une base qui n'a pas le format attendu : c'est une erreur de lecture (503 avec la raison, comme une date illisible),
+ * jamais une valeur par défaut qui la masquerait. `column` dit de quelle colonne il s'agit.
+ */
+export function parseDoltInteger(value: unknown, column: string): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  const number = typeof value === 'string' ? Number(value) : value;
+  // Une chaîne n'est lue que si elle est l'écriture décimale de l'entier qu'elle donne : « 2 » oui, « 02 », « +2 », « 2.0 », « 1e3 », « -0 » non.
+  if (typeof number === 'number' && Number.isSafeInteger(number) && (typeof value !== 'string' || String(number) === value)) return number;
+  throw new DoltQueryError(`Entier Dolt invalide (${column}) : ${shown(value)}`);
+}
+
+/** Une valeur dans un message d'erreur : un texte entre guillemets, le reste en JSON, au plus quarante caractères. */
+function shown(value: unknown): string {
+  const text = typeof value === 'string' ? value : typeof value === 'object' ? JSON.stringify(value) : String(value);
+  const clipped = text.length > 40 ? `${text.slice(0, 40)}…` : text;
+  return typeof value === 'string' ? `« ${clipped} »` : clipped;
 }

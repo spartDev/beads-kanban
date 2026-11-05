@@ -1,6 +1,6 @@
 import { ABANDON_LINK_TYPES } from '../../domain/abandon';
 import type { DependencyHistory, StatusSnapshot, TicketHistory } from '../../domain/flow';
-import { type DoltDatabase, parseDoltDate, sqlIdent, sqlString } from './client';
+import { type DoltDatabase, parseDoltDate, parseDoltInteger, sqlIdent, sqlString } from './client';
 import { ascendingDates } from './commit-dates';
 import { asText, AT_HEAD, TARGET_COLUMNS, toDependency } from './reader';
 
@@ -117,7 +117,7 @@ export async function readTicketHistories(db: DoltDatabase, { now = () => new Da
   const recreations = new Map<string, string>(); // tickets recréés : le commit où commence leur vie actuelle
   for (const row of statusChanges) {
     const id = asText(row.id);
-    const restart = row.restart === 1;
+    const restart = parseDoltInteger(row.restart, 'restart') === 1; // un nombre, ou une chaîne derrière un dolt sql-server
     // Une nouvelle vie du ticket (recréation après un trou) fait oublier la précédente, dépendances comprises.
     if (restart && snapshots.has(id)) recreations.set(id, asText(row.commit_hash));
     const list = restart ? [] : (snapshots.get(id) ?? []);

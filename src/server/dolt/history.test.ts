@@ -713,3 +713,80 @@ describe('readTicketHistories : l’horloge d’un commit recule ou avance (bdes
     ]);
   });
 });
+
+/**
+ * Derrière un `dolt sql-server`, `dolt sql -r json` rend les entiers en chaînes (`"restart":"1"`), là où la lecture directe des fichiers les
+ * rend en nombres (bdesk-38k.44) : `restart` vaut alors la chaîne « 1 », que `=== 1` ne reconnaissait jamais, et la recréation d'un ticket
+ * (un trou dans sa vie) n'était jamais détectée.
+ */
+describe('readTicketHistories : la recréation d’un ticket arrive en chaîne derrière un dolt sql-server (bdesk-38k.44)', () => {
+  const log = ['c0', 'c1', 'c2', 'c3'].map((commit_hash, i) => ({ commit_hash, date: `2026-10-0${i + 1} 10:00:00.000` }));
+  const tickets = [
+    { id: 'p-1', issue_type: 'task' },
+    { id: 'p-2', issue_type: 'epic' },
+    { id: 'p-3', issue_type: 'task' },
+  ];
+  /** Les mêmes lignes de statuts que rendent les deux modes : `restart` est un nombre sans serveur, une chaîne avec. */
+  const statuses = (flag: (restart: 0 | 1) => unknown): Row[] => [
+    { id: 'p-1', status: 'open', changed_at: '2026-10-01 10:00:00.000', restart: flag(1), commit_hash: 'c0' },
+    { id: 'p-1', status: 'in_progress', changed_at: '2026-10-02 10:00:00.000', restart: flag(0), commit_hash: 'c1' },
+    { id: 'p-1', status: 'open', changed_at: '2026-10-03 10:00:00.000', restart: flag(1), commit_hash: 'c2' }, // recréé au commit c2
+    { id: 'p-1', status: 'closed', changed_at: '2026-10-04 10:00:00.000', restart: flag(0), commit_hash: 'c3' },
+    { id: 'p-2', status: 'open', changed_at: '2026-10-01 10:00:00.000', restart: flag(1), commit_hash: 'c0' },
+    { id: 'p-3', status: 'open', changed_at: '2026-10-01 10:00:00.000', restart: flag(1), commit_hash: 'c0' },
+    { id: 'p-3', status: 'closed', changed_at: '2026-10-02 10:00:00.000', restart: flag(0), commit_hash: 'c1' }, // la suite de sa vie, pas une recréation
+  ];
+  const dependencies: Row[] = [
+    { commit_hash: 'c0', issue_id: 'p-1', depends_on_issue_id: 'p-2', type: 'blocks' }, // vie précédente de p-1
+    { commit_hash: 'c1', issue_id: 'p-1', depends_on_issue_id: 'p-2', type: 'blocks' },
+    { commit_hash: 'c3', issue_id: 'p-1', depends_on_issue_id: 'p-2', type: 'blocks' }, // depuis la recréation
+  ];
+  const database = (flag: (restart: 0 | 1) => unknown) =>
+    fakeDb([
+      { match: /from issues/, rows: tickets },
+      { match: /lag\(/, rows: statuses(flag) },
+      { match: /select l\.commit_hash/, rows: log },
+      columns(CURRENT_COLUMNS),
+      { match: /^select .* from dolt_history_dependencies$/s, rows: dependencies },
+    ]);
+  const asNumber = (restart: 0 | 1) => restart;
+  const asString = (restart: 0 | 1) => String(restart);
+
+  it('repart de zéro après un trou : seule la dernière vie compte, statuts et dépendances', async () => {
+    const [first, second] = await readTicketHistories(database(asString));
+
+    expect(first?.statusSnapshots).toEqual([
+      { status: 'open', at: at('2026-10-03T10:00:00') },
+      { status: 'closed', at: at('2026-10-04T10:00:00') },
+    ]);
+    expect(first?.dependencies).toEqual([{ type: 'blocks', target: 'p-2', addedAt: at('2026-10-04T10:00:00') }]);
+    expect(second?.statusSnapshots).toEqual([{ status: 'open', at: at('2026-10-01T10:00:00') }]);
+  });
+
+  it('prend « 0 » pour la suite d’une vie, non pour un début : le ticket sans trou garde tout son historique', async () => {
+    const [, , third] = await readTicketHistories(database(asString));
+
+    expect(third?.statusSnapshots).toEqual([
+      { status: 'open', at: at('2026-10-01T10:00:00') },
+      { status: 'closed', at: at('2026-10-02T10:00:00') },
+    ]);
+  });
+
+  it('ne reconnaît un début de vie qu’à la valeur 1 : toute autre est la suite d’une vie', async () => {
+    const [first, , third] = await readTicketHistories(database((restart) => (restart === 1 ? '1' : '2')));
+
+    expect(first?.statusSnapshots.map((s) => s.status)).toEqual(['open', 'closed']); // recréé au commit c2
+    expect(third?.statusSnapshots.map((s) => s.status)).toEqual(['open', 'closed']); // « 2 » n'est pas un trou : tout son historique reste
+  });
+
+  it('lit les chaînes comme les nombres : le même historique', async () => {
+    expect(await readTicketHistories(database(asString))).toEqual(await readTicketHistories(database(asNumber)));
+  });
+
+  it.each(['oui', '', '1.0', ' 1', true, {}, 2.5])('refuse un `restart` illisible (%j) : il ne dit ni un début de vie ni sa suite', async (restart) => {
+    const refused = readTicketHistories(database(() => restart));
+
+    await expect(refused).rejects.toBeInstanceOf(DoltQueryError);
+    await expect(refused).rejects.toThrow(/Entier Dolt invalide \(restart\)/);
+  });
+});

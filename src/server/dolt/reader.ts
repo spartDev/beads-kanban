@@ -1,4 +1,4 @@
-import { type DoltDatabase, DoltQueryError, parseDoltDate, queryAll, type Row, sqlString } from './client';
+import { type DoltDatabase, DoltQueryError, parseDoltDate, parseDoltInteger, queryAll, type Row, sqlString } from './client';
 
 /** État d'un ticket au dernier commit : ce qu'il faut au kanban. */
 export interface IssueSummary {
@@ -185,7 +185,7 @@ function toSummary(row: Row): IssueSummary {
     title: asText(row.title),
     type: asText(row.issue_type),
     status: asText(row.status),
-    priority: typeof row.priority === 'number' ? row.priority : 2,
+    priority: parseDoltInteger(row.priority, 'priority') ?? 2, // NULL : P2, le défaut de bd
     assignee: asText(row.assignee) || null,
     createdAt: parseDoltDate(row.created_at),
     updatedAt: parseDoltDate(row.updated_at),
