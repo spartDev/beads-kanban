@@ -1,9 +1,10 @@
 import type { TicketHistory } from '../../domain/flow';
 import type { Issue, IssueDetail, Project, ProjectsResponse } from '../../shared/api';
+import { ReadAborted } from '../abort';
 import type { Config } from '../config';
-import { createDoltClient, type DoltClient, type DoltDatabase, DoltNotFoundError, DoltQueryError } from '../dolt/client';
+import { createDoltClient, type DoltClient, type DoltDatabase, DoltNotFoundError, DoltQueryError, withOptions } from '../dolt/client';
 import { readTicketHistories } from '../dolt/history';
-import { readComments, readDependencies, readHead, readIssue, readIssueSummaries, readLabels } from '../dolt/reader';
+import { readHead, readIssueBase, readIssueParts } from '../dolt/reader';
 import { type Discovery, type DiscoveredProject, discoverProjects } from './discovery';
 import { buildIssueDetail, buildIssues } from './issues';
 
@@ -35,14 +36,27 @@ export class ProjectUnreadableError extends Error {
   }
 }
 
+/** Comment une lecture d'un Projet est menée. */
+export interface ReadOptions {
+  /**
+   * Abandon du demandeur (le client HTTP est parti, bdesk-38k.20) : la lecture rejette aussitôt par une `ReadAborted` (jamais
+   * par un Projet illisible), ses lectures Dolt encore en file en sortent, et celles dont le processus est lancé vont au bout
+   * (jamais tuées : ADR 0003), leur résultat est jeté si personne d'autre ne l'attend.
+   */
+  signal?: AbortSignal;
+}
+
 export interface ProjectService {
   /** Rescanne les racines et renvoie les Projets (lisibles ou non) et les dossiers ignorés. */
   list(): Promise<ProjectsResponse>;
-  issues(projectId: string): Promise<Issue[]>;
-  issue(projectId: string, issueId: string): Promise<IssueDetail>;
+  issues(projectId: string, options?: ReadOptions): Promise<Issue[]>;
+  issue(projectId: string, issueId: string, options?: ReadOptions): Promise<IssueDetail>;
   /** Historique complet des tickets, pour `analyzeFlow`. */
-  histories(projectId: string): Promise<TicketHistory[]>;
-  /** Hash du dernier commit Dolt du Projet : change à chaque commit, donc clé d'invalidation des calculs. */
+  histories(projectId: string, options?: ReadOptions): Promise<TicketHistory[]>;
+  /**
+   * Hash du dernier commit Dolt du Projet : change à chaque commit, donc clé d'invalidation des calculs. Lecture de la voie `light`, qui ne fait pas la
+   * queue derrière les autres (voir `QueryOptions.lane`), et sans abandon : quelques dizaines de millisecondes.
+   */
   head(projectId: string): Promise<string>;
 }
 
@@ -100,11 +114,20 @@ export function createProjectService(
     return dolt.open(project.databasePath);
   }
 
-  /** Une base qui échoue à répondre rend le Projet illisible, avec le message de dolt pour raison. */
-  async function read<T>(projectId: string, task: (db: DoltDatabase) => Promise<T>, lookupMaxAgeMs?: number): Promise<T> {
+  /**
+   * Une base qui échoue à répondre rend le Projet illisible, avec le message de dolt pour raison. Un abandon (`signal`) n'est pas
+   * une panne : il passe tel quel. `task` reçoit une base dont toutes les lectures portent le signal.
+   */
+  async function read<T>(
+    projectId: string,
+    task: (db: DoltDatabase) => Promise<T>,
+    { signal, lookupMaxAgeMs }: ReadOptions & { lookupMaxAgeMs?: number } = {},
+  ): Promise<T> {
+    if (signal?.aborted) throw new ReadAborted();
     const db = await open(projectId, lookupMaxAgeMs);
+    if (signal?.aborted) throw new ReadAborted(); // parti pendant la recherche du Projet (un scan, qui ne s'interrompt pas)
     try {
-      return await task(db);
+      return await task(signal ? withOptions(db, { signal }) : db);
     } catch (err) {
       if (err instanceof DoltNotFoundError || err instanceof DoltQueryError) {
         throw new ProjectUnreadableError(projectId, err.message);
@@ -119,35 +142,36 @@ export function createProjectService(
       return { projects: projects.map(toPublic), ignored };
     },
 
-    issues: (projectId) =>
-      read(projectId, async (db) => {
-        const [summaries, dependencies] = await Promise.all([readIssueSummaries(db), readDependencies(db)]);
-        return buildIssues(summaries, dependencies);
-      }),
+    issues: async (projectId, { signal } = {}) => {
+      const { summaries, dependencies } = await read(projectId, readIssueBase, { signal });
+      return buildIssues(summaries, dependencies);
+    },
 
-    issue: (projectId, issueId) =>
-      read(projectId, async (db) => {
-        // Aucun ticket n'a d'octet nul dans son identifiant, et dolt ne pourrait pas recevoir la requête : inutile de l'envoyer.
-        if (issueId.includes('\0')) throw new IssueNotFoundError(projectId, issueId);
-        const [record, summaries, dependencies, labels, comments] = await Promise.all([
-          readIssue(db, issueId),
-          readIssueSummaries(db),
-          readDependencies(db),
-          readLabels(db, issueId),
-          readComments(db, issueId),
-        ]);
-        const all = buildIssues(summaries, dependencies);
-        const issue = record && all.find((i) => i.id === record.id);
-        if (!record || !issue) throw new IssueNotFoundError(projectId, issueId);
-        return buildIssueDetail(issue, record, dependencies, labels, comments, new Map(all.map((i) => [i.id, i])));
-      }),
+    issue: (projectId, issueId, { signal } = {}) =>
+      read(
+        projectId,
+        async (db) => {
+          // Aucun ticket n'a d'octet nul dans son identifiant, et dolt ne pourrait pas recevoir la requête : inutile de l'envoyer.
+          if (issueId.includes('\0')) throw new IssueNotFoundError(projectId, issueId);
+          // Deux processus en parallèle : le ticket avec ses étiquettes et ses commentaires, et ce que tous les tickets du Projet
+          // partagent (résumés et dépendances), que les fiches demandées ensemble lisent ensemble (voir `DoltDatabase`).
+          const [{ record, labels, comments }, { summaries, dependencies }] = await Promise.all([readIssueParts(db, issueId), readIssueBase(db)]);
+          const all = buildIssues(summaries, dependencies);
+          const issue = record && all.find((i) => i.id === record.id);
+          if (!record || !issue) throw new IssueNotFoundError(projectId, issueId);
+          return buildIssueDetail(issue, record, dependencies, labels, comments, new Map(all.map((i) => [i.id, i])));
+        },
+        { signal },
+      ),
 
-    histories: (projectId) => read(projectId, readTicketHistories),
+    // L'historique est lu par la voie des analyses : il se partage entre toutes les requêtes du Projet (cache par HEAD) et ne doit
+    // pas faire la queue derrière les fiches (voir `QueryOptions.lane`).
+    histories: (projectId, { signal } = {}) => read(projectId, (db) => readTicketHistories(withOptions(db, { lane: 'analysis' })), { signal }),
 
     // Le sondage du direct (bdesk-38k.8) lit le HEAD de chaque Projet suivi toutes les quelques secondes : un Projet que le
     // dernier scan connaît et dit lisible n'est pas redécouvert à cause de l'âge du scan (ce serait un processus dolt par
     // Projet, tous les Projets lus pour sonder un seul). Un Projet inconnu ou illisible est cherché comme pour toute lecture.
-    head: (projectId) => read(projectId, readHead, Number.POSITIVE_INFINITY),
+    head: (projectId) => read(projectId, readHead, { lookupMaxAgeMs: Number.POSITIVE_INFINITY }),
   };
 }
 

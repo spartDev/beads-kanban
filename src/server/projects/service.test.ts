@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DoltClient, Row } from '../dolt/client';
+import { ReadAborted } from '../abort';
+import type { DoltClient, QueryOptions, Row } from '../dolt/client';
 import { assertReadOnly } from '../dolt/read-only';
 import { buildServer } from '../server';
 import { createProjectService, IssueNotFoundError, ProjectNotFoundError, ProjectUnreadableError } from './service';
@@ -215,5 +216,143 @@ describe('identifiant de ticket', () => {
     expect(res.headers['content-type']).toContain('application/json');
     expect(res.json()).toMatchObject({ statusCode: 404, error: 'Not Found' });
     expect(res.body).not.toMatch(/select|from issues|read only/i);
+  });
+});
+
+describe('lectures regroupées et abandonnables (bdesk-38k.20)', () => {
+  beforeEach(() => project('a'));
+
+  const SUMMARY = { id: 'x-1', title: 'T', issue_type: 'task', status: 'open', priority: 2, created_at: '2026-10-19 16:46:38', updated_at: '2026-10-19 16:46:38' };
+  const answer = (sql: string): Row[] => {
+    if (sql.includes("hashof('HEAD')")) return [{ head: 'h1' }];
+    if (sql.includes('from labels') || sql.includes('from comments') || sql.includes('from dependencies')) return [];
+    return [SUMMARY];
+  };
+
+  /**
+   * Un faux client dolt qui groupe comme le vrai : chaque appel à `query` ou à `queryAll` est UN processus. Il garde les
+   * groupes et les options reçues, et — pour les lectures qui ne finissent pas — rejette par une `ReadAborted` quand
+   * le signal est abandonné, comme le fait le vrai client en tuant le processus.
+   */
+  function groupingDolt(reply: (sql: string) => Row[] = answer, hang = false) {
+    const seen = { processes: 0, groups: [] as string[][], singles: [] as string[], signals: [] as (AbortSignal | undefined)[], lanes: [] as string[] };
+    const respond = <T>(value: T, options?: QueryOptions): Promise<T> => {
+      seen.processes++;
+      seen.signals.push(options?.signal);
+      seen.lanes.push(options?.lane ?? 'normal');
+      if (!hang) return Promise.resolve(value);
+      return new Promise<T>((_resolve, reject) => options?.signal?.addEventListener('abort', () => reject(new ReadAborted())));
+    };
+    const dolt: DoltClient = {
+      open: (dir) => ({
+        dir,
+        async query(sql, options) {
+          if (sql.includes("'issue_prefix'")) return [{ value: 'x' }]; // la découverte : ce n'est pas la lecture que l'on compte
+          seen.singles.push(sql);
+          return respond(reply(sql), options);
+        },
+        async queryAll(sqls, options) {
+          seen.groups.push([...sqls]);
+          return respond(sqls.map(reply), options);
+        },
+      }),
+    };
+    return { dolt, seen };
+  }
+
+  it('lit une fiche en deux processus : le ticket avec ses étiquettes et ses commentaires, et ce que tout le Projet partage', async () => {
+    const { dolt, seen } = groupingDolt();
+
+    const detail = await serviceFor(dolt).issue('a', 'x-1');
+
+    expect(detail).toMatchObject({ id: 'x-1', labels: [], comments: [] });
+    expect(seen.processes).toBe(2);
+    expect(seen.singles).toEqual([]);
+    expect(seen.groups.map((group) => group.length).sort()).toEqual([2, 3]);
+  });
+
+  it('lit la liste des tickets en un seul processus', async () => {
+    const { dolt, seen } = groupingDolt();
+
+    expect(await serviceFor(dolt).issues('a')).toHaveLength(1);
+
+    expect(seen.processes).toBe(1);
+  });
+
+  it('lit le HEAD par la voie `light`, sans signal : une lecture de quelques dizaines de millisecondes ne s’interrompt pas', async () => {
+    const { dolt, seen } = groupingDolt();
+
+    expect(await serviceFor(dolt).head('a')).toBe('h1');
+
+    expect(seen.lanes).toEqual(['light']);
+    expect(seen.signals).toEqual([undefined]);
+  });
+
+  it('lit l’historique par la voie des analyses, mais pas le préfixe, le HEAD ni les fiches', async () => {
+    const { dolt, seen } = groupingDolt((sql) => (sql.includes('lineage') ? [] : answer(sql)));
+    const service = serviceFor(dolt);
+
+    await service.histories('a').catch(() => undefined); // le faux client ne connaît pas toutes les tables : seules les voies comptent
+    const historyLanes = new Set(seen.lanes);
+    seen.lanes.length = 0;
+    await service.issue('a', 'x-1');
+
+    expect([...historyLanes]).toEqual(['analysis']);
+    expect(new Set(seen.lanes)).toEqual(new Set(['normal']));
+  });
+
+  it('donne le signal du demandeur à chaque lecture de la fiche, de la liste et de l’historique', async () => {
+    const { dolt, seen } = groupingDolt();
+    const service = serviceFor(dolt);
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    await service.issue('a', 'x-1', { signal });
+    await service.issues('a', { signal });
+    await service.histories('a', { signal }).catch(() => undefined); // le faux client ne connaît pas l'historique : seul le signal compte ici
+
+    expect(seen.signals.length).toBeGreaterThanOrEqual(4);
+    expect(seen.signals.every((seenSignal) => seenSignal === signal)).toBe(true);
+  });
+
+  it('un abandon en cours de lecture est une ReadAborted, pas un Projet illisible (503)', async () => {
+    const { dolt } = groupingDolt(answer, true);
+    const controller = new AbortController();
+    const reading = serviceFor(dolt).issue('a', 'x-1', { signal: controller.signal }).catch((e: unknown) => e);
+    await sleep(20); // les lectures sont parties
+
+    controller.abort();
+    const error = await reading;
+
+    expect(error).toBeInstanceOf(ReadAborted);
+    expect(error).not.toBeInstanceOf(ProjectUnreadableError);
+  });
+
+  it('un signal déjà abandonné ne lit rien : ni la fiche, ni la liste, ni l’historique', async () => {
+    const { dolt, seen } = groupingDolt();
+    const service = serviceFor(dolt);
+    const controller = new AbortController();
+    controller.abort();
+    const { signal } = controller;
+
+    await expect(service.issue('a', 'x-1', { signal })).rejects.toBeInstanceOf(ReadAborted);
+    await expect(service.issues('a', { signal })).rejects.toBeInstanceOf(ReadAborted);
+    await expect(service.histories('a', { signal })).rejects.toBeInstanceOf(ReadAborted);
+
+    expect(seen.processes).toBe(0);
+  });
+
+  it('un octet nul dans l’identifiant ne lance toujours aucune lecture, signal ou non', async () => {
+    const { dolt, seen } = groupingDolt();
+
+    await expect(serviceFor(dolt).issue('a', 'x\u0000y', { signal: new AbortController().signal })).rejects.toBeInstanceOf(IssueNotFoundError);
+
+    expect(seen.processes).toBe(0);
+  });
+
+  it('un ticket inconnu reste un ticket inconnu (404), pas un Projet illisible', async () => {
+    const { dolt } = groupingDolt((sql) => (sql.includes('where id =') ? [] : answer(sql)));
+
+    await expect(serviceFor(dolt).issue('a', 'x-9')).rejects.toBeInstanceOf(IssueNotFoundError);
   });
 });

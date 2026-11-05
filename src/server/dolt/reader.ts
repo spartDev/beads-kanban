@@ -1,4 +1,4 @@
-import { type DoltDatabase, DoltQueryError, parseDoltDate, type Row, sqlString } from './client';
+import { type DoltDatabase, DoltQueryError, parseDoltDate, queryAll, type Row, sqlString } from './client';
 
 /** État courant d'un ticket : ce qu'il faut au kanban. */
 export interface IssueSummary {
@@ -55,38 +55,91 @@ export function toDependency(row: Row): DependencyRecord | null {
   return from && to ? { from, to, type: asText(row.type), ...(createdAt ? { createdAt } : {}) } : null;
 }
 
-/** Préfixe des tickets (`issue_prefix` dans la table `config`), ou null s'il n'y est pas. */
+/**
+ * Préfixe des tickets (`issue_prefix` dans la table `config`), ou null s'il n'y est pas. Voie `light` : c'est elle que
+ * lance la découverte des Projets, que toute requête attend.
+ */
 export async function readIssuePrefix(db: DoltDatabase): Promise<string | null> {
-  const rows = await db.query("select `value` from config where `key` = 'issue_prefix'");
+  const rows = await db.query("select `value` from config where `key` = 'issue_prefix'", { lane: 'light' });
   return asText(rows[0]?.value) || null;
 }
 
 /**
  * Hash du dernier commit (HEAD) de la base : il change à chaque nouveau commit Dolt, donc à chaque écriture de bd en
  * auto-commit. Une seule requête légère : de quoi savoir, sans relire l'historique, si un résultat calculé est périmé.
+ * Elle passe par la voie `light`, qui ne fait pas la queue derrière les lectures lourdes en cours.
  */
 export async function readHead(db: DoltDatabase): Promise<string> {
-  const rows = await db.query("select hashof('HEAD') as head");
+  const rows = await db.query("select hashof('HEAD') as head", { lane: 'light' });
   const head = asText(rows[0]?.head);
   if (!head) throw new DoltQueryError(`HEAD illisible dans ${db.dir}`, db.dir);
   return head;
 }
 
+const SUMMARIES_SQL = 'select id, title, issue_type, status, priority, assignee, created_at, updated_at, closed_at from issues order by created_at, id';
+const DEPENDENCIES_SQL = 'select * from dependencies';
+
+const issueSql = (id: string) => `select id, title, description, design, acceptance_criteria, notes, issue_type, status, priority, assignee,
+            created_at, updated_at, closed_at, close_reason
+     from issues where id = ${sqlString(id)}`;
+const labelsSql = (issueId: string) => `select label from labels where issue_id = ${sqlString(issueId)} order by label`;
+const commentsSql = (issueId: string) =>
+  `select author, \`text\`, created_at from comments where issue_id = ${sqlString(issueId)} order by created_at, id`;
+
 export async function readIssueSummaries(db: DoltDatabase): Promise<IssueSummary[]> {
-  const rows = await db.query(
-    'select id, title, issue_type, status, priority, assignee, created_at, updated_at, closed_at from issues order by created_at, id',
-  );
-  return rows.map(toSummary);
+  return (await db.query(SUMMARIES_SQL)).map(toSummary);
 }
 
 /** Le ticket complet, ou null s'il n'existe pas. */
 export async function readIssue(db: DoltDatabase, id: string): Promise<IssueRecord | null> {
-  const rows = await db.query(
-    `select id, title, description, design, acceptance_criteria, notes, issue_type, status, priority, assignee,
-            created_at, updated_at, closed_at, close_reason
-     from issues where id = ${sqlString(id)}`,
-  );
-  const row = rows[0];
+  return toRecord((await db.query(issueSql(id)))[0]);
+}
+
+/** Toutes les dépendances courantes du Projet. */
+export async function readDependencies(db: DoltDatabase): Promise<DependencyRecord[]> {
+  return toDependencies(await db.query(DEPENDENCIES_SQL));
+}
+
+export async function readLabels(db: DoltDatabase, issueId: string): Promise<string[]> {
+  return toLabels(await db.query(labelsSql(issueId)));
+}
+
+export async function readComments(db: DoltDatabase, issueId: string): Promise<CommentRecord[]> {
+  return toComments(await db.query(commentsSql(issueId)));
+}
+
+/** Ce que le kanban et la fiche de n'importe quel ticket du Projet ont en commun : tous les tickets, résumés, et toutes les dépendances. */
+export interface IssueBase {
+  summaries: IssueSummary[];
+  dependencies: DependencyRecord[];
+}
+
+/**
+ * Les résumés des tickets et les dépendances du Projet, lus dans UN processus `dolt` (et une seule transaction : un seul état de
+ * la base) au lieu de deux. Mêmes requêtes que `readIssueSummaries` et `readDependencies`.
+ */
+export async function readIssueBase(db: DoltDatabase): Promise<IssueBase> {
+  const [summaries, dependencies] = await queryAll(db, [SUMMARIES_SQL, DEPENDENCIES_SQL]);
+  return { summaries: (summaries ?? []).map(toSummary), dependencies: toDependencies(dependencies ?? []) };
+}
+
+/** Ce qui est propre à la fiche d'un ticket : le ticket complet (null s'il n'existe pas), ses étiquettes et ses commentaires. */
+export interface IssueParts {
+  record: IssueRecord | null;
+  labels: string[];
+  comments: CommentRecord[];
+}
+
+/**
+ * Le ticket, ses étiquettes et ses commentaires, lus dans UN processus `dolt` au lieu de trois. Mêmes requêtes que `readIssue`,
+ * `readLabels` et `readComments`.
+ */
+export async function readIssueParts(db: DoltDatabase, id: string): Promise<IssueParts> {
+  const [issue, labels, comments] = await queryAll(db, [issueSql(id), labelsSql(id), commentsSql(id)]);
+  return { record: toRecord(issue?.[0]), labels: toLabels(labels ?? []), comments: toComments(comments ?? []) };
+}
+
+function toRecord(row: Row | undefined): IssueRecord | null {
   if (!row) return null;
   return {
     ...toSummary(row),
@@ -98,27 +151,16 @@ export async function readIssue(db: DoltDatabase, id: string): Promise<IssueReco
   };
 }
 
-/** Toutes les dépendances courantes du Projet. */
-export async function readDependencies(db: DoltDatabase): Promise<DependencyRecord[]> {
-  const rows = await db.query('select * from dependencies');
-  return rows.flatMap((row) => toDependency(row) ?? []);
-}
+const toDependencies = (rows: Row[]): DependencyRecord[] => rows.flatMap((row) => toDependency(row) ?? []);
 
-export async function readLabels(db: DoltDatabase, issueId: string): Promise<string[]> {
-  const rows = await db.query(`select label from labels where issue_id = ${sqlString(issueId)} order by label`);
-  return rows.map((row) => asText(row.label));
-}
+const toLabels = (rows: Row[]): string[] => rows.map((row) => asText(row.label));
 
-export async function readComments(db: DoltDatabase, issueId: string): Promise<CommentRecord[]> {
-  const rows = await db.query(
-    `select author, \`text\`, created_at from comments where issue_id = ${sqlString(issueId)} order by created_at, id`,
-  );
-  return rows.map((row) => ({
+const toComments = (rows: Row[]): CommentRecord[] =>
+  rows.map((row) => ({
     author: asText(row.author),
     text: asText(row.text),
     createdAt: parseDoltDate(row.created_at),
   }));
-}
 
 function toSummary(row: Row): IssueSummary {
   return {

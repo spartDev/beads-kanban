@@ -9,6 +9,7 @@ import type {
   MetricsResponse,
   ProjectsResponse,
 } from '../shared/api';
+import { isAbortError } from './abort';
 import { type ChronologyService, createChronologyService } from './chronology/service';
 import { InvalidMetricsQueryError, parseMetricsQuery } from './metrics/query';
 import type { MetricsService } from './metrics/service';
@@ -19,7 +20,12 @@ import {
   ProjectUnreadableError,
 } from './projects/service';
 
-/** Routes `/api/projects…` et `/api/metrics` ; les erreurs des services deviennent des réponses JSON (400, 404, 503). */
+/**
+ * Routes `/api/projects…` et `/api/metrics` ; les erreurs des services deviennent des réponses JSON (400, 404, 503). Chaque lecture
+ * reçoit le signal de sa requête (`req.signal`, abandonné quand le client ferme la connexion avant la réponse, par exemple quand
+ * l'interface annule un `fetch`) : les lectures Dolt qu'il attendait seules sont retirées de la file ; celles dont le processus est
+ * lancé vont au bout, sans être tuées, et leur résultat est jeté (ADR 0003).
+ */
 export async function registerApi(
   app: FastifyInstance,
   projects: ProjectService,
@@ -27,6 +33,8 @@ export async function registerApi(
   chronology: ChronologyService = createChronologyService(projects),
 ): Promise<void> {
   app.setErrorHandler((error: FastifyError, _req, reply) => {
+    // Le client est parti (sa requête a été abandonnée) : personne n'attend la réponse, et ce n'est pas une panne.
+    if (isAbortError(error)) return send(reply, 499, 'Requête abandonnée par le client.');
     if (error instanceof InvalidMetricsQueryError || error instanceof InvalidPeriodError) {
       return send(reply, 400, error.message);
     }
@@ -43,25 +51,25 @@ export async function registerApi(
 
   app.get<{ Params: { projectId: string } }>(
     '/api/projects/:projectId/issues',
-    async (req): Promise<IssuesResponse> => ({ issues: await projects.issues(req.params.projectId) }),
+    async (req): Promise<IssuesResponse> => ({ issues: await projects.issues(req.params.projectId, { signal: req.signal }) }),
   );
 
   app.get<{ Querystring: Record<string, unknown> }>(
     '/api/metrics',
-    (req): Promise<MetricsResponse> => metrics.compute(parseMetricsQuery(req.query)),
+    (req): Promise<MetricsResponse> => metrics.compute(parseMetricsQuery(req.query), { signal: req.signal }),
   );
 
   app.get<{ Params: { projectId: string; issueId: string } }>(
     '/api/projects/:projectId/issues/:issueId',
     async (req): Promise<IssueResponse> => ({
-      issue: await projects.issue(req.params.projectId, req.params.issueId),
+      issue: await projects.issue(req.params.projectId, req.params.issueId, { signal: req.signal }),
     }),
   );
 
   app.get<{ Params: { projectId: string; issueId: string } }>(
     '/api/projects/:projectId/issues/:issueId/chronology',
     async (req): Promise<IssueChronologyResponse> => ({
-      chronology: await chronology.chronology(req.params.projectId, req.params.issueId),
+      chronology: await chronology.chronology(req.params.projectId, req.params.issueId, { signal: req.signal }),
     }),
   );
 }

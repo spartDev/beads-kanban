@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { request } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { Writable } from 'node:stream';
+import { describe, expect, it, vi } from 'vitest';
 import { InvalidPeriodError } from '../domain/calendar';
 import type { TicketHistory } from '../domain/flow';
 import type { Issue, IssueDetail, MetricsResponse, Project } from '../shared/api';
+import { ReadAborted } from './abort';
 import { createMetricsService, type MetricsQuery, type MetricsService } from './metrics/service';
 import {
   IssueNotFoundError,
@@ -488,5 +492,136 @@ describe('API des métriques', () => {
 
     expect(res.statusCode).toBe(500);
     expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'boum' });
+  });
+});
+
+describe('API : requêtes abandonnées par le client (bdesk-38k.20)', () => {
+  const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  /** Un service qui ne répond que quand le test le décide, et qui note le signal reçu ; il finit en AbortError si ce signal est abandonné. */
+  function hanging() {
+    const seen: { signal?: AbortSignal; calls: number; answer: () => void } = { calls: 0, answer: () => {} };
+    const wait = <T>(value: T) => (_projectId: string, ...rest: unknown[]) => {
+      const options = rest.at(-1) as { signal?: AbortSignal } | undefined;
+      seen.calls++;
+      seen.signal = options?.signal;
+      return new Promise<T>((resolve, reject) => {
+        seen.answer = () => resolve(value);
+        options?.signal?.addEventListener('abort', () => reject(new ReadAborted()));
+      });
+    };
+    return { seen, wait };
+  }
+
+  const ROUTES: [string, string, (wait: ReturnType<typeof hanging>['wait']) => Partial<ProjectService>][] = [
+    ['la liste des tickets', '/api/projects/beads-desktop/issues', (wait) => ({ issues: wait([issue]) })],
+    ['la fiche d’un ticket', '/api/projects/beads-desktop/issues/bdesk-38k.4', (wait) => ({ issue: wait(detail) })],
+    ['la chronologie d’un ticket', '/api/projects/beads-desktop/issues/bdesk-38k.4/chronology', (wait) => ({ histories: wait([]) })],
+  ];
+
+  it.each(ROUTES)('%s : le service reçoit un signal, abandonné quand le client part et pas avant', async (_name, url, stub) => {
+    const { seen, wait } = hanging();
+    const app = buildServer({ config, projects: serviceWith(stub(wait)) });
+    const controller = new AbortController();
+    const reading = app.inject({ method: 'GET', url, signal: controller.signal }).catch((e: unknown) => e);
+    await sleep(30);
+    expect(seen.calls).toBeGreaterThan(0);
+    expect(seen.signal).toBeInstanceOf(AbortSignal);
+    expect(seen.signal?.aborted).toBe(false); // le client attend toujours
+
+    controller.abort();
+    await reading;
+
+    // La lecture de l'historique d'une chronologie n'est abandonnée qu'après le délai de grâce de son analyse (ANALYSIS_GRACE_MS, 1 s) :
+    // le parcours rapide des tickets la redemande aussitôt (le délai lui-même est gardé, en temps simulé, par chronology/service.test.ts).
+    await vi.waitFor(() => expect(seen.signal?.aborted).toBe(true), { timeout: 10_000 });
+    await app.close();
+  });
+
+  it('GET /api/metrics donne aussi le signal au service de métriques', async () => {
+    let received: AbortSignal | undefined;
+    const metrics: MetricsService = {
+      compute: (_query, options) => {
+        received = options?.signal;
+        return new Promise((_resolve, reject) => options?.signal?.addEventListener('abort', () => reject(new ReadAborted())));
+      },
+    };
+    const app = buildServer({ config, projects: serviceWith(), metrics });
+    const controller = new AbortController();
+    const reading = app.inject({ method: 'GET', url: '/api/metrics', signal: controller.signal }).catch((e: unknown) => e);
+    await sleep(30);
+    expect(received?.aborted).toBe(false);
+
+    controller.abort();
+    await reading;
+    await sleep(10);
+
+    expect(received?.aborted).toBe(true);
+    await app.close();
+  });
+
+  it('un client qui attend jusqu’au bout reçoit sa réponse, le signal n’ayant pas été abandonné', async () => {
+    const { seen, wait } = hanging();
+    const app = buildServer({ config, projects: serviceWith({ issue: wait(detail) }) });
+    const response = app.inject({ method: 'GET', url: '/api/projects/beads-desktop/issues/bdesk-38k.4' });
+    await sleep(30);
+
+    seen.answer();
+    const res = await response;
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ issue: detail });
+    expect(seen.signal?.aborted).toBe(false);
+    await app.close();
+  });
+
+  it('sur une vraie connexion : le service est interrompu quand le client ferme la sienne, et le serveur n’écrit aucune erreur', async () => {
+    const { seen, wait } = hanging();
+    const logs: string[] = [];
+    const stream = new Writable({
+      write(chunk: Buffer, _encoding, done) {
+        logs.push(chunk.toString());
+        done();
+      },
+    });
+    const app = buildServer({ config, projects: serviceWith({ issue: wait(detail) }), logger: { level: 'error', stream } });
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const { port } = app.server.address() as AddressInfo;
+    const client = request({ host: '127.0.0.1', port, path: '/api/projects/beads-desktop/issues/bdesk-38k.4' });
+    client.on('error', () => undefined);
+    client.end();
+    for (let waited = 0; seen.calls === 0; waited += 5) {
+      if (waited > 2_000) throw new Error('le serveur n’a pas appelé le service');
+      await sleep(5);
+    }
+    expect(seen.signal?.aborted).toBe(false);
+
+    client.destroy(); // le navigateur annule son fetch : la connexion se ferme
+    for (let waited = 0; seen.signal?.aborted === false; waited += 5) {
+      if (waited > 2_000) throw new Error('le signal n’a pas été abandonné');
+      await sleep(5);
+    }
+    await sleep(30);
+
+    expect(seen.signal?.aborted).toBe(true);
+    expect(logs).toEqual([]);
+    await app.close();
+  });
+
+  it('un abandon n’est pas une panne : aucune réponse 500 ni 503 n’en sort', async () => {
+    const app = buildServer({
+      config,
+      projects: serviceWith({
+        issue: async () => {
+          throw new ReadAborted();
+        },
+      }),
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/projects/beads-desktop/issues/bdesk-38k.4' });
+
+    expect(res.statusCode).not.toBe(500);
+    expect(res.statusCode).not.toBe(503);
+    await app.close();
   });
 });

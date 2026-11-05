@@ -8,7 +8,20 @@ export default defineConfig({
   build: { outDir: '../../dist/web', emptyOutDir: true },
   server: {
     // En développement, l'API (src/server, `--dev`) tourne à part : tout ce qui commence par /api lui est transmis.
-    proxy: { '/api': { target: 'http://127.0.0.1:5179' } },
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:5179',
+        // http-proxy ne relaie pas à l'API le départ du navigateur tant qu'elle n'a pas commencé à répondre (sa requête est déjà lue
+        // quand il part) : sans cela, l'API lirait Dolt pour un onglet parti (bdesk-38k.20). Un flux d'événements, lui, se ferme déjà.
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq, _req, res) => {
+            res.on('close', () => {
+              if (!res.writableFinished) proxyReq.destroy();
+            });
+          });
+        },
+      },
+    },
   },
   test: {
     root: '.',

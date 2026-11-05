@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { type DoltDatabase, DoltQueryError, type Row } from './client';
+import { type DoltDatabase, DoltQueryError, type QueryOptions, type Row } from './client';
 import {
   readComments,
   readDependencies,
   readHead,
   readIssue,
+  readIssueBase,
+  readIssueParts,
   readIssuePrefix,
   readIssueSummaries,
   readLabels,
@@ -172,5 +174,124 @@ describe('readHead', () => {
 
   it('signale une base dont HEAD est illisible comme une erreur de lecture', async () => {
     await expect(readHead(fakeDb([]))).rejects.toBeInstanceOf(DoltQueryError);
+  });
+});
+
+/**
+ * Une base factice qui sait grouper (`queryAll`), comme le vrai client : elle répond à chaque requête par `answer`, et garde
+ * les groupes reçus (une entrée par appel de `queryAll`), les requêtes seules et les options de chaque appel.
+ */
+function groupedDb(answer: (sql: string) => Row[] = () => []) {
+  const groups: string[][] = [];
+  const singles: string[] = [];
+  const options: (QueryOptions | undefined)[] = [];
+  const db: DoltDatabase = {
+    dir: '/projet',
+    async query(sql, queryOptions) {
+      singles.push(sql);
+      options.push(queryOptions);
+      return answer(sql);
+    },
+    async queryAll(sqls, queryOptions) {
+      groups.push([...sqls]);
+      options.push(queryOptions);
+      return sqls.map(answer);
+    },
+  };
+  return { db, groups, singles, options };
+}
+
+describe('lectures légères (bdesk-38k.20)', () => {
+  it('le HEAD et le préfixe passent par la voie légère : tout le reste en dépend, ils ne font pas la queue derrière les lectures lourdes', async () => {
+    const { db, options } = groupedDb((sql) => (sql.includes('hashof') ? [{ head: 'h1' }] : [{ value: 'xx' }]));
+
+    await readHead(db);
+    await readIssuePrefix(db);
+
+    expect(options).toEqual([{ lane: 'light' }, { lane: 'light' }]);
+  });
+});
+
+describe('readIssueBase : ce que le kanban et toutes les fiches du Projet partagent', () => {
+  const answer = (sql: string): Row[] =>
+    sql.includes('from dependencies')
+      ? [{ issue_id: 'xx-2', depends_on_issue_id: 'xx-1', type: 'blocks' }]
+      : [{ id: 'xx-1', title: 'T', issue_type: 'task', status: 'open', priority: 1, created_at: '2026-10-19 16:46:38', updated_at: '2026-10-19 16:46:38' }];
+
+  it('lit les résumés des tickets et les dépendances dans UN processus', async () => {
+    const { db, groups, singles } = groupedDb(answer);
+
+    const base = await readIssueBase(db);
+
+    expect(groups).toHaveLength(1);
+    expect(singles).toEqual([]);
+    expect(base.summaries.map((s) => s.id)).toEqual(['xx-1']);
+    expect(base.dependencies).toEqual([{ from: 'xx-2', to: 'xx-1', type: 'blocks' }]);
+  });
+
+  it('envoie les mêmes requêtes que readIssueSummaries et readDependencies', async () => {
+    const grouped = groupedDb(answer);
+    const single = fakeDb();
+
+    await readIssueBase(grouped.db);
+    await readIssueSummaries(single);
+    await readDependencies(single);
+
+    expect(grouped.groups[0]).toEqual(single.queries);
+  });
+
+  it('se replie sur une lecture par requête avec une base qui ne sait pas grouper', async () => {
+    const db = fakeDb([]);
+
+    expect(await readIssueBase(db)).toEqual({ summaries: [], dependencies: [] });
+    expect(db.queries).toHaveLength(2);
+  });
+});
+
+describe('readIssueParts : ce qui est propre à une fiche', () => {
+  const answer = (sql: string): Row[] => {
+    if (sql.includes('from labels')) return [{ label: 'backend' }, { label: 'urgent' }];
+    if (sql.includes('from comments')) return [{ author: 'tom', text: 'Salut', created_at: '2026-10-20 12:12:28' }];
+    return [{ id: 'xx-1', title: 'T', description: 'd', issue_type: 'task', status: 'open', priority: 1, created_at: '2026-10-19 16:46:38', updated_at: '2026-10-19 16:46:38' }];
+  };
+
+  it('lit le ticket, ses étiquettes et ses commentaires dans UN processus', async () => {
+    const { db, groups, singles } = groupedDb(answer);
+
+    const parts = await readIssueParts(db, 'xx-1');
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toHaveLength(3);
+    expect(singles).toEqual([]);
+    expect(parts.record).toMatchObject({ id: 'xx-1', description: 'd', design: '' });
+    expect(parts.labels).toEqual(['backend', 'urgent']);
+    expect(parts.comments).toEqual([{ author: 'tom', text: 'Salut', createdAt: new Date('2026-10-20T12:12:28Z') }]);
+  });
+
+  it('rend un ticket null quand il n’existe pas, sans faire échouer les étiquettes et les commentaires', async () => {
+    const { db } = groupedDb((sql) => (sql.includes('from issues') ? [] : []));
+
+    expect(await readIssueParts(db, 'xx-9')).toEqual({ record: null, labels: [], comments: [] });
+  });
+
+  it('envoie les mêmes requêtes que readIssue, readLabels et readComments, identifiant échappé', async () => {
+    const id = "x' or '1'='1";
+    const grouped = groupedDb();
+    const single = fakeDb();
+
+    await readIssueParts(grouped.db, id);
+    await readIssue(single, id);
+    await readLabels(single, id);
+    await readComments(single, id);
+
+    expect(grouped.groups[0]).toEqual(single.queries);
+    for (const sql of grouped.groups[0] ?? []) expect(sql).toContain("'x'' or ''1''=''1'");
+  });
+
+  it('se replie sur une lecture par requête avec une base qui ne sait pas grouper', async () => {
+    const db = fakeDb([]);
+
+    expect(await readIssueParts(db, 'xx-1')).toEqual({ record: null, labels: [], comments: [] });
+    expect(db.queries).toHaveLength(3);
   });
 });

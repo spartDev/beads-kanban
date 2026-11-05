@@ -1,4 +1,5 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -8,9 +9,10 @@ import { buildLegacyDatabase, createDatabase, day, hasBinary, isolatedDoltEnv, t
 import { discoverProjects } from '../projects/discovery';
 import { createProjectService } from '../projects/service';
 import { buildServer } from '../server';
-import { createDoltClient, type DoltDatabase, DoltQueryError } from './client';
+import { ReadAborted } from '../abort';
+import { createDoltClient, type DoltDatabase, DoltQueryError, queryAll } from './client';
 import { readTicketHistories } from './history';
-import { readComments, readDependencies, readIssue, readIssuePrefix, readIssueSummaries, readLabels } from './reader';
+import { readComments, readDependencies, readIssue, readIssueBase, readIssueParts, readIssuePrefix, readIssueSummaries, readLabels } from './reader';
 
 const at = (iso: string) => new Date(iso);
 const DAY = 24 * 3_600_000;
@@ -173,6 +175,52 @@ describe.skipIf(!hasBinary('dolt'))('Projets sur une vraie base Dolt', () => {
     expect(res.json()).toMatchObject({ statusCode: 404, error: 'Not Found' });
     expect(res.body).not.toMatch(/select|from issues|read only/i);
   });
+
+  /** Un binaire qui compte ses lancements puis passe la main au vrai `dolt` : chaque ligne du compteur est un processus. */
+  function countingBinary() {
+    const bin = mkdtempSync(join(tmpdir(), 'bdesk-counting-dolt-'));
+    const counter = join(bin, 'calls');
+    const binary = join(bin, 'dolt');
+    const real = execFileSync('which', ['dolt'], { encoding: 'utf8' }).trim();
+    writeFileSync(binary, `#!/bin/sh\necho x >> '${counter}'\nexec '${real}' "$@"\n`);
+    chmodSync(binary, 0o755);
+    return { binary, calls: () => (existsSync(counter) ? readFileSync(counter, 'utf8').split('\n').filter(Boolean).length : 0) };
+  }
+
+  // Un processus dolt coûte une centaine de millisecondes, bien plus que la requête : le nombre de processus fait la latence d'une
+  // rafale. Compté sur le vrai dolt, pas sur un faux client.
+  describe('nombre de processus dolt', { timeout: 30_000 }, () => {
+    it('une fiche en coûte deux (le ticket avec ses étiquettes et ses commentaires, et ce que le Projet partage), et la liste un', async () => {
+      const { binary, calls } = countingBinary();
+      const service = createProjectService(config(), { dolt: createDoltClient({ binary }) });
+      await service.list(); // la découverte lit le préfixe de chaque Projet
+      const scanned = calls();
+
+      const detail = await service.issue('projet-embedded', 't-1');
+      const afterIssue = calls();
+      const issues = await service.issues('projet-embedded');
+
+      expect(detail).toMatchObject({ id: 't-1', labels: ['backend'], comments: [{ text: 'Terminé, merci' }] });
+      expect(afterIssue - scanned).toBe(2);
+      expect(issues).toHaveLength(4);
+      expect(calls() - afterIssue).toBe(1);
+    });
+
+    it('cent fiches demandées ensemble ne lancent que quelques processus, et ne sont pas moins justes', async () => {
+      const { binary, calls } = countingBinary();
+      // Une seule place : tout ce qui n'a pas démarré attend, et les lectures identiques en file se partagent un processus.
+      const service = createProjectService(config(), { dolt: createDoltClient({ binary, maxConcurrent: 1 }) });
+      await service.list();
+      const scanned = calls();
+      const ids = ['t-1', 't-2', 't-3', 't-4'];
+
+      const details = await Promise.all(Array.from({ length: 100 }, (_, i) => service.issue('projet-embedded', ids[i % ids.length] ?? 't-1')));
+
+      expect(details.map((d) => d.id)).toEqual(Array.from({ length: 100 }, (_, i) => ids[i % ids.length]));
+      expect(details.filter((d) => d.id === 't-1').every((d) => d.labels.join() === 'backend')).toBe(true);
+      expect(calls() - scanned).toBeLessThanOrEqual(12); // il en fallait 500
+    }, 60_000);
+  });
 });
 
 /** Le garde-fou et la transaction en lecture seule, sur une vraie base Dolt jetable (jamais celle d'un vrai Projet). */
@@ -264,6 +312,206 @@ describe.skipIf(!hasBinary('dolt'))('lecture seule sur une vraie base Dolt', () 
     expect(error).toBeInstanceOf(DoltQueryError);
     expect((error as Error).message).toContain('iteration limit exceeded');
     expect((error as Error).message).not.toContain('select');
+  });
+});
+
+/**
+ * Lectures groupées (plusieurs requêtes, un processus), lectures abandonnées (processus laissé finir) et coût d'une fiche (bdesk-38k.20),
+ * sur de vraies bases Dolt jetables : ce que les faux binaires des autres tests ne peuvent pas prouver.
+ */
+describe.skipIf(!hasBinary('dolt'))('lectures groupées et abandonnées sur une vraie base Dolt', { timeout: 30_000 }, () => {
+  let dir: string;
+  let scratch: Scratch;
+  let db: DoltDatabase;
+  const count = () => Number(scratch.rows('select count(*) as c from t')[0]?.c);
+
+  beforeAll(() => {
+    dir = join(realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-grouped-'))), 'db');
+    scratch = createDatabase(isolatedDoltEnv(), dir);
+    scratch.sql('create table t (a int primary key, b varchar(10)); insert into t values (1, \'un\'), (2, \'deux\'), (3, \'trois\')');
+    scratch.commit(1, 'init');
+    db = createDoltClient().open(dir);
+  }, 60_000);
+
+  it('rend les lignes de chaque requête, dans l’ordre, comme des lectures séparées (une requête sans ligne comprise)', async () => {
+    const sqls = ['select a from t order by a', 'select a from t where a > 100', "select b from t where a = 2", 'show tables'];
+
+    const grouped = await queryAll(db, sqls);
+
+    expect(grouped).toEqual(await Promise.all(sqls.map((sql) => db.query(sql))));
+    expect(grouped[0]).toEqual([{ a: 1 }, { a: 2 }, { a: 3 }]);
+    expect(grouped[1]).toEqual([]);
+    expect(grouped[2]).toEqual([{ b: 'deux' }]);
+  });
+
+  it('une requête qui finit par un commentaire de fin de ligne n’avale pas la suivante', async () => {
+    const results = await queryAll(db, ['select 1 as a -- fin', 'select 2 as b # autre fin', 'select 3 as c']);
+
+    expect(results).toEqual([[{ a: 1 }], [{ b: 2 }], [{ c: 3 }]]);
+  });
+
+  it('refuse le groupe dont une requête n’est pas une lecture : rien n’est écrit', async () => {
+    await expect(queryAll(db, ['select 1', 'delete from t'])).rejects.toThrow('lecture seule');
+    await expect(queryAll(db, ['select 1', 'select 2; delete from t'])).rejects.toThrow('lecture seule');
+    await expect(queryAll(db, ["select 1 -- '\n; delete from t -- '", 'select 2'])).rejects.toThrow('lecture seule');
+
+    expect(count()).toBe(3);
+  });
+
+  it('la transaction en lecture seule couvre tout le groupe : Dolt refuse lui-même une écriture qui passerait en seconde position', () => {
+    expect(() => scratch.dolt('sql', '-q', 'start transaction read only; select 1;\n;\ndelete from t')).toThrow('READ ONLY transaction');
+
+    expect(count()).toBe(3);
+  });
+
+  it('un échec au milieu du groupe dit sa cause sans citer les requêtes', async () => {
+    const error = await queryAll(db, ['select a from t', 'select colonne_inconnue\n  from t', 'select b from t']).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DoltQueryError);
+    expect((error as Error).message).toContain('could not be found');
+    expect((error as Error).message).not.toMatch(/select|from t/);
+  });
+
+  it('readIssueBase et readIssueParts rendent ce que rendent les lectures séparées', async () => {
+    const legacy = join(realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-grouped-legacy-'))), 'db');
+    buildLegacyDatabase(isolatedDoltEnv(), legacy);
+    const reader = createDoltClient().open(legacy);
+
+    expect(await readIssueBase(reader)).toEqual({ summaries: await readIssueSummaries(reader), dependencies: await readDependencies(reader) });
+    expect(await readIssueParts(reader, 't-1')).toEqual({
+      record: await readIssue(reader, 't-1'),
+      labels: await readLabels(reader, 't-1'),
+      comments: await readComments(reader, 't-1'),
+    });
+    expect(await readIssueParts(reader, 't-inconnu')).toEqual({ record: null, labels: [], comments: [] });
+  }, 60_000);
+
+  describe('abandon : une lecture lancée va au bout, rien n’est tué', () => {
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+    const alive = (pid: number): boolean => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    async function until(condition: () => boolean, what: string, timeoutMs = 20_000): Promise<void> {
+      for (let waited = 0; !condition(); waited += 25) {
+        if (waited > timeoutMs) throw new Error(`jamais vrai : ${what}`);
+        await sleep(25);
+      }
+    }
+    /** Ce que dolt laisse dans `.dolt/noms` quand on le tue pendant qu'il écrit `manifest` : un fichier temporaire que personne ne nettoie. */
+    const residues = () => readdirSync(join(dir, '.dolt', 'noms')).filter((name) => name.startsWith('nbs_manifest_'));
+    /** Un lanceur qui note le numéro de chaque processus puis devient le vrai dolt (`exec`, donc le même numéro) : de quoi savoir quand ils ont tous fini. */
+    function launcher() {
+      const folder = mkdtempSync(join(tmpdir(), 'bdesk-launcher-'));
+      const log = join(folder, 'pids');
+      const binary = join(folder, 'dolt');
+      writeFileSync(binary, `#!/bin/sh\necho $$ >> '${log}'\nexec dolt "$@"\n`);
+      chmodSync(binary, 0o755);
+      const pids = () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean).map(Number) : []);
+      return { binary, pids, finished: () => pids().every((pid) => !alive(pid)) };
+    }
+
+    it('une lecture abandonnée en cours va au bout sans être tuée : le demandeur est libéré aussitôt, la base reste saine, lisible tout de suite, et inchangée', async () => {
+      const { binary, pids, finished } = launcher();
+      const reader = createDoltClient({ binary }).open(dir);
+      const controller = new AbortController();
+      const reading = reader.query('select sleep(1.5) as zzz', { signal: controller.signal }).catch((e: unknown) => e);
+      await until(() => pids().length === 1, 'dolt est lancé');
+      await sleep(400); // il dort
+
+      controller.abort();
+      const error = await reading;
+      const aliveWhenReleased = alive(pids()[0] ?? 0);
+
+      expect(error).toBeInstanceOf(ReadAborted);
+      expect(aliveWhenReleased).toBe(true); // le demandeur est libéré alors que le processus dort encore (il n'attend pas la fin du sommeil)
+      await sleep(100);
+      expect(alive(pids()[0] ?? 0)).toBe(true); // et ce processus n'est pas tué
+      expect(await db.query('select count(*) as c from t')).toEqual([{ c: 3 }]); // lisible tout de suite
+      await until(finished, 'le processus a fini de lui-même');
+      expect(residues()).toEqual([]);
+      expect(count()).toBe(3);
+    });
+
+    // Une lecture n'est pas sans écriture : `dolt sql` réécrit `journal.idx` et `manifest` en ouvrant la base (ADR 0003, « Consequences »).
+    // Un lecteur tué à ce moment laisse l'index incomplet et, par fichier temporaire, un `nbs_manifest_…` que Dolt ne nettoie jamais :
+    // c'est pourquoi une lecture lancée n'est plus jamais tuée par un abandon.
+    it('douze lectures abandonnées en vol vont au bout : fsck sans problème, mêmes données, même HEAD, aucun nbs_manifest_', async () => {
+      const { binary, pids, finished } = launcher();
+      const reader = createDoltClient({ binary, maxConcurrent: 12 }).open(dir);
+      const head = scratch.rows("select hashof('HEAD') as h")[0]?.h;
+      const controllers = Array.from({ length: 12 }, () => new AbortController());
+      const readings = controllers.map((controller, i) => reader.query(`select sleep(1) as z${i}`, { signal: controller.signal }).catch((e: unknown) => e));
+      await until(() => pids().length === 12, 'les douze processus sont lancés');
+      await sleep(300);
+
+      for (const controller of controllers) controller.abort();
+      const errors = await Promise.all(readings);
+
+      for (const error of errors) expect(error).toBeInstanceOf(ReadAborted);
+      await sleep(200); // le temps qu'un éventuel kill arrive
+      expect(pids().every((pid) => alive(pid))).toBe(true); // aucun n'est tué…
+      await until(finished, 'les douze processus ont fini d’eux-mêmes'); // …ils vont au bout
+      expect(residues()).toEqual([]);
+      expect(scratch.dolt('fsck')).toContain('No problems found');
+      expect(count()).toBe(3);
+      expect(scratch.rows("select hashof('HEAD') as h")[0]?.h).toBe(head);
+      expect(scratch.rows('select a from t order by a')).toEqual([{ a: 1 }, { a: 2 }, { a: 3 }]);
+    }, 60_000);
+
+    // Le scénario qui laissait des dizaines de fichiers : un parcours rapide des tickets, chaque lecture abandonnée à un âge différent,
+    // avant l'ouverture de la base, pendant, et pendant sa fermeture (les deux instants où `manifest` est réécrit par un fichier temporaire).
+    it('un parcours rapide avec abandons ne laisse aucun fichier nbs_manifest_ dans .dolt/noms : les lectures lancées vont au bout', async () => {
+      const { binary, pids, finished } = launcher();
+      const reader = createDoltClient({ binary }).open(dir);
+      expect(residues()).toEqual([]);
+
+      for (let wave = 0; wave < 12; wave++) {
+        // Six lectures à la fois (les six places), abandonnées de 30 à 130 ms après leur lancement.
+        const readings = Array.from({ length: 6 }, (_, i) => {
+          const controller = new AbortController();
+          setTimeout(() => controller.abort(), 30 + ((wave * 6 + i) * 17) % 101);
+          return reader.query(`select ${wave * 6 + i} as n`, { signal: controller.signal }).catch((e: unknown) => e);
+        });
+        await Promise.all(readings);
+        await until(finished, 'les processus de la vague ont fini d’eux-mêmes');
+      }
+      await sleep(400); // un processus à peine lancé n'a peut-être pas encore noté son numéro
+      await until(finished, 'plus aucun processus ne tourne');
+
+      expect(residues()).toEqual([]);
+      expect(pids().length).toBeGreaterThanOrEqual(48); // la plupart des 72 lectures ont été lancées : sans cela le test ne prouverait rien
+      expect(scratch.dolt('fsck')).toContain('No problems found');
+      expect(scratch.rows('select a from t order by a')).toEqual([{ a: 1 }, { a: 2 }, { a: 3 }]);
+    }, 60_000);
+
+    // Ce que laisse tout processus dolt tué en cours d'ouverture (le délai de 60 s, qui reste, un Ctrl-C du terminal, un plantage) : l'index
+    // du journal est un cache que dolt reconstruit. Si une version de dolt cessait de le tolérer incomplet, ou ne le créait plus, ce test
+    // tomberait et les textes de l'ADR 0003 sur ce que laisse un processus tué seraient à revoir.
+    it('le journal.idx qu’un lecteur tué laisse tronqué, vide ou absent est reconstruit par la lecture suivante : mêmes lignes, fsck sans problème', async () => {
+      const index = join(dir, '.dolt', 'noms', 'journal.idx');
+      expect(existsSync(index)).toBe(true);
+      const full = statSync(index).size;
+      const expected = [{ a: 1 }, { a: 2 }, { a: 3 }];
+      const damages: [string, () => void][] = [
+        ['tronqué', () => truncateSync(index, Math.floor(full * 0.6))],
+        ['vide', () => truncateSync(index, 0)],
+        ['absent', () => rmSync(index)],
+      ];
+
+      for (const [state, damage] of damages) {
+        damage();
+        expect(await db.query('select a from t order by a'), `index ${state}`).toEqual(expected);
+        expect(scratch.rows('select a from t order by a'), `index ${state}, lecture directe`).toEqual(expected);
+      }
+
+      expect(scratch.dolt('fsck')).toContain('No problems found');
+      expect(count()).toBe(3);
+    });
   });
 });
 

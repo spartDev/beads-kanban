@@ -16,6 +16,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { isAbortError, ReadAborted } from '../abort';
+import { Flight } from '../flight';
 import { DoltNotFoundError, DoltQueryError } from './errors';
 import { assertReadOnly, READ_ONLY_PREFIX } from './read-only';
 
@@ -24,16 +26,56 @@ export { DoltNotFoundError, DoltQueryError };
 /** Ligne de résultat de `dolt sql -r json` : les colonnes NULL sont absentes de l'objet. */
 export type Row = Record<string, unknown>;
 
-/** Une base Dolt (dossier contenant `.dolt/`), interrogée en lecture seule. */
+/**
+ * Les voies des lectures (bdesk-38k.20). Chacune a ses places et sa file : une voie pleine ne retarde pas les autres, et ce dont
+ * tout dépend ne fait pas la queue derrière ce qui dure.
+ */
+export type Lane = 'normal' | 'light' | 'analysis';
+
+/** Comment une lecture est ordonnancée. */
+export interface QueryOptions {
+  /**
+   * La voie de la lecture (défaut : `normal`, au plus `maxConcurrent` processus : tickets, fiches).
+   * - `light` (au plus `maxLight` processus) : une lecture de quelques dizaines de millisecondes dont tout le reste dépend, le
+   *   hash du HEAD, qui invalide les caches, et le préfixe des tickets, que lit la découverte des Projets, que toute requête attend ;
+   * - `analysis` (au plus `maxAnalysis` processus) : une lecture lourde de l'historique, dont le résultat est partagé par toutes
+   *   les requêtes du Projet (cache par HEAD) : elle ne fait pas la queue derrière les lectures d'un seul ticket, ni ne la leur fait faire.
+   */
+  lane?: Lane;
+  /**
+   * Abandon du demandeur (le client HTTP est parti) : `query` rejette aussitôt par une `ReadAborted`. La lecture quitte la file si
+   * elle attend encore, et ne part jamais ; si son processus est déjà lancé, il va au bout, sans être tué, et son résultat est jeté
+   * (il garde sa place jusqu'à sa fin). Les demandeurs d'une même lecture partagée ne l'abandonnent qu'ensemble (voir ci-dessous) :
+   * un seul qui l'attend encore la laisse finir pour lui.
+   */
+  signal?: AbortSignal;
+}
+
+/**
+ * Une base Dolt (dossier contenant `.dolt/`), interrogée en lecture seule.
+ *
+ * Deux lectures identiques (même base, mêmes requêtes, même voie) qui attendent encore une place ne font qu'un processus et
+ * partagent ses lignes (qu'il ne faut donc pas modifier) : aucune des deux n'a lu quoi que ce soit, le résultat est celui de
+ * l'instant où le processus part, donc postérieur à leur arrivée. Une lecture déjà partie n'est jamais jointe : qui arrive
+ * après elle lit à son tour, car elle a pu précéder un commit.
+ */
 export interface DoltDatabase {
   readonly dir: string;
   /**
    * Exécute une seule requête de lecture (SELECT, SHOW, DESCRIBE, EXPLAIN, WITH … SELECT) et renvoie ses lignes.
    * Un échec est une `DoltQueryError` (ou une `DoltNotFoundError`), jamais une erreur brute de Node : son message
    * citerait la requête, qui n'a pas sa place dans une réponse HTTP. Le refus du garde-fou (`ReadOnlyViolation`)
-   * est une `DoltQueryError`, lui aussi sans la requête.
+   * est une `DoltQueryError`, lui aussi sans la requête. Un abandon (`options.signal`) est une `ReadAborted`.
    */
-  query(sql: string): Promise<Row[]>;
+  query(sql: string, options?: QueryOptions): Promise<Row[]>;
+  /**
+   * Plusieurs lectures dans UN processus `dolt` (et une seule transaction en lecture seule, donc un seul état de la base),
+   * pour qui en enchaîne plusieurs : un processus coûte une centaine de millisecondes, bien plus que chaque requête.
+   * Renvoie les lignes de chaque requête, dans l'ordre. Chacune passe le garde-fou lexical à son tour, avant
+   * que dolt ne soit lancé : une seule qui n'est pas une lecture simple fait refuser le groupe. Optionnel pour les bases
+   * factices ; utiliser `queryAll(db, …)`, qui se replie sur une lecture par requête.
+   */
+  queryAll?(sqls: readonly string[], options?: QueryOptions): Promise<Row[][]>;
 }
 
 export interface DoltClientOptions {
@@ -49,7 +91,11 @@ export interface DoltClientOptions {
   maxOutputBytes?: number;
   /** Nombre maximal de processus `dolt` simultanés (défaut : 6). */
   maxConcurrent?: number;
-  /** Nombre maximal de lectures en attente d'un processus libre (défaut : 1000) ; au-delà, elles échouent aussitôt. */
+  /** Nombre maximal de processus `dolt` simultanés pour les lectures légères (voie `light`), en plus de `maxConcurrent` (défaut : 4). */
+  maxLight?: number;
+  /** Nombre maximal de processus `dolt` simultanés pour les lectures d'historique (voie `analysis`), en plus de `maxConcurrent` (défaut : 6, comme avant : le calcul à froid des métriques de plusieurs Projets n'en est pas ralenti). */
+  maxAnalysis?: number;
+  /** Nombre maximal de lectures en attente d'un processus libre, dans chaque voie (défaut : 1000) ; au-delà, elles échouent aussitôt. */
   maxQueued?: number;
   /**
    * Dossier de configuration globale de dolt (`DOLT_ROOT_PATH`). Par défaut un dossier privé de l'app, qui
@@ -78,6 +124,8 @@ export function createDoltClient(options: DoltClientOptions = {}): DoltClient {
     timeoutMs = 60_000,
     maxOutputBytes = 512 * 1024 * 1024,
     maxConcurrent = 6,
+    maxLight = 4,
+    maxAnalysis = 6,
     maxQueued = 1000,
     rootPath = process.env.DOLT_ROOT_PATH ? undefined : defaultRootPath(),
   } = options;
@@ -97,35 +145,120 @@ export function createDoltClient(options: DoltClientOptions = {}): DoltClient {
       );
     }
   }
-  const limit = createLimiter(maxConcurrent, maxQueued);
+  // Trois voies, chacune avec sa file : le HEAD et le préfixe ne font pas la queue derrière des lectures lourdes, ni l'historique derrière les fiches.
+  const limits: Record<Lane, ReturnType<typeof createLimiter>> = {
+    normal: createLimiter(maxConcurrent, maxQueued),
+    light: createLimiter(maxLight, maxQueued),
+    analysis: createLimiter(maxAnalysis, maxQueued),
+  };
+  /** Les lectures qui attendent encore une place, par voie, base et requêtes : les identiques les rejoignent (voir `DoltDatabase`). */
+  const queued = new Map<string, Flight<Row[][]>>();
 
-  async function query(dir: string, sql: string): Promise<Row[]> {
-    assertReadOnly(sql);
-    if (refusal) throw refusal;
+  /** Un processus pour toutes les requêtes, avec de nouvelles tentatives tant que la base est verrouillée par un autre processus. */
+  async function read(dir: string, sqls: readonly string[], lane: Lane, signal: AbortSignal, leftQueue: () => void): Promise<Row[][]> {
+    const limit = limits[lane];
     for (let attempt = 0; ; attempt++) {
       try {
-        return await limit(() => run(binary, dir, sql, env, timeoutMs, maxOutputBytes));
+        return await limit(() => {
+          leftQueue();
+          return run(binary, dir, sqls, env, timeoutMs, maxOutputBytes, signal);
+        }, signal);
       } catch (err) {
         if (err instanceof QueueFull) throw new DoltQueryError(`Trop de lectures Dolt en attente (plus de ${maxQueued}) : réessayez dans un instant.`, dir);
-        if (!(err instanceof DoltQueryError) || !err.locked || attempt >= retries) throw typed(err, binary, dir, sql);
-        await sleep(retryDelayMs * 2 ** attempt);
+        if (!(err instanceof DoltQueryError) || !err.locked || attempt >= retries) throw typed(err, binary, dir, sqls);
+        await sleep(retryDelayMs * 2 ** attempt, signal);
       }
     }
   }
 
-  return { open: (dir) => ({ dir, query: (sql) => query(dir, sql) }) };
+  async function execute(dir: string, sqls: readonly string[], { lane = 'normal', signal }: QueryOptions = {}): Promise<Row[][]> {
+    for (const sql of sqls) assertReadOnly(sql);
+    if (refusal) throw refusal;
+    if (sqls.length === 0) return [];
+    if (signal?.aborted) throw new ReadAborted();
+    const key = [lane, dir, ...sqls].join('\0');
+    let flight = queued.get(key);
+    if (!flight || flight.abandoned) {
+      const created: Flight<Row[][]> = new Flight((flightSignal) =>
+        read(dir, sqls, lane, flightSignal, () => {
+          if (queued.get(key) === created) queued.delete(key); // elle a sa place : qui arrive maintenant lira à son tour
+        }),
+      );
+      queued.set(key, created);
+      flight = created;
+      created.start();
+      void created.settled.then(() => {
+        if (queued.get(key) === created) queued.delete(key); // retirée de la file sans avoir jamais lu
+      });
+    }
+    return flight.join(signal);
+  }
+
+  return {
+    open: (dir) => ({
+      dir,
+      query: async (sql, queryOptions) => (await execute(dir, [sql], queryOptions))[0] ?? [],
+      queryAll: (sqls, queryOptions) => execute(dir, sqls, queryOptions),
+    }),
+  };
 }
 
-function run(binary: string, dir: string, sql: string, env: NodeJS.ProcessEnv, timeoutMs: number, maxOutputBytes: number): Promise<Row[]> {
+/** Plusieurs lectures d'une même base : dans un seul processus si la base sait grouper (`queryAll`), une par une sinon. */
+export function queryAll(db: DoltDatabase, sqls: readonly string[], options?: QueryOptions): Promise<Row[][]> {
+  return db.queryAll ? db.queryAll(sqls, options) : Promise.all(sqls.map((sql) => db.query(sql, options)));
+}
+
+/** La même base, dont les lectures reçoivent d'office `defaults` (le signal d'une requête HTTP, par exemple) ; chaque lecture peut les préciser. */
+export function withOptions(db: DoltDatabase, defaults: QueryOptions): DoltDatabase {
+  const { queryAll: grouped } = db;
+  return {
+    dir: db.dir,
+    query: (sql, options) => db.query(sql, { ...defaults, ...options }),
+    ...(grouped ? { queryAll: (sqls: readonly string[], options?: QueryOptions) => grouped.call(db, sqls, { ...defaults, ...options }) } : {}),
+  };
+}
+
+/** Entre deux instructions d'un groupe : le saut de ligne referme un commentaire de fin de ligne, qui avalerait sinon le « ; » et la suite. */
+const STATEMENT_SEPARATOR = '\n;\n';
+
+/**
+ * Lance `dolt sql` pour toutes les requêtes à la fois. Un abandon (`signal`) ne tue JAMAIS le processus : le demandeur est libéré
+ * aussitôt (`ReadAborted`, par `Flight.join` ou `abortable`), mais le processus va au bout, garde sa place jusqu'à sa fin, et son
+ * résultat est jeté.
+ *
+ * C'est que tuer un `dolt sql` laisse des traces dans la base de l'utilisateur. À l'ouverture de la base, il réécrit
+ * `.dolt/noms/journal.idx` et `manifest` ; `manifest` l'est par un fichier temporaire `nbs_manifest_…` qui existe 5 ms vers 40-60 ms
+ * après le lancement, puis à la fermeture. Un lecteur tué à ces instants (le cas d'un parcours rapide : une fiche dure environ 110 ms)
+ * laisse un fichier de 0 ou 148 octets que dolt ne lit ni ne nettoie jamais, pas même `dolt gc --full` : de 5 à 50 par parcours de
+ * 92 tickets sur deux Projets aux pas de 60 à 250 ms, qui s'accumulent sans fin dans la base (inertes pour `dolt`, mais jamais
+ * retirés). Un lecteur tué laisse aussi `journal.idx` tronqué, que dolt reconstruit à l'ouverture suivante. Laisser finir coûte plus de
+ * temps de processus (de 60 à 90 % sur un parcours rapide aux pas de 30 à 120 ms) sans perte de latence (ADR 0003 ; mesures dans
+ * `proofs/bdesk-38k.20.md`, §18).
+ *
+ * Les seuls arrêts qui restent sont ceux de `execFile` : le délai (`timeoutMs`, 60 s) et le dépassement de `maxBuffer`. Ils tuent
+ * (SIGTERM) un processus qui tourne depuis très longtemps ou qui écrit trop, donc en pleine lecture : ils peuvent laisser un
+ * `journal.idx` tronqué, comme un plantage, et un fichier temporaire seulement s'ils tombent dans les 5 ms de la fermeture.
+ */
+function run(
+  binary: string,
+  dir: string,
+  sqls: readonly string[],
+  env: NodeJS.ProcessEnv,
+  timeoutMs: number,
+  maxOutputBytes: number,
+  signal: AbortSignal,
+): Promise<Row[][]> {
   return new Promise((resolve, reject) => {
+    if (signal.aborted) return reject(new ReadAborted());
     execFile(
       binary,
-      ['sql', '-r', 'json', '-q', READ_ONLY_PREFIX + sql],
+      ['sql', '-r', 'json', '-q', READ_ONLY_PREFIX + sqls.join(STATEMENT_SEPARATOR)],
       { cwd: dir, env, timeout: timeoutMs, maxBuffer: maxOutputBytes, windowsHide: true },
       (error, stdout, stderr) => {
-        if (error) return reject(toError(error, binary, dir, withoutQuery(stderr, sql), timeoutMs, maxOutputBytes));
+        if (signal.aborted) return reject(new ReadAborted()); // abandonnée en route : son résultat est jeté, ni délai ni échec à rapporter
+        if (error) return reject(toError(error, binary, dir, sqls.reduce(withoutQuery, stderr), timeoutMs, maxOutputBytes));
         try {
-          resolve(parseRows(stdout));
+          resolve(parseResults(stdout, sqls.length));
         } catch (err) {
           reject(new DoltQueryError(`Sortie de dolt illisible : ${(err as Error).message}`, dir));
         }
@@ -134,14 +267,22 @@ function run(binary: string, dir: string, sql: string, env: NodeJS.ProcessEnv, t
   });
 }
 
-/** Les lignes du résultat. Avec la transaction en lecture seule, dolt écrit d'abord un document `{}` vide, puis le résultat. */
-function parseRows(stdout: string): Row[] {
-  const rows: Row[] = [];
-  for (const document of jsonDocuments(stdout)) {
-    const documentRows = (JSON.parse(document) as { rows?: unknown }).rows;
-    if (Array.isArray(documentRows)) for (const row of documentRows) rows.push(row as Row);
-  }
-  return rows;
+/**
+ * Les lignes de chaque requête. Avec la transaction en lecture seule, dolt écrit d'abord un document `{}` vide, puis un
+ * document par instruction (`{}` quand elle ne rend aucune ligne). Une requête seule se contente de les mettre bout à bout ;
+ * un groupe exige exactement un document par instruction : un compte différent (une instruction avalée par un commentaire,
+ * une sortie d'un autre format) décalerait les lignes d'une requête à l'autre, ce qui vaut mieux une erreur que des réponses fausses.
+ */
+function parseResults(stdout: string, statements: number): Row[][] {
+  const documents = jsonDocuments(stdout).map(rowsOf);
+  if (statements === 1) return [documents.flat()];
+  if (documents.length !== statements + 1) throw new Error(`${Math.max(documents.length - 1, 0)} résultat(s) pour ${statements} requêtes`);
+  return documents.slice(1);
+}
+
+function rowsOf(document: string): Row[] {
+  const rows = (JSON.parse(document) as { rows?: unknown }).rows;
+  return Array.isArray(rows) ? (rows as Row[]) : [];
 }
 
 /** Les documents JSON mis bout à bout dans la sortie de dolt. */
@@ -222,12 +363,12 @@ function withoutQuery(text: string, sql: string): string {
  * Toute erreur qui sort du client est typée. `execFile` lève lui-même des erreurs de Node : octet nul dans un
  * argument, requête trop longue pour la ligne de commande (E2BIG), option invalide… Leur message reprend la
  * requête (« Received "start transaction read only; select …" ») et finirait tel quel dans une réponse 500 :
- * on n'en garde que le code, et l'erreur d'origine reste dans `cause`.
+ * on n'en garde que le code, et l'erreur d'origine reste dans `cause`. Un abandon n'est pas une erreur de lecture : il passe tel quel.
  */
-function typed(err: unknown, binary: string, dir: string, sql: string): Error {
-  if (err instanceof DoltQueryError || err instanceof DoltNotFoundError) return err;
+function typed(err: unknown, binary: string, dir: string, sqls: readonly string[]): Error {
+  if (err instanceof DoltQueryError || err instanceof DoltNotFoundError || (err instanceof Error && isAbortError(err))) return err;
   let reason = 'erreur inconnue';
-  if (sql.includes('\0')) reason = 'la requête contient un octet nul, que dolt ne peut pas recevoir en argument';
+  if (sqls.some((sql) => sql.includes('\0'))) reason = 'la requête contient un octet nul, que dolt ne peut pas recevoir en argument';
   else if (err instanceof Error) reason = String((err as NodeJS.ErrnoException).code ?? err.name);
   return new DoltQueryError(`Impossible de lancer « ${binary} » : ${reason}.`, dir, false, err);
 }
@@ -352,14 +493,34 @@ function ensurePrivateDir(path: string): void {
 /** La file des lectures en attente est pleine. */
 class QueueFull extends Error {}
 
-/** Au plus `max` tâches à la fois ; `maxQueued` autres attendent leur tour, les suivantes échouent aussitôt (`QueueFull`). */
-function createLimiter(max: number, maxQueued: number): <T>(task: () => Promise<T>) => Promise<T> {
+/**
+ * Au plus `max` tâches à la fois ; `maxQueued` autres attendent leur tour, les suivantes échouent aussitôt (`QueueFull`).
+ * Une attente dont le signal est abandonné quitte la file aussitôt (`ReadAborted`) et ne prendra jamais de place.
+ */
+function createLimiter(max: number, maxQueued: number): <T>(task: () => Promise<T>, signal?: AbortSignal) => Promise<T> {
   let active = 0;
   const waiting: (() => void)[] = [];
-  return async (task) => {
-    if (active < max) active++;
-    else if (waiting.length >= maxQueued) throw new QueueFull();
-    else await new Promise<void>((resolve) => waiting.push(resolve)); // la place libérée nous est transmise
+  return async (task, signal) => {
+    if (signal?.aborted) throw new ReadAborted();
+    if (active < max) {
+      active++;
+    } else if (waiting.length >= maxQueued) {
+      throw new QueueFull();
+    } else {
+      await new Promise<void>((resolve, reject) => {
+        const grant = () => {
+          signal?.removeEventListener('abort', leave);
+          resolve(); // la place libérée nous est transmise
+        };
+        const leave = () => {
+          const index = waiting.indexOf(grant);
+          if (index >= 0) waiting.splice(index, 1);
+          reject(new ReadAborted());
+        };
+        signal?.addEventListener('abort', leave, { once: true });
+        waiting.push(grant);
+      });
+    }
     try {
       return await task();
     } finally {
@@ -370,7 +531,20 @@ function createLimiter(max: number, maxQueued: number): <T>(task: () => Promise<
   };
 }
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+/** Attend `ms` ; rejette par une `ReadAborted`, sans attendre la fin du délai, si `signal` est abandonné. */
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(new ReadAborted());
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new ReadAborted());
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 
 /** Échappe une valeur pour un littéral de chaîne SQL (dialecte MySQL de Dolt). */
 export function sqlString(value: string): string {

@@ -19,20 +19,10 @@ import { basename, dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDoltClient, DoltNotFoundError, DoltQueryError, parseDoltDate, sqlIdent, sqlString } from './client';
+import { fakeDolt } from '../testing/fake-dolt';
 import { ReadOnlyViolation } from './read-only';
 
 const LOCKED = 'database "beads" is locked by another dolt process; either clone the database to run a second server';
-
-/** Un faux binaire `dolt` : script shell qui rejoue `body`, avec un compteur d'appels dans `calls`. */
-function fakeDolt(body: string): { binary: string; dir: string; calls: () => number } {
-  const dir = mkdtempSync(join(tmpdir(), 'bdesk-fake-dolt-'));
-  const counter = join(dir, 'calls');
-  const binary = join(dir, 'dolt');
-  writeFileSync(binary, `#!/bin/sh\necho x >> '${counter}'\nn=$(wc -l < '${counter}' | tr -d ' ')\n${body}\n`);
-  chmodSync(binary, 0o755);
-  const calls = () => (existsSync(counter) ? readFileSync(counter, 'utf8').split('\n').filter(Boolean).length : 0);
-  return { binary, dir, calls };
-}
 
 const options = (binary: string) => ({ binary, retryDelayMs: 1, rootPath: join(tmpdir(), 'bdesk-fake-dolt-root') });
 
@@ -822,7 +812,8 @@ EOF`);
     const fake = fakeDolt(`echo start >> '${log}'; sleep 0.15; echo end >> '${log}'; echo '{"rows": []}'`);
     const db = createDoltClient({ ...options(fake.binary), maxConcurrent: 2 }).open(fake.dir);
 
-    await Promise.all(Array.from({ length: 6 }, () => db.query('select 1')));
+    // Des requêtes toutes différentes : deux requêtes identiques encore en file ne feraient qu'un processus (voir « lectures identiques »).
+    await Promise.all(Array.from({ length: 6 }, (_, i) => db.query(`select ${i}`)));
 
     let running = 0;
     let peak = 0;
@@ -838,7 +829,7 @@ EOF`);
     const fake = fakeDolt(`sleep 0.3; echo '{"rows": []}'`);
     const db = createDoltClient({ ...options(fake.binary), maxConcurrent: 1, maxQueued: 2 }).open(fake.dir);
 
-    const results = await Promise.allSettled(Array.from({ length: 6 }, () => db.query('select 1')));
+    const results = await Promise.allSettled(Array.from({ length: 6 }, (_, i) => db.query(`select ${i}`)));
 
     // Une lecture en cours et deux en attente passent ; les trois autres sont refusées.
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(3);
