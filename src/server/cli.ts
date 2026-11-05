@@ -26,7 +26,8 @@ await startServer({ config, webRoot, projects, port, allowAnyLocalPort: values.d
 // Le premier scan des Projets part dès que le serveur écoute, avant que le navigateur ne demande la liste (bdesk-38k.43) : c'est le seul qui lit
 // le préfixe de chaque Projet (les suivants ne relisent que ce qui a changé), et il se déroule pendant que le navigateur s'ouvre et charge
 // l'interface. Pas en développement : `tsx watch` relance le serveur à chaque modification du code, et personne n'attend la liste.
-// Un échec n'est pas gardé : la première demande de la liste réessaie.
+// Un échec n'est gardé que 500 ms, plus s'il se répète, au plus 5 s (`rescanIntervalMs`, bdesk-38k.47) : une demande de la liste qui arrive ensuite
+// réessaie, la nouvelle tentative automatique du client (une seconde après une 500) comprise.
 if (!values.dev) void projects.list().catch(() => undefined);
 
 const url = `http://${HOST}:${port}`;

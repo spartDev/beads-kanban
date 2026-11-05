@@ -63,8 +63,12 @@ export interface ProjectService {
 export interface ProjectServiceOptions {
   dolt?: DoltClient;
   /**
-   * Délai minimal entre deux scans provoqués par un Projet inconnu ou illisible (défaut : 5 s). Sans lui, chaque
-   * requête vers un identifiant qui n'existe pas relancerait un scan complet : un processus dolt par Projet.
+   * Délai minimal entre deux scans provoqués par un Projet inconnu ou illisible (défaut : 5 s), et plafond du délai qui suit un scan
+   * qui échoue. Sans lui, chaque requête vers un identifiant qui n'existe pas relancerait un scan complet : un processus dolt par
+   * Projet ; et, tant que les scans échouent, chaque requête, celle du sondage du HEAD comprise, en lancerait un autre (bdesk-38k.47).
+   * Un scan qui échoue n'est relancé qu'après 500 ms, puis après le double à chaque échec consécutif (1 s, 2 s, 4 s…), au plus
+   * `rescanIntervalMs` ; un scan réussi remet le délai à 500 ms. Pendant ce délai, ce qui attend un scan reçoit l'erreur du scan qui a
+   * échoué. 0 : aucun délai.
    */
   rescanIntervalMs?: number;
 }
@@ -73,35 +77,75 @@ export interface ProjectServiceOptions {
 const LIST_MAX_AGE_MS = 2_000;
 const LOOKUP_MAX_AGE_MS = 30_000;
 const RESCAN_MIN_INTERVAL_MS = 5_000;
+/**
+ * Le délai qui suit le premier échec d'un scan, doublé à chaque échec consécutif jusqu'à `rescanIntervalMs` (bdesk-38k.47). Assez court pour
+ * que la nouvelle tentative automatique du client (`shouldRetry`, une seconde après une 500) relance un scan et rattrape un échec passager ;
+ * assez croissant pour qu'un échec durable ne coûte, passé le début, qu'un scan par `rescanIntervalMs`.
+ */
+const FIRST_RETRY_AFTER_FAILURE_MS = 500;
+
+/**
+ * Un scan des Projets. `at` : l'instant où il a fini, celui où il a commencé tant qu'il dure. Une fenêtre (`maxAgeMs`) se compte depuis la FIN d'un scan :
+ * un scan plus long qu'elle serait sinon périmé à l'instant où il rend son résultat. `failed` : il a échoué ; on le garde, avec son erreur, jusqu'à ce que
+ * `retryAfterMs` se soit écoulé depuis sa fin (bdesk-38k.47).
+ */
+interface Scan {
+  at: number;
+  settled: boolean;
+  failed: boolean;
+  /** Pour un scan qui a échoué : le délai, depuis sa fin, avant que le suivant soit permis (`failures` plus bas). */
+  retryAfterMs: number;
+  discovery: Promise<Discovery>;
+}
 
 export function createProjectService(
   config: Config,
   { dolt = createDoltClient(), rescanIntervalMs = RESCAN_MIN_INTERVAL_MS }: ProjectServiceOptions = {},
 ): ProjectService {
-  /** `at` : l'instant où le scan a fini, celui où il a commencé tant qu'il dure. Une fenêtre (`maxAgeMs`) se compte depuis la FIN d'un scan : un scan plus long qu'elle serait sinon périmé à l'instant où il rend son résultat. */
-  let latest: { at: number; settled: boolean; discovery: Promise<Discovery> } | undefined;
+  /** Le dernier scan lancé, achevé ou non, qu'il ait réussi ou échoué (voir `discover`). */
+  let latest: Scan | undefined;
   /**
    * Le dernier scan achevé, même périmé ou remplacé par un scan en cours : de quoi servir un Projet connu pendant qu'un scan le revérifie, et de quoi
    * repartir : le scan suivant n'en relit que ce qui a changé (`previous`, bdesk-38k.43). Un scan qui échoue ne le remplace pas.
    */
   let known: Discovery | undefined;
+  /** Le nombre de scans qui ont échoué à la suite, jusqu'au dernier scan réussi : il fait croître le délai de `Scan.retryAfterMs`. */
+  let failures = 0;
 
-  /** Le dernier scan s'il a moins de `maxAgeMs` ou s'il est encore en cours (tous les appelants le partagent). */
+  /**
+   * Un scan achevé est dû quand il a plus de `maxAgeMs`, un scan qui a échoué quand son `retryAfterMs` s'est écoulé depuis sa fin, quel que soit
+   * `maxAgeMs`. Un écart négatif (l'horloge murale a reculé : synchronisation, changement à la main) ne dit rien de l'âge du scan, et le garderait
+   * jusqu'à ce que l'horloge rattrape l'instant où il a fini, son erreur comprise : le scan est dû, et celui qui le remplace se date de l'horloge d'à présent.
+   */
+  const isDue = (scan: Scan, maxAgeMs: number) => {
+    if (!scan.settled) return false;
+    const elapsed = Date.now() - scan.at;
+    return elapsed < 0 || (scan.failed ? elapsed >= scan.retryAfterMs : elapsed > maxAgeMs);
+  };
+
+  /**
+   * Le dernier scan s'il a moins de `maxAgeMs`, s'il est encore en cours (tous les appelants le partagent) ou s'il a échoué il y a moins de
+   * son `retryAfterMs` : il rend alors son erreur, au lieu de relancer un scan à chaque demande tant que l'échec dure (bdesk-38k.47).
+   */
   function discover(maxAgeMs: number): Promise<Discovery> {
-    if (!latest || (latest.settled && Date.now() - latest.at > maxAgeMs)) {
+    if (!latest || isDue(latest, maxAgeMs)) {
       // Un scan repart du dernier scan achevé : il ne relit que le préfixe des Projets nouveaux, illisibles ou dont la base a changé (bdesk-38k.43),
       // ce qui le ramène de l'ordre de 3 s à quelques dizaines de millisecondes pour 40 Projets (un processus dolt par Projet relu : 98 % du temps d'un scan).
-      const scan = { at: Date.now(), settled: false, discovery: discoverProjects(config, { dolt, previous: known }) };
+      const scan: Scan = { at: Date.now(), settled: false, failed: false, retryAfterMs: 0, discovery: discoverProjects(config, { dolt, previous: known }) };
       latest = scan;
       scan.discovery.then(
         (discovery) => {
           scan.settled = true;
           scan.at = Date.now(); // relecture de bdesk-38k.43 : la demande faite aussitôt après un scan de plus de 2 s en lançait un autre
+          failures = 0;
           known = discovery;
         },
         () => {
           scan.settled = true;
-          if (latest === scan) latest = undefined;
+          scan.failed = true;
+          scan.at = Date.now(); // le délai se compte depuis la fin du scan qui échoue : un scan lent qui échoue ne rouvre pas la porte aussitôt
+          scan.retryAfterMs = Math.min(FIRST_RETRY_AFTER_FAILURE_MS * 2 ** failures, rescanIntervalMs); // 500 ms, 1 s, 2 s, 4 s… jusqu'à `rescanIntervalMs`
+          failures++;
         },
       );
     }
@@ -113,7 +157,7 @@ export function createProjectService(
    * (stale-while-revalidate, bdesk-38k.28) : ni celui qui tourne, que toute demande arrivée pendant ce temps attendait entier (de l'ordre
    * de 2 s pour 40 Projets), ni celui que son âge rend dû (`lookupMaxAgeMs`), qui part alors en arrière-plan. Si ce scan retire le Projet
    * (dossier supprimé, masqué), la lecture réussit tant que sa base existe, ou échoue en Projet illisible ; il devient inconnu (404)
-   * quand le scan finit. L'échec d'un scan que personne n'attend ne concerne personne : le suivant réessaie (`discover`).
+   * quand le scan finit. L'échec d'un scan que personne n'attend ne concerne personne : le suivant réessaie, mais pas avant le délai de `discover`.
    *
    * Un Projet inconnu, ou illisible au dernier scan, attend le scan : c'est lui qui dit s'il a été ajouté ou réparé depuis. Il en lance
    * un s'il n'y en a pas, au plus une fois par `rescanIntervalMs` : le scan qui vient d'avoir lieu fait foi.

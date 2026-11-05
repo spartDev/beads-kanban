@@ -334,7 +334,8 @@ describe('lectures pendant un rescan des Projets (bdesk-38k.28)', () => {
       expect(await rescan).toMatchObject({ message: 'configuration illisible' });
       expect(await unknown).toMatchObject({ message: 'configuration illisible' }); // l'attente d'un Projet inconnu reçoit l'erreur du scan
       state.failing = false;
-      const retried = await service.list(); // un scan raté n'est pas gardé : le suivant en lance un autre
+      elapse(500); // un scan raté n'est gardé que 500 ms après le premier échec (bdesk-38k.47) : ensuite le suivant en lance un autre
+      const retried = await service.list();
       expect(retried.projects.map((p) => p.id)).toEqual(['a', 'b', 'c']);
       expect(state.failures).toBe(1);
     });
@@ -355,6 +356,7 @@ describe('lectures pendant un rescan des Projets (bdesk-38k.28)', () => {
         expect(unhandled).toEqual([]);
 
         state.failing = false;
+        elapse(500); // le délai qui suit le premier échec d'un scan (bdesk-38k.47)
         scan.hold();
         expect(await whileHeld(service.issues('b'))).toMatchObject([{ id: 'x-1' }]); // toujours servi
         await scan.reached(6); // et un nouveau rescan est parti : l'échec n'a pas bloqué les suivants
@@ -377,6 +379,7 @@ describe('lectures pendant un rescan des Projets (bdesk-38k.28)', () => {
       await settle();
       state.failing = false;
       project('d');
+      elapse(500); // le délai qui suit le premier échec d'un scan (bdesk-38k.47)
 
       expect(await service.issues('d')).toMatchObject([{ id: 'x-1' }]); // inconnu : attend un scan, qui part et réussit
     });

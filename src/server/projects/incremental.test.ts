@@ -405,7 +405,7 @@ describe('le service garde le dernier scan pour le suivant', () => {
     broken = true;
     await expect(service.list()).rejects.toThrow('racine illisible');
     broken = false;
-    elapse(3_000);
+    elapse(500); // un scan qui a échoué n'est relancé qu'au bout de 500 ms, après le premier échec (bdesk-38k.47)
 
     const { projects } = await service.list();
 
