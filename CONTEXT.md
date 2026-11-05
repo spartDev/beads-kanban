@@ -12,6 +12,10 @@ _Avoid_: repo, workspace, dépôt
 L'agrégation de tous les Projets suivis, utilisée pour les métriques transverses.
 _Avoid_: dashboard global, multi-repo
 
+**Dernier commit**:
+L'état d'un Projet tel que bd l'a enregistré en dernier dans sa base Dolt. C'est le seul état que l'application montre : ce que bd n'a pas encore commité n'en fait pas partie.
+_Avoid_: état courant, working set
+
 **Transition**:
 Un changement de statut d'un ticket, daté au moment où il a été enregistré dans l'historique du Projet. Les dates suivent l'ordre de cet historique, jamais l'inverse : quand l'horloge d'un enregistrement s'est trompée, en reculant ou en avançant, la Transition prend la date voisine qui respecte cet ordre, et aucune durée n'est négative.
 _Avoid_: événement, mouvement
@@ -152,5 +156,6 @@ Partie d'un Blocage où le ticket reste dans la même situation : _avant le prem
 - La **Prévision de fin** d'une **Epic** se tire de son **Débit récent**
 - Un **Bug d'origine** est relié à au moins une **Livraison**, qu'il met chacune en échec ; une **Livraison** peut avoir plusieurs Bugs d'origine
 - La **Vue globale** agrège tous les **Projets** suivis ; le kanban reste centré sur un **Projet**
+- Le kanban, le **Panneau de ticket**, les métriques et la **Chronologie** d'un **Projet** lisent le même **Dernier commit**
 - Un **Blocage** se découpe en **phases** : seule celle en cours de travail compte dans le **Cycle Time** ; celle d'avant le premier démarrage est l'**Attente de dépendance**
 - Le **Panneau de ticket** montre la **Chronologie** du ticket : ses **Transitions**, ses **Blocages** et leurs phases, avec les durées des métriques

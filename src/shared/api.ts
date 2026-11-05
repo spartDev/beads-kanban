@@ -215,7 +215,7 @@ export interface IssueBlockage {
 
 export interface IssueChronology {
   /**
-   * `history` : l'historique Dolt du Projet. `dates` : le ticket n'y figure pas (jamais commité, ou historique perdu) ; seules
+   * `history` : l'historique Dolt du Projet. `dates` : le ticket n'y figure pas (commité depuis qu'il a été lu, ou historique perdu) ; seules
    * ses dates de création et de clôture sont connues (repli de l'ADR 0001), sans Cycle Time ni Blocage.
    */
   source: 'history' | 'dates';

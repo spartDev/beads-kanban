@@ -134,7 +134,7 @@ function phasesOf(period: Interval, steps: Step[]): IssueBlockagePhase[] {
 }
 
 /**
- * Repli de l'ADR 0001 pour un ticket qui n'a aucun statut dans l'historique (jamais commité, ou historique perdu) : on ne
+ * Repli de l'ADR 0001 pour un ticket qui n'a aucun statut dans l'historique (commité depuis qu'il a été lu, ou historique perdu) : on ne
  * connaît que sa date de création et, s'il est fermé, sa date de clôture. Ni Cycle Time (`started_at` n'est pas fiable),
  * ni Blocage, ni Livraison : sans l'historique des liens, on ne sait pas si c'est un Abandon.
  */

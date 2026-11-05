@@ -2,7 +2,7 @@ import { ABANDON_LINK_TYPES } from '../../domain/abandon';
 import type { DependencyHistory, StatusSnapshot, TicketHistory } from '../../domain/flow';
 import { type DoltDatabase, parseDoltDate, sqlIdent, sqlString } from './client';
 import { ascendingDates } from './commit-dates';
-import { asText, TARGET_COLUMNS, toDependency } from './reader';
+import { asText, AT_HEAD, TARGET_COLUMNS, toDependency } from './reader';
 
 /** Un commit de l'historique Dolt, tel que listé par `dolt_log`. */
 export interface Commit {
@@ -78,13 +78,20 @@ const MAX_SCHEMA_ERAS = 4;
 const PLACED_AT = `case when ${sqlIdent('type')} in (${ABANDON_LINK_TYPES.map(sqlString).join(', ')}) then ${sqlIdent('created_at')} end as ${sqlIdent('created_at')}`;
 
 export interface ReadHistoryOptions {
-  /** L'instant de la lecture (défaut : l'horloge de la machine) : un commit daté après lui l'est forcément à tort (`ascendingDates`). */
+  /**
+   * L'instant de la lecture (défaut : l'horloge de la machine) : un commit daté après lui l'est forcément à tort (`ascendingDates`).
+   * Les dates rendues en dépendent, donc le cache par HEAD des métriques et des Chronologies n'est pas une fonction du seul HEAD : si
+   * l'horloge de la machine est en retard au moment d'une lecture, les commits récents restent ramenés à cet instant jusqu'au commit
+   * suivant ou au redémarrage (l'erreur est celle de l'horloge, pas davantage).
+   */
   now?: () => Date;
 }
 
 /**
  * Historique complet des tickets du Projet, au format attendu par `analyzeFlow` : statuts datés par les
- * commits Dolt, dépendances avec leur date d'ajout et de retrait. Seuls les tickets existants sont renvoyés.
+ * commits Dolt, dépendances avec leur date d'ajout et de retrait. Seuls les tickets qui existent au dernier commit sont renvoyés, avec
+ * le type qu'ils y ont (`AT_HEAD`, `reader.ts`) : la liste est celle du tableau, qui lit le même état, et un ticket supprimé ou retypé
+ * sans commit y est tel qu'au dernier commit.
  *
  * Les dates des commits sont celles de `dolt_log`, rendues croissantes le long de la lignée (`ascendingDates`, ADR 0001) : l'horloge
  * d'une machine peut reculer ou avancer, et un commit vient quand même après les précédents. Les statuts de tous les tickets et les
@@ -96,7 +103,7 @@ export async function readTicketHistories(db: DoltDatabase, { now = () => new Da
     .query(COMMITS_SQL)
     .then((rows) => rows.map((row): Commit => ({ hash: asText(row.commit_hash), at: parseDoltDate(row.date) })));
   const [tickets, statusChanges, recordedCommits, appearances] = await Promise.all([
-    db.query('select id, issue_type from issues order by id'),
+    db.query(`select id, issue_type from issues ${AT_HEAD} order by id`),
     db.query(STATUS_CHANGES_SQL),
     commitsRequest,
     readDependencyAppearances(db, commitsRequest),

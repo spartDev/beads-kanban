@@ -1,6 +1,6 @@
 import { type DoltDatabase, DoltQueryError, parseDoltDate, queryAll, type Row, sqlString } from './client';
 
-/** État courant d'un ticket : ce qu'il faut au kanban. */
+/** État d'un ticket au dernier commit : ce qu'il faut au kanban. */
 export interface IssueSummary {
   id: string;
   title: string;
@@ -13,7 +13,7 @@ export interface IssueSummary {
   closedAt: Date | null;
 }
 
-/** État courant d'un ticket, champs texte compris : ce qu'il faut au détail. */
+/** État d'un ticket au dernier commit, champs texte compris : ce qu'il faut au détail. */
 export interface IssueRecord extends IssueSummary {
   description: string;
   design: string;
@@ -22,7 +22,7 @@ export interface IssueRecord extends IssueSummary {
   closeReason: string;
 }
 
-/** Dépendance courante, normalisée : `from` dépend de `to`. */
+/** Dépendance au dernier commit, normalisée : `from` dépend de `to`. */
 export interface DependencyRecord {
   from: string;
   to: string;
@@ -76,15 +76,32 @@ export async function readHead(db: DoltDatabase): Promise<string> {
   return head;
 }
 
-const SUMMARIES_SQL = 'select id, title, issue_type, status, priority, assignee, created_at, updated_at, closed_at from issues order by created_at, id';
-const DEPENDENCIES_SQL = 'select * from dependencies';
+/**
+ * Toute lecture d'une table de tickets (`issues`, `dependencies`, `labels`, `comments`) se fait dans l'état du dernier commit
+ * (`as of 'HEAD'`), jamais dans le working set : celles d'ici, et la liste des tickets de l'historique (`readTicketHistories`,
+ * `history.ts`). C'est l'état que l'historique (`dolt_history_*`, d'où viennent les métriques et les Chronologies), le sondage du
+ * direct (`hashof('HEAD')`) et les caches des analyses connaissent, de sorte que le tableau, la fiche, les métriques et la Chronologie
+ * disent la même chose du Projet (ADR 0001, bdesk-38k.36). Le working set a en plus ce que bd n'a pas encore commité (auto-commit
+ * `batch` ou `off`) : un lien `blocks` posé y rangeait un ticket en Backlog au tableau quand le CFD le disait Prêt, un statut changé
+ * le montrait en cours quand le WIP ne le comptait pas. En auto-commit `on`, le défaut de bd, le working set est vide hors d'une
+ * commande de bd : la clause ne change rien.
+ *
+ * Une seule lecture oubliée suffit à ce que le tableau et les métriques se contredisent de nouveau : la liste des tickets de
+ * l'historique, lue dans le working set, ferait dire autre chose d'un ticket supprimé ou retypé sans commit. `committed.integration.test.ts`
+ * juge donc tout le SQL que le service envoie à Dolt (`testing/reads-at-head.ts`), non les seules lectures de ce fichier. Le préfixe des
+ * tickets (`readIssuePrefix`, table `config`) est la seule table lue sans la clause : il identifie le Projet, il ne décrit aucun ticket.
+ */
+export const AT_HEAD = "as of 'HEAD'";
+
+const SUMMARIES_SQL = `select id, title, issue_type, status, priority, assignee, created_at, updated_at, closed_at from issues ${AT_HEAD} order by created_at, id`;
+const DEPENDENCIES_SQL = `select * from dependencies ${AT_HEAD}`;
 
 const issueSql = (id: string) => `select id, title, description, design, acceptance_criteria, notes, issue_type, status, priority, assignee,
             created_at, updated_at, closed_at, close_reason
-     from issues where id = ${sqlString(id)}`;
-const labelsSql = (issueId: string) => `select label from labels where issue_id = ${sqlString(issueId)} order by label`;
+     from issues ${AT_HEAD} where id = ${sqlString(id)}`;
+const labelsSql = (issueId: string) => `select label from labels ${AT_HEAD} where issue_id = ${sqlString(issueId)} order by label`;
 const commentsSql = (issueId: string) =>
-  `select author, \`text\`, created_at from comments where issue_id = ${sqlString(issueId)} order by created_at, id`;
+  `select author, \`text\`, created_at from comments ${AT_HEAD} where issue_id = ${sqlString(issueId)} order by created_at, id`;
 
 export async function readIssueSummaries(db: DoltDatabase): Promise<IssueSummary[]> {
   return (await db.query(SUMMARIES_SQL)).map(toSummary);
@@ -95,7 +112,7 @@ export async function readIssue(db: DoltDatabase, id: string): Promise<IssueReco
   return toRecord((await db.query(issueSql(id)))[0]);
 }
 
-/** Toutes les dépendances courantes du Projet. */
+/** Toutes les dépendances du Projet au dernier commit. */
 export async function readDependencies(db: DoltDatabase): Promise<DependencyRecord[]> {
   return toDependencies(await db.query(DEPENDENCIES_SQL));
 }

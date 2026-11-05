@@ -48,7 +48,7 @@ const blocks = (id: string, target: string, day: number) =>
  *   j6  g-2 rouvert           j7  g-2 en cours       j8  g-2 fermé de nouveau ; g-3 fermé
  *
  * g-2 : Lead Time 7 j (j1 → j8), Cycle Time 4 j (j2 → j5, puis j7 → j8), 2 j de Blocage (j2 → j4), 1 Réouverture.
- * Un ticket g-9 est créé après le dernier commit, sans être commité : l'historique ne le connaît pas.
+ * Un ticket g-9 est créé après le dernier commit, sans être commité : ni l'historique ni le tableau, qui lit lui aussi le dernier commit, ne le connaissent.
  */
 describe.skipIf(!hasBinary('dolt'))('chronologie sur une vraie base Dolt', () => {
   let projects: ProjectService;
@@ -75,7 +75,7 @@ describe.skipIf(!hasBinary('dolt'))('chronologie sur une vraie base Dolt', () =>
       base.sql(statements.join(';\n'));
       base.commit(day, `jour ${day}`);
     }
-    base.sql(create('g-9', 'task', 9)); // dans la base, pas dans l'historique
+    base.sql(create('g-9', 'task', 9)); // dans le working set de la base, ni dans l'historique ni au dernier commit
 
     const config = { roots: [root], projects: [], hiddenProjects: [] };
     projects = createProjectService(config);
@@ -142,15 +142,11 @@ describe.skipIf(!hasBinary('dolt'))('chronologie sur une vraie base Dolt', () =>
     expect(body.chronology).toMatchObject({ outcome: { kind: 'closed', at: iso(8) }, leadTime: 7 * DAY, cycleTime: null });
   });
 
-  it('se rabat sur la date de création d’un ticket que l’historique ne connaît pas encore', async () => {
+  it('répond 404 pour un ticket que bd n’a pas commité : le tableau, qui lit le dernier commit comme l’historique, ne le connaît pas non plus (bdesk-38k.36)', async () => {
     const { status, body } = await get('g-9');
 
-    expect(status).toBe(200);
-    expect(body.chronology).toMatchObject({
-      source: 'dates',
-      transitions: [{ status: 'open', at: iso(9), duration: null }],
-      outcome: { kind: 'open' },
-    });
+    expect(status).toBe(404);
+    expect(body.message).toContain('g-9');
   });
 
   it('répond 404 pour un ticket qui n’est pas dans le Projet', async () => {

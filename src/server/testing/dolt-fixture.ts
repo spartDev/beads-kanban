@@ -90,7 +90,9 @@ export const day = (n: number): string => `2026-10-${String(n).padStart(2, '0')}
 /**
  * `dolt init`, puis son commit initial daté du 30 septembre 2026, la veille du jour 1. `dolt init` le date d'aujourd'hui (son
  * `--date` ne change pas la date que `dolt_log` donne, un amend si) : il serait *après* les commits datés de `commit` dans la
- * lignée, et le lecteur, qui met d'accord les dates de la lignée (`ascendingDates`), daterait de même tout ce qui suit.
+ * lignée, et le lecteur, qui met d'accord les dates de la lignée (`ascendingDates`), daterait de même tout ce qui suit. Il
+ * l'emporterait même sur un seul commit de données : à égalité de longueur (une suite d'un commit chacune), `ascendingDates` garde la
+ * plus ancienne de la lignée, celle de `dolt init`, et ramène le commit de données à sa date.
  */
 function initDatabase(env: NodeJS.ProcessEnv, dir: string): void {
   dolt(env, dir, 'init', '--name', 'testeur', '--email', 'testeur@example.com');

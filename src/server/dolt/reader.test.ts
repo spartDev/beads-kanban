@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readsOutsideHead, tableReads } from '../testing/reads-at-head';
 import { type DoltDatabase, DoltQueryError, type QueryOptions, type Row } from './client';
 import {
   readComments,
@@ -161,6 +162,38 @@ describe('lecture de l’état courant', () => {
     expect(
       await readComments(fakeDb([{ author: 'tom', text: 'Salut\nle monde', created_at: '2026-10-20 12:12:28' }]), 'xx-1'),
     ).toEqual([{ author: 'tom', text: 'Salut\nle monde', createdAt: new Date('2026-10-20T12:12:28Z') }]);
+  });
+});
+
+describe('l’état des tickets est celui du dernier commit (bdesk-38k.36)', () => {
+  // Le working set contient en plus ce que bd n'a pas encore commité (auto-commit `batch` ou `off`), que l'historique d'où viennent
+  // les métriques et la Chronologie ne voit pas : lu par le tableau, il le ferait dire autre chose qu'elles (ADR 0001). La règle est
+  // celle de `readsOutsideHead`, que `history.test.ts` et `committed.integration.test.ts` appliquent à leur tour au reste du SQL.
+  const TABLES = [['issues'], ['dependencies'], ['issues'], ['labels'], ['comments']];
+
+  it('lit chaque table de tickets à l’état de HEAD, dans chacune des requêtes', async () => {
+    const db = fakeDb();
+
+    await readIssueSummaries(db);
+    await readDependencies(db);
+    await readIssue(db, 'xx-1');
+    await readLabels(db, 'xx-1');
+    await readComments(db, 'xx-1');
+
+    expect(readsOutsideHead(db.queries)).toEqual([]);
+    // Une table par requête : le filet a bien lu cinq requêtes, et rien n'est lu par ailleurs sans la clause.
+    expect(db.queries.map((sql) => tableReads(sql).map(({ table }) => table))).toEqual(TABLES);
+  });
+
+  it('en fait de même des lectures groupées du tableau et de la fiche', async () => {
+    const grouped = groupedDb();
+
+    await readIssueBase(grouped.db);
+    await readIssueParts(grouped.db, 'xx-1');
+
+    const sqls = grouped.groups.flat();
+    expect(readsOutsideHead(sqls)).toEqual([]);
+    expect(sqls.map((sql) => tableReads(sql).map(({ table }) => table))).toEqual([['issues'], ['dependencies'], ['issues'], ['labels'], ['comments']]);
   });
 });
 

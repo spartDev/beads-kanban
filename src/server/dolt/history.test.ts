@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { analyzeChronologies } from '../../domain/chronology';
 import { analyzeFailures } from '../../domain/failures';
 import { analyzeFlow } from '../../domain/flow';
+import { readsOutsideHead, tablesRead } from '../testing/reads-at-head';
 import { type DoltDatabase, DoltQueryError, type Row } from './client';
 import { type Commit, dependencyLifetimes, readTicketHistories } from './history';
 
@@ -242,6 +243,17 @@ describe('readTicketHistories', () => {
     expect(analyzeFlow(histories).get('p-1')?.leadTime).toBe(2 * 24 * 3_600_000);
   });
 
+  it('lit la liste des tickets et leur type à l’état de HEAD, comme le tableau (bdesk-38k.36)', async () => {
+    const db = fakeDb(base());
+
+    await readTicketHistories(db);
+
+    // Un ticket supprimé, ou dont le type a changé, sans commit : l'historique le dit tel qu'il est au dernier commit, comme le tableau.
+    expect(readsOutsideHead(db.queries)).toEqual([]);
+    // La liste des tickets est la seule table de bd que le lecteur lit hors de l'historique : le filet l'a bien vue.
+    expect(tablesRead(db.queries)).toEqual(new Set(['issues']));
+  });
+
   it('ne lit que les colonnes utiles de l’historique des dépendances, pas toutes (select *)', async () => {
     const db = fakeDb(base());
 
@@ -341,6 +353,7 @@ describe('readTicketHistories', () => {
     // Une seule durée de vie, du premier commit d'avant la migration jusqu'à aujourd'hui.
     expect(first?.dependencies).toEqual([{ type: 'blocks', target: 'p-2', addedAt: at('2026-10-01T10:00:00') }]);
     expect(reads(db).every((q) => !q.includes('*'))).toBe(true);
+    expect(readsOutsideHead(db.queries)).toEqual([]); // les lectures d'époque, `ma_base/c1`.dolt_history_dependencies, sont de l'historique
   });
 
   it('choisit l’ancre de la reconstitution par la place des commits dans l’historique, pas par leur date', async () => {
