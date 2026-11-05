@@ -10,6 +10,19 @@ import { createProjectService, IssueNotFoundError, ProjectNotFoundError, Project
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Attend que `condition` soit vraie (3 s au plus) : la condition, jamais un délai fixe, dit que le test peut continuer (bdesk-38k.45).
+ * Le plafond reste sous le délai de 5 s des tests du projet `node` (`vite.config.ts`) : au-delà, c'est vitest qui coupe le test, sans
+ * dire quelle condition n'est jamais venue.
+ */
+async function until(condition: () => boolean, what: string): Promise<void> {
+  const deadline = Date.now() + 3_000;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error(`jamais vrai : ${what}`);
+    await sleep(2);
+  }
+}
+
 let root: string;
 
 beforeEach(() => {
@@ -336,7 +349,7 @@ describe('lectures regroupées et abandonnables (bdesk-38k.20)', () => {
     const service = serviceFor(hanging.dolt);
     const controller = new AbortController();
     const reading = service.head('a', { signal: controller.signal }).catch((e: unknown) => e);
-    await sleep(20); // la lecture est partie
+    await until(() => hanging.seen.processes === 1, 'la lecture du HEAD est partie'); // elle est lancée, et ne finit pas : l'abandon tombe bien en cours de lecture
 
     controller.abort();
     const error = await reading;
@@ -376,10 +389,10 @@ describe('lectures regroupées et abandonnables (bdesk-38k.20)', () => {
   });
 
   it('un abandon en cours de lecture est une ReadAborted, pas un Projet illisible (503)', async () => {
-    const { dolt } = groupingDolt(answer, true);
+    const { dolt, seen } = groupingDolt(answer, true);
     const controller = new AbortController();
     const reading = serviceFor(dolt).issue('a', 'x-1', { signal: controller.signal }).catch((e: unknown) => e);
-    await sleep(20); // les lectures sont parties
+    await until(() => seen.processes === 2, 'les deux lectures de la fiche sont parties'); // elles sont lancées, et ne finissent pas : l'abandon tombe bien en cours de lecture
 
     controller.abort();
     const error = await reading;

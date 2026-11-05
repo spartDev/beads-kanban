@@ -20,7 +20,8 @@ const IGNORED = new Set(['manifest', 'LOCK', 'journal.idx']);
  * d'une base écrites par un serveur d'une valeur de même longueur et copiées serveur en marche ont le même manifest (il ne bouge pas) et un
  * journal de même taille : celle qui remplaçait l'autre au même chemin (restauration, re-synchronisation, copie d'un autre poste) faisait
  * reprendre le préfixe de l'autre. Un fichier neuf a un autre inode, alors que Dolt prolonge le journal en place : ni une lecture ni une écriture
- * (avec ou sans commit, en embedded comme en server) ne change l'identité des fichiers comptés (expérience 2). Le manifest, lui, est réécrit à
+ * qui le prolonge (avec ou sans commit, en embedded comme en server) ne change l'identité des fichiers comptés (expérience 2) ; la première écriture
+ * de bd qui suit un `dolt gc` ouvre un nouveau journal, donc un inode neuf, mais une écriture fait relire la base de toute façon. Le manifest, lui, est réécrit à
  * chaque lecture, par un fichier temporaire renommé : son inode ne se compte pas, son contenu oui. Restent hors de portée un fichier réécrit EN
  * PLACE d'un autre contenu aux mêmes taille et manifest (`cp` sur le fichier existant, `rsync --inplace`), et un fichier recréé qui reçoit le
  * numéro d'inode de l'ancien (un système de fichiers qui les réutilise aussitôt ; pas APFS, où ils croissent).

@@ -267,10 +267,13 @@ const STATEMENT_SEPARATOR = '\n;\n';
  *
  * C'est que tuer un `dolt sql` laisse des traces dans la base de l'utilisateur. À l'ouverture de la base, il réécrit
  * `.dolt/noms/journal.idx` et `manifest` ; `manifest` l'est par un fichier temporaire `nbs_manifest_…` qui existe 5 ms vers 40-60 ms
- * après le lancement, puis à la fermeture. Un lecteur tué à ces instants (le cas d'un parcours rapide : une fiche dure environ 110 ms)
- * laisse un fichier de 0 ou 148 octets que dolt ne lit ni ne nettoie jamais, pas même `dolt gc --full` : de 5 à 50 par parcours de
- * 92 tickets sur deux Projets aux pas de 60 à 250 ms, qui s'accumulent sans fin dans la base (inertes pour `dolt`, mais jamais
- * retirés). Un lecteur tué laisse aussi `journal.idx` tronqué, que dolt reconstruit à l'ouverture suivante. Laisser finir coûte plus de
+ * après le lancement, puis à la fermeture (mesuré sur `.dolt/noms`). Un lecteur tué à ces instants (le cas d'un parcours rapide : une fiche
+ * dure environ 110 ms) laisse un fichier vide ou de 144 à 148 octets selon la base, dans `.dolt/noms` ou dans `.dolt/stats/.dolt/noms`
+ * (la base des statistiques que dolt tient à côté, dont il réécrit aussi le `manifest` ; ses instants ne sont pas mesurés) : environ un quart
+ * des restes tombe dans ce second dossier en tout, très variable selon la série (ADR 0003). Dolt ne les lit ni ne les nettoie jamais, pas même
+ * `dolt gc --full` : on en a compté de 5 à 50 par parcours de 92 tickets sur deux Projets aux pas de 60 à 250 ms (dans `.dolt/noms` seul :
+ * environ un tiers de plus en tout), qui s'accumulent sans fin dans la base (inertes pour `dolt`, mais jamais retirés). Un lecteur tué laisse aussi
+ * `journal.idx` tronqué, que dolt reconstruit à l'ouverture suivante. Laisser finir coûte plus de
  * temps de processus (de 60 à 90 % sur un parcours rapide aux pas de 30 à 120 ms) sans perte de latence (ADR 0003 ; mesures dans
  * `proofs/bdesk-38k.20.md`, §18).
  *

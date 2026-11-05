@@ -1,12 +1,12 @@
-import { type ChildProcess, execFileSync, spawn } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, realpathSync, statSync, truncateSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { Config } from '../config';
 import { createDoltClient, type DoltClient } from '../dolt/client';
 import { createDatabase, hasBinary, isolatedDoltEnv, type Scratch } from '../testing/dolt-fixture';
+import { type SqlServer, startSqlServer } from '../testing/dolt-server';
 import { type Discovery, discoverProjects } from './discovery';
 
 /**
@@ -116,33 +116,24 @@ describe.skipIf(!hasBinary('dolt'))('le scan incrémental sur de vraies bases Do
   }, 120_000);
 
   describe('mode server : une base tenue par un dolt sql-server', () => {
-    let server: ChildProcess | undefined;
+    let server: SqlServer | undefined;
 
-    afterAll(async () => {
-      if (!server || server.exitCode !== null) return;
-      const exited = new Promise<void>((resolve) => server?.once('exit', () => resolve()));
-      server.kill('SIGTERM'); // le serveur d'essai de ce test, jamais un processus de l'app
-      await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 15_000))]);
-    });
+    // Le serveur d'essai de ce test, jamais un processus de l'app : `startSqlServer` (bdesk-38k.44) le lance sous un superviseur qui ne lui survit pas.
+    afterAll(() => server?.stop(), 60_000);
 
     it('une écriture par le serveur change l’empreinte, alors que le manifest ne bouge pas : la base est relue', async () => {
       const { root, config } = sandbox();
       const { database } = workspace(root, 'srv', 'server');
-      const dataDir = join(database, '..');
-      const port = await freePort();
-      server = spawn('dolt', ['sql-server', '--host', '127.0.0.1', '--port', String(port), '--data-dir', dataDir, '--loglevel', 'error'], {
-        cwd: dataDir,
-        env,
-        stdio: 'ignore',
-      });
+      const dataDir = join(database, '..'); // `.beads/dolt` : le dossier qui contient la base `db` et que le serveur sert
+      const running = await startSqlServer(env, dataDir, { databaseDir: database }); // ne rend la main que quand le serveur répond, et que `dolt sql` y passe
+      server = running;
       const viaServer = (sql: string) =>
-        execFileSync('dolt', ['--host', '127.0.0.1', '--port', String(port), '--no-tls', '--user', 'root', '--password', '', '--use-db', 'db', 'sql', '-q', sql], {
+        execFileSync('dolt', ['--host', '127.0.0.1', '--port', String(running.port), '--no-tls', '--user', 'root', '--password', '', '--use-db', 'db', 'sql', '-q', sql], {
           cwd: dataDir,
           env: { ...env, DOLT_CLI_PASSWORD: '' },
           stdio: ['ignore', 'pipe', 'pipe'],
           timeout: 60_000,
         });
-      await until(() => viaServer('select 1'), 120_000); // le serveur répond
 
       const { client, counter } = countingDolt();
       const first = await discoverProjects(config, { dolt: client });
@@ -159,30 +150,3 @@ describe.skipIf(!hasBinary('dolt'))('le scan incrémental sur de vraies bases Do
     }, 240_000);
   });
 });
-
-/** Un port libre de 127.0.0.1 (celui que le système vient de donner, rendu aussitôt). */
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.once('error', reject);
-    probe.listen(0, '127.0.0.1', () => {
-      const address = probe.address();
-      const port = typeof address === 'object' && address !== null ? address.port : 0;
-      probe.close(() => resolve(port));
-    });
-  });
-}
-
-/** Réessaie `attempt` jusqu'à ce qu'elle ne lève plus, au plus `boundMs` : un serveur met un moment à répondre, bien plus sur une machine chargée. */
-async function until(attempt: () => unknown, boundMs: number): Promise<void> {
-  const deadline = Date.now() + boundMs;
-  for (;;) {
-    try {
-      attempt();
-      return;
-    } catch (err) {
-      if (Date.now() > deadline) throw err;
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    }
-  }
-}

@@ -404,13 +404,17 @@ describe.skipIf(!hasBinary('dolt'))('lectures groupées et abandonnées sur une 
     }
     /**
      * Ce que dolt laisse quand on le tue pendant qu'il écrit `manifest` : un fichier temporaire `nbs_manifest_…` que personne ne nettoie,
-     * dans `.dolt/noms` ou dans la base des statistiques que dolt tient à côté (`.dolt/stats/.dolt/noms`, où tombe de un quart à un tiers des restes).
+     * dans `.dolt/noms` ou dans la base des statistiques que dolt tient à côté (`.dolt/stats/.dolt/noms`, où tombe environ un quart des restes en tout, très variable selon la série : ADR 0003).
      */
     const residues = () =>
       [join('.dolt', 'noms'), join('.dolt', 'stats', '.dolt', 'noms')].flatMap((sub) =>
         existsSync(join(dir, sub)) ? readdirSync(join(dir, sub)).filter((name) => name.startsWith('nbs_manifest_')).map((name) => join(sub, name)) : [],
       );
-    /** Un lanceur qui note le numéro de chaque processus puis devient le vrai dolt (`exec`, donc le même numéro) : de quoi savoir quand ils ont tous fini. */
+    /**
+     * Un lanceur qui note le numéro de chaque processus puis devient le vrai dolt (`exec`, donc le même numéro) : de quoi savoir quand ils ont tous fini.
+     * `finished(from)` ne regarde que les processus notés à partir du rang `from` : le numéro d'un processus ancien, repris entre-temps par un autre
+     * processus encore vivant, ne retient pas une attente qui ne le concerne plus (bdesk-38k.45).
+     */
     function launcher() {
       const folder = mkdtempSync(join(tmpdir(), 'bdesk-launcher-'));
       const log = join(folder, 'pids');
@@ -418,7 +422,7 @@ describe.skipIf(!hasBinary('dolt'))('lectures groupées et abandonnées sur une 
       writeFileSync(binary, `#!/bin/sh\necho $$ >> '${log}'\nexec dolt "$@"\n`);
       chmodSync(binary, 0o755);
       const pids = () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean).map(Number) : []);
-      return { binary, pids, finished: () => pids().every((pid) => !alive(pid)) };
+      return { binary, pids, finished: (from = 0) => pids().slice(from).every((pid) => !alive(pid)) };
     }
 
     it('une lecture abandonnée en cours va au bout sans être tuée : le demandeur est libéré aussitôt, la base reste saine, lisible tout de suite, et inchangée', async () => {
@@ -485,8 +489,10 @@ describe.skipIf(!hasBinary('dolt'))('lectures groupées et abandonnées sur une 
     //   elles ne doivent jamais partir (une lecture abandonnée en file ne lance aucun processus, ADR 0003) ;
     // - une vague ne finit que quand ses six processus ont fini, et le compte des processus est exactement celui des lectures lancées.
     // Chaque attente a son plafond (20 s) et dit laquelle a échoué ; le délai du test est la somme de ces plafonds pour les douze vagues
-    // (12 × 2 × 20 s, arrondie) : il ne coupe jamais une machine lente avant qu'une attente n'ait dit ce qui manque. Mesuré sous
-    // `taskpolicy -b` : de 30 à 105 s seul, de 107 à 152 s à trois en même temps, mais plus de 180 s six fois sur quinze (6 s au repos).
+    // (12 × 2 × 20 s, arrondie) : il ne coupe pas une machine lente avant qu'une attente n'ait dit ce qui manque, sauf famine extrême. Un plafond
+    // compte des itérations de 25 ms, qui s'allongent avec la charge : 24 plafonds peuvent alors dépasser 500 s d'horloge, et c'est le délai de vitest
+    // qui coupe le premier. Mesuré sous `taskpolicy -b` : de 30 à 105 s seul, de 107 à 152 s à trois en même temps, mais plus de 180 s six fois
+    // sur quinze (6 s au repos).
     it('un parcours rapide avec abandons ne laisse aucun fichier nbs_manifest_ dans .dolt/noms ni dans .dolt/stats/.dolt/noms : les lectures lancées vont au bout', async () => {
       const WAVES = 12;
       const PER_WAVE = 6;
@@ -506,11 +512,13 @@ describe.skipIf(!hasBinary('dolt'))('lectures groupées et abandonnées sur une 
           controller.abort();
           return reading;
         });
+        // Toujours vrai par construction : le demandeur d'une lecture abandonnée est libéré aussitôt (`Flight.join`), que la lecture ait quitté la file ou non.
+        // La preuve qu'aucune lecture abandonnée en file n'est partie est le compte exact de processus, plus bas.
         for (const error of await Promise.all(queued)) expect(error).toBeInstanceOf(ReadAborted);
         await until(() => pids().length >= (wave + 1) * PER_WAVE, 'les six processus de la vague ont démarré');
         controllers.forEach((controller, i) => setTimeout(() => controller.abort(), 30 + ((wave * PER_WAVE + i) * 17) % 101));
         await Promise.all(readings);
-        await until(finished, 'les processus de la vague ont fini d’eux-mêmes');
+        await until(() => finished(wave * PER_WAVE), 'les processus de la vague ont fini d’eux-mêmes'); // ceux de la vague : un numéro d'une vague ancienne a pu être repris
       }
 
       expect(residues()).toEqual([]);

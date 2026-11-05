@@ -66,7 +66,8 @@ export function createChronologyService(projects: ProjectService, { graceMs = AN
     async chronology(projectId, issueId, { signal } = {}) {
       const known = (await analysisOf(projectId, signal)).of(issueId);
       if (known) return known;
-      // Aucun statut dans l'historique : un ticket que Dolt n'a jamais commité, ou qui n'existe pas. Dans le premier cas ses dates font le repli.
+      // Aucun statut dans l'historique : un ticket qui n'existe pas (au dernier commit, que lisent l'historique comme la liste : un ticket jamais commité
+      // n'y figure pas non plus, bdesk-38k.36), ou que l'historique ne connaît pas (commité depuis qu'il a été lu, ou historique perdu). Dans le second cas ses dates font le repli.
       const issue = (await projects.issues(projectId, { signal })).find((candidate) => candidate.id === issueId);
       if (!issue) throw new IssueNotFoundError(projectId, issueId);
       return chronologyFromDates({

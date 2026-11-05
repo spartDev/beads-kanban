@@ -39,10 +39,16 @@ export const hasBinary = (binary: string): boolean => {
 /** `binary` est un chemin (relatif ou absolu), pas un nom à chercher dans le PATH. */
 const isPath = (binary: string): boolean => binary.includes('/') || binary.includes(sep);
 
-/** Le fichier que `binary` désigne : le chemin lui-même, ou le premier du PATH qui porte ce nom. */
+/**
+ * Le fichier que `binary` désigne : le chemin lui-même, ou le premier du PATH qui porte ce nom. Sans PATH (variable absente), aucun dossier n'est
+ * cherché : libuv se rabat alors sur son chemin par défaut, jamais sur le dossier courant, que `''.split(delimiter)` donnerait pour candidat
+ * (bdesk-38k.45). Un PATH vide ou à entrée vide (`:`), lui, désigne bien le dossier courant, comme pour libuv.
+ */
 function locate(binary: string): string | undefined {
   if (isPath(binary)) return existsSync(binary) ? binary : undefined;
-  return (process.env.PATH ?? '')
+  const path = process.env.PATH;
+  if (path === undefined) return undefined;
+  return path
     .split(delimiter)
     .map((dir) => join(dir, binary))
     .find((candidate) => existsSync(candidate));
