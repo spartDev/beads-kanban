@@ -7,6 +7,7 @@ import { ReadAborted } from '../abort';
 import { ANALYSIS_GRACE_MS, Flight } from '../flight';
 import { createHeadReader } from '../projects/head-reader';
 import { ProjectNotFoundError, type ProjectService, ProjectUnreadableError, type ReadOptions } from '../projects/service';
+import { resolveMetricsTimeZone } from './time-zone';
 
 export interface MetricsQuery {
   /** Identifiants des Projets à mesurer ; vide pour la Vue globale (tous les Projets lisibles). */
@@ -28,8 +29,16 @@ export interface MetricsService {
 export interface MetricsServiceOptions {
   /** L'heure, pour les tests (défaut : l'horloge du système). */
   now?: () => Date;
-  /** Fuseau IANA qui découpe les jours (défaut : le fuseau local du serveur, celui de l'utilisateur). */
+  /**
+   * Fuseau IANA qui découpe les jours (défaut : le fuseau local du serveur, celui de l'utilisateur). Un nom que `Intl` ne reconnaît pas
+   * (le moteur rend `Etc/Unknown` pour un TZ vide, et rien pour un TZ qu'il ne sait pas nommer) ne fait jamais échouer une requête : le service
+   * le remplace dès sa création par le fuseau du système, à défaut par UTC, et le dit à `warn` (voir `resolveMetricsTimeZone`).
+   */
   timeZone?: string;
+  /** Où lire le fuseau du système quand `timeZone` n'est pas reconnu (défaut : ce que désigne `/etc/localtime`, lien ou chaîne de liens). */
+  systemTimeZone?: () => string | undefined;
+  /** Où le service dit, une seule fois et à sa création, qu'il a dû remplacer le fuseau (défaut : nulle part). */
+  warn?: (message: string) => void;
   /**
    * Délai de grâce de la lecture de l'historique d'un Projet (défaut : `ANALYSIS_GRACE_MS`) : quand son dernier demandeur part, elle
    * n'est abandonnée que si personne ne la redemande dans ce délai. La lecture des tickets, elle, n'en a pas : elle quitte la file aussitôt.
@@ -45,8 +54,13 @@ export interface MetricsServiceOptions {
  */
 export function createMetricsService(
   projects: ProjectService,
-  { now = () => new Date(), timeZone = localTimeZone(), graceMs = ANALYSIS_GRACE_MS }: MetricsServiceOptions = {},
+  { now = () => new Date(), timeZone: requested = localTimeZone(), systemTimeZone, warn, graceMs = ANALYSIS_GRACE_MS }: MetricsServiceOptions = {},
 ): MetricsService {
+  // Le fuseau se choisit ici, une fois : c'est le seul endroit où le nom d'un fuseau entre dans le calcul des jours, avec ce que le moteur
+  // en dit (bdesk-38k.38). Tout ce qui suit, `compute` et la réponse, ne voit qu'un nom que `Intl` construit.
+  const { timeZone, warning } = resolveMetricsTimeZone(requested, systemTimeZone);
+  if (warning !== undefined) warn?.(warning);
+
   /**
    * Une analyse par Projet : celle du HEAD le plus récent vu. Elle sert aussi les requêtes simultanées, qui l'attendent ensemble :
    * elle est abandonnée dès que la dernière part (voir `Flight`), et une analyse abandonnée n'est pas gardée.
@@ -170,4 +184,5 @@ const unreadableProject = (project: Project, reason: string | undefined): Metric
   reason: reason ?? 'Projet illisible.',
 });
 
-const localTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+/** Le fuseau local d'après le moteur. Typé `string`, il vaut `undefined` quand le moteur ne sait pas le nommer : d'où le type ici. */
+const localTimeZone = (): string | undefined => Intl.DateTimeFormat().resolvedOptions().timeZone;

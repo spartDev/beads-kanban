@@ -1,7 +1,7 @@
 import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { FastifyInstance } from 'fastify';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Project } from '../../shared/api';
 import { type ProjectService, ProjectUnreadableError } from '../projects/service';
 import { startServer } from '../server';
@@ -727,6 +727,16 @@ describe('avec le vrai sondage du HEAD', () => {
 });
 
 describe('journal du serveur : le sondage rapporte ses pannes sans bruit (relecture bdesk-38k.8)', () => {
+  // Le journal est celui du serveur entier : quand le moteur ne reconnaît pas le fuseau local (TZ vide), le service de métriques par défaut y écrit
+  // son avertissement de démarrage (bdesk-38k.38, voir metrics/unknown-time-zone.test.ts). Ces tests jugent le sondage, pas le fuseau : il est fixé,
+  // et le journal doit rester exactement ce que le sondage y écrit.
+  beforeEach(() => {
+    vi.stubEnv('TZ', 'UTC');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   /** Un journal Pino de test : chaque ligne écrite est gardée, lue en JSON. */
   function capture() {
     const lines: { level: number; msg: string }[] = [];

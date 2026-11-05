@@ -19,7 +19,10 @@ export interface ServerOptions {
   webRoot?: string;
   /** Accès aux Projets ; par défaut, celui de la configuration, lu via le CLI `dolt`. */
   projects?: ProjectService;
-  /** Calcul des métriques ; par défaut, celui des `projects`, avec l'horloge et le fuseau du serveur. */
+  /**
+   * Calcul des métriques ; par défaut, celui des `projects`, avec l'horloge et le fuseau du serveur. Si le moteur ne reconnaît pas ce
+   * fuseau (variable TZ vide ou invalide), les jours se comptent dans celui du système, à défaut en UTC, et le journal le dit une fois.
+   */
   metrics?: MetricsService;
   /**
    * Accepte n'importe quel port dans l'en-tête Host (toujours sur localhost ou 127.0.0.1). Pour le développement :
@@ -46,12 +49,13 @@ export function buildServer({
   config,
   webRoot,
   projects = createProjectService(config),
-  metrics = createMetricsService(projects),
+  metrics,
   allowAnyLocalPort = false,
   logger = false,
   live = {},
 }: ServerOptions): FastifyInstance {
   const app = Fastify({ logger });
+  const metricsService = metrics ?? createMetricsService(projects, { warn: (message) => app.log.warn(message) });
 
   // Protection contre le DNS rebinding : une page web hostile peut faire pointer son propre nom de domaine sur
   // 127.0.0.1 et lire l'API depuis le navigateur de l'utilisateur. Sa requête porte alors son nom dans Host.
@@ -81,7 +85,7 @@ export function buildServer({
   // Plugin à part : le gestionnaire d'erreurs de l'API ne s'applique pas aux autres routes. Le flux en direct est une route
   // de l'API (`/api/projects/:projectId/events`) : il y est, et ses erreurs ont la même forme que celles des autres.
   app.register(async (api) => {
-    await registerApi(api, projects, metrics);
+    await registerApi(api, projects, metricsService);
     registerLiveRoutes(api, projects, watcher, { heartbeatMs: live.heartbeatMs });
   });
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InvalidPeriodError } from '../../domain/calendar';
 import type { StatusSnapshot, TicketHistory } from '../../domain/flow';
 import type { Issue, Project } from '../../shared/api';
@@ -105,6 +105,8 @@ const twoProjects = (): Record<string, FakeProject> => ({
 });
 
 describe('service de métriques', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   it('mesure la Vue globale : tous les Projets lisibles, dans l’ordre de la liste, sur l’union de leurs Livraisons', async () => {
     const { service } = fakeProjects(twoProjects());
 
@@ -171,11 +173,12 @@ describe('service de métriques', () => {
   });
 
   it('prend par défaut le fuseau local du serveur', async () => {
+    vi.stubEnv('TZ', 'Asia/Tokyo'); // celui que le moteur donne, quel que soit le fuseau de la machine (et même un TZ vide : voir unknown-time-zone.test.ts)
     const { service } = fakeProjects(twoProjects());
 
     const response = await createMetricsService(service, { now: () => NOW }).compute({ projects: [], ...week });
 
-    expect(response.timeZone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(response.timeZone).toBe('Asia/Tokyo');
   });
 
   it('ne mesure que les Projets demandés', async () => {
