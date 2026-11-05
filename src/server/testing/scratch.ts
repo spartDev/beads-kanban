@@ -2,24 +2,25 @@ import { chmodSync, lstatSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll } from 'vitest';
-import { getCurrentTest } from 'vitest/suite';
 
 /**
  * Les dossiers temporaires des tests (bdesk-38k.60). Un test qui crée un dossier sous le dossier temporaire du système le laisse après lui : la
  * suite en laissait plus de 300 par exécution (`bdesk-*`, dont les `bdesk-fake-dolt-*` des faux binaires, un par test). Tout dossier de test
- * passe donc par `scratchDir`, et le fichier de tests le retire à sa fin. Le crochet (`afterAll`) est posé à l'import de ce module : un fichier qui
- * l'importe, directement ou par `fakeDolt`, `fakeDoltRoot` et `isolatedDoltEnv`, est nettoyé sans rien déclarer, et après ses propres crochets de
- * fin (ils partent en pile : le dernier posé part le premier), donc un serveur arrêté dans un `afterAll` du fichier l'est avant que son dossier
- * ne soit retiré. ESLint interdit d'importer `mkdtemp` ailleurs que dans ce fichier (eslint.config.js).
+ * passe donc par `scratchDir`, et le fichier de tests le retire à sa fin. ESLint interdit d'importer `mkdtemp` ailleurs que dans ce fichier (eslint.config.js).
+ *
+ * Le registre et les crochets de fin de fichier sont posés par `setup.ts`, le fichier d'initialisation du projet « node » (`setupFiles` de vite.config.ts), qui
+ * tourne avant chacun des fichiers de tests, même sous `--no-isolate` (bdesk-38k.66) : un fichier qui importe `scratchDir`, directement ou par `fakeDolt`,
+ * `fakeDoltRoot` et `isolatedDoltEnv`, est nettoyé sans rien déclarer, et après ses propres crochets de fin (ils partent en pile : le dernier posé part le premier),
+ * donc un serveur arrêté dans un `afterAll` du fichier l'est avant que son dossier ne soit retiré. Les poser à l'évaluation de ce module, comme avant, les faisait
+ * dépendre du moment où il est chargé (dans un crochet, c'est trop tard : vitest les ignore) et d'un worker par fichier de tests, ce que `--no-isolate` ne donne pas.
  *
  * À appeler dans un `beforeAll`, un `beforeEach` ou un test, jamais à la collecte (niveau du module, corps d'un `describe`) : un fichier dont aucun test ne
  * tourne (tous sautés, faute de `dolt` ou de `bd`, `-t` qui ne retient rien, `vitest list`) n'exécute aucun crochet, et ce qu'il aurait créé resterait. Appelé
  * à la collecte, `scratchDir` échoue donc au lieu de laisser le dossier. Un processus qui recrée le dossier une fois retiré le ferait aussi revenir : celui de
  * `dolt`, après chacune de ses commandes (voir `isolatedDoltEnv`).
  *
- * L'état du fichier (son registre, et si ses tests ont commencé) est celui du worker, sur `globalThis` : un module rechargé par `vi.resetModules()` est une
- * seconde instance, évaluée en plein test, qui doit retrouver cet état, et non poser de nouveaux crochets, que vitest ignorerait sans rien dire. Un worker par
- * fichier de tests : c'est ce que donne `isolate`, le défaut de vitest.
+ * L'état du fichier (son registre, et si ses tests ont commencé) est sur `globalThis`, non dans le module : un module rechargé par `vi.resetModules()` est une
+ * seconde instance, qui doit retrouver le registre de son fichier, et sous `--no-isolate` le module lui-même est partagé par les fichiers d'un worker.
  */
 
 /**
@@ -78,41 +79,47 @@ export function createScratchDirs(): { dir(prefix: string): string; removeAll():
   };
 }
 
-/** L'état des dossiers de ce worker : son registre, et si ses tests ont commencé. */
+/** L'état des dossiers du fichier de tests en cours : son registre, et si ses tests ont commencé. */
 interface FileScratch {
   readonly dirs: ReturnType<typeof createScratchDirs>;
   /** Vrai dès que les tests du fichier tournent : avant, c'est la collecte (le module, le corps d'un `describe`), où aucun crochet n'a encore tourné. */
   running: boolean;
 }
 
-/** Où le worker garde son état : sur `globalThis`, sous une clé de `Symbol.for`, pour que toutes les instances du module (`vi.resetModules()`) le partagent. */
+/** Où l'état du fichier est gardé : sur `globalThis`, sous une clé de `Symbol.for`, que toutes les instances du module retrouvent. Le fichier suivant d'un worker le remplace. */
 const STATE = Symbol.for('beads-desktop.scratch');
 
-/** L'état du worker ; le crée, avec les crochets du fichier, à la première évaluation du module. */
-function fileScratch(): FileScratch {
-  const holder = globalThis as unknown as Record<symbol, FileScratch | undefined>;
-  const existing = holder[STATE];
-  if (existing) return existing;
-  // Les crochets ne se posent qu'à la collecte : en plein test, vitest ignore un `afterAll`. Un module évalué ici pour la première fois ne nettoierait rien.
-  if (getCurrentTest()) {
-    throw new Error(
-      "scratch.ts est évalué pour la première fois en cours de test : son crochet de fin de fichier ne s'exécuterait jamais, et ses dossiers resteraient. " +
-        'Importez-le, ou fake-dolt.ts et dolt-fixture.ts, en tête du fichier de tests.',
-    );
-  }
-  const created: FileScratch = { dirs: createScratchDirs(), running: false };
+const holder = () => globalThis as unknown as Record<symbol, FileScratch | undefined>;
+
+/**
+ * Pose le registre et les crochets du fichier de tests qui commence. Appelé par `setup.ts`, avant chaque fichier : les crochets sont les premiers de ce fichier, donc
+ * `beforeAll` passe avant les siens et `afterAll` après les siens. Le registre est celui de ce fichier seulement : sous `--no-isolate`, le suivant a le sien.
+ */
+export function installScratchHooks(): void {
+  const file: FileScratch = { dirs: createScratchDirs(), running: false };
+  holder()[STATE] = file;
   beforeAll(() => {
-    created.running = true; // posé en premier : les crochets du fichier viennent après lui, dans l'ordre où ils sont définis
+    file.running = true;
   });
   // Le délai du crochet est large : retirer des centaines de dossiers sur une machine très chargée peut dépasser les 10 s par défaut de vitest.
-  afterAll(created.dirs.removeAll, 60_000);
-  return (holder[STATE] = created);
+  afterAll(file.dirs.removeAll, 60_000);
 }
 
-const file = fileScratch();
+/** L'état du fichier en cours ; dit clairement s'il n'a pas été posé (un vitest lancé sans `setup.ts`), au lieu de faire croire à autre chose. */
+function fileScratch(): FileScratch {
+  const file = holder()[STATE];
+  if (!file) {
+    throw new Error(
+      "scratchDir est appelé sans le registre du fichier de tests : src/server/testing/setup.ts, qui le pose avant chaque fichier, n'a pas tourné " +
+        '(setupFiles du projet « node » de vite.config.ts).',
+    );
+  }
+  return file;
+}
 
 /** Un dossier temporaire neuf (voir `createScratchDirs().dir`), retiré à la fin du fichier de tests. Pas à la collecte : voir plus haut. */
 export function scratchDir(prefix: string): string {
+  const file = fileScratch();
   if (!file.running) {
     throw new Error(
       `scratchDir('${prefix}') est appelé à la collecte (niveau du module, corps d'un describe) : un fichier dont aucun test ne tourne (-t, vitest list, tout sauté) ` +
@@ -123,4 +130,4 @@ export function scratchDir(prefix: string): string {
 }
 
 /** Ce que le crochet de fin de fichier exécute : retire tous les dossiers de `scratchDir`. */
-export const removeScratchDirs = (): void => file.dirs.removeAll();
+export const removeScratchDirs = (): void => fileScratch().dirs.removeAll();

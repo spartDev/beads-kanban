@@ -169,10 +169,8 @@ describe('scratchDir à la collecte et dans un crochet', () => {
 });
 
 /**
- * Un module rechargé par `vi.resetModules()` (`dolt-fixture.test.ts` le fait pour `hasBinary`) est une seconde instance de `scratch.ts`, évaluée en plein test :
- * le crochet `afterAll` qu'elle poserait alors est ignoré par vitest, sans un mot, et les dossiers qu'elle crée ne seraient jamais retirés (bdesk-38k.60, relecture).
- * Le registre du fichier est donc celui du worker, partagé par toutes les instances ; un module évalué pour la première fois en plein test échoue au lieu de
- * poser un crochet qui ne servirait à rien.
+ * Un module rechargé par `vi.resetModules()` (`dolt-fixture.test.ts` le fait pour `hasBinary`) est une seconde instance de `scratch.ts`, évaluée en plein test : le
+ * registre du fichier n'est donc pas dans le module, mais sur `globalThis` (bdesk-38k.60, relecture), où toutes les instances le retrouvent.
  */
 describe('module scratch rechargé en plein test', () => {
   const STATE = Symbol.for('beads-desktop.scratch');
@@ -184,17 +182,17 @@ describe('module scratch rechargé en plein test', () => {
     expect(reloaded.scratchDir).not.toBe(scratchDir); // bien une autre instance du module
     const dir = reloaded.scratchDir('bdesk-recharge-');
 
-    removeScratchDirs(); // ce que le crochet de fin de fichier exécute, celui de la première instance
+    removeScratchDirs(); // ce que le crochet de fin de fichier exécute
 
     expect(existsSync(dir)).toBe(false);
   });
 
-  it('un module évalué pour la première fois en plein test échoue, au lieu de poser un crochet que vitest ignorerait', async () => {
+  // Le registre et les crochets sont posés par `setup.ts` (setupFiles du projet « node »), avant chaque fichier : sans lui, il n'y a rien à retirer ni à croire.
+  it('dit clairement que setup.ts n’a pas tourné, au lieu d’annoncer une collecte', () => {
     const saved = holder[STATE];
-    delete holder[STATE]; // comme si ce worker n'avait encore jamais chargé le module
+    delete holder[STATE];
     try {
-      vi.resetModules();
-      await expect(import('./scratch')).rejects.toThrow(/en cours de test/);
+      expect(() => scratchDir('bdesk-sans-registre-')).toThrow(/setup\.ts/);
     } finally {
       holder[STATE] = saved;
     }

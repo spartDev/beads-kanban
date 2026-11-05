@@ -34,7 +34,14 @@ export default defineConfig({
       // Serveur et domaine : Node, sans DOM.
       {
         extends: true,
-        test: { name: 'node', environment: 'node', include: ['src/{domain,server}/**/*.test.ts'] },
+        test: {
+          name: 'node',
+          environment: 'node',
+          include: ['src/{domain,server}/**/*.test.ts'],
+          // Le registre des dossiers temporaires de chaque fichier et les crochets qui les retirent à sa fin (src/server/testing/scratch.ts) : posés avant chaque fichier,
+          // `--no-isolate` compris, où les fichiers d'un même worker partagent leurs modules.
+          setupFiles: ['src/server/testing/setup.ts'],
+        },
       },
       // Interface : jsdom (stubs du navigateur dans src/web/test/setup.ts).
       {
