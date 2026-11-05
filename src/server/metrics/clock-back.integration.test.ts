@@ -12,7 +12,7 @@ import { createMetricsService } from './service';
 vi.setConfig({ testTimeout: 60_000 });
 
 const DAY = 86_400_000;
-/** Lundi 12 octobre 2026, 12:00 UTC : les commits des bases d'essai sont datés du 2 au 7 octobre, à 10:00 UTC. */
+/** Lundi 12 octobre 2026, 12:00 UTC : les commits des bases d'essai sont datés du 2 au 8 octobre, à 10:00 UTC (le 30 pour le commit en avance de « iota »). */
 const NOW = new Date('2026-10-12T12:00:00Z');
 const PERIOD = '?from=2026-10-01&to=2026-10-12';
 
@@ -40,11 +40,17 @@ const create = (id: string, day: number, type = 'task') =>
 const discoveredFrom = (id: string, origin: string, day: number) =>
   `insert into dependencies (id, issue_id, depends_on_issue_id, type, created_at, created_by) values (uuid(), '${id}', '${origin}', 'discovered-from', '${stamp(day)}', 'tom')`;
 
+const blocks = (id: string, target: string, day: number) =>
+  `insert into dependencies (id, issue_id, depends_on_issue_id, type, created_at, created_by) values (uuid(), '${id}', '${target}', 'blocks', '${stamp(day)}', 'tom')`;
+
 const move = (id: string, status: string, day: number) =>
   `update issues set status = '${status}', updated_at = '${stamp(day)}', closed_at = ${status === 'closed' ? `'${stamp(day)}'` : 'null'} where id = '${id}'`;
 
-/** Une étape de l'histoire d'un Projet : le jour du commit (daté à 10 h UTC), et ce qui s'y passe. */
-type Script = [day: number, statements: string[]][];
+/**
+ * Une étape de l'histoire d'un Projet : le jour du commit (daté à 10 h UTC) ou, pour une horloge qui se trompe de beaucoup, sa date
+ * exacte (ISO 8601), et ce qui s'y passe.
+ */
+type Script = [day: number | string, statements: string[]][];
 
 /**
  * Projet « epsilon » : l'horloge d'un commit recule. Les trois commits se suivent dans cet ordre, qui est celui de la lignée du
@@ -54,9 +60,10 @@ type Script = [day: number, statements: string[]][];
  *   commit 2, daté j3  e-1 en cours ; e-2 fermé : l'horloge de ce commit est en retard de deux jours
  *   commit 3, daté j7  e-1 fermé
  *
- * Ce que dit la règle (ADR 0001) : une Transition n'est jamais datée avant la précédente du ticket. e-1 est créé le 5, démarré le 5 (et non
- * le 3), fermé le 7 : Lead Time 2 j, Cycle Time 2 j (4 j, du 3 au 7, sans cela : plus que le Lead Time). e-2 est créé et fermé le 5
- * (et non fermé le 3, deux jours avant d'exister : un Lead Time de −2 j sans cela) : Lead Time 0, jamais démarré.
+ * Ce que disent les règles (ADR 0001) : l'ordre de la lignée fait foi, non les dates. Deux suites de dates croissantes s'opposent (j5, j7 ou j3, j7) :
+ * à égalité, le commit le plus ancien garde la sienne, et le lecteur date le deuxième commit du j5. e-1 est créé le 5, démarré le 5 (et non le 3),
+ * fermé le 7 : Lead Time 2 j, Cycle Time 2 j (4 j, du 3 au 7, sans cela : plus que le Lead Time). e-2 est créé et fermé le 5 (et non fermé le 3, deux
+ * jours avant d'exister : un Lead Time de −2 j sans cela) : Lead Time 0, jamais démarré.
  */
 const EPSILON: Script = [
   [5, [create('e-1', 5), create('e-2', 5)]],
@@ -70,18 +77,96 @@ const EPSILON: Script = [
  *
  *   commit 1, daté j2  z-1 créé
  *   commit 2, daté j6  z-1 en cours
- *   commit 3, daté j3  z-1 fermé : l'horloge de ce commit est en retard de trois jours sur le précédent
+ *   commit 3, daté j3  z-1 fermé : ce commit est daté trois jours avant le précédent
  *   commit 4, daté j4  z-2 (un bug) créé, découvert à partir de z-1
  *
- * Dans la lignée, le bug est créé après la clôture de z-1 : c'est son Bug d'origine, et z-1 est une Livraison en échec. La règle
- * (ADR 0001) date cette Livraison du j6, puisqu'un ticket n'est pas fermé avant d'avoir été démarré : la Livraison compte ce jour-là,
- * après la création du bug (j4). Le Taux d'échec, lui, compare les dates enregistrées des deux tickets : clôture j3, création j4.
+ * Dans la lignée, le bug est créé après la clôture de z-1 : c'est son Bug d'origine, et z-1 est une Livraison en échec. Trois dates
+ * (j2, j3, j4) s'accordent avec l'ordre de la lignée, une seule (j6) le contredit : le lecteur ramène celle-ci à j3 (ADR 0001, bdesk-38k.26),
+ * et z-1 est démarré et fermé le j3. La Livraison compte ce jour-là, avant la création du bug (j4), comme la lignée le dit. Avant cela, la
+ * borne par ticket datait la Livraison du j6, puisqu'un ticket n'est pas fermé avant d'avoir été démarré, après le bug.
  */
 const ZETA: Script = [
   [2, [create('z-1', 2)]],
   [6, [move('z-1', 'in_progress', 6)]],
   [3, [move('z-1', 'closed', 3)]],
   [4, [create('z-2', 4, 'bug'), discoveredFrom('z-2', 'z-1', 4)]],
+];
+
+/**
+ * Projet « eta » : une dépendance posée par un commit dont l'horloge est en retard, après le démarrage dans la lignée (R2 de la relecture
+ * de bdesk-38k.22).
+ *
+ *   commit 1, daté j2  h-1 (le bloqueur) et h-2 créés
+ *   commit 2, daté j5  h-2 en cours
+ *   commit 3, daté j3  h-2 bloqué par h-1, resté ouvert : ce commit est daté deux jours avant le précédent
+ *   commit 4, daté j8  h-2 fermé
+ *
+ * Dans la lignée, la dépendance est posée après le démarrage de h-2 : il n'a attendu personne avant de démarrer. Deux suites de dates croissantes
+ * s'opposent (j2, j5, j8 ou j2, j3, j8) : à égalité, le commit le plus ancien garde sa date, et la dépendance est datée du j5.
+ */
+const ETA: Script = [
+  [2, [create('h-1', 2), create('h-2', 2)]],
+  [5, [move('h-2', 'in_progress', 5)]],
+  [3, [blocks('h-2', 'h-1', 3)]],
+  [8, [move('h-2', 'closed', 8)]],
+];
+
+/**
+ * Projet « theta » : un bloqueur fermé par un commit dont l'horloge est en retard, après le démarrage du ticket bloqué dans la lignée
+ * (R3 de la relecture de bdesk-38k.22).
+ *
+ *   commit 1, daté j2  k-1 (le bloqueur) et k-2 créés, k-2 bloqué par k-1
+ *   commit 2, daté j5  k-2 en cours, k-1 toujours ouvert
+ *   commit 3, daté j3  k-1 fermé : ce commit est daté deux jours avant le précédent
+ *   commit 4, daté j8  k-2 fermé
+ *
+ * Dans la lignée, k-1 bloque k-2 jusqu'à son démarrage : trois jours d'Attente de dépendance, du j2 au j5. Deux suites de dates croissantes
+ * s'opposent (j2, j5, j8 ou j2, j3, j8) : à égalité, le commit le plus ancien garde sa date, et k-1 est daté fermé du j5.
+ */
+const THETA: Script = [
+  [2, [create('k-1', 2), create('k-2', 2), blocks('k-2', 'k-1', 2)]],
+  [5, [move('k-2', 'in_progress', 5)]],
+  [3, [move('k-1', 'closed', 3)]],
+  [8, [move('k-2', 'closed', 8)]],
+];
+
+/**
+ * Projet « iota » : une horloge en avance. Le commit 3 est daté le 30 octobre, vingt-sept jours trop tard, et les commits qui le suivent
+ * sont datés comme il se doit.
+ *
+ *   commit 1, daté j2   i-1 et i-2 créés
+ *   commit 2, daté j3   i-1 en cours
+ *   commit 3, daté j30  i-2 en cours : l'horloge de ce commit est en avance
+ *   commit 4, daté j5   i-1 fermé
+ *   commit 5, daté j6   i-3 créé
+ *
+ * Seul le commit en avance change de date : i-2 démarre le j5, la date du commit qui le suit. Les tickets des commits suivants gardent la leur.
+ */
+const IOTA: Script = [
+  [2, [create('i-1', 2), create('i-2', 2)]],
+  [3, [move('i-1', 'in_progress', 3)]],
+  [30, [move('i-2', 'in_progress', 30)]],
+  [5, [move('i-1', 'closed', 5)]],
+  [6, [create('i-3', 6)]],
+];
+
+/**
+ * Projet « kappa » : un commit daté du futur, suivi d'un seul commit à l'heure (B1 de la relecture de bdesk-38k.26). Le commit 3 est daté de
+ * décembre 2099, une date que nulle horloge de lecture n'a atteinte : la machine qui l'a fait était en avance de soixante-treize ans.
+ *
+ *   commit 1, daté j2           q-1 créé
+ *   commit 2, daté j3           q-1 en cours
+ *   commit 3, daté 2099-12-05   q-2 créé : l'horloge de ce commit est en avance
+ *   commit 4, daté j5           q-1 fermé
+ *
+ * Les suites j2, j3, 2099 et j2, j3, j5 ont la même longueur : on garderait la plus ancienne, et q-1 serait fermé dans le futur. Une date
+ * postérieure à l'instant de la lecture est forcément fausse, le lecteur ne la garde pas : q-2 est créé le j5, q-1 fermé le j5.
+ */
+const KAPPA: Script = [
+  [2, [create('q-1', 2)]],
+  [3, [move('q-1', 'in_progress', 3)]],
+  ['2099-12-05T10:00:00Z', [create('q-2', 5)]],
+  [5, [move('q-1', 'closed', 5)]],
 ];
 
 /** Crée le Projet `name`, de préfixe `prefix`, dans `root` : une base Dolt dont l'historique rejoue `script`, un commit par étape. */
@@ -93,7 +178,12 @@ function buildProject(root: string, name: string, prefix: string, script: Script
   base.sql(`${SCHEMA} insert into config values ('issue_prefix', '${prefix}');`);
   for (const [day, statements] of script) {
     base.sql(statements.join(';\n'));
-    base.commit(day, `commit daté du jour ${day}`);
+    if (typeof day === 'number') {
+      base.commit(day, `commit daté du jour ${day}`);
+    } else {
+      base.dolt('add', '-A');
+      base.dolt('commit', '--allow-empty', '-m', `commit daté du ${day}`, '--date', day);
+    }
   }
 }
 
@@ -105,6 +195,10 @@ describe.skipIf(!hasBinary('dolt'))('horloge de commit qui recule, sur une vraie
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-clock-back-')));
     buildProject(root, 'epsilon', 'e', EPSILON);
     buildProject(root, 'zeta', 'z', ZETA);
+    buildProject(root, 'eta', 'h', ETA);
+    buildProject(root, 'theta', 'k', THETA);
+    buildProject(root, 'iota', 'i', IOTA);
+    buildProject(root, 'kappa', 'q', KAPPA);
 
     const config = { roots: [root], projects: [], hiddenProjects: [] };
     const projects = createProjectService(config);
@@ -164,12 +258,66 @@ describe.skipIf(!hasBinary('dolt'))('horloge de commit qui recule, sur une vraie
     expect([done('2026-10-04'), done('2026-10-05'), done('2026-10-06'), done('2026-10-07')]).toEqual([0, 1, 1, 2]);
   });
 
-  it('compte le bug créé après la clôture, dans la lignée, comme Bug d’origine de la Livraison, bien que la règle date celle-ci après lui', async () => {
+  it('compte le bug créé après la clôture, dans la lignée, comme Bug d’origine de la Livraison, que la lignée date avant lui', async () => {
     const delivery = await chronology('z-1', 'zeta');
     const report = await metrics(`${PERIOD}&project=zeta`);
 
-    expect(delivery.outcome).toEqual({ kind: 'delivered', at: iso(6) }); // la clôture datée du j3 tombe au j6, après la création du bug (j4)
+    expect(delivery.transitions.map((t) => [t.status, t.at])).toEqual([
+      ['open', iso(2)],
+      ['in_progress', iso(3)], // daté du j6 par son commit : trois dates s'accordent contre lui, il prend celle du commit qui le suit
+      ['closed', iso(3)],
+    ]);
+    expect(delivery.outcome).toEqual({ kind: 'delivered', at: iso(3) }); // avant la création du bug (j4)
     expect(report.tiles.failureRate).toMatchObject({ deliveries: 1, failed: 1, rate: 1 });
     expect(report.tiles.failureRate.coverage).toEqual({ bugs: 1, linked: 1, ratio: 1 });
+  });
+
+  it('R2 : une dépendance posée par un commit en retard, après le démarrage dans la lignée, n’est pas posée avant : aucune Attente de dépendance', async () => {
+    const { blockages, blockedTime } = await chronology('h-2', 'eta');
+
+    expect(blockages).toEqual([
+      { from: iso(5), to: iso(8), blockedBy: ['h-1'], statusBlocked: false, phases: [{ kind: 'work', from: iso(5), to: iso(8) }] },
+    ]);
+    expect(blockedTime).toBe(3 * DAY);
+  });
+
+  it('R3 : un bloqueur fermé par un commit en retard, après le démarrage du ticket bloqué dans la lignée, l’a bloqué jusqu’à son démarrage', async () => {
+    const { blockages, blockedTime } = await chronology('k-2', 'theta');
+
+    expect(blockages).toEqual([
+      { from: iso(2), to: iso(5), blockedBy: ['k-1'], statusBlocked: false, phases: [{ kind: 'dependencyWait', from: iso(2), to: iso(5) }] },
+    ]);
+    expect(blockedTime).toBe(0); // k-2 n'a jamais travaillé bloqué
+  });
+
+  it('une horloge en avance ne déplace que son commit : les tickets des commits qui le suivent gardent leurs dates', async () => {
+    const started = await chronology('i-2', 'iota');
+    const closed = await chronology('i-1', 'iota');
+    const created = await chronology('i-3', 'iota');
+
+    expect(started.transitions.map((t) => [t.status, t.at])).toEqual([
+      ['open', iso(2)],
+      ['in_progress', iso(5)], // daté du j30 par son commit, il prend la date du commit qui le suit
+    ]);
+    expect(closed.transitions.map((t) => [t.status, t.at])).toEqual([
+      ['open', iso(2)],
+      ['in_progress', iso(3)],
+      ['closed', iso(5)], // borner chaque commit par le plus tardif des précédents l'aurait daté du j30
+    ]);
+    expect(created.transitions.map((t) => [t.status, t.at])).toEqual([['open', iso(6)]]);
+  });
+
+  it('B1 : un commit daté du futur ne date pas dans le futur le seul commit à l’heure qui le suit : la Livraison garde sa date', async () => {
+    const closed = await chronology('q-1', 'kappa');
+    const created = await chronology('q-2', 'kappa');
+
+    expect(closed.transitions.map((t) => [t.status, t.at])).toEqual([
+      ['open', iso(2)],
+      ['in_progress', iso(3)],
+      ['closed', iso(5)], // et non décembre 2099
+    ]);
+    expect(closed.outcome).toEqual({ kind: 'delivered', at: iso(5) });
+    expect(closed.leadTime).toBe(3 * DAY);
+    expect(created.transitions.map((t) => [t.status, t.at])).toEqual([['open', iso(5)]]); // le commit en avance prend la date de celui qui le suit
   });
 });

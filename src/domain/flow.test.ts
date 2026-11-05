@@ -524,8 +524,9 @@ describe('analyzeFlow', () => {
       // La borne ne porte que sur les Transitions d'un même ticket. Les dates des dépendances (`addedAt`, `removedAt`) sont celles
       // de leurs commits, et les Transitions d'un ticket bloquant sont bornées pour lui seul : le Blocage par un autre ticket croise
       // des dates qui peuvent se contredire, parce que rien, dans ces historiques, ne dit l'ordre des commits entre deux tickets.
-      // Seule la précision du Blocage en souffre. Ces tests figent le choix ; borner sur toute la lignée du Projet les changerait
-      // (et ferait propager une horloge en avance à tous les tickets).
+      // Seule la précision du Blocage en souffre. Ces tests figent ce que le domaine fait de dates qui se contredisent. Le lecteur Dolt,
+      // lui, met d'accord les dates de la lignée avant de lui donner les historiques (`ascendingDates`, ADR 0001) : ce qu'il lit ne se
+      // contredit pas, et `history.test.ts` donne les mêmes scénarios (R2 et R3) tels que le lecteur les date.
       const invariantsHold = (flow: TicketFlow | undefined) => {
         const [leadTime, cycleTime, blockedTime, dependencyWait] = [flow?.leadTime ?? NaN, flow?.cycleTime ?? 0, flow?.blockedTime ?? NaN, flow?.dependencyWait ?? NaN];
         expect(blockedTime).toBeGreaterThanOrEqual(0);

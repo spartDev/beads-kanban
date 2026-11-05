@@ -41,6 +41,16 @@ export function dolt(env: NodeJS.ProcessEnv, cwd: string, ...args: string[]): st
 /** Un instant de l'historique de la base d'essai, en UTC. */
 export const day = (n: number): string => `2026-10-${String(n).padStart(2, '0')}T10:00:00Z`;
 
+/**
+ * `dolt init`, puis son commit initial daté du 30 septembre 2026, la veille du jour 1. `dolt init` le date d'aujourd'hui (son
+ * `--date` ne change pas la date que `dolt_log` donne, un amend si) : il serait *après* les commits datés de `commit` dans la
+ * lignée, et le lecteur, qui met d'accord les dates de la lignée (`ascendingDates`), daterait de même tout ce qui suit.
+ */
+function initDatabase(env: NodeJS.ProcessEnv, dir: string): void {
+  dolt(env, dir, 'init', '--name', 'testeur', '--email', 'testeur@example.com');
+  dolt(env, dir, 'commit', '--amend', '--allow-empty', '--date', '2026-09-30T10:00:00Z');
+}
+
 export interface Scratch {
   /** Exécute des instructions SQL (écriture comprise) dans la base. */
   sql(statements: string): string;
@@ -52,13 +62,10 @@ export interface Scratch {
   dolt(...args: string[]): string;
 }
 
-/**
- * Crée une base Dolt vide dans `dir`. Le commit initial de `dolt init` est daté d'aujourd'hui, donc *après*
- * les commits datés de `commit` dans le graphe : l'horloge recule d'office dans ces historiques.
- */
+/** Crée une base Dolt vide dans `dir`, dont le commit initial précède ceux de `commit` (voir `initDatabase`). */
 export function createDatabase(env: NodeJS.ProcessEnv, dir: string): Scratch {
   mkdirSync(dir, { recursive: true });
-  dolt(env, dir, 'init', '--name', 'testeur', '--email', 'testeur@example.com');
+  initDatabase(env, dir);
   return {
     sql: (statements) => dolt(env, dir, 'sql', '-q', statements),
     rows: (query) => (JSON.parse(dolt(env, dir, 'sql', '-r', 'json', '-q', query)) as { rows: Record<string, unknown>[] }).rows,
@@ -86,8 +93,7 @@ export function createDatabase(env: NodeJS.ProcessEnv, dir: string): Scratch {
  */
 export function buildLegacyDatabase(env: NodeJS.ProcessEnv, dir: string): void {
   mkdirSync(dir, { recursive: true });
-  // Le commit initial de `dolt init` est daté d'aujourd'hui, avant les commits datés ci-dessous dans le graphe.
-  dolt(env, dir, 'init', '--name', 'testeur', '--email', 'testeur@example.com');
+  initDatabase(env, dir);
   const sql = (statement: string) => dolt(env, dir, 'sql', '-q', statement);
   const commit = (n: number, message: string) => {
     dolt(env, dir, 'add', '-A');

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { analyzeChronologies } from '../../domain/chronology';
+import { analyzeFailures } from '../../domain/failures';
 import { analyzeFlow } from '../../domain/flow';
 import { type DoltDatabase, DoltQueryError, type Row } from './client';
 import { type Commit, dependencyLifetimes, readTicketHistories } from './history';
@@ -492,5 +494,209 @@ describe('readTicketHistories', () => {
 
     expect(reads(db)).toHaveLength(1);
     expect(db.queries.some((q) => /^\s*(insert|update|delete)/i.test(q))).toBe(false);
+  });
+});
+
+/**
+ * Un Projet factice dont la lignée est `lineage` (`[commit, date]`, du plus ancien au plus récent, la date telle que `dolt_log` la
+ * donne) : `steps` dit quel ticket prend quel statut à quel commit, `links` quelles dépendances apparaissent à quel commit (et
+ * restent jusqu'au commit `until`, ou jusqu'à la fin de la lignée).
+ */
+function projectDb(
+  lineage: [commit: string, date: string][],
+  steps: [commit: string, ticket: string, status: string][],
+  links: { from: string; to: string; since: string; until?: string; type?: string }[] = [],
+  bugs: string[] = [],
+) {
+  const sql = (date: string) => `${date}:00.000`;
+  const dateOf = new Map(lineage.map(([commit, date]) => [commit, date]));
+  const ids = [...new Set(steps.map(([, ticket]) => ticket))];
+  const seenTickets = new Set<string>();
+  const statuses = ids.flatMap((id) =>
+    steps
+      .filter(([, ticket]) => ticket === id)
+      .map(([commit, , status]) => {
+        const restart = seenTickets.has(id) ? 0 : 1;
+        seenTickets.add(id);
+        return { id, status, changed_at: sql(dateOf.get(commit) as string), restart, commit_hash: commit };
+      }),
+  );
+  const order = lineage.map(([commit]) => commit);
+  const dependencies = links.flatMap(({ from, to, since, until, type = 'blocks' }) =>
+    order
+      .slice(order.indexOf(since), until === undefined ? undefined : order.indexOf(until) + 1)
+      .map((commit) => ({ commit_hash: commit, issue_id: from, depends_on_issue_id: to, type })),
+  );
+  return fakeDb([
+    { match: /from issues/, rows: ids.map((id) => ({ id, issue_type: bugs.includes(id) ? 'bug' : 'task' })) },
+    { match: /lag\(/, rows: statuses },
+    { match: /select l\.commit_hash/, rows: lineage.map(([commit_hash, date]) => ({ commit_hash, date: sql(date) })) },
+    columns(CURRENT_COLUMNS),
+    { match: /^select .* from dolt_history_dependencies$/s, rows: dependencies },
+  ]);
+}
+
+const HOUR = 3_600_000;
+const sinceDay = (iso: string) => at(`${iso}:00`);
+
+describe('readTicketHistories : l’horloge d’un commit recule ou avance (bdesk-38k.26)', () => {
+  // L'horloge d'une machine peut reculer ou avancer d'un commit à l'autre, et Dolt ne s'y oppose pas. Le lecteur met alors d'accord les
+  // dates de toute la lignée, celles des statuts de tous les tickets comme celles des dépendances, en changeant le moins de commits
+  // possible (`ascendingDates`) : le Blocage d'un ticket par un autre, le Bug d'origine, tout ce qui compare deux tickets lit des dates
+  // qui respectent l'ordre des commits. Ces scénarios sont les trois constats de la relecture de bdesk-38k.22 (R1, R2, R3).
+
+  it('R2 : une dépendance posée par un commit en retard, après le démarrage dans la lignée, n’est pas posée avant', async () => {
+    // c0 09:00 `b` créé · c1 10:00 `t` créé · c2 14:00 `t` en cours · c3 « 11:00 » (horloge en retard) `t` bloqué par `b`, resté ouvert · c4 20:00 `t` fermé.
+    const db = projectDb(
+      [['c0', '2026-10-01 09:00'], ['c1', '2026-10-01 10:00'], ['c2', '2026-10-01 14:00'], ['c3', '2026-10-01 11:00'], ['c4', '2026-10-01 20:00']],
+      [['c0', 'b', 'open'], ['c1', 't', 'open'], ['c2', 't', 'in_progress'], ['c4', 't', 'closed']],
+      [{ from: 't', to: 'b', since: 'c3' }],
+    );
+
+    const histories = await readTicketHistories(db);
+
+    expect(histories.find((h) => h.id === 't')?.dependencies).toEqual([{ type: 'blocks', target: 'b', addedAt: sinceDay('2026-10-01T14:00') }]);
+    expect(analyzeFlow(histories).get('t')).toMatchObject({ dependencyWait: 0, blockedTime: 6 * HOUR });
+    const phases = analyzeChronologies(histories).of('t')?.blockages.flatMap((blockage) => blockage.phases.map((phase) => phase.kind));
+    expect(phases).toEqual(['work']);
+  });
+
+  it('R3 : un bloqueur fermé par un commit en retard, après le démarrage de `t` dans la lignée, n’est pas fermé avant', async () => {
+    // c0 09:00 `b` et `t` créés, `t` bloqué par `b` · c1 12:00 `t` en cours · c2 « 10:00 » (horloge en retard) `b` fermé · c3 15:00 `t` fermé.
+    const db = projectDb(
+      [['c0', '2026-10-01 09:00'], ['c1', '2026-10-01 12:00'], ['c2', '2026-10-01 10:00'], ['c3', '2026-10-01 15:00']],
+      [['c0', 'b', 'open'], ['c0', 't', 'open'], ['c1', 't', 'in_progress'], ['c2', 'b', 'closed'], ['c3', 't', 'closed']],
+      [{ from: 't', to: 'b', since: 'c0' }],
+    );
+
+    const histories = await readTicketHistories(db);
+
+    expect(histories.find((h) => h.id === 'b')?.statusSnapshots.map((s) => s.at.toISOString().slice(11, 16))).toEqual(['09:00', '12:00']);
+    expect(analyzeFlow(histories).get('t')?.dependencyWait).toBe(3 * HOUR); // b a bloqué t de 09:00 à son démarrage, 12:00
+  });
+
+  it('R1 : la Livraison dont l’horloge de clôture a reculé précède le bug créé ensuite, dans la lignée', async () => {
+    // c0 09:00 `d` créé · c1 12:00 `d` en cours · c2 « 10:00 » `d` fermé · c3 11:00 `bug` créé, découvert à partir de `d`.
+    // Trois commits (09:00, 10:00, 11:00) s'accordent contre un seul (12:00) : c'est le démarrage de `d` qui est daté trop tard.
+    const db = projectDb(
+      [['c0', '2026-10-01 09:00'], ['c1', '2026-10-01 12:00'], ['c2', '2026-10-01 10:00'], ['c3', '2026-10-01 11:00']],
+      [['c0', 'd', 'open'], ['c1', 'd', 'in_progress'], ['c2', 'd', 'closed'], ['c3', 'bug', 'open']],
+      [{ from: 'bug', to: 'd', since: 'c3', type: 'discovered-from' }],
+      ['bug'],
+    );
+
+    const histories = await readTicketHistories(db);
+
+    const flows = analyzeFlow(histories);
+    expect(flows.get('d')?.outcome).toEqual({ kind: 'delivered', at: sinceDay('2026-10-01T10:00') }); // avant la création du bug, 11:00
+    expect(flows.get('d')?.leadTime).toBe(1 * HOUR);
+    expect(analyzeFailures(histories, flows).originBugs.get('d')).toEqual(['bug']);
+  });
+
+  it('une horloge en avance ne déplace que son commit : les commits qui le suivent gardent leurs dates', async () => {
+    // c3 est daté un mois trop tard (2 novembre). Borner chaque commit par le plus tardif des précédents daterait au 2 novembre tout ce
+    // que les commits suivants ont changé, c4 et c5 compris, jusqu'à ce que les dates le rattrapent.
+    const db = projectDb(
+      [['c0', '2026-10-01 10:00'], ['c1', '2026-10-02 10:00'], ['c2', '2026-10-03 10:00'], ['c3', '2026-11-02 10:00'], ['c4', '2026-10-05 10:00'], ['c5', '2026-10-06 10:00']],
+      [['c0', 'a', 'open'], ['c1', 'b', 'open'], ['c2', 'a', 'in_progress'], ['c3', 'b', 'in_progress'], ['c4', 'c', 'open'], ['c5', 'a', 'closed']],
+    );
+
+    const histories = await readTicketHistories(db);
+
+    const dates = (id: string) => histories.find((h) => h.id === id)?.statusSnapshots.map((s) => [s.status, s.at.toISOString().slice(0, 10)]);
+    expect(dates('a')).toEqual([['open', '2026-10-01'], ['in_progress', '2026-10-03'], ['closed', '2026-10-06']]);
+    expect(dates('b')).toEqual([['open', '2026-10-02'], ['in_progress', '2026-10-05']]); // c3 prend la date de c4, qui le suit
+    expect(dates('c')).toEqual([['open', '2026-10-05']]);
+  });
+
+  it('ne retire pas une dépendance avant ce que les commits précédents ont fait, quel que soit le ticket', async () => {
+    // c1 10-02 `t` bloqué par `b` · c2 10-04 `b` en cours · c3 « 10-03 » (horloge en retard) la dépendance disparaît · c4 10-05 `t` fermé.
+    const db = projectDb(
+      [['c0', '2026-10-01 10:00'], ['c1', '2026-10-02 10:00'], ['c2', '2026-10-04 10:00'], ['c3', '2026-10-03 10:00'], ['c4', '2026-10-05 10:00']],
+      [['c0', 'b', 'open'], ['c0', 't', 'open'], ['c2', 'b', 'in_progress'], ['c4', 't', 'closed']],
+      [{ from: 't', to: 'b', since: 'c1', until: 'c2' }],
+    );
+
+    const histories = await readTicketHistories(db);
+
+    expect(histories.find((h) => h.id === 't')?.dependencies).toEqual([
+      { type: 'blocks', target: 'b', addedAt: sinceDay('2026-10-02T10:00'), removedAt: sinceDay('2026-10-04T10:00') }, // et non le 3
+    ]);
+  });
+
+  describe('un commit daté du futur (revue de bdesk-38k.26, B1)', () => {
+    // Un commit n'est pas fait dans le futur : une date postérieure à l'instant de la lecture est forcément fausse. Elle n'est pas gardée,
+    // même quand elle ouvre une suite aussi longue qu'un seul commit à l'heure qui la suit.
+    const readAt = () => sinceDay('2026-11-05T12:00');
+
+    it('ne date pas dans le futur le seul commit à l’heure qui la suit : la Livraison garde sa date et son Lead Time', async () => {
+      // c0 10-01 · c1 10-02 `a` en cours · c2 « 12-05 » (machine en avance de 30 jours) `b` créé · c3 11-04 `a` fermé. On lit le 5 novembre.
+      const db = projectDb(
+        [['c0', '2026-10-01 10:00'], ['c1', '2026-10-02 10:00'], ['c2', '2026-12-05 10:00'], ['c3', '2026-11-04 10:00']],
+        [['c0', 'a', 'open'], ['c1', 'a', 'in_progress'], ['c2', 'b', 'open'], ['c3', 'a', 'closed']],
+      );
+
+      const histories = await readTicketHistories(db, { now: readAt });
+
+      const flow = analyzeFlow(histories).get('a');
+      expect(flow?.outcome).toEqual({ kind: 'delivered', at: sinceDay('2026-11-04T10:00') });
+      expect(flow?.leadTime).toBe(34 * 24 * HOUR);
+      expect(histories.find((h) => h.id === 'b')?.statusSnapshots).toEqual([{ status: 'open', at: sinceDay('2026-11-04T10:00') }]); // le commit en avance prend la date de celui qui le suit
+    });
+
+    it('date de l’instant de la lecture le dernier commit de la lignée quand il est daté du futur : il vient d’être fait', async () => {
+      const db = projectDb(
+        [['c0', '2026-10-01 10:00'], ['c1', '2026-10-02 10:00'], ['c2', '2026-12-05 10:00']],
+        [['c0', 'a', 'open'], ['c1', 'a', 'in_progress'], ['c2', 'a', 'closed']],
+      );
+
+      const histories = await readTicketHistories(db, { now: readAt });
+
+      expect(histories[0]?.statusSnapshots.map((s) => s.at.toISOString())).toEqual(['2026-10-01T10:00:00.000Z', '2026-10-02T10:00:00.000Z', '2026-11-05T12:00:00.000Z']);
+    });
+
+    it('lit l’horloge de la machine quand on ne lui en donne pas', async () => {
+      const db = projectDb(
+        [['c0', '2026-10-01 10:00'], ['c1', '2100-01-01 10:00']],
+        [['c0', 'a', 'open'], ['c1', 'a', 'closed']],
+      );
+
+      const before = Date.now();
+      const [history] = await readTicketHistories(db);
+      const after = Date.now();
+
+      const closedAt = history?.statusSnapshots[1]?.at.getTime() as number;
+      expect(closedAt).toBeGreaterThanOrEqual(before);
+      expect(closedAt).toBeLessThanOrEqual(after); // et non le 1er janvier 2100
+    });
+  });
+
+  it('date d’après `dolt_log` un instantané dont le commit est arrivé entre les deux lectures : la lignée lue plus tôt ne le connaît pas', async () => {
+    const db = fakeDb([
+      { match: /from issues/, rows: [{ id: 'a', issue_type: 'task' }] },
+      {
+        match: /lag\(/,
+        rows: [
+          { id: 'a', status: 'open', changed_at: '2026-10-01 10:00:00.000', restart: 1, commit_hash: 'c0' },
+          { id: 'a', status: 'closed', changed_at: '2026-10-03 10:00:00.000', restart: 0, commit_hash: 'c9' }, // absent de la lignée ci-dessous
+        ],
+      },
+      {
+        match: /select l\.commit_hash/,
+        rows: [
+          { commit_hash: 'c0', date: '2026-10-01 10:00:00.000' },
+          { commit_hash: 'c1', date: '2026-10-02 10:00:00.000' },
+        ],
+      },
+      columns(CURRENT_COLUMNS),
+      { match: /^select .* from dolt_history_dependencies$/s, rows: [] },
+    ]);
+
+    const [history] = await readTicketHistories(db);
+
+    expect(history?.statusSnapshots).toEqual([
+      { status: 'open', at: sinceDay('2026-10-01T10:00') },
+      { status: 'closed', at: sinceDay('2026-10-03T10:00') },
+    ]);
   });
 });

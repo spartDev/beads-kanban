@@ -13,7 +13,7 @@ L'agrégation de tous les Projets suivis, utilisée pour les métriques transver
 _Avoid_: dashboard global, multi-repo
 
 **Transition**:
-Un changement de statut d'un ticket, daté au moment où il a été enregistré dans l'historique du Projet, mais jamais avant la Transition précédente du ticket : quand l'horloge a reculé, elle prend la date de la précédente, et le statut d'avant dure 0, jamais moins.
+Un changement de statut d'un ticket, daté au moment où il a été enregistré dans l'historique du Projet. Les dates suivent l'ordre de cet historique, jamais l'inverse : quand l'horloge d'un enregistrement s'est trompée, en reculant ou en avançant, la Transition prend la date voisine qui respecte cet ordre, et aucune durée n'est négative.
 _Avoid_: événement, mouvement
 
 **Prêt**:
@@ -78,7 +78,7 @@ Fourchette de Durée écoulée que mettraient les Enfants restants d'une Epic à
 _Avoid_: date de fin, échéance
 
 **Bug d'origine**:
-Un ticket de type bug, créé à ou après la dernière clôture d'une Livraison à laquelle il est relié par un lien « découvert à partir de » actif. Les deux dates sont celles que l'historique du Projet a enregistrées : une clôture dont l'horloge a reculé garde sa date, au lieu de prendre celle de la Transition précédente. Le ticket relié est autre que lui-même : un bug n'est jamais son propre Bug d'origine. Un bug créé avant cette clôture, ou relié à un ticket qui n'est pas une Livraison (ouvert, Abandon), a été trouvé en cours de travail : il n'est l'origine d'aucun échec. Un bug relié à une Epic n'est l'origine d'aucun échec et n'est pas compté comme relié. Un bug en Abandon n'est jamais un Bug d'origine : il décrit le même défaut qu'un autre bug. Il transmet ses liens au bug qui le remplace ; pour ces liens, la date qui compte est celle de sa propre création, car c'est lui qui a constaté le défaut.
+Un ticket de type bug, créé à ou après la dernière clôture d'une Livraison à laquelle il est relié par un lien « découvert à partir de » actif. Les deux dates sont celles de l'historique du Projet, dans l'ordre de ses changements : un bug créé après la clôture d'une Livraison, dans cet historique, lui est postérieur, même si une horloge s'est trompée. Le ticket relié est autre que lui-même : un bug n'est jamais son propre Bug d'origine. Un bug créé avant cette clôture, ou relié à un ticket qui n'est pas une Livraison (ouvert, Abandon), a été trouvé en cours de travail : il n'est l'origine d'aucun échec. Un bug relié à une Epic n'est l'origine d'aucun échec et n'est pas compté comme relié. Un bug en Abandon n'est jamais un Bug d'origine : il décrit le même défaut qu'un autre bug. Il transmet ses liens au bug qui le remplace ; pour ces liens, la date qui compte est celle de sa propre création, car c'est lui qui a constaté le défaut.
 
 **Taux d'échec**:
 Part des Livraisons ayant au moins un Bug d'origine (équivalent du Change Failure Rate DORA). Non significatif tant que la Couverture est faible.

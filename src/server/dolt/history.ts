@@ -1,6 +1,7 @@
 import { ABANDON_LINK_TYPES } from '../../domain/abandon';
 import type { DependencyHistory, StatusSnapshot, TicketHistory } from '../../domain/flow';
 import { type DoltDatabase, parseDoltDate, sqlIdent, sqlString } from './client';
+import { ascendingDates } from './commit-dates';
 import { asText, TARGET_COLUMNS, toDependency } from './reader';
 
 /** Un commit de l'historique Dolt, tel que listé par `dolt_log`. */
@@ -36,7 +37,8 @@ const LINEAGE = `with recursive lineage (commit_hash, seq) as (
 
 /**
  * Statuts successifs de chaque ticket : un seul instantané par changement de statut, daté du commit
- * qui l'a enregistré (UTC). Dolt rejoue l'état du ticket à chaque commit ; on ne garde que les changements.
+ * qui l'a enregistré (UTC), tel que `dolt_log` le date ; `readTicketHistories` lui donne la date de ce commit dans la lignée rendue
+ * croissante (`ascendingDates`). Dolt rejoue l'état du ticket à chaque commit ; on ne garde que les changements.
  *
  * `restart` vaut 1 sur le premier instantané d'une vie du ticket : sa création, ou sa réapparition après un trou
  * (un ticket supprimé puis recréé avec le même identifiant). Les commits de la lignée se suivent de 1 en 1 en `seq` :
@@ -75,21 +77,35 @@ const MAX_SCHEMA_ERAS = 4;
  */
 const PLACED_AT = `case when ${sqlIdent('type')} in (${ABANDON_LINK_TYPES.map(sqlString).join(', ')}) then ${sqlIdent('created_at')} end as ${sqlIdent('created_at')}`;
 
+export interface ReadHistoryOptions {
+  /** L'instant de la lecture (défaut : l'horloge de la machine) : un commit daté après lui l'est forcément à tort (`ascendingDates`). */
+  now?: () => Date;
+}
+
 /**
  * Historique complet des tickets du Projet, au format attendu par `analyzeFlow` : statuts datés par les
  * commits Dolt, dépendances avec leur date d'ajout et de retrait. Seuls les tickets existants sont renvoyés.
+ *
+ * Les dates des commits sont celles de `dolt_log`, rendues croissantes le long de la lignée (`ascendingDates`, ADR 0001) : l'horloge
+ * d'une machine peut reculer ou avancer, et un commit vient quand même après les précédents. Les statuts de tous les tickets et les
+ * dépendances lisent ainsi des dates qui respectent l'ordre des commits, ce que la borne par ticket du domaine ne fait pas. Aucune date
+ * de commit n'y est postérieure à l'instant de la lecture, relevé une fois les commits lus.
  */
-export async function readTicketHistories(db: DoltDatabase): Promise<TicketHistory[]> {
-  const commitsRequest = db.query(COMMITS_SQL).then((rows) =>
-    rows.map((row): Commit => ({ hash: asText(row.commit_hash), at: parseDoltDate(row.date) })),
-  );
-  const [tickets, statusChanges, commits, appearances] = await Promise.all([
+export async function readTicketHistories(db: DoltDatabase, { now = () => new Date() }: ReadHistoryOptions = {}): Promise<TicketHistory[]> {
+  const commitsRequest = db
+    .query(COMMITS_SQL)
+    .then((rows) => rows.map((row): Commit => ({ hash: asText(row.commit_hash), at: parseDoltDate(row.date) })));
+  const [tickets, statusChanges, recordedCommits, appearances] = await Promise.all([
     db.query('select id, issue_type from issues order by id'),
     db.query(STATUS_CHANGES_SQL),
     commitsRequest,
     readDependencyAppearances(db, commitsRequest),
   ]);
+  const commits = ascendingDates(recordedCommits, now());
 
+  // La date de l'instantané est celle de son commit dans la lignée. `changed_at`, la date brute de `dolt_log`, ne sert qu'à un commit
+  // arrivé entre les deux lectures, que la lignée lue plus tôt ne connaît pas encore.
+  const dates = new Map(commits.map((commit) => [commit.hash, commit.at]));
   const snapshots = new Map<string, StatusSnapshot[]>();
   const recreations = new Map<string, string>(); // tickets recréés : le commit où commence leur vie actuelle
   for (const row of statusChanges) {
@@ -98,7 +114,7 @@ export async function readTicketHistories(db: DoltDatabase): Promise<TicketHisto
     // Une nouvelle vie du ticket (recréation après un trou) fait oublier la précédente, dépendances comprises.
     if (restart && snapshots.has(id)) recreations.set(id, asText(row.commit_hash));
     const list = restart ? [] : (snapshots.get(id) ?? []);
-    list.push({ status: asText(row.status), at: parseDoltDate(row.changed_at) });
+    list.push({ status: asText(row.status), at: dates.get(asText(row.commit_hash)) ?? parseDoltDate(row.changed_at) });
     snapshots.set(id, list);
   }
 

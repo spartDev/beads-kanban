@@ -94,6 +94,9 @@ export const isWork = (status: string) => WORK_STATUSES.has(status);
  * bloqué et l'Attente de dépendance y perdent en précision, mais restent des intersections avec les périodes du ticket
  * lui-même, donc jamais négatifs, avec temps bloqué ≤ Cycle Time et Attente de dépendance + Cycle Time ≤ Lead Time. Voir
  * l'ADR 0001.
+ *
+ * Ces dates ne se contredisent pas sur ce que le lecteur Dolt rend : il met d'accord les dates des commits de la lignée sur son ordre
+ * (`ascendingDates`) avant de donner les historiques au domaine. Cette limite est celle d'un historique qui vient d'ailleurs.
  */
 export function analyzeFlow(tickets: TicketHistory[]): Map<TicketId, TicketFlow> {
   const transitionsById = new Map(tickets.map((t) => [t.id, toTransitions(t.statusSnapshots)]));
