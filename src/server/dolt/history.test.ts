@@ -6,6 +6,8 @@ import { type Commit, dependencyLifetimes, readTicketHistories } from './history
 const at = (iso: string) => new Date(`${iso}Z`);
 const commits: Commit[] = ['c0', 'c1', 'c2', 'c3', 'c4', 'c5'].map((hash, i) => ({ hash, at: at(`2026-10-0${i + 1}T10:00:00`) }));
 const seen = (commit: string, from: string, to: string, type = 'blocks') => ({ commit, from, to, type });
+/** Une dépendance vue à un commit avec le `created_at` de sa ligne (l'historique ne le donne que pour les liens d'Abandon). */
+const seenWith = (commit: string, from: string, to: string, type: string, created: string) => ({ ...seen(commit, from, to, type), createdAt: at(created) });
 
 describe('dependencyLifetimes', () => {
   it('date l’ajout au premier commit où la dépendance apparaît, le retrait au commit suivant son dernier passage', () => {
@@ -97,6 +99,51 @@ describe('dependencyLifetimes', () => {
       expect(lifetimes.get('a')).toEqual([
         { type: 'blocks', target: 'b', addedAt: at('2026-10-01T10:00:00'), removedAt: at('2026-10-03T10:00:00') },
       ]);
+    });
+  });
+
+  describe('created_at de la ligne (la date de pose d’un lien d’Abandon)', () => {
+    it('le donne à la durée de vie, tel que son dernier commit le voit, sans toucher à addedAt', () => {
+      const lifetimes = dependencyLifetimes(
+        [seenWith('c1', 'a', 'b', 'supersedes', '2026-04-25T23:34:56'), seenWith('c2', 'a', 'b', 'supersedes', '2026-04-25T23:34:56')],
+        commits,
+      );
+
+      expect(lifetimes.get('a')).toEqual([
+        { type: 'supersedes', target: 'b', addedAt: at('2026-10-02T10:00:00'), removedAt: at('2026-10-04T10:00:00'), createdAt: at('2026-04-25T23:34:56') },
+      ]);
+    });
+
+    it('donne à chaque durée de vie d’un lien retiré puis rétabli la date de sa propre ligne', () => {
+      const lifetimes = dependencyLifetimes(
+        [
+          seenWith('c0', 'a', 'b', 'duplicates', '2026-09-30T08:00:00'),
+          seenWith('c1', 'a', 'b', 'duplicates', '2026-09-30T08:00:00'),
+          seenWith('c4', 'a', 'b', 'duplicates', '2026-10-04T09:30:00'),
+          seenWith('c5', 'a', 'b', 'duplicates', '2026-10-04T09:30:00'),
+        ],
+        commits,
+      );
+
+      expect(lifetimes.get('a')).toEqual([
+        { type: 'duplicates', target: 'b', addedAt: at('2026-10-01T10:00:00'), removedAt: at('2026-10-03T10:00:00'), createdAt: at('2026-09-30T08:00:00') },
+        { type: 'duplicates', target: 'b', addedAt: at('2026-10-05T10:00:00'), createdAt: at('2026-10-04T09:30:00') },
+      ]);
+    });
+
+    it('suit la ligne telle qu’elle est à la fin de la durée de vie : c’est celle que lit l’état présent', () => {
+      const lifetimes = dependencyLifetimes(
+        [seenWith('c1', 'a', 'b', 'duplicates', '2026-10-01T09:00:00'), seenWith('c2', 'a', 'b', 'duplicates', '2026-10-02T09:00:00')],
+        commits,
+      );
+
+      expect(lifetimes.get('a')?.map((d) => d.createdAt)).toEqual([at('2026-10-02T09:00:00')]);
+    });
+
+    it('n’invente rien pour une dépendance dont les lignes n’en donnent pas', () => {
+      const [dependency] = dependencyLifetimes([seen('c1', 'a', 'b', 'blocks'), seen('c2', 'a', 'b', 'blocks')], commits).get('a') ?? [];
+
+      expect(dependency).not.toHaveProperty('createdAt');
     });
   });
 
@@ -200,6 +247,63 @@ describe('readTicketHistories', () => {
 
     // Ni `metadata`, ni `thread_id`, ni `created_by`… : l'historique répète chaque ligne à chaque commit.
     expect(reads(db)).toEqual(['select `commit_hash`, `issue_id`, `type`, `depends_on_issue_id` from dolt_history_dependencies']);
+  });
+
+  describe('created_at des liens d’Abandon', () => {
+    const WITH_CREATED_AT = [...CURRENT_COLUMNS, 'created_at'];
+    const withCreatedAt = (dependencies: Row[]) => [
+      { match: /from issues/, rows: tickets },
+      { match: /lag\(/, rows: statuses },
+      { match: /select l\.commit_hash/, rows: log },
+      columns(WITH_CREATED_AT),
+      { match: /^select .* from dolt_history_dependencies$/s, rows: dependencies },
+    ];
+
+    it('ne lit created_at que pour les liens d’Abandon (doublon, remplacé) : l’historique répète chaque ligne à chaque commit', async () => {
+      const db = fakeDb(withCreatedAt([]));
+
+      await readTicketHistories(db);
+
+      expect(reads(db)).toEqual([
+        "select `commit_hash`, `issue_id`, `type`, `depends_on_issue_id`, case when `type` in ('duplicates', 'supersedes') then `created_at` end as `created_at` from dolt_history_dependencies",
+      ]);
+    });
+
+    it('le donne à la dépendance de l’historique, pour la départager d’un autre lien apparu au même commit', async () => {
+      const db = fakeDb(
+        withCreatedAt([
+          { commit_hash: 'c1', issue_id: 'p-1', depends_on_issue_id: 'p-2', type: 'supersedes', created_at: '2026-04-25 23:34:56' },
+          { commit_hash: 'c1', issue_id: 'p-1', depends_on_issue_id: 'p-3', type: 'blocks' },
+          { commit_hash: 'c2', issue_id: 'p-1', depends_on_issue_id: 'p-2', type: 'supersedes', created_at: '2026-04-25 23:34:56' },
+          { commit_hash: 'c2', issue_id: 'p-1', depends_on_issue_id: 'p-3', type: 'blocks' },
+        ]),
+      );
+
+      const [first] = await readTicketHistories(db);
+
+      expect(first?.dependencies).toEqual([
+        { type: 'supersedes', target: 'p-2', addedAt: at('2026-10-02T10:00:00'), removedAt: at('2026-10-04T10:00:00'), createdAt: at('2026-04-25T23:34:56') },
+        { type: 'blocks', target: 'p-3', addedAt: at('2026-10-02T10:00:00'), removedAt: at('2026-10-04T10:00:00') },
+      ]);
+    });
+
+    it('laisse le lien sans created_at quand la ligne n’en donne qu’un illisible : un lien mal daté ne rend pas le Projet illisible', async () => {
+      const db = fakeDb(
+        withCreatedAt([{ commit_hash: 'c3', issue_id: 'p-1', depends_on_issue_id: 'p-2', type: 'duplicates', created_at: 'hier soir' }]),
+      );
+
+      const [first] = await readTicketHistories(db);
+
+      expect(first?.dependencies).toEqual([{ type: 'duplicates', target: 'p-2', addedAt: at('2026-10-04T10:00:00') }]);
+    });
+
+    it('ne le demande pas à un schéma qui n’a pas cette colonne', async () => {
+      const db = fakeDb(base());
+
+      await readTicketHistories(db);
+
+      expect(reads(db).every((query) => !query.includes('created_at'))).toBe(true);
+    });
   });
 
   it('retrouve les cibles des commits antérieurs à une migration du schéma des dépendances', async () => {

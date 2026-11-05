@@ -1,4 +1,4 @@
-import { type AbandonCause, type DependencyHistory, recordedTransitions, type TicketFlow, type TicketHistory, type TicketId } from './flow';
+import { type DependencyHistory, recordedTransitions, type TicketFlow, type TicketHistory, type TicketId } from './flow';
 
 /** À quoi un bug est rattaché. */
 export interface BugAttribution {
@@ -40,9 +40,6 @@ export interface FailureAnalysis {
 /** Lien posé sur le bug lui-même ; sa cible est le ticket en cours duquel le bug a été découvert. */
 const ORIGIN_LINK = 'discovered-from';
 
-/** Lien d'Abandon posé sur le ticket abandonné lui-même, selon la cause ; sa cible est le ticket qui le remplace. */
-const REPLACEMENT_LINKS: Record<AbandonCause, string> = { duplicate: 'duplicates', superseded: 'supersedes' };
-
 /**
  * Qualifie les Livraisons en échec (Taux d'échec) et mesure la couverture des bugs reliés.
  * `flows` est le résultat de `analyzeFlow(tickets)`.
@@ -56,8 +53,8 @@ const REPLACEMENT_LINKS: Record<AbandonCause, string> = { duplicate: 'duplicates
  * n'est l'origine d'aucun échec) ou vers un ticket hors Projet, et tout ticket qui n'est pas un bug.
  *
  * Un bug en Abandon (doublon ou remplacé) est écarté de l'analyse : c'est le même défaut qu'un autre bug, à qui il
- * transmet ses liens actifs. Ce bug est le survivant : la cible du lien d'Abandon, ou de celui de cette cible si elle
- * est elle-même en Abandon, jusqu'à un ticket qui ne l'est pas. Le survivant compte ces liens comme les siens, mais
+ * transmet ses liens actifs. Ce bug est le survivant : la cible de son Abandon (`Outcome.of`), ou celle de l'Abandon de cette
+ * cible si elle est elle-même en Abandon, jusqu'à un ticket qui ne l'est pas. Le survivant compte ces liens comme les siens, mais
  * à la date de création du bug en Abandon qui les portait : c'est lui qui a constaté le défaut. Il n'est le Bug
  * d'origine d'une Livraison qu'une fois, même s'il y est relié en propre et par héritage. Si le survivant n'est pas
  * un bug du Projet (ticket absent ou d'un autre type, chaîne qui boucle), les liens sont perdus.
@@ -108,9 +105,9 @@ function replacedBugs(tickets: TicketHistory[], flows: Map<TicketId, TicketFlow>
 }
 
 /**
- * Le ticket qui reprend le défaut d'un ticket en Abandon : la cible de son lien d'Abandon, puis celle du lien de cette
- * cible si elle est elle-même en Abandon, jusqu'à un ticket qui ne l'est pas. Indéfini si la chaîne mène hors des
- * tickets connus ou boucle sur elle-même.
+ * Le ticket qui reprend le défaut d'un ticket en Abandon : la cible de son Abandon, puis celle de l'Abandon de cette cible
+ * si elle est elle-même en Abandon, jusqu'à un ticket qui ne l'est pas. Indéfini si la chaîne mène hors des tickets connus
+ * ou boucle sur elle-même.
  */
 function survivorOf(
   ticket: TicketHistory,
@@ -122,17 +119,18 @@ function survivorOf(
   while (current && isAbandoned(flows.get(current.id))) {
     if (visited.has(current.id)) return undefined;
     visited.add(current.id);
-    const next = replacementOf(current, flows.get(current.id));
+    const next = replacementOf(flows.get(current.id));
     current = next === undefined ? undefined : byId.get(next);
   }
   return current;
 }
 
-/** Cible du lien d'Abandon actif d'un ticket en Abandon : le ticket dont il est le doublon ou qui le remplace. */
-function replacementOf(ticket: TicketHistory, flow: TicketFlow | undefined): TicketId | undefined {
-  if (flow?.outcome.kind !== 'abandoned') return undefined;
-  const link = REPLACEMENT_LINKS[flow.outcome.cause];
-  return ticket.dependencies.find((d) => d.type === link && !d.removedAt)?.target;
+/**
+ * Cible du lien d'Abandon d'un ticket en Abandon : le ticket dont il est le doublon ou qui le remplace. C'est celle que l'Abandon
+ * désigne (`Outcome.of`, de `abandonOf`, la règle unique : le premier lien posé), non la première d'une liste de liens.
+ */
+function replacementOf(flow: TicketFlow | undefined): TicketId | undefined {
+  return flow?.outcome.kind === 'abandoned' ? flow.outcome.of : undefined;
 }
 
 /**

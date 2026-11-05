@@ -68,8 +68,8 @@ export interface IssueAbandon {
   /**
    * Le ticket dont celui-ci est le doublon, ou qui le remplace : la cible du lien d'Abandon, posé sur le ticket abandonné.
    * Un ticket du Projet, ou une référence qui n'en est pas un (ticket d'un autre Projet, supprimé) : il n'y a alors rien à ouvrir.
-   * Quand un ticket porte plusieurs liens d'Abandon, c'est le premier posé qui compte (à instants égaux, la plus petite
-   * cible) : la cause que les métriques lui donnent aussi.
+   * Quand un ticket porte plusieurs liens d'Abandon, c'est le premier posé qui compte (à instants égaux, la date de pose de la
+   * ligne du lien, puis la plus petite cible) : la cause que les métriques lui donnent aussi.
    */
   of: string;
 }

@@ -84,19 +84,21 @@ describe('analyzeFlow', () => {
         ),
       ]).get('old');
 
-    it('classe en Abandon un ticket remplacé par un autre (bd supersede)', () => {
+    it('classe en Abandon un ticket remplacé par un autre (bd supersede), et nomme celui qui le remplace', () => {
       expect(closedWith('supersedes')?.outcome).toEqual({
         kind: 'abandoned',
         at: at('2026-10-02T09:00'),
         cause: 'superseded',
+        of: 'other',
       });
     });
 
-    it('classe en Abandon un doublon (bd duplicate)', () => {
+    it('classe en Abandon un doublon (bd duplicate), et nomme le ticket qu’il double', () => {
       expect(closedWith('duplicates')?.outcome).toEqual({
         kind: 'abandoned',
         at: at('2026-10-02T09:00'),
         cause: 'duplicate',
+        of: 'other',
       });
     });
 
@@ -111,8 +113,23 @@ describe('analyzeFlow', () => {
       const closedWithLinks = (dependencies: TicketHistory['dependencies']) =>
         analyzeFlow([ticket('old', [['open', '2026-10-01T09:00'], ['closed', '2026-10-02T09:00']], { dependencies })]).get('old')?.outcome;
 
-      expect(closedWithLinks([superseded, duplicate])).toMatchObject({ kind: 'abandoned', cause: 'superseded' });
-      expect(closedWithLinks([duplicate, superseded])).toMatchObject({ kind: 'abandoned', cause: 'superseded' });
+      expect(closedWithLinks([superseded, duplicate])).toMatchObject({ kind: 'abandoned', cause: 'superseded', of: 'b' });
+      expect(closedWithLinks([duplicate, superseded])).toMatchObject({ kind: 'abandoned', cause: 'superseded', of: 'b' });
+    });
+
+    // Un commit de lot de bd (auto-commit `batch`) réunit des liens écrits à des moments différents : dans sanofi-ai-standards, dix
+    // liens écrits le 28 avril entre 10:10:30 et 10:10:32 (heure locale) sont dans le seul commit de 08:31:51 UTC, 21 minutes plus tard.
+    // Seul le created_at de leur ligne dit alors dans quel ordre ils ont été posés. Le kanban lit ce created_at ; les métriques
+    // doivent lire le même.
+    it('départage par le created_at de leur ligne deux liens apparus au même commit : la cause du premier posé, non de la plus petite cible', () => {
+      const batch = at('2026-04-28T08:31:51');
+      const superseded = { type: 'supersedes', target: 'b', addedAt: batch, createdAt: at('2026-04-28T10:10:30') };
+      const duplicate = { type: 'duplicates', target: 'a', addedAt: batch, createdAt: at('2026-04-28T10:10:32') };
+      const closedWithLinks = (dependencies: TicketHistory['dependencies']) =>
+        analyzeFlow([ticket('old', [['open', '2026-04-20T09:00'], ['closed', '2026-04-28T08:31:51']], { dependencies })]).get('old')?.outcome;
+
+      expect(closedWithLinks([superseded, duplicate])).toMatchObject({ kind: 'abandoned', cause: 'superseded', of: 'b' });
+      expect(closedWithLinks([duplicate, superseded])).toMatchObject({ kind: 'abandoned', cause: 'superseded', of: 'b' });
     });
   });
 

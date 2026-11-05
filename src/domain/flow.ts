@@ -15,6 +15,13 @@ export interface DependencyHistory {
   target: TicketId;
   addedAt: Date;
   removedAt?: Date;
+  /**
+   * Le `created_at` de la ligne de la dépendance, que bd écrit à la pose ; absent quand l'historique ne le donne pas (le lecteur ne
+   * le relève que pour les liens d'Abandon). `addedAt` est le commit qui voit la dépendance le premier : un commit de lot de bd,
+   * un import ou un historique aplati en réunit plusieurs posées à des moments différents, et seul `createdAt` dit alors dans quel
+   * ordre (`abandonOf`).
+   */
+  createdAt?: Date;
 }
 
 /** Historique normalisé d'un ticket, tel que fourni par le lecteur Dolt. */
@@ -38,7 +45,13 @@ export interface Transition {
 
 export type Outcome =
   | { kind: 'delivered'; at: Date }
-  | { kind: 'abandoned'; at: Date; cause: AbandonCause }
+  | {
+      kind: 'abandoned';
+      at: Date;
+      cause: AbandonCause;
+      /** Le ticket dont il est le doublon, ou qui le remplace : la cible du lien d'Abandon que retient `abandonOf`. Pas forcément un ticket du Projet. */
+      of: TicketId;
+    }
   /** Fermé sans être une Livraison (une Epic, par exemple). */
   | { kind: 'closed'; at: Date }
   | { kind: 'open' };
@@ -147,7 +160,7 @@ function blockagePeriods(
 function closedOutcome(ticket: TicketHistory, at: Date): Outcome {
   if (ticket.type === 'epic') return { kind: 'closed', at };
   const abandon = abandonOf(ticket.dependencies);
-  return abandon ? { kind: 'abandoned', at, cause: abandon.cause } : { kind: 'delivered', at };
+  return abandon ? { kind: 'abandoned', at, cause: abandon.cause, of: abandon.of } : { kind: 'delivered', at };
 }
 
 /**

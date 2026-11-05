@@ -1,5 +1,6 @@
+import { ABANDON_LINK_TYPES } from '../../domain/abandon';
 import type { DependencyHistory, StatusSnapshot, TicketHistory } from '../../domain/flow';
-import { type DoltDatabase, parseDoltDate, sqlIdent } from './client';
+import { type DoltDatabase, parseDoltDate, sqlIdent, sqlString } from './client';
 import { asText, TARGET_COLUMNS, toDependency } from './reader';
 
 /** Un commit de l'historique Dolt, tel que listé par `dolt_log`. */
@@ -14,6 +15,8 @@ export interface DependencyAppearance {
   from: string;
   to: string;
   type: string;
+  /** Le `created_at` de sa ligne à ce commit : lu pour les seuls liens d'Abandon (voir `PLACED_AT`). */
+  createdAt?: Date;
 }
 
 /**
@@ -63,6 +66,14 @@ const COMMITS_SQL = `${LINEAGE}
 
 /** Garde-fou : une base ne change pas de schéma de dépendances plus de quelques fois. */
 const MAX_SCHEMA_ERAS = 4;
+
+/**
+ * La date de pose (`created_at`) des seuls liens d'Abandon, nulle (donc absente de la sortie) pour les autres. Elle départage les
+ * liens d'un ticket qui apparaissent au même commit (un commit de lot de bd, par exemple : voir `abandonOf`). L'historique répète
+ * chaque ligne à chaque commit, par centaines de milliers : la date de chacune alourdirait la lecture d'un quart à un tiers, pour des
+ * liens qui n'en ont pas l'usage.
+ */
+const PLACED_AT = `case when ${sqlIdent('type')} in (${ABANDON_LINK_TYPES.map(sqlString).join(', ')}) then ${sqlIdent('created_at')} end as ${sqlIdent('created_at')}`;
 
 /**
  * Historique complet des tickets du Projet, au format attendu par `analyzeFlow` : statuts datés par les
@@ -144,15 +155,14 @@ async function readDependencyAppearances(db: DoltDatabase, commits: Promise<Comm
 }
 
 /**
- * Les colonnes dont on a besoin dans `source` : le commit, le ticket, le type et la ou les colonnes de cible
- * que ce schéma possède. L'historique répète chaque ligne à chaque commit : on ne lit pas `metadata` et consorts.
+ * Les colonnes dont on a besoin dans `source` : le commit, le ticket, le type, la ou les colonnes de cible que ce schéma possède
+ * et, s'il l'a, la date de pose des liens d'Abandon (`PLACED_AT`). L'historique répète chaque ligne à chaque commit : on ne lit pas
+ * `metadata` et consorts.
  */
 async function dependencyColumns(db: DoltDatabase, source: string): Promise<string> {
   const existing = new Set((await db.query(`show columns from ${source}`)).map((row) => asText(row.Field)));
-  return ['commit_hash', 'issue_id', 'type', ...TARGET_COLUMNS]
-    .filter((column) => existing.has(column))
-    .map(sqlIdent)
-    .join(', ');
+  const columns = ['commit_hash', 'issue_id', 'type', ...TARGET_COLUMNS].filter((column) => existing.has(column)).map(sqlIdent);
+  return (existing.has('created_at') ? [...columns, PLACED_AT] : columns).join(', ');
 }
 
 /** Le plus récent des commits de `hashes` dans la lignée ; ceux qui n'en font pas partie ne comptent pas. */
@@ -163,7 +173,9 @@ function latestCommit(hashes: Set<string>, lineage: Commit[]): string | undefine
 /**
  * Durée de vie des dépendances : `addedAt` est le premier commit où elle apparaît, `removedAt` le commit
  * suivant le dernier où elle figure (absent si elle est encore là au dernier commit). Une dépendance retirée
- * puis rétablie donne deux entrées.
+ * puis rétablie donne deux entrées. `createdAt` est le `created_at` de sa ligne, tel que le dernier commit de la durée de vie
+ * la voit (celui que lit l'état présent, pour une dépendance encore là) ; absent pour une dépendance dont les lignes n'en
+ * donnent pas (voir `PLACED_AT`).
  *
  * `recreations` donne, pour chaque ticket supprimé puis recréé, le commit où commence sa vie actuelle. Comme ses
  * statuts, ses dépendances ne sont comptées que depuis ce commit : celles de sa vie précédente sont oubliées, et
@@ -177,18 +189,19 @@ export function dependencyLifetimes(
   const position = new Map(commits.map((commit, i) => [commit.hash, i]));
   // Un commit de recréation absent de la lignée (arrivé entre deux lectures) n'écarte rien.
   const lifeStart = (ticket: string) => position.get(recreations.get(ticket) ?? '') ?? 0;
-  const byDependency = new Map<string, { from: string; to: string; type: string; positions: number[] }>();
-  for (const { commit, from, to, type } of appearances) {
+  const byDependency = new Map<string, { from: string; to: string; type: string; positions: number[]; created?: Map<number, Date> }>();
+  for (const { commit, from, to, type, createdAt } of appearances) {
     const i = position.get(commit);
     if (i === undefined || i < lifeStart(from)) continue;
     const key = JSON.stringify([from, to, type]);
     const entry = byDependency.get(key) ?? { from, to, type, positions: [] };
     entry.positions.push(i);
+    if (createdAt) (entry.created ??= new Map()).set(i, createdAt);
     byDependency.set(key, entry);
   }
 
   const lifetimes = new Map<string, DependencyHistory[]>();
-  for (const { from, to, type, positions } of byDependency.values()) {
+  for (const { from, to, type, positions, created } of byDependency.values()) {
     const list = lifetimes.get(from) ?? [];
     for (const [first, last] of runs([...new Set(positions)].sort((a, b) => a - b))) {
       const addedAt = commits[first]?.at;
@@ -196,7 +209,8 @@ export function dependencyLifetimes(
       const next = commits[last + 1]?.at;
       // Une horloge qui recule peut dater le commit suivant avant le premier : le retrait ne précède jamais l'ajout.
       const removedAt = next && next.getTime() < addedAt.getTime() ? addedAt : next;
-      list.push(removedAt ? { type, target: to, addedAt, removedAt } : { type, target: to, addedAt });
+      const createdAt = created?.get(last);
+      list.push({ type, target: to, addedAt, ...(removedAt ? { removedAt } : {}), ...(createdAt ? { createdAt } : {}) });
     }
     lifetimes.set(from, list);
   }

@@ -439,6 +439,52 @@ describe('analyzeFailures', () => {
         },
       );
 
+      // Le survivant est la cible que désigne l'Abandon (`Outcome.of`, de `abandonOf`) : le premier lien posé, non le premier de la liste.
+      describe('reprend la cible du lien d’Abandon posé le premier, quelle que soit la place des liens dans la liste', () => {
+        const links = [
+          { type: 'supersedes', target: 'X', addedAt: at('2026-10-05T09:02') }, // posé en second
+          { type: 'supersedes', target: 'Y', addedAt: at('2026-10-05T09:01') }, // posé en premier
+          { ...discoveredFrom('L'), addedAt: at('2026-10-03T10:00') },
+        ];
+        const analyzeWith = (dependencies: TicketHistory['dependencies']) =>
+          analyze([
+            delivered('L', '2026-10-02T09:00'),
+            bug('X', '2026-10-03T09:00'),
+            bug('Y', '2026-10-03T09:00'),
+            ticket(
+              'D',
+              [
+                ['open', '2026-10-03T10:00'],
+                ['closed', '2026-10-05T09:00'],
+              ],
+              { type: 'bug', dependencies },
+            ),
+          ]);
+
+        it.each([
+          ['dans l’ordre de la liste', links],
+          ['dans l’ordre inverse', [...links].reverse()],
+        ])('%s', (_ordre, dependencies) => {
+          const failures = analyzeWith(dependencies);
+
+          expect(failures.bugs.get('Y')).toEqual({ linked: true, failedDeliveries: ['L'] });
+          expect(failures.bugs.get('X')).toEqual({ linked: false, failedDeliveries: [] });
+          expect(failures.originBugs.get('L')).toEqual(['Y']);
+        });
+
+        it('lit le created_at de leur ligne quand un même commit réunit les deux liens', () => {
+          const batch = at('2026-10-05T09:00');
+          const failures = analyzeWith([
+            { type: 'supersedes', target: 'X', addedAt: batch, createdAt: at('2026-10-04T10:00') }, // posé en second
+            { type: 'supersedes', target: 'Y', addedAt: batch, createdAt: at('2026-10-04T09:00') }, // posé en premier
+            { ...discoveredFrom('L'), addedAt: at('2026-10-03T10:00') },
+          ]);
+
+          expect(failures.bugs.get('Y')).toEqual({ linked: true, failedDeliveries: ['L'] });
+          expect(failures.bugs.get('X')).toEqual({ linked: false, failedDeliveries: [] });
+        });
+      });
+
       it('suit le lien d’Abandon actif, pas celui qui a été retiré', () => {
         const redirected = ticket(
           'ancien',

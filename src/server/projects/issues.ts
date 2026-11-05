@@ -14,6 +14,10 @@ const UNDATED = new Date(0);
  * n'est jamais une Livraison et donc pas non plus un Abandon. C'est la règle du domaine (`abandonOf`), celle des métriques :
  * ici sur les liens d'aujourd'hui, datés de leur pose (`createdAt`), quel que soit l'ordre des lignes. Un lien compte même
  * quand sa cible n'est pas un ticket du Projet.
+ *
+ * L'état présent ne dit rien des commits : le `created_at` de la ligne y fait `addedAt` et départage seul les liens d'un ticket
+ * (puis la cible), là où les métriques le lisent après le commit où chaque lien apparaît. Les deux ne divergent que si ces
+ * deux ordres diffèrent, dans les cas que `abandonOf` énumère (même seconde, fuseau d'une ancienne version de bd).
  */
 export function buildIssues(summaries: IssueSummary[], dependencies: DependencyRecord[]): Issue[] {
   const statusById = new Map(summaries.map((s) => [s.id, s.status]));
@@ -22,7 +26,7 @@ export function buildIssues(summaries: IssueSummary[], dependencies: DependencyR
   const links = new Map<string, AbandonLink[]>();
 
   for (const { from, to, type, createdAt } of dependencies) {
-    const link = { type, target: to, addedAt: createdAt ?? UNDATED };
+    const link = { type, target: to, addedAt: createdAt ?? UNDATED, createdAt };
     const own = links.get(from);
     if (own) own.push(link);
     else links.set(from, [link]);
