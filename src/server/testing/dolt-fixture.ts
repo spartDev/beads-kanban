@@ -14,7 +14,24 @@ export function isolatedDoltEnv(): NodeJS.ProcessEnv {
   return { ...process.env, DOLT_ROOT_PATH: root };
 }
 
-export const hasBinary = (binary: string): boolean => spawnSync(binary, ['version'], { stdio: 'ignore' }).status === 0;
+/** Les binaires déjà signalés absents : l'avertissement n'est dit qu'une fois par fichier de tests (chacun a son propre module). */
+const reportedMissing = new Set<string>();
+
+/**
+ * Le binaire répond-il à `<binaire> version` ? Les tests d'intégration qui l'exigent (`describe.skipIf(!hasBinary('dolt'))`) sont
+ * SAUTÉS quand il manque, jamais en échec : un saut silencieux passerait pour un succès, donc l'avertissement le dit (bdesk-38k.33).
+ */
+export const hasBinary = (binary: string): boolean => {
+  const found = spawnSync(binary, ['version'], { stdio: 'ignore' }).status === 0;
+  if (!found && !reportedMissing.has(binary)) {
+    reportedMissing.add(binary);
+    console.warn(
+      `ATTENTION : « ${binary} » est introuvable dans le PATH, les tests de ce fichier qui l'exigent sont SAUTÉS (ni réussis, ni échoués). ` +
+        `Installez-le pour les exécuter (voir CLAUDE.md, « Build & Test »).`,
+    );
+  }
+  return found;
+};
 
 /** Exécute une commande `dolt` dans `cwd` ; réservé aux bases temporaires créées par les tests. */
 export function dolt(env: NodeJS.ProcessEnv, cwd: string, ...args: string[]): string {

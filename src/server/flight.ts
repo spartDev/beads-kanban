@@ -5,14 +5,23 @@ export interface FlightOptions {
    * Délai de grâce, en millisecondes (défaut : aucun). Quand le dernier demandeur part, la lecture n'est abandonnée que si personne
    * ne s'y est joint dans ce délai : une analyse abandonnée puis redemandée aussitôt (l'utilisateur qui parcourt les tickets
    * abandonne la requête du ticket précédent juste avant celle du suivant) n'est ainsi pas relancée à chaque pas.
+   *
+   * Pendant le délai, une lecture qui attend encore une place la garde dans la file, et peut être lancée pour personne devant les
+   * lectures de sa voie. À réserver à celles qui ont leur voie à elles et que la requête suivante redemande (l'historique d'un Projet,
+   * voie `analysis`), jamais à une lecture de tickets (voie `normal`) : la fiche que l'utilisateur ouvre en partant attend derrière
+   * (bdesk-38k.33, ADR 0003).
    */
   graceMs?: number;
 }
 
 /**
- * Délai de grâce des analyses de l'historique d'un Projet (chronologie, métriques) : une seconde. Elle couvre l'intervalle entre
- * l'abandon d'une requête et la requête suivante d'un parcours rapide, et coûte peu : une analyse déjà lancée va au bout de toute façon,
- * et celle qui attend encore une place ne quitte la file qu'à l'expiration du délai.
+ * Délai de grâce des lectures de l'historique d'un Projet (chronologie, métriques) : une seconde. Elle couvre l'intervalle entre
+ * l'abandon d'une requête et la requête suivante d'un parcours rapide, et coûte peu parce qu'elle ne retient que ces lectures : une
+ * lecture d'historique déjà lancée va au bout de toute façon, et celle qui attend encore une place ne quitte la file qu'à l'expiration du
+ * délai, mais dans la voie `analysis`, où elle ne retarde que d'autres historiques. Les lectures de tickets n'en ont pas, même dans les
+ * métriques, dont l'analyse lit aussi la liste des tickets de chaque Projet : cette lecture quitte la file avec son dernier demandeur
+ * (sinon quitter la Vue globale à froid avec plus de six Projets ferait lire des listes pour personne devant la fiche suivante :
+ * bdesk-38k.33, ADR 0003).
  */
 export const ANALYSIS_GRACE_MS = 1_000;
 

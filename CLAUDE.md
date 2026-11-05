@@ -76,6 +76,8 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 
 ## Build & Test
 
+- Les tests d'intégration exigent `dolt` dans le PATH (et `bd` pour `bd.integration.test.ts` et `live.integration.test.ts`) : sans eux ils sont sautés, pas en échec, et chaque fichier concerné l'écrit (`ATTENTION : « dolt » est introuvable…`). Lancez la suite avec eux avant de valider un changement des lectures Dolt.
+
 _Add your build and test commands here_
 
 ```bash

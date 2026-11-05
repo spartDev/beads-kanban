@@ -1,4 +1,5 @@
 import { type PeriodSpec, resolvePeriod } from '../../domain/calendar';
+import type { TicketHistory } from '../../domain/flow';
 import { computeHealth } from '../../domain/health';
 import { analyzeProject, computeMetrics, type MetricsInput, type ProjectAnalysis } from '../../domain/metrics';
 import type { MetricsResponse, MetricsUnreadableProject, Project } from '../../shared/api';
@@ -18,8 +19,8 @@ export interface MetricsService {
    * Les métriques des Projets demandés. Un Projet que la liste des Projets ne connaît pas lève `ProjectNotFoundError`,
    * une période invalide `InvalidPeriodError` ; un Projet illisible, ou qui disparaît entre la liste et sa lecture, est
    * listé dans la réponse sans faire échouer le reste. Un demandeur qui part (`options.signal`) est libéré aussitôt par une
-   * `ReadAborted` ; les lectures qu'il attendait ne sont abandonnées que si personne d'autre ne les attend, et seulement après le
-   * délai de grâce (un processus déjà lancé va au bout, son résultat est jeté).
+   * `ReadAborted` ; les lectures qu'il attendait ne sont abandonnées que si personne d'autre ne les attend : celle des tickets
+   * aussitôt, celle de l'historique après le délai de grâce (un processus déjà lancé va au bout, son résultat est jeté).
    */
   compute(query: MetricsQuery, options?: ReadOptions): Promise<MetricsResponse>;
 }
@@ -30,8 +31,8 @@ export interface MetricsServiceOptions {
   /** Fuseau IANA qui découpe les jours (défaut : le fuseau local du serveur, celui de l'utilisateur). */
   timeZone?: string;
   /**
-   * Délai de grâce de l'analyse d'un Projet (défaut : `ANALYSIS_GRACE_MS`) : quand son dernier demandeur part, elle n'est abandonnée que
-   * si personne ne la redemande dans ce délai.
+   * Délai de grâce de la lecture de l'historique d'un Projet (défaut : `ANALYSIS_GRACE_MS`) : quand son dernier demandeur part, elle
+   * n'est abandonnée que si personne ne la redemande dans ce délai. La lecture des tickets, elle, n'en a pas : elle quitte la file aussitôt.
    */
   graceMs?: number;
 }
@@ -47,19 +48,44 @@ export function createMetricsService(
   { now = () => new Date(), timeZone = localTimeZone(), graceMs = ANALYSIS_GRACE_MS }: MetricsServiceOptions = {},
 ): MetricsService {
   /**
-   * Une analyse par Projet : celle du HEAD le plus récent vu. La lecture sert aussi les requêtes simultanées, qui l'attendent
-   * ensemble : elle n'est abandonnée que quand la dernière part, après le délai de grâce (voir `Flight`), et une lecture abandonnée
-   * n'est pas gardée.
+   * Une analyse par Projet : celle du HEAD le plus récent vu. Elle sert aussi les requêtes simultanées, qui l'attendent ensemble :
+   * elle est abandonnée dès que la dernière part (voir `Flight`), et une analyse abandonnée n'est pas gardée.
    */
   const cache = new Map<string, { head: string; analysis: Flight<ProjectAnalysis> }>();
 
-  async function analyze(projectId: string, signal: AbortSignal): Promise<ProjectAnalysis> {
-    const [issues, histories] = await Promise.all([projects.issues(projectId, { signal }), projects.histories(projectId, { signal })]);
+  /**
+   * La lecture de l'historique du Projet à son HEAD, que les analyses qui se succèdent se partagent. Elle seule a le délai de grâce :
+   * lourde (voie `analysis`), elle est redemandée presque aussitôt par la requête qui suit un abandon. La lecture des tickets (voie
+   * `normal`) appartient à l'analyse et part avec son dernier demandeur : retenue pendant le délai, elle serait lue pour personne
+   * devant la fiche que l'utilisateur ouvre en quittant la Vue globale (bdesk-38k.33). Une lecture achevée pendant le délai, que
+   * personne n'a recueillie, reste là pour la requête qui arrive ensuite ; celle qui échoue ou qu'on abandonne n'est pas gardée, ni
+   * celle d'une analyse achevée (son résultat suffit).
+   */
+  const historyReads = new Map<string, { head: string; read: Flight<TicketHistory[]> }>();
+
+  function historyOf(projectId: string, head: string): Flight<TicketHistory[]> {
+    const known = historyReads.get(projectId);
+    if (known?.head === head && !known.read.abandoned) return known.read;
+    const entry = { head, read: new Flight((flightSignal) => projects.histories(projectId, { signal: flightSignal }), { graceMs }) };
+    historyReads.set(projectId, entry);
+    entry.read.start();
+    entry.read.done.catch(() => {
+      if (historyReads.get(projectId) === entry) historyReads.delete(projectId); // un échec n'est pas un résultat, ni une lecture abandonnée
+    });
+    return entry.read;
+  }
+
+  async function analyze(projectId: string, head: string, signal: AbortSignal): Promise<ProjectAnalysis> {
+    // Prise ici, dans l'instant où l'analyse est lancée (`Flight.start`) : le délai de grâce de la lecture ne peut pas expirer entre-temps.
+    // Et l'analyse ne la retient pas : sa fonction de lancement, que le cache garde, ne cite que le Projet et le HEAD.
+    const history = historyOf(projectId, head);
+    const [issues, rows] = await Promise.all([projects.issues(projectId, { signal }), history.join(signal)]);
+    if (historyReads.get(projectId)?.read === history) historyReads.delete(projectId); // l'historique est recueilli : seul le résultat de l'analyse reste en cache
     const current = new Map(issues.map((issue) => [issue.id, issue]));
     return analyzeProject(
-      histories.flatMap((history) => {
-        const issue = current.get(history.id);
-        return issue ? [{ ...history, title: issue.title, priority: issue.priority }] : [];
+      rows.flatMap((row) => {
+        const issue = current.get(row.id);
+        return issue ? [{ ...row, title: issue.title, priority: issue.priority }] : [];
       }),
     );
   }
@@ -76,11 +102,11 @@ export function createMetricsService(
     const cached = cache.get(projectId);
     if (cached?.head === head && !cached.analysis.abandoned) return cached.analysis.join(signal);
     if (signal?.aborted) throw new ReadAborted(); // parti pendant la lecture du HEAD : inutile de lire l'historique pour personne
-    const entry = { head, analysis: new Flight((flightSignal) => analyze(projectId, flightSignal), { graceMs }) };
+    const entry = { head, analysis: new Flight((flightSignal) => analyze(projectId, head, flightSignal)) };
     cache.set(projectId, entry);
     entry.analysis.start();
     entry.analysis.done.catch(() => {
-      if (cache.get(projectId) === entry) cache.delete(projectId); // un échec n'est pas un résultat, ni une lecture abandonnée
+      if (cache.get(projectId) === entry) cache.delete(projectId); // un échec n'est pas un résultat, ni une analyse abandonnée
     });
     return entry.analysis.join(signal);
   }
@@ -92,7 +118,12 @@ export function createMetricsService(
       resolvePeriod(period, at.getTime(), timeZone); // une période invalide échoue avant de lancer le moindre processus dolt
 
       const { projects: known } = await projects.list();
-      for (const id of cache.keys()) if (!known.some((project) => project.id === id)) cache.delete(id);
+      for (const id of [...cache.keys(), ...historyReads.keys()]) {
+        if (!known.some((project) => project.id === id)) {
+          cache.delete(id);
+          historyReads.delete(id);
+        }
+      }
       for (const id of ids) if (!known.some((project) => project.id === id)) throw new ProjectNotFoundError(id);
       const selected = ids.length === 0 ? known : known.filter((project) => ids.includes(project.id));
 

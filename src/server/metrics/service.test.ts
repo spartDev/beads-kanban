@@ -1,3 +1,5 @@
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { InvalidPeriodError } from '../../domain/calendar';
 import type { StatusSnapshot, TicketHistory } from '../../domain/flow';
@@ -646,8 +648,8 @@ describe('service de métriques : demandes abandonnées (bdesk-38k.20)', () => {
   const noGrace = { ...options, graceMs: 0 };
 
   /** Des Projets dont la lecture de l'historique ne finit que quand le test le décide ; elle finit en AbortError si son signal est abandonné. */
-  function slowHistories() {
-    const { service, calls } = fakeProjects(twoProjects());
+  function slowHistories(world: Record<string, FakeProject> = twoProjects()) {
+    const { service, calls } = fakeProjects(world);
     const probe = { signals: [] as (AbortSignal | undefined)[], finish: [] as (() => void)[], histories: [] as string[], issues: [] as (AbortSignal | undefined)[] };
     const fast = service.histories;
     service.histories = (id: string, readOptions?: ReadOptions) =>
@@ -770,6 +772,62 @@ describe('service de métriques : demandes abandonnées (bdesk-38k.20)', () => {
       expect(probe.histories.sort()).toEqual(['a', 'b']); // et non quatre lectures
     });
 
+    it('une lecture d’historique achevée pendant le délai sert la requête qui arrive ensuite : elle n’est pas relancée (bdesk-38k.33)', async () => {
+      const { service, probe } = slowHistories();
+      const metrics = createMetricsService(service, { ...options, graceMs: 300 });
+      const leaving = new AbortController();
+      const gone = metrics.compute({ projects: [], ...week }, { signal: leaving.signal }).catch((e: unknown) => e);
+      await sleep(10);
+      leaving.abort();
+      await gone;
+      for (const finish of probe.finish) finish(); // les historiques finissent pendant le délai, devant personne
+      await sleep(20);
+
+      const response = await metrics.compute({ projects: [], ...week });
+
+      expect(response.tiles.throughput.total).toBe(3);
+      expect(probe.histories.sort()).toEqual(['a', 'b']);
+    });
+
+    it('une lecture d’historique qui a échoué pendant le délai n’est pas gardée : la requête suivante la relance (bdesk-38k.33)', async () => {
+      const world = twoProjects();
+      const { service, probe } = slowHistories({ ...world, a: { ...world.a, failure: new ProjectUnreadableError('a', 'base verrouillée') } });
+      const metrics = createMetricsService(service, { ...options, graceMs: 300 });
+      const leaving = new AbortController();
+      const gone = metrics.compute({ projects: ['a'], ...week }, { signal: leaving.signal }).catch((e: unknown) => e);
+      await sleep(10);
+      leaving.abort();
+      await gone;
+      for (const finish of probe.finish) finish(); // l'historique échoue pendant le délai, devant personne
+      await sleep(20);
+
+      const next = metrics.compute({ projects: ['a'], ...week });
+      await sleep(10);
+      for (const finish of probe.finish.slice(1)) finish();
+
+      expect((await next).unreadable).toEqual([{ id: 'a', name: 'Nom de a', reason: 'base verrouillée' }]);
+      expect(probe.histories).toEqual(['a', 'a']);
+    });
+
+    it('un commit pendant le délai : la requête suivante lit l’historique du nouveau HEAD, jamais celui que l’abandon avait laissé en vie (bdesk-38k.33)', async () => {
+      const world = twoProjects();
+      const { service, probe } = slowHistories(world);
+      const metrics = createMetricsService(service, { ...options, graceMs: 300 });
+      const leaving = new AbortController();
+      const gone = metrics.compute({ projects: ['a'], ...week }, { signal: leaving.signal }).catch((e: unknown) => e);
+      await sleep(10);
+      leaving.abort();
+      await gone;
+      world.a = { ...world.a, head: 'h2' };
+
+      const next = metrics.compute({ projects: ['a'], ...week });
+      await sleep(10);
+      for (const finish of probe.finish.slice(1)) finish();
+
+      expect((await next).tiles.throughput.total).toBe(2);
+      expect(probe.histories).toEqual(['a', 'a']);
+    });
+
     it('par défaut, le service retient l’abandon pendant ANALYSIS_GRACE_MS : les lectures ne sont pas abandonnées aussitôt', async () => {
       const { service, probe } = slowHistories();
       const controller = new AbortController();
@@ -782,6 +840,44 @@ describe('service de métriques : demandes abandonnées (bdesk-38k.20)', () => {
 
       expect(ANALYSIS_GRACE_MS).toBeGreaterThan(60);
       expect(probe.signals.map((signal) => signal?.aborted)).toEqual([false, false]);
+    });
+
+    it('seul l’historique attend le délai : la lecture des tickets quitte la file aussitôt que le dernier demandeur part (bdesk-38k.33)', async () => {
+      const { service, probe } = slowHistories();
+      const controller = new AbortController();
+      const abandoned = createMetricsService(service, options).compute({ projects: [], ...week }, { signal: controller.signal }).catch((e: unknown) => e);
+      await sleep(10);
+      expect(probe.issues).toHaveLength(2);
+      expect(probe.issues.map((signal) => signal?.aborted)).toEqual([false, false]);
+
+      controller.abort();
+      await abandoned;
+
+      // Les tickets : abandonnés tout de suite, pour que la fiche suivante ne fasse pas la queue derrière des listes que personne ne lit.
+      expect(probe.issues.map((signal) => signal?.aborted)).toEqual([true, true]);
+      // L'historique, lui, que la requête suivante redemandera aussitôt, attend la fin du délai.
+      expect(probe.signals.map((signal) => signal?.aborted)).toEqual([false, false]);
+    });
+
+    it('la requête qui arrive dans le délai reprend l’historique en cours, relit les tickets (que l’abandon avait retirés) et obtient un résultat juste (bdesk-38k.33)', async () => {
+      const { service, probe } = slowHistories();
+      const metrics = createMetricsService(service, { ...options, graceMs: 300 });
+      const leaving = new AbortController();
+      const gone = metrics.compute({ projects: [], ...week }, { signal: leaving.signal }).catch((e: unknown) => e);
+      await sleep(10);
+      leaving.abort();
+      expect(await gone).toBeInstanceOf(ReadAborted);
+
+      const back = metrics.compute({ projects: [], ...week });
+      await sleep(10);
+      for (const finish of probe.finish) finish();
+
+      const response = await back;
+      expect(response.tiles.throughput.total).toBe(3);
+      expect(response.projects.map((p) => p.id)).toEqual(['a', 'b']);
+      expect(probe.histories.sort()).toEqual(['a', 'b']); // l'historique n'est pas relancé
+      // Les tickets : une lecture abandonnée par Projet, puis celle qui sert.
+      expect(probe.issues.map((signal) => signal?.aborted)).toEqual([true, true, false, false]);
     });
 
     it('sans nouvelle requête à l’expiration du délai, les lectures des Projets sont abandonnées', async () => {
@@ -799,6 +895,74 @@ describe('service de métriques : demandes abandonnées (bdesk-38k.20)', () => {
 
       expect(probe.signals.map((signal) => signal?.aborted)).toEqual([true, true]); // après
     });
+  });
+
+  /**
+   * Suit les tableaux d'historique que lit le service sans les retenir (`WeakRef`) : `retenus()` demande à V8 de ramasser, puis compte ceux
+   * qui sont encore joignables. `gc` n'est pas exposé à vitest : on le demande à V8.
+   */
+  function trackHistories(service: ProjectService) {
+    setFlagsFromString('--expose-gc');
+    const collectGarbage = runInNewContext('gc') as () => void;
+    const tracked: WeakRef<TicketHistory[]>[] = [];
+    const read = service.histories;
+    service.histories = async (id: string, readOptions?: ReadOptions) => {
+      const rows = [...(await read(id, readOptions))];
+      tracked.push(new WeakRef(rows));
+      return rows;
+    };
+    const reachable = () => tracked.filter((ref) => ref.deref() !== undefined).length;
+    return {
+      reads: () => tracked.length,
+      retenus: async () => {
+        for (let i = 0; i < 20 && reachable() > 0; i++) {
+          await sleep(5);
+          collectGarbage();
+        }
+        return reachable();
+      },
+    };
+  }
+
+  it('une fois l’analyse faite, le cache ne retient pas l’historique brut (bdesk-38k.33)', async () => {
+    const { service } = fakeProjects(twoProjects());
+    const { reads, retenus } = trackHistories(service);
+    const metrics = createMetricsService(service, options);
+
+    const response = await metrics.compute({ projects: [], ...week });
+
+    expect(response.tiles.throughput.total).toBe(3);
+    expect(reads()).toBe(2);
+    // Le cache garde le résultat de l'analyse, pas les tickets de l'historique dont elle est faite.
+    expect(await retenus()).toBe(0);
+    expect((await metrics.compute({ projects: [], ...week })).tiles.throughput.total).toBe(3); // et il sert encore
+  });
+
+  it('un Projet qui disparaît ne garde pas l’historique que personne n’avait recueilli (bdesk-38k.33)', async () => {
+    const world = twoProjects();
+    const { service, probe } = slowHistories(world);
+    const { retenus } = trackHistories(service);
+    const metrics = createMetricsService(service, { ...options, graceMs: 60_000 });
+    const leaving = new AbortController();
+    // L'erreur d'abandon n'est pas gardée : la trace de pile d'une erreur retient les fonctions de ses appels, donc la lecture qu'elles citent.
+    const gone = metrics.compute({ projects: ['a'], ...week }, { signal: leaving.signal }).catch(() => undefined);
+    await sleep(10);
+    leaving.abort();
+    await gone;
+    for (const finish of probe.finish) finish(); // l'historique de a finit pendant le délai, devant personne
+    await sleep(20);
+    expect(await retenus()).toBe(1); // il attend la requête suivante
+
+    delete world.a; // le Projet disparaît de la liste
+    const next = metrics.compute({ projects: ['b'], ...week });
+    await sleep(10);
+    probe.finish[1]?.();
+    await next;
+
+    // On lâche aussi les signaux que la sonde a gardés : la raison d'un abandon retient, par sa trace de pile, les fonctions qui l'ont levé.
+    probe.signals.length = 0;
+    probe.issues.length = 0;
+    expect(await retenus()).toBe(0);
   });
 
   it('un signal déjà abandonné ne lit rien', async () => {
