@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { queryKeys } from '../data/hooks';
+import { issuesQuery, queryKeys } from '../data/hooks';
+import { routes } from '../routes';
 import { OverlayProvider, usePalette } from '../shell/OverlayProvider';
 import { ShortcutsProvider, useShortcut } from '../shortcuts/ShortcutsProvider';
 import { withHeldExitAnimations } from '../test/exitAnimation';
@@ -559,6 +561,25 @@ describe('les tickets du Projet tardent : « Chercher … dans tous les Projets 
     expect(selected(widenOption(dialog))).toBe(false);
     pressEnterNow(dialog);
     await waitFor(() => expect(pathname(router)).toBe('/p/bdesk/t/bdesk-38k.6'));
+  });
+
+  it('les tickets arrivent sans correspondance : « Chercher … », seule ligne, devient la ligne sélectionnée et Entrée élargit la recherche', async () => {
+    const release = holdIssueLists(stubDefaultApi());
+    const { dialog } = await openPalette('/p/bdesk/metrics');
+    fakeClock();
+    typeNow(dialog, 'mpm-12'); // un ticket de l'autre Projet : la liste de beads-desktop n'a rien d'autre à proposer
+    elapse(WIDEN_AFTER_MS);
+    expect(selected(widenOption(dialog))).toBe(false);
+
+    await release();
+
+    await waitFor(() => expect(within(dialog).queryByText('Chargement des tickets…')).toBeNull());
+    await waitFor(() => expect(selected(widenOption(dialog))).toBe(true));
+    expect(within(dialog).getAllByRole('option')).toHaveLength(1);
+    await expectActiveDescendantToFollowSelection(dialog, 'les tickets sont arrivés, sans correspondance');
+    pressEnterNow(dialog);
+    const found = await within(dialog).findByRole('option', { name: /Recherche plein texte/ });
+    await waitFor(() => expect(selected(found)).toBe(true));
   });
 
   it('la ligne choisie à la flèche reste choisie quand les tickets arrivent : elle ne saute pas sous les yeux', async () => {
@@ -1234,5 +1255,386 @@ describe('Entrée pressée avant l’arrivée des tickets : fermer la palette an
     expect(pathname(router)).toBe('/p/bdesk/metrics');
     exit.finish();
     expect(screen.queryByRole('dialog', { hidden: true })).toBeNull();
+  });
+});
+
+/** Une ligne nommée par son texte, pour les messages d'échec. */
+const rowName = (row: Element | null | undefined) => `« ${(row?.textContent ?? '').trim().slice(0, 40)} »`;
+
+/** Le texte des lignes sélectionnées (il n'y en a qu'une, ou aucune). */
+const selectedRows = (dialog: HTMLElement) =>
+  within(dialog)
+    .queryAllByRole('option')
+    .filter(selected)
+    .map((row) => row.textContent ?? '');
+
+/**
+ * Ce que `aria-activedescendant` a de faux, vu de l'extérieur. Sur le champ (le combobox, qui garde le focus) comme sur la liste, il doit
+ * désigner la ligne sélectionnée, présente dans la liste, et il est absent quand aucune ligne ne l'est. Un id qui ne désigne rien dans
+ * la page est la violation `aria-valid-attr-value` d'axe (critique) ; un id qui désigne une autre ligne que celle en surbrillance fait
+ * annoncer la mauvaise ligne par le lecteur d'écran ; un id absent alors qu'une ligne est sélectionnée l'en prive. Sélecteurs bruts et non
+ * requêtes par rôle : `watchActiveDescendant` l'appelle à chaque changement du DOM.
+ */
+function activeDescendantProblems(dialog: HTMLElement): string[] {
+  const input = dialog.querySelector<HTMLElement>('[role="combobox"]');
+  const listbox = dialog.querySelector<HTMLElement>('[role="listbox"]');
+  if (!input || !listbox) return ['la palette n’a plus son champ ou sa liste'];
+  const chosen = [...listbox.querySelectorAll<HTMLElement>('[role="option"]')].filter(selected);
+  const problems = chosen.length > 1 ? [`${chosen.length} lignes sont sélectionnées`] : [];
+  for (const [owner, element] of [['le champ', input], ['la liste', listbox]] as const) {
+    const id = element.getAttribute('aria-activedescendant');
+    const target = id === null ? null : document.getElementById(id);
+    if (id === null) {
+      if (chosen[0]) problems.push(`${owner} ne désigne rien alors que ${rowName(chosen[0])} est sélectionnée`);
+    } else if (!target || !listbox.contains(target)) {
+      problems.push(`${owner} désigne « ${id} », qui n’est dans aucune ligne de la liste`);
+    } else if (target !== chosen[0]) {
+      problems.push(
+        chosen[0]
+          ? `${owner} désigne ${rowName(target)} alors que ${rowName(chosen[0])} est sélectionnée`
+          : `${owner} désigne ${rowName(target)} alors qu’aucune ligne n’est sélectionnée`,
+      );
+    }
+  }
+  return problems;
+}
+
+/** Laisse passer les effets du rendu, puis vérifie `aria-activedescendant` ; `step` dit où l'on en est si l'assertion échoue. */
+async function expectActiveDescendantToFollowSelection(dialog: HTMLElement, step: string) {
+  await settle();
+  expect(activeDescendantProblems(dialog), step).toEqual([]);
+}
+
+/**
+ * Vérifie `aria-activedescendant` à chaque changement du DOM de la palette, pas seulement aux étapes du scénario. Créée après l'ouverture
+ * de la palette, la veille passe après tout ce que la palette fait elle-même pour le corriger ; `stop` rend les problèmes vus.
+ */
+function watchActiveDescendant(dialog: HTMLElement) {
+  const seen = new Set<string>();
+  const watcher = new MutationObserver(() => activeDescendantProblems(dialog).forEach((problem) => seen.add(problem)));
+  watcher.observe(dialog, { subtree: true, childList: true, attributes: true });
+  return () => {
+    watcher.disconnect();
+    return [...seen];
+  };
+}
+
+describe('aria-activedescendant : le champ désigne la ligne sélectionnée, présente dans la liste, et rien quand aucune ne l’est', () => {
+  it('à l’ouverture, la première ligne est sélectionnée d’office : le champ la désigne', async () => {
+    stubDefaultApi();
+    const { dialog } = await openPalette('/p/bdesk/kanban');
+
+    await expectActiveDescendantToFollowSelection(dialog, 'à l’ouverture');
+    expect(selectedRows(dialog)).toEqual([expect.stringContaining('Vue globale')]);
+  });
+
+  it('Kanban, « bdesk-38k » tapé touche à touche : après chaque caractère, le champ désigne la ligne sélectionnée', async () => {
+    stubDefaultApi();
+    const { dialog, user } = await openPalette('/p/bdesk/kanban');
+    const stopWatching = watchActiveDescendant(dialog);
+
+    for (const character of 'bdesk-38k') {
+      await user.keyboard(character);
+      await expectActiveDescendantToFollowSelection(dialog, `après « ${character} »`);
+    }
+
+    expect(selectedRows(dialog)).toHaveLength(1);
+    expect(stopWatching(), 'à aucun moment entre deux étapes').toEqual([]);
+  });
+
+  it('texte collé d’un trait : le champ désigne la première ligne qui s’affiche', async () => {
+    stubDefaultApi();
+    const { dialog, user } = await openPalette('/p/bdesk/kanban');
+
+    await user.paste('bdesk-38k');
+
+    await within(dialog).findByRole('option', { name: /Shell UI façon Linear/ });
+    await expectActiveDescendantToFollowSelection(dialog, 'après le collage');
+    expect(selectedRows(dialog)).toHaveLength(1);
+  });
+
+  it('saisie vidée : les lignes du départ reviennent, la première est sélectionnée et le champ la désigne', async () => {
+    stubDefaultApi();
+    const { dialog, user } = await openPalette('/p/bdesk/kanban');
+    await user.keyboard('38k.6');
+    await within(dialog).findByRole('option', { name: /Shell UI façon Linear/ });
+
+    await user.keyboard('{Control>}a{/Control}{Backspace}');
+
+    await waitFor(() => expect(within(dialog).getAllByRole('option')[0]?.textContent).toContain('Vue globale'));
+    await expectActiveDescendantToFollowSelection(dialog, 'saisie vidée');
+    expect(selectedRows(dialog)).toEqual([expect.stringContaining('Vue globale')]);
+  });
+
+  it('flèches, Début, Fin et survol : le champ désigne la ligne choisie', async () => {
+    stubDefaultApi();
+    const { dialog, user } = await openPalette('/p/bdesk/kanban');
+    await user.keyboard('38k');
+    await within(dialog).findByRole('option', { name: /Kanban par Projet/ });
+
+    for (const key of ['{ArrowDown}', '{ArrowDown}', '{ArrowUp}', '{End}', '{Home}']) {
+      await user.keyboard(key);
+      await expectActiveDescendantToFollowSelection(dialog, key);
+    }
+    await user.hover(within(dialog).getByRole('option', { name: /Kanban par Projet/ }));
+
+    await waitFor(() => expect(selectedRows(dialog)).toEqual([expect.stringContaining('Kanban par Projet')]));
+    await expectActiveDescendantToFollowSelection(dialog, 'survol');
+  });
+
+  describe('des lignes arrivent et disparaissent', () => {
+    it.each([
+      ['Métriques', '/p/bdesk/metrics', 'bdesk-38k.6', /Shell UI façon Linear/],
+      ['la Vue globale', '/', 'mpm-12', /Recherche plein texte/],
+    ])('page %s, tickets lents : la première ligne qui arrive est sélectionnée d’office, le champ la désigne', async (_page, path, typed, name) => {
+      const release = holdIssueLists(stubDefaultApi());
+      const { dialog, user } = await openPalette(path);
+      await user.keyboard(typed);
+      const stopWatching = watchActiveDescendant(dialog);
+
+      await release();
+
+      const ticket = await within(dialog).findByRole('option', { name });
+      await waitFor(() => expect(selected(ticket)).toBe(true));
+      await expectActiveDescendantToFollowSelection(dialog, 'les tickets sont arrivés');
+      expect(stopWatching()).toEqual([]);
+    });
+
+    it('des lignes arrivent au-dessus de la ligne sélectionnée : le champ désigne toujours celle-ci', async () => {
+      const alpha = (id: string, title: string, updatedAt: string) => issue({ id, title, updatedAt });
+      const release = holdIssueLists(
+        stubApi({
+          projects: projectsResponse,
+          issues: {
+            bdesk: [alpha('bdesk-1', 'Alpha rapport', '2026-10-20T09:00:00Z'), alpha('bdesk-2', 'Alpha rapport bis', '2026-10-19T09:00:00Z')],
+            mpm: [alpha('mpm-9', 'Alpha', '2026-10-01T09:00:00Z')],
+          },
+        }),
+        ['mpm'],
+      );
+      const { dialog, user } = await openPalette('/');
+      await user.keyboard('alpha');
+      const seen = await within(dialog).findByRole('option', { name: /bdesk-1/ });
+      await waitFor(() => expect(selected(seen)).toBe(true));
+      await expectActiveDescendantToFollowSelection(dialog, 'avant l’arrivée du second Projet');
+
+      await release();
+
+      await within(dialog).findByRole('option', { name: /mpm-9/ });
+      expect(selected(seen)).toBe(true); // la surbrillance ne saute pas (règle de bdesk-38k.21) : le champ doit rester sur elle
+      await expectActiveDescendantToFollowSelection(dialog, 'après l’arrivée du second Projet');
+    });
+
+    it('la ligne sélectionnée disparaît (la liste change) : la première ligne est sélectionnée d’office et le champ la désigne', async () => {
+      stubDefaultApi();
+      const { dialog, user, queryClient } = await openPalette('/p/bdesk/kanban');
+      await user.keyboard('bdesk');
+      const bug = await within(dialog).findByRole('option', { name: /Le graphique du Débit/ });
+      await user.hover(bug);
+      await waitFor(() => expect(selected(bug)).toBe(true));
+      await expectActiveDescendantToFollowSelection(dialog, 'ligne choisie au survol');
+
+      act(() => {
+        queryClient.setQueryData(queryKeys.issues('bdesk'), { issues: bdeskIssues.filter((candidate) => candidate.id !== 'bdesk-b7q') });
+      });
+
+      await waitFor(() => expect(within(dialog).queryByRole('option', { name: /Le graphique du Débit/ })).toBeNull());
+      await expectActiveDescendantToFollowSelection(dialog, 'la ligne choisie a disparu');
+      expect(selectedRows(dialog)).toHaveLength(1);
+    });
+  });
+
+  it('plusieurs lignes disparaissent d’un coup, dont la sélectionnée : la première ligne restante est sélectionnée et le champ la désigne', async () => {
+    stubDefaultApi();
+    const { dialog, user, queryClient } = await openPalette('/p/bdesk/kanban');
+    await user.keyboard('bdesk');
+    const tickets = await within(dialog).findAllByRole('option', { name: /bdesk-38k\.|bdesk-b7q/ });
+    expect(tickets.length).toBeGreaterThan(1);
+    await user.hover(tickets[0]!); // la sélectionnée est la première des lignes qui vont partir
+    await waitFor(() => expect(selected(tickets[0]!)).toBe(true));
+
+    act(() => {
+      queryClient.setQueryData(queryKeys.issues('bdesk'), { issues: [] }); // un rafraîchissement : tous les tickets du Projet partent à la fois
+    });
+
+    await waitFor(() => expect(within(dialog).queryByRole('option', { name: /bdesk-b7q/ })).toBeNull());
+    await waitFor(() => expect(selectedRows(dialog)).toHaveLength(1));
+    await expectActiveDescendantToFollowSelection(dialog, 'les tickets sont partis');
+    expect(within(dialog).getAllByRole('option')[0]).toBe(within(dialog).getAllByRole('option').find(selected));
+  });
+
+  it('élargir la recherche à tous les Projets : la ligne de repli, puis le ticket de l’autre Projet, sont désignés', async () => {
+    stubDefaultApi();
+    const { dialog, user } = await openPalette('/p/bdesk/kanban');
+    const stopWatching = watchActiveDescendant(dialog);
+    await user.keyboard('mpm-12');
+    await within(dialog).findByRole('option', { name: /dans tous les Projets/ });
+    await expectActiveDescendantToFollowSelection(dialog, 'ligne de repli sélectionnée d’office');
+    expect(selectedRows(dialog)).toEqual([expect.stringContaining('dans tous les Projets')]);
+
+    await user.keyboard('{Enter}');
+
+    const ticket = await within(dialog).findByRole('option', { name: /Recherche plein texte/ });
+    await waitFor(() => expect(selected(ticket)).toBe(true));
+    await expectActiveDescendantToFollowSelection(dialog, 'recherche élargie');
+    expect(stopWatching()).toEqual([]);
+  });
+
+  it('aucune ligne sélectionnée (la ligne de repli, revenue en retrait) : le champ ne désigne rien, puis la ligne choisie', async () => {
+    const release = holdIssueLists(stubDefaultApi());
+    const { dialog } = await openPalette('/p/bdesk/metrics');
+    fakeClock();
+    typeNow(dialog, '38k.6');
+    elapse(WIDEN_AFTER_MS);
+    expect(selectedRows(dialog)).toEqual([]);
+    await expectActiveDescendantToFollowSelection(dialog, 'ligne revenue, non sélectionnée');
+    expect(within(dialog).getByRole('combobox').hasAttribute('aria-activedescendant')).toBe(false);
+
+    pressNow(dialog, 'ArrowDown');
+    await waitFor(() => expect(selected(widenOption(dialog))).toBe(true));
+    await expectActiveDescendantToFollowSelection(dialog, 'ligne choisie à la flèche');
+    expect(within(dialog).getByRole('combobox').getAttribute('aria-activedescendant')).toBe(widenOption(dialog).id);
+
+    await release();
+
+    const ticket = await within(dialog).findByRole('option', { name: /Shell UI façon Linear/ });
+    expect(selected(widenOption(dialog))).toBe(true); // le choix tient
+    expect(selected(ticket)).toBe(false);
+    await expectActiveDescendantToFollowSelection(dialog, 'les tickets sont arrivés');
+  });
+
+  it('mode « changer de Projet » : le premier Projet lisible est sélectionné, le champ le désigne', async () => {
+    const [bdesk, mpm, legacy] = projects;
+    if (!bdesk || !mpm || !legacy) throw new Error('Les Projets de test manquent.');
+    stubApi({ projects: { projects: [legacy, bdesk, mpm], ignored: [] }, issues: { bdesk: bdeskIssues, mpm: mpmIssues } });
+    const { user } = renderApp('/p/mpm/kanban');
+    await screen.findByRole('navigation', { name: 'Navigation principale' });
+    await user.keyboard('gp');
+    const dialog = await screen.findByRole('dialog', { name: 'Palette de commandes' });
+    await within(dialog).findAllByRole('option');
+
+    await expectActiveDescendantToFollowSelection(dialog, 'Projets');
+    expect(selectedRows(dialog)).toEqual([expect.stringContaining('beads-desktop')]);
+  });
+
+  it('« Réessayer » en tête quand les tickets d’un Projet sont indisponibles : le champ le désigne', async () => {
+    stubApi({ projects: projectsResponse, issues: { bdesk: new Error('database is locked'), mpm: mpmIssues } });
+    const { dialog, user } = await openPalette('/');
+    await user.keyboard('zzzz');
+    const retry = await within(dialog).findByRole('option', { name: /Réessayer/ });
+    await waitFor(() => expect(selected(retry)).toBe(true));
+
+    await expectActiveDescendantToFollowSelection(dialog, 'Réessayer');
+  });
+
+  it('sous StrictMode (comme en développement, où React rejoue les effets au montage), le champ désigne la ligne sélectionnée', async () => {
+    stubDefaultApi();
+    const router = createMemoryRouter(routes, { initialEntries: ['/p/bdesk/kanban'] });
+    const user = userEvent.setup();
+    render(
+      <StrictMode>
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <ThemeProvider>
+            <RouterProvider router={router} />
+          </ThemeProvider>
+        </QueryClientProvider>
+      </StrictMode>,
+    );
+    await screen.findByRole('navigation', { name: 'Navigation principale' });
+    await user.keyboard('{Control>}k{/Control}');
+    const dialog = await screen.findByRole('dialog', { name: 'Palette de commandes' });
+    await expectActiveDescendantToFollowSelection(dialog, 'à l’ouverture');
+
+    for (const character of 'bdesk-38k') {
+      await user.keyboard(character);
+      await expectActiveDescendantToFollowSelection(dialog, `après « ${character} »`);
+    }
+
+    expect(selectedRows(dialog)).toHaveLength(1);
+  });
+
+  it('refermée puis rouverte, la palette désigne encore la bonne ligne', async () => {
+    stubDefaultApi();
+    const { dialog, user } = await openPalette('/p/bdesk/kanban');
+    await user.keyboard('38k');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(dialog.isConnected).toBe(false));
+
+    await user.keyboard('{Control>}k{/Control}');
+
+    const reopened = await screen.findByRole('dialog', { name: 'Palette de commandes' });
+    await expectActiveDescendantToFollowSelection(reopened, 'rouverte');
+    expect(selectedRows(reopened)).toHaveLength(1);
+    await user.keyboard('bdesk');
+    await expectActiveDescendantToFollowSelection(reopened, 'rouverte, puis saisie');
+  });
+});
+
+describe('survol d’une ligne que la liste retire dans le même instant (un rafraîchissement des tickets)', () => {
+  it('la première ligne est sélectionnée, comme quand la ligne sélectionnée disparaît : la sélection ne reste pas sur la ligne retirée', async () => {
+    stubDefaultApi();
+    const { dialog, user, queryClient } = await openPalette('/p/bdesk/kanban');
+    await user.keyboard('bdesk');
+    const bug = await within(dialog).findByRole('option', { name: /Le graphique du Débit/ });
+    fakeClock();
+
+    act(() => {
+      fireEvent.pointerMove(bug); // le survol arrive avec une priorité « continue » : après le rendu, immédiat, de la liste qui change
+      queryClient.setQueryData(queryKeys.issues('bdesk'), { issues: bdeskIssues.filter((candidate) => candidate.id !== 'bdesk-b7q') });
+      vi.advanceTimersByTime(0); // TanStack Query prévient les composants une minuterie plus tard
+    });
+
+    await waitFor(() => expect(within(dialog).queryByRole('option', { name: /Le graphique du Débit/ })).toBeNull());
+    await waitFor(() => expect(selectedRows(dialog)).toHaveLength(1));
+    await expectActiveDescendantToFollowSelection(dialog, 'la ligne survolée a été retirée');
+    expect(within(dialog).getAllByRole('option')[0]).toBe(within(dialog).getAllByRole('option').find(selected));
+  });
+
+  it('en mode « changer de Projet », la ligne reprise est la première activable : le Projet illisible placé en tête n’est pas choisi', async () => {
+    const [bdesk, mpm, legacy] = projects;
+    if (!bdesk || !mpm || !legacy) throw new Error('Les Projets de test manquent.');
+    stubApi({ projects: { projects: [legacy, bdesk, mpm], ignored: [] }, issues: { bdesk: bdeskIssues, mpm: mpmIssues } });
+    const { user, queryClient } = renderApp('/p/bdesk/kanban');
+    await screen.findByRole('navigation', { name: 'Navigation principale' });
+    await user.keyboard('gp');
+    const dialog = await screen.findByRole('dialog', { name: 'Palette de commandes' });
+    const row = await within(dialog).findByRole('option', { name: /My-Prompt-Manager/ });
+    fakeClock();
+
+    act(() => {
+      fireEvent.pointerMove(row);
+      queryClient.setQueryData(queryKeys.projects, { projects: [legacy, bdesk], ignored: [] }); // la liste des Projets change dans le même instant
+      vi.advanceTimersByTime(0);
+    });
+
+    await waitFor(() => expect(within(dialog).queryByRole('option', { name: /My-Prompt-Manager/ })).toBeNull());
+    await waitFor(() => expect(selectedRows(dialog)).toEqual([expect.stringContaining('beads-desktop')]));
+    await expectActiveDescendantToFollowSelection(dialog, 'le Projet survolé a été retiré');
+  });
+});
+
+describe('survol et clic quasi simultanés sur « Chercher … dans tous les Projets », les tickets de l’autre Projet étant déjà en cache', () => {
+  it('le ticket arrivé est sélectionné et désigné, Entrée l’ouvre : la sélection ne reste pas sur la ligne disparue', async () => {
+    const release = holdIssueLists(stubDefaultApi(), ['bdesk']); // la liste du Projet courant tarde : la ligne de repli revient
+    const { dialog, user, router, queryClient } = await openPalette('/p/bdesk/metrics');
+    await act(() => queryClient.prefetchQuery(issuesQuery('mpm'))); // une visite de l'autre Projet les a laissés en cache
+    fakeClock();
+    typeNow(dialog, 'mpm-12');
+    elapse(WIDEN_AFTER_MS);
+    const line = widenOption(dialog);
+    expect(selected(line)).toBe(false);
+
+    act(() => {
+      fireEvent.pointerMove(line); // la souris arrive sur la ligne et clique avant le rendu du survol : un pilote automatique
+      fireEvent.click(line);
+    });
+
+    const ticket = await within(dialog).findByRole('option', { name: /mpm-12/ });
+    await waitFor(() => expect(selected(ticket)).toBe(true));
+    expect(selectedRows(dialog)).toHaveLength(1);
+    await expectActiveDescendantToFollowSelection(dialog, 'recherche élargie');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(pathname(router)).toBe('/p/mpm/t/mpm-12'));
+    await release();
   });
 });

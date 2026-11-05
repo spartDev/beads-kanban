@@ -2,7 +2,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { Command } from 'cmdk';
 import { Globe, RefreshCw, Search, TriangleAlert } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { queryKeys } from '../data/hooks';
 import { cx } from '../lib/cx';
@@ -10,9 +10,11 @@ import { useOverlayContent, usePalette, type PaletteMode } from '../shell/Overla
 import { dialogOverlay, dialogSurface } from '../ui/dialog';
 import { Kbd } from '../ui/Kbd';
 import { Bead, EnterHint, groupClass, itemClass, ScopeChip, SectionGroup } from './PaletteGroups';
+import { useActiveDescendant } from './useActiveDescendant';
 import { usePaletteSections } from './usePaletteSections';
 import { usePendingEnter } from './usePendingEnter';
 import { useQuietRow } from './useQuietRow';
+import { useSelectionGuard } from './useSelectionGuard';
 
 export function CommandPalette() {
   const { open, mode, closePalette } = usePalette();
@@ -58,6 +60,9 @@ function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode
   const [query, setQuery] = useState('');
   const [searchAll, setSearchAll] = useState(false);
   const [selected, setSelected] = useState('');
+  const root = useRef<HTMLDivElement>(null);
+  // cmdk annonce une ligne active périmée après ses sélections d'office : voir `useActiveDescendant`.
+  useActiveDescendant(root);
 
   const go = useCallback(
     (to: string) => {
@@ -89,10 +94,14 @@ function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode
   // d'ouvrir le ticket tapé. Elle reste donc là sans être sélectionnée (flèche, survol ou clic la choisissent), et les tickets prennent la
   // sélection à leur arrivée comme toute première ligne : rien n'était en surbrillance, rien ne saute.
   const onlyWiden = canWiden && ticketsPending && resultCount === 0 && failedProjects.length === 0;
-  const quiet = useQuietRow({ quiet: onlyWiden, present: canWiden, row: WIDEN_VALUE, selected, select: setSelected });
+  const quiet = useQuietRow({ quiet: onlyWiden, row: WIDEN_VALUE, selected, select: setSelected });
+  // Une ligne est sélectionnée dès qu'il y en a une à sélectionner, et la sélection désigne une ligne présente : cmdk ne le tient pas quand
+  // la valeur est pilotée (survol d'une ligne qui disparaît, lignes retirées ensemble, ligne en retrait seule) : voir `useSelectionGuard`.
+  useSelectionGuard({ root, selected, quiet: onlyWiden, select: setSelected });
 
   return (
     <Command
+      ref={root}
       label="Palette de commandes"
       shouldFilter={false}
       loop

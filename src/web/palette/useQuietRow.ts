@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 
 /** Valeur de cmdk qui ne désigne aucune ligne : tant qu'il la porte, il ne choisit pas de ligne d'office quand une ligne se monte. */
 const NO_ROW = 'none:';
@@ -24,15 +24,12 @@ const CHOOSING_KEYS: ReadonlySet<string> = new Set(['ArrowDown', 'ArrowUp', 'Hom
  */
 export function useQuietRow({
   quiet,
-  present,
   row,
   selected,
   select,
 }: {
   /** La ligne est en retrait. */
   quiet: boolean;
-  /** La ligne est affichée. */
-  present: boolean;
   /** La valeur cmdk de la ligne (le `value` de son `Command.Item`). */
   row: string;
   /** La valeur sélectionnée, telle que la palette la tient (vide : aucune). */
@@ -42,13 +39,6 @@ export function useQuietRow({
   // Un choix de l'utilisateur depuis la dernière frappe. Un ref : il ne change rien à l'affichage, seulement à ce qu'on accepte de cmdk.
   const chosen = useRef(false);
   const [refusals, setRefusals] = useState(0);
-
-  // Le survol d'une ligne arrive avec une priorité « continue » : si le clic qui la fait disparaître le suit de moins d'un rendu (un pilote
-  // automatique, un geste vif), sa sélection est appliquée après la disparition, et cmdk garderait une valeur qui ne désigne plus rien :
-  // les lignes qui arrivent ensuite ne seraient plus sélectionnées d'office.
-  useEffect(() => {
-    if (!present && selected === row) select('');
-  }, [present, selected, row, select]);
 
   return {
     /** À donner à `Command`. */
