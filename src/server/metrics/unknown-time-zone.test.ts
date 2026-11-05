@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { Writable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { StatusSnapshot, TicketHistory } from '../../domain/flow';
@@ -6,6 +7,12 @@ import type { Issue, MetricsResponse, Project } from '../../shared/api';
 import type { ProjectService } from '../projects/service';
 import { buildServer } from '../server';
 import { createMetricsService } from './service';
+
+// `realpathSync` est l'original, espionné : la sonde par défaut du fuseau du système le lit vraiment, et on compte ses lectures de /etc/localtime.
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return { ...actual, realpathSync: vi.fn(actual.realpathSync) };
+});
 
 /**
  * bdesk-38k.38 : avec la variable `TZ` vide, le moteur nomme le fuseau local « Etc/Unknown », que `Intl` refuse : chaque
@@ -25,6 +32,10 @@ function isZone(name: unknown): boolean {
     return false;
   }
 }
+
+/** Les lectures de /etc/localtime faites par la sonde par défaut depuis le dernier `resetLocaltimeReads` (le `realpathSync` espionné plus haut). */
+const localtimeReads = () => vi.mocked(realpathSync).mock.calls.filter(([path]) => path === '/etc/localtime').length;
+const resetLocaltimeReads = () => vi.mocked(realpathSync).mockClear();
 
 const at = (iso: string) => new Date(`${iso}Z`);
 const NOW = at('2026-10-23T22:45'); // vendredi 23 octobre 2026, 22:45 UTC : samedi 24 à 00:45 à Paris (UTC+2 jusqu'au 25)
@@ -145,6 +156,29 @@ describe('service de métriques : fuseau non reconnu (bdesk-38k.38)', () => {
 
     expect(system).toHaveBeenCalledTimes(1);
     expect(new Set(responses.map((response) => response.timeZone))).toEqual(new Set(['Europe/Paris'])); // et le même fuseau chaque fois
+  });
+
+  // Le test précédent remplace la sonde : il ne garde pas la lecture réelle. Celui-ci laisse la sonde par défaut, qui lit /etc/localtime (bdesk-38k.49).
+  it('lit /etc/localtime une seule fois avec la sonde par défaut aussi : à la création, jamais à chaque calcul', async () => {
+    resetLocaltimeReads();
+    const metrics = createMetricsService(lateFriday(), { now: () => NOW, timeZone: 'Etc/Unknown' }); // aucune sonde passée : celle du module
+    expect(localtimeReads()).toBe(1); // à la création, avant la première requête
+
+    const responses = [];
+    for (let i = 0; i < 5; i++) responses.push(await metrics.compute({ projects: [], ...week }));
+
+    expect(localtimeReads()).toBe(1);
+    expect(isZone(responses[0]?.timeZone)).toBe(true);
+    expect(new Set(responses.map((response) => response.timeZone)).size).toBe(1); // et le même fuseau chaque fois
+  });
+
+  it('ne lit pas /etc/localtime quand le fuseau demandé est reconnu, avec la sonde par défaut', async () => {
+    resetLocaltimeReads();
+    const metrics = createMetricsService(lateFriday(), { now: () => NOW, timeZone: 'Europe/Paris' });
+
+    for (let i = 0; i < 3; i++) await metrics.compute({ projects: [], ...week });
+
+    expect(localtimeReads()).toBe(0);
   });
 
   it('dit aussi que c’est UTC qui a pris la place, faute de fuseau du système', () => {
@@ -352,6 +386,20 @@ describe('GET /api/metrics avec un fuseau local que le moteur ne reconnaît pas'
     expect(warned()[0]?.msg).toContain('Etc/Unknown');
     expect(warned()[0]?.msg).toContain('définissez TZ avec un nom IANA (TZ=Europe/Paris)');
     expect(warned()[0]?.msg).not.toContain('vide ou invalide ?'); // la cause n'est pas devinée : EST5 est valide, et n'a pas de nom IANA
+  });
+
+  it('TZ vide : le serveur lit /etc/localtime une seule fois, à sa construction, quelles que soient les requêtes qu’il reçoit (bdesk-38k.49)', async () => {
+    vi.stubEnv('TZ', '');
+    resetLocaltimeReads();
+    const { stream } = journal();
+    const app = serve(delivered(), stream);
+    expect(localtimeReads()).toBe(1); // avant toute requête : la sonde du serveur est celle du module, sans rien d'injecté
+
+    for (const url of ['/api/metrics?project=p&range=30d', '/api/metrics', '/api/metrics?range=90d', '/api/metrics?from=2025-03-01&to=2025-03-31', '/api/metrics?from=2025-01-01&to=2025-06-30']) {
+      expect((await app.inject({ method: 'GET', url })).statusCode, url).toBe(200);
+    }
+
+    expect(localtimeReads()).toBe(1);
   });
 
   it.each(['Europe/Paris', 'UTC'])('TZ=%s : rien au journal', async (tz) => {

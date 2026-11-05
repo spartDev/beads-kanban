@@ -1,7 +1,7 @@
 import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Writable } from 'node:stream';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InvalidPeriodError } from '../domain/calendar';
 import type { TicketHistory } from '../domain/flow';
 import type { Issue, IssueDetail, MetricsResponse, Project } from '../shared/api';
@@ -585,7 +585,7 @@ describe('API : requêtes abandonnées par le client (bdesk-38k.20)', () => {
     await app.close();
   });
 
-  it('sur une vraie connexion : le service est interrompu quand le client ferme la sienne, et le serveur n’écrit aucune erreur', async () => {
+  it('sur une vraie connexion : le service est interrompu quand le client ferme la sienne, et le serveur n’écrit rien au journal (ni erreur, ni avertissement)', async () => {
     const { seen, wait } = hanging();
     const logs: string[] = [];
     const stream = new Writable({
@@ -594,7 +594,7 @@ describe('API : requêtes abandonnées par le client (bdesk-38k.20)', () => {
         done();
       },
     });
-    const app = buildServer({ config, projects: serviceWith({ issue: wait(detail) }), logger: { level: 'error', stream } });
+    const app = buildServer({ config, projects: serviceWith({ issue: wait(detail) }), logger: { level: 'warn', stream } });
     await app.listen({ host: '127.0.0.1', port: 0 });
     const { port } = app.server.address() as AddressInfo;
     const client = request({ host: '127.0.0.1', port, path: '/api/projects/beads-desktop/issues/bdesk-38k.4' });
@@ -633,5 +633,245 @@ describe('API : requêtes abandonnées par le client (bdesk-38k.20)', () => {
     expect(res.statusCode).not.toBe(500);
     expect(res.statusCode).not.toBe(503);
     await app.close();
+  });
+});
+
+/**
+ * bdesk-38k.49 : le gestionnaire d'erreurs de l'API répondait 500 sans rien écrire : un 500 en production ne laissait aucune trace. Le
+ * journal du serveur (le `logger` de Fastify, que le CLI laisse au niveau `warn`) reçoit désormais une ligne par réponse qui est une panne
+ * du serveur, et rien de ce qui est la faute de la requête ou l'abandon du client.
+ */
+describe('API : journal des erreurs (bdesk-38k.49)', () => {
+  const WARN = 40;
+  const ERROR = 50;
+
+  /** Une ligne du journal du serveur : Fastify l'écrit par pino, en JSON, une par message. */
+  interface LogLine {
+    level: number;
+    msg: string;
+    reqId?: string;
+    method?: string;
+    route?: string;
+    err?: { type: string; message: string; stack: string };
+  }
+
+  /** Un journal que le test lit (`logger: { level, stream }`) : ce que le serveur écrit, ligne par ligne ou en bloc. */
+  function journal() {
+    const chunks: string[] = [];
+    const stream = new Writable({
+      write(chunk: Buffer, _encoding, done) {
+        chunks.push(chunk.toString());
+        done();
+      },
+    });
+    const text = () => chunks.join('');
+    const lines = () =>
+      text()
+        .split('\n')
+        .filter((line) => line.trim() !== '')
+        .map((line) => JSON.parse(line) as LogLine);
+    return { stream, text, lines };
+  }
+
+  const apps: { close(): Promise<unknown> }[] = [];
+  afterEach(async () => {
+    await Promise.all(apps.splice(0).map((app) => app.close()));
+  });
+
+  /**
+   * Un serveur dont le journal est capté, au niveau du CLI (`warn` : les erreurs et les avertissements, pas les lignes d'accès de Fastify).
+   * Les métriques ont leur fuseau : celui de la machine, quand le moteur ne le reconnaît pas, ajouterait son avertissement au journal.
+   */
+  function serve(stub: Partial<ProjectService> = {}, level = 'warn') {
+    const { stream, text, lines } = journal();
+    const projects = serviceWith(stub);
+    const metrics = createMetricsService(projects, { now: () => new Date('2026-10-23T18:00:00Z'), timeZone: 'Europe/Paris' });
+    const app = buildServer({ config, projects, metrics, logger: { level, stream } });
+    apps.push(app);
+    return { app, text, lines };
+  }
+
+  const boom = async (): Promise<never> => {
+    throw new Error('boum');
+  };
+
+  /** Chaque route de l'API, avec ce qui la fait échouer sans qu'elle l'ait prévu, et son modèle de route (ce que le journal en dit). */
+  const FAILING: [name: string, url: string, route: string, stub: Partial<ProjectService>][] = [
+    ['la liste des Projets', '/api/projects', '/api/projects', { list: boom }],
+    ['la liste des tickets', '/api/projects/beads-desktop/issues', '/api/projects/:projectId/issues', { issues: boom }],
+    ['la fiche d’un ticket', '/api/projects/beads-desktop/issues/bdesk-38k.4', '/api/projects/:projectId/issues/:issueId', { issue: boom }],
+    [
+      'la chronologie d’un ticket',
+      '/api/projects/beads-desktop/issues/bdesk-38k.4/chronology',
+      '/api/projects/:projectId/issues/:issueId/chronology',
+      { histories: boom },
+    ],
+    ['les métriques', '/api/metrics?range=7d', '/api/metrics', { head: boom }],
+    ['le flux en direct', '/api/projects/beads-desktop/events', '/api/projects/:projectId/events', { list: boom }],
+  ];
+
+  it.each(FAILING)('%s : une erreur inattendue (500) laisse une ligne `error` avec le message, la pile, la méthode et la route', async (_name, url, route, stub) => {
+    const { app, lines } = serve(stub);
+
+    const res = await app.inject({ method: 'GET', url });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'boum' }); // la réponse, elle, ne change pas
+    const [line, ...others] = lines();
+    expect(others).toEqual([]); // une seule ligne
+    expect(line).toMatchObject({ level: ERROR, method: 'GET', route, msg: expect.stringContaining('boum'), err: { type: 'Error', message: 'boum' } });
+    expect(line?.err?.stack).toContain('Error: boum');
+    expect(line?.err?.stack).toContain('api.test.ts'); // la pile de l'erreur d'origine
+    expect(line?.reqId).toEqual(expect.any(String)); // de quoi la retrouver parmi les lignes d'accès, que le niveau `info` écrit
+  });
+
+  it('une erreur, une ligne : Fastify ne l’écrit pas une seconde fois, même quand le journal garde tout', async () => {
+    const { app, lines } = serve({ list: boom }, 'trace');
+
+    await app.inject({ method: 'GET', url: '/api/projects' });
+    await app.inject({ method: 'GET', url: '/api/projects' });
+
+    const failures = lines().filter((line) => line.level >= WARN);
+    expect(failures).toHaveLength(2); // une par réponse
+    expect(new Set(failures.map((line) => line.reqId)).size).toBe(2);
+    expect(lines().filter((line) => JSON.stringify(line).includes('boum'))).toHaveLength(2); // et aucune autre ligne ne cite l'erreur
+  });
+
+  it('n’écrit ni l’adresse avec sa requête, ni les en-têtes, ni le corps : l’erreur, la méthode et la route seulement', async () => {
+    const { app, lines, text } = serve({ list: boom });
+
+    await app.inject({
+      method: 'GET',
+      url: '/api/projects?token=s3cret-requete',
+      headers: { authorization: 'Bearer s3cret-en-tete', cookie: 'session=s3cret-cookie' },
+      payload: 's3cret-corps',
+    });
+
+    expect(text()).not.toContain('s3cret');
+    const [line] = lines();
+    expect(line?.route).toBe('/api/projects'); // le modèle de la route, pas l'adresse demandée
+    expect(Object.keys(line ?? {}).sort()).toEqual(['err', 'hostname', 'level', 'method', 'msg', 'pid', 'reqId', 'route', 'time']);
+    expect(Object.keys(line?.err ?? {}).sort()).toEqual(['message', 'stack', 'type']);
+  });
+
+  it('un code 5xx autre que 500 est une panne du serveur aussi : une ligne `error`', async () => {
+    const { app, lines } = serve({
+      list: async () => {
+        throw Object.assign(new Error('passerelle'), { statusCode: 502 });
+      },
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/projects' });
+
+    expect(res.statusCode).toBe(502);
+    expect(lines()).toMatchObject([{ level: ERROR, method: 'GET', route: '/api/projects', msg: expect.stringContaining('passerelle') }]);
+  });
+
+  // Rien n'oblige le code à lever une `Error` : une valeur sans message, sans code ni pile (`throw 'x'`, `throw null`) est une erreur imprévue comme une autre.
+  it.each([
+    ['une chaîne', 'boum-texte', "'boum-texte'"],
+    ['un nombre', 42, '42'],
+    ['un objet', { code: 'E_BOUM' }, "{ code: 'E_BOUM' }"],
+    ['null', null, 'null'],
+    ['undefined', undefined, 'undefined'],
+  ])('lever %s (et non une Error) : 500 et une ligne `error` qui dit la valeur, sans l’adresse', async (_name, thrown, shown) => {
+    const { app, lines, text } = serve({
+      list: async () => {
+        throw thrown;
+      },
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/projects?token=s3cret-requete' });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'Erreur inattendue.' }); // un message, pas la valeur levée
+    const [line, ...others] = lines();
+    expect(others).toEqual([]); // une seule ligne, même quand le gestionnaire de Fastify prend le relais
+    expect(line).toMatchObject({
+      level: ERROR,
+      method: 'GET',
+      route: '/api/projects',
+      msg: `Erreur inattendue (valeur levée qui n'est pas une Error) : ${shown}`,
+    });
+    expect(Object.keys(line ?? {}).sort()).toEqual(['hostname', 'level', 'method', 'msg', 'pid', 'reqId', 'route', 'time']); // pas de pile à écrire
+    expect(text()).not.toContain('s3cret'); // le gestionnaire de Fastify, lui, écrit l'adresse avec sa requête
+  });
+
+  it('un code 4xx est la faute de la requête, pas une panne du serveur : rien au journal', async () => {
+    const { app, lines } = serve({
+      list: async () => {
+        throw Object.assign(new Error('théière'), { statusCode: 418 });
+      },
+    });
+
+    const res = await app.inject({ method: 'GET', url: '/api/projects' });
+
+    expect(res.statusCode).toBe(418);
+    expect(lines()).toEqual([]);
+  });
+
+  it.each([
+    ['la liste des tickets', '/api/projects/hcp/issues', '/api/projects/:projectId/issues'],
+    ['la fiche d’un ticket', '/api/projects/hcp/issues/b-1', '/api/projects/:projectId/issues/:issueId'],
+    ['la chronologie d’un ticket', '/api/projects/hcp/issues/b-1/chronology', '/api/projects/:projectId/issues/:issueId/chronology'],
+  ])('%s : un Projet illisible (503) laisse une ligne `warn` avec sa raison, sans pile', async (_name, url, route) => {
+    const unreadable = async (): Promise<never> => {
+      throw new ProjectUnreadableError('hcp', 'database is locked by another dolt process');
+    };
+    const { app, lines } = serve({ issues: unreadable, issue: unreadable, histories: unreadable });
+
+    const res = await app.inject({ method: 'GET', url });
+
+    expect(res.statusCode).toBe(503);
+    const [line, ...others] = lines();
+    expect(others).toEqual([]);
+    expect(line).toMatchObject({ level: WARN, method: 'GET', route, msg: 'Projet illisible : hcp (database is locked by another dolt process)' });
+    expect(line).not.toHaveProperty('err'); // une panne de lecture, pas un bogue : la pile partirait du service et n'apprendrait rien
+  });
+
+  const QUIET: { name: string; url: string; stub?: Partial<ProjectService>; headers?: Record<string, string>; status: number }[] = [
+    {
+      name: 'un Projet inconnu',
+      url: '/api/projects/nope/issues',
+      stub: {
+        issues: async () => {
+          throw new ProjectNotFoundError('nope');
+        },
+      },
+      status: 404,
+    },
+    {
+      name: 'un ticket inconnu',
+      url: '/api/projects/beads-desktop/issues/bdesk-zzz',
+      stub: {
+        issue: async () => {
+          throw new IssueNotFoundError('beads-desktop', 'bdesk-zzz');
+        },
+      },
+      status: 404,
+    },
+    { name: 'un Projet inconnu des métriques', url: '/api/metrics?project=nope', status: 404 },
+    { name: 'une requête de métriques refusée', url: '/api/metrics?range=1d', status: 400 },
+    { name: 'une plage que le domaine refuse', url: '/api/metrics?from=2026-10-15&to=2026-10-01', status: 400 },
+    { name: 'une origine que le flux refuse', url: '/api/projects/beads-desktop/events', headers: { origin: 'https://evil.example' }, status: 403 },
+    {
+      name: 'une lecture abandonnée',
+      url: '/api/projects/beads-desktop/issues/bdesk-38k.4',
+      stub: {
+        issue: async () => {
+          throw new ReadAborted();
+        },
+      },
+      status: 499,
+    },
+  ];
+
+  it.each(QUIET)('$name ($status) : une réponse attendue, rien au journal', async ({ url, stub, headers, status }) => {
+    const { app, lines } = serve(stub);
+
+    const res = await app.inject({ method: 'GET', url, headers });
+
+    expect(res.statusCode).toBe(status);
+    expect(lines()).toEqual([]);
   });
 });

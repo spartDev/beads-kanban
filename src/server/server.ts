@@ -20,8 +20,9 @@ export interface ServerOptions {
   /** Accès aux Projets ; par défaut, celui de la configuration, lu via le CLI `dolt`. */
   projects?: ProjectService;
   /**
-   * Calcul des métriques ; par défaut, celui des `projects`, avec l'horloge et le fuseau du serveur. Si le moteur ne reconnaît pas ce
-   * fuseau (variable TZ vide ou invalide), les jours se comptent dans celui du système, à défaut en UTC, et le journal le dit une fois.
+   * Calcul des métriques ; par défaut, celui des `projects`, avec l'horloge et le fuseau du serveur. Quand le moteur ne donne pas de nom IANA
+   * à ce fuseau (variable TZ vide, invalide ou en notation POSIX sans nom IANA, comme `EST5`), les jours, les semaines et les heures se
+   * comptent dans le fuseau du système, à défaut en UTC (les durées n'en dépendent pas), et le journal le dit une fois (voir `resolveMetricsTimeZone`).
    */
   metrics?: MetricsService;
   /**
@@ -31,7 +32,9 @@ export interface ServerOptions {
   allowAnyLocalPort?: boolean;
   /**
    * Journal du serveur (l'option `logger` de Fastify). Absent : le serveur est muet. Le CLI y laisse passer les
-   * avertissements, dont ceux du sondage du direct : un Projet dont le HEAD ne se lit plus, puis son rétablissement.
+   * avertissements, dont ceux du sondage du direct : un Projet dont le HEAD ne se lit plus, puis son rétablissement ; et les pannes de
+   * l'API : une erreur imprévue (réponse 500, ou tout autre 5xx qu'elle porte ; `error`, avec sa pile) ou un Projet illisible (503, `warn`,
+   * sans pile), voir `registerApi`.
    */
   logger?: FastifyServerOptions['logger'];
   /** Mises à jour en direct : le flux SSE de chaque Projet (`GET /api/projects/:projectId/events`). */
