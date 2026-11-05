@@ -72,7 +72,7 @@ function EpicDetail({ project, epicId }: { project: Project; epicId: string }) {
 /** La silhouette de la page : un titre, la barre d'avancement, deux cases de chiffres et quelques lignes d'Enfants. */
 function EpicSkeleton() {
   return (
-    <Page title={<Skeleton className="h-7 w-2/3" />}>
+    <Page title={null} loadingWidth="w-2/3">
       <div role="status" aria-busy="true" aria-label="Chargement de l’Epic" className="flex flex-col gap-6">
         <div className="flex flex-col gap-3">
           <Skeleton className="h-5 w-56" />

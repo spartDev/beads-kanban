@@ -128,7 +128,7 @@ describe.each(TITLES)('le panneau d’un ticket sous une Epic dont le titre est 
 });
 
 describe.each(TITLES)('la page d’une Epic dont le titre est %s', (_kind, epicTitle) => {
-  /** La page de l'Epic, dès qu'elle est chargée (son lien « Ouvrir le ticket » est là) : la silhouette du chargement a un titre vide, que l'on n'a pas à juger. */
+  /** La page de l'Epic, dès qu'elle est chargée (son lien « Ouvrir le ticket » est là) : la silhouette du chargement a un titre de squelette (nommé « Chargement… », marqué `data-skeleton`), que l'on n'a pas à juger. */
   async function openEpicPage() {
     stubApi({ projects: projectsResponse, issues: { bdesk: project(epicTitle) } });
     renderApp(`/p/bdesk/epics?epic=${EPIC}`);

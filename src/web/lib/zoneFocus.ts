@@ -13,7 +13,7 @@ import { focusContainer } from './focus';
 const ZONE = '[data-issue-panel], [data-focus-zone]';
 const ENCLOSING = 'main, [role="dialog"], [role="alertdialog"]';
 
-/** Le marqueur du titre d'un squelette (`Page` le pose sur le `h1` dont le titre n'est pas un texte) : ni le titre de la page, ni un nom pour le lecteur d'écran. */
+/** Le marqueur du titre d'un squelette (`Page` le pose sur le `h1` dont le titre est `null`, la page charge) : ni le titre de la page, ni son nom pour le lecteur d'écran (« Chargement… »). */
 const SKELETON = '[data-skeleton]';
 
 /** La zone qui contient `from`, sinon la boîte de dialogue ou le contenu principal qui le contient, sinon le contenu principal. */
@@ -24,8 +24,8 @@ export function zoneOf(from: Element): HTMLElement | null {
 
 /**
  * Le titre d'une zone : son premier intertitre (le titre de la page dans le contenu principal, celui de la section dans une région), hors le titre d'un
- * squelette : il est vide, et la page qui le remplace le retire du document, avec le focus qu'on lui aurait donné. Ce qui le dit est le marqueur
- * `data-skeleton`, pas le texte : un squelette peut porter un texte pour les lecteurs d'écran (« Chargement… »).
+ * squelette : ce n'est pas le titre de la page, et la page qui le remplace le retire du document, avec le focus qu'on lui aurait donné. Ce qui le dit est le marqueur
+ * `data-skeleton`, pas le nom ni le texte : le squelette a un nom pour les lecteurs d'écran (« Chargement… »), qui n'est pas celui d'un titre à lire.
  */
 export function titleOf(zone: Element): HTMLElement | null {
   return zone.querySelector<HTMLElement>(`h1:not(${SKELETON}), h2:not(${SKELETON})`);

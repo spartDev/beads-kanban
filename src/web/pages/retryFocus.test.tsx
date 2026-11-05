@@ -452,8 +452,9 @@ describe.each(SITES)('« Réessayer » : $name', (site) => {
 });
 
 describe('la porte du Projet, sur la page d’une Epic dont les tickets ne sont pas encore là', () => {
-  // La porte rend la main à la page de l'Epic, qui charge ses tickets sous un titre de squelette : ce titre est vide, et la page qui le remplace le retire du
-  // document. Le focus reste au contenu principal, puis le titre de l'Epic le prend à l'arrivée, si l'utilisateur ne l'a pas mis ailleurs entre-temps.
+  // La porte rend la main à la page de l'Epic, qui charge ses tickets sous un titre de squelette : ce titre, nommé « Chargement… », n'est pas celui de la page, et la
+  // page qui le remplace le retire du document. Le focus reste au contenu principal, puis le titre de l'Epic le prend à l'arrivée, si l'utilisateur ne l'a pas mis
+  // ailleurs entre-temps.
   const gate = SITES.find((site) => site.name === 'la porte du Projet, sur la page d’une Epic')!;
 
   /** « Réessayer » de la porte, Projets rétablis tout de suite et tickets retenus : le squelette de l'Epic est à l'écran. */
@@ -466,7 +467,7 @@ describe('la porte du Projet, sur la page d’une Epic dont les tickets ne sont 
     return { ...app, release };
   }
 
-  it('le titre du squelette de l’Epic, vide, ne prend pas le focus : le contenu principal le garde, pas le corps de la page', async () => {
+  it('le titre du squelette de l’Epic, nommé « Chargement… », ne prend pas le focus : le contenu principal le garde, pas le corps de la page', async () => {
     await retryWithIssuesHeld();
 
     expect(document.activeElement).toBe(main());

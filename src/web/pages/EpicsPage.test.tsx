@@ -35,11 +35,18 @@ const closedChild = (id: string, title: string, days: number, overrides: Partial
 
 const stub = (issues: Issue[]) => stubApi({ projects: projectsResponse, issues: { bdesk: issues } });
 
+/** Le titre de la page, dès qu'il est arrivé : celui de la silhouette du chargement, « Chargement… » (bdesk-38k.53), est un titre de squelette (`data-skeleton`), pas celui de la page. */
+const pageTitle = () =>
+  waitFor(() => {
+    const title = screen.getByRole('heading', { level: 1 });
+    expect(title.hasAttribute('data-skeleton')).toBe(false);
+    return title;
+  });
+
 async function openEpic(issues: Issue[], path = '/p/bdesk/epics?epic=bdesk-e1') {
   stub(issues);
   const app = renderApp(path);
-  // Le titre de la silhouette est vide : on attend celui de la page.
-  await screen.findByRole('heading', { level: 1, name: /\S/ });
+  await pageTitle();
   return app;
 }
 
@@ -1001,7 +1008,7 @@ describe('la page Epic : ce qui ne va pas', () => {
     renderApp('/p/bdesk/epics?epic=bdesk-a');
 
     // La page est prête dès qu'elle a un titre ; ce qu'il dit, lui, est une assertion (qui échoue tout de suite si la page est celle d'une Epic).
-    await screen.findByRole('heading', { level: 1, name: /\S/ });
+    await pageTitle();
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Ce n’est pas une Epic');
     expect(screen.getByText('« bdesk-a » est de type Tâche')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Ouvrir le ticket' }).getAttribute('href')).toBe('/p/bdesk/t/bdesk-a');

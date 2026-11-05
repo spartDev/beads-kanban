@@ -47,7 +47,7 @@ export function ProjectGate() {
       );
     }
     return (
-      <Page title={<Skeleton className="h-7 w-40" />}>
+      <Page title={null}>
         <div role="status" aria-busy="true" aria-label="Chargement du Projet" className="flex flex-col gap-3">
           <Skeleton className="h-4 w-2/3" />
           <Skeleton className="h-20 w-full" />
