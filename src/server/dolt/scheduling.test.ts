@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { isAbortError, ReadAborted } from '../abort';
+import { Flight } from '../flight';
 import { fakeDolt } from '../testing/fake-dolt';
 import { createDoltClient, type DoltDatabase, DoltQueryError, queryAll, type Row, withOptions } from './client';
 import { ReadOnlyViolation } from './read-only';
@@ -288,6 +289,220 @@ describe.skipIf(process.platform === 'win32')('ordonnancement des lectures Dolt'
       const ended = fake.events().filter((line) => line.startsWith('end'));
       expect(ended.indexOf("end select 'slow' as histoire")).toBeLessThan(10);
       await Promise.all(tickets);
+    });
+  });
+
+  describe('une lecture que seul un délai de grâce retient passe après celles qu’on attend (bdesk-38k.37)', () => {
+    /**
+     * Les requêtes qui contiennent « wait » ne finissent que quand le test le décide (`release`), celles qui contiennent « later » ou « hold »
+     * quand il crée `go-later` ou `go-hold` ; « slow » dure 0,1 s et « boom » échoue. Chaque processus note sa requête à son lancement
+     * (`started`) et, s'il va au bout, à sa fin (`ended`) : un processus tué ne note rien.
+     */
+    const gated = () => {
+      const fake = fakeDolt(
+        [
+          `d="$(dirname "$0")"`,
+          `q="\${5#start transaction read only; }"`,
+          `echo "$q" >> "$d/events"`,
+          `case "$q" in`,
+          `*later*) i=0; while [ ! -e "$d/go-later" ] && [ $i -lt 200 ]; do sleep 0.05; i=$((i+1)); done;;`,
+          `*hold*) i=0; while [ ! -e "$d/go-hold" ] && [ $i -lt 200 ]; do sleep 0.05; i=$((i+1)); done;;`,
+          `*slow*) sleep 0.1;;`,
+          `*boom*) echo 'boom: erreur de dolt' >&2; exit 1;;`,
+          `*wait*)`,
+          WAIT_FOR_GO + ';;',
+          `esac`,
+          `echo "$q" >> "$d/ends"`,
+          `echo '{"rows": []}'`,
+        ].join('\n'),
+      );
+      return { ...fake, started: () => lines(join(fake.dir, 'events')), ended: () => lines(join(fake.dir, 'ends')) };
+    };
+
+    /** La seule place de la voie des analyses est prise par une lecture qui attend : tout ce qui suit fait la queue. */
+    async function saturated() {
+      const fake = gated();
+      const db = createDoltClient({ ...options(fake.binary), maxAnalysis: 1 }).open(fake.dir);
+      const occupant = db.query("select 'wait'", { lane: 'analysis' });
+      await until(() => fake.started().length === 1, 'l’occupant tourne');
+      return { fake, db, occupant };
+    }
+
+    /**
+     * Une lecture que plus personne n'attend : le `Flight` qui la lance ne la garde que le temps de son délai de grâce (une minute, sauf
+     * précision), comme celui de l'historique d'un Projet dont la Vue globale a été quittée.
+     */
+    function retained(db: DoltDatabase, sql: string, graceMs = 60_000) {
+      const flight = new Flight((signal) => db.query(sql, { lane: 'analysis', signal }), { graceMs });
+      flight.start();
+      const asker = new AbortController();
+      flight.join(asker.signal).catch(() => undefined);
+      asker.abort();
+      return flight;
+    }
+
+    it('est servie après une lecture qu’on attend, même arrivée plus tard', async () => {
+      const { fake, db, occupant } = await saturated();
+      const forNobody = retained(db, 'select 1 as retenue');
+      const awaited = db.query('select 2 as attendue', { lane: 'analysis' });
+
+      release(fake.dir);
+      await Promise.all([occupant, awaited, forNobody.settled]);
+
+      expect(fake.started()).toEqual(["select 'wait'", 'select 2 as attendue', 'select 1 as retenue']);
+    });
+
+    it('est pourtant lancée dès qu’une place est libre et que personne d’autre n’attend : la grâce garde son bénéfice', async () => {
+      const { fake, db, occupant } = await saturated();
+      const forNobody = retained(db, 'select 1 as retenue');
+
+      release(fake.dir);
+      await occupant;
+
+      await expect(forNobody.done).resolves.toEqual([]);
+      expect(fake.started()).toEqual(["select 'wait'", 'select 1 as retenue']);
+    });
+
+    it('reprise pendant le délai, elle est attendue de nouveau et reprend son rang d’arrivée', async () => {
+      const { fake, db, occupant } = await saturated();
+      const taken = retained(db, 'select 1 as reprise');
+      const awaited = db.query('select 2 as attendue', { lane: 'analysis' });
+
+      const back = taken.join(); // une requête redemande la lecture : elle est de nouveau attendue
+      release(fake.dir);
+      await Promise.all([occupant, awaited, back]);
+
+      expect(fake.started()).toEqual(["select 'wait'", 'select 1 as reprise', 'select 2 as attendue']);
+    });
+
+    it('une lecture retenue dépassée par une lecture attendue, puis reprise, reprend son rang d’arrivée à la place libérée suivante : l’état n’est pas mémorisé', async () => {
+      const { fake, db, occupant } = await saturated();
+      const taken = retained(db, 'select 1 as reprise'); // arrivée la première
+      const firstAwaited = db.query("select 'later' as attendue", { lane: 'analysis' }); // prend la place de l'occupant, et la garde jusqu'à `go-later`
+      const secondAwaited = db.query('select 3 as suivante', { lane: 'analysis' });
+
+      release(fake.dir); // l'occupant finit : la première lecture attendue passe devant la lecture retenue
+      await until(() => fake.started().length === 2, 'la lecture attendue tourne');
+      const back = taken.join(); // reprise pendant que la lecture attendue tient la place
+      writeFileSync(join(fake.dir, 'go-later'), '');
+      await Promise.all([occupant, firstAwaited, secondAwaited, back]);
+
+      expect(fake.started()).toEqual(["select 'wait'", "select 'later' as attendue", 'select 1 as reprise', 'select 3 as suivante']);
+    });
+
+    it('entre elles, les lectures retenues gardent leur ordre d’arrivée', async () => {
+      const { fake, db, occupant } = await saturated();
+      const first = retained(db, 'select 1 as premiere');
+      const second = retained(db, 'select 2 as seconde');
+
+      release(fake.dir);
+      await Promise.all([occupant, first.settled, second.settled]);
+
+      expect(fake.started()).toEqual(["select 'wait'", 'select 1 as premiere', 'select 2 as seconde']);
+    });
+
+    it('une lecture retenue que quelqu’un d’autre attend aussi (même requête, un seul processus) est attendue', async () => {
+      const { fake, db, occupant } = await saturated();
+      const alone = retained(db, 'select 1 as seule');
+      const shared = retained(db, 'select 2 as partagee');
+      const alsoAwaited = db.query('select 2 as partagee', { lane: 'analysis' }); // la même lecture, encore en file : un seul processus
+
+      release(fake.dir);
+      await Promise.all([occupant, alone.settled, shared.settled, alsoAwaited]);
+
+      expect(fake.started()).toEqual(["select 'wait'", 'select 2 as partagee', 'select 1 as seule']);
+      expect(fake.calls()).toBe(3);
+    });
+
+    it('ne change rien aux lectures qu’on attend toutes : elles gardent leur ordre d’arrivée', async () => {
+      const { fake, db, occupant } = await saturated();
+      const others = ['select 1 as a', 'select 2 as b', 'select 3 as c'].map((sql, i) =>
+        db.query(sql, i === 1 ? { lane: 'analysis', signal: new AbortController().signal } : { lane: 'analysis' }),
+      );
+
+      release(fake.dir);
+      await Promise.all([occupant, ...others]);
+
+      expect(fake.started()).toEqual(["select 'wait'", 'select 1 as a', 'select 2 as b', 'select 3 as c']);
+    });
+
+    // Les cas limites de la relecture de bdesk-38k.37.
+
+    it('sous un flot de lectures attendues, une lecture retenue ne part jamais : sa grâce l’abandonne, et elle ne laisse ni place perdue ni entrée oubliée dans la file', async () => {
+      const { fake, db, occupant } = await saturated();
+      const forNobody = retained(db, 'select 1 as retenue', 200);
+      // dix lectures attendues de 0,1 s, en file avant que l'occupant ne finisse : la voie en a pour plus d'une seconde, la grâce dure 0,2 s
+      const awaited = Array.from({ length: 10 }, (_, i) => db.query(`select 'slow' as s${i}`, { lane: 'analysis' }));
+
+      release(fake.dir);
+
+      await expect(forNobody.done).rejects.toBeInstanceOf(ReadAborted); // abandonnée à la fin de sa grâce, sans avoir jamais été lancée
+      await Promise.all([occupant, ...awaited]);
+      expect(fake.started()).not.toContain('select 1 as retenue');
+      // la place n'a pas fui et la file n'a pas gardé la lecture morte : la même requête, redemandée, est lancée et sert
+      await expect(db.query('select 1 as retenue', { lane: 'analysis' })).resolves.toEqual([]);
+      expect(fake.started().filter((sql) => sql === 'select 1 as retenue')).toHaveLength(1);
+    });
+
+    it('une lecture retenue déjà lancée dont la grâce expire pendant qu’elle tourne va au bout : son processus n’est pas tué et garde sa place jusqu’à sa fin', async () => {
+      const fake = gated();
+      const db = createDoltClient({ ...options(fake.binary), maxAnalysis: 1 }).open(fake.dir);
+      const forNobody = retained(db, "select 'hold' as retenue", 150); // une place est libre : elle part aussitôt, bien qu'idle
+      await until(() => fake.started().length === 1, 'la lecture retenue tourne');
+      const awaited = db.query('select 2 as attendue', { lane: 'analysis' });
+
+      await until(() => forNobody.abandoned, 'sa grâce a expiré');
+
+      expect(fake.ended()).toEqual([]); // le processus tourne toujours
+      expect(fake.started()).toEqual(["select 'hold' as retenue"]); // et sa place n'est pas rendue : la lecture attendue attend
+      writeFileSync(join(fake.dir, 'go-hold'), '');
+      await awaited;
+      await forNobody.settled;
+      expect(fake.ended()).toEqual(["select 'hold' as retenue", 'select 2 as attendue']); // allé au bout, puis la place est passée à la suivante
+      expect(fake.started()).toEqual(["select 'hold' as retenue", 'select 2 as attendue']);
+    });
+
+    it('la reprise d’une lecture retenue déjà lancée ne change rien à la file : son résultat sert la reprise', async () => {
+      const fake = gated();
+      const db = createDoltClient({ ...options(fake.binary), maxAnalysis: 1 }).open(fake.dir);
+      const forNobody = retained(db, "select 'hold' as retenue");
+      await until(() => fake.started().length === 1, 'la lecture retenue tourne');
+      const awaited = db.query('select 2 as attendue', { lane: 'analysis' });
+
+      const back = forNobody.join();
+      writeFileSync(join(fake.dir, 'go-hold'), '');
+
+      await expect(back).resolves.toEqual([]);
+      await awaited;
+      expect(fake.started()).toEqual(["select 'hold' as retenue", 'select 2 as attendue']);
+      expect(fake.calls()).toBe(2);
+    });
+
+    it('une lecture retenue qui échoue échoue par l’erreur de dolt, pas par un abandon : sa place est rendue et la voie continue', async () => {
+      const { fake, db, occupant } = await saturated();
+      const forNobody = retained(db, "select 'boom' as retenue");
+      const awaited = db.query('select 2 as attendue', { lane: 'analysis' });
+
+      release(fake.dir);
+      await Promise.all([occupant, awaited]);
+
+      await expect(forNobody.done).rejects.toBeInstanceOf(DoltQueryError);
+      await expect(db.query('select 3 as apres', { lane: 'analysis' })).resolves.toEqual([]);
+      expect(fake.started()).toEqual(["select 'wait'", 'select 2 as attendue', "select 'boom' as retenue", 'select 3 as apres']);
+    });
+
+    it('ne touche pas aux autres voies : une lecture légère passe pendant qu’une lecture retenue attend dans la voie des analyses', async () => {
+      const fake = gated();
+      const db = createDoltClient({ ...options(fake.binary), maxAnalysis: 1, maxLight: 1 }).open(fake.dir);
+      const occupant = db.query("select 'wait'", { lane: 'analysis' });
+      await until(() => fake.started().length === 1, 'l’occupant tourne');
+      const forNobody = retained(db, 'select 1 as retenue');
+
+      await expect(db.query('select 9 as legere', { lane: 'light' })).resolves.toEqual([]);
+
+      expect(fake.started()).toEqual(["select 'wait'", 'select 9 as legere']);
+      release(fake.dir);
+      await Promise.all([occupant, forNobody.settled]);
     });
   });
 

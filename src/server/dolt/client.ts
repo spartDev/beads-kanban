@@ -47,6 +47,10 @@ export interface QueryOptions {
    * elle attend encore, et ne part jamais ; si son processus est déjà lancé, il va au bout, sans être tué, et son résultat est jeté
    * (il garde sa place jusqu'à sa fin). Les demandeurs d'une même lecture partagée ne l'abandonnent qu'ensemble (voir ci-dessous) :
    * un seul qui l'attend encore la laisse finir pour lui.
+   *
+   * Un signal peut être celui d'une lecture que plus personne n'attend et que seul le délai de grâce de son `Flight` garde (bdesk-38k.37) :
+   * tant qu'elle fait la queue, elle passe après toutes les lectures qu'on attend, quel que soit l'ordre d'arrivée ; elle part dès qu'une
+   * place reste libre, et reprend son rang si quelqu'un la redemande avant la fin du délai.
    */
   signal?: AbortSignal;
 }
@@ -154,15 +158,29 @@ export function createDoltClient(options: DoltClientOptions = {}): DoltClient {
   /** Les lectures qui attendent encore une place, par voie, base et requêtes : les identiques les rejoignent (voir `DoltDatabase`). */
   const queued = new Map<string, Flight<Row[][]>>();
 
-  /** Un processus pour toutes les requêtes, avec de nouvelles tentatives tant que la base est verrouillée par un autre processus. */
-  async function read(dir: string, sqls: readonly string[], lane: Lane, signal: AbortSignal, leftQueue: () => void): Promise<Row[][]> {
+  /**
+   * Un processus pour toutes les requêtes, avec de nouvelles tentatives tant que la base est verrouillée par un autre processus.
+   * `idle` : personne n'attend vraiment cette lecture (voir `Flight.idle`) ; tant qu'elle fait la queue, les lectures qu'on attend passent devant.
+   */
+  async function read(
+    dir: string,
+    sqls: readonly string[],
+    lane: Lane,
+    signal: AbortSignal,
+    leftQueue: () => void,
+    idle: () => boolean,
+  ): Promise<Row[][]> {
     const limit = limits[lane];
     for (let attempt = 0; ; attempt++) {
       try {
-        return await limit(() => {
-          leftQueue();
-          return run(binary, dir, sqls, env, timeoutMs, maxOutputBytes, signal);
-        }, signal);
+        return await limit(
+          () => {
+            leftQueue();
+            return run(binary, dir, sqls, env, timeoutMs, maxOutputBytes, signal);
+          },
+          signal,
+          idle,
+        );
       } catch (err) {
         if (err instanceof QueueFull) throw new DoltQueryError(`Trop de lectures Dolt en attente (plus de ${maxQueued}) : réessayez dans un instant.`, dir);
         if (!(err instanceof DoltQueryError) || !err.locked || attempt >= retries) throw typed(err, binary, dir, sqls);
@@ -180,9 +198,16 @@ export function createDoltClient(options: DoltClientOptions = {}): DoltClient {
     let flight = queued.get(key);
     if (!flight || flight.abandoned) {
       const created: Flight<Row[][]> = new Flight((flightSignal) =>
-        read(dir, sqls, lane, flightSignal, () => {
-          if (queued.get(key) === created) queued.delete(key); // elle a sa place : qui arrive maintenant lira à son tour
-        }),
+        read(
+          dir,
+          sqls,
+          lane,
+          flightSignal,
+          () => {
+            if (queued.get(key) === created) queued.delete(key); // elle a sa place : qui arrive maintenant lira à son tour
+          },
+          () => created.idle,
+        ),
       );
       queued.set(key, created);
       flight = created;
@@ -496,11 +521,16 @@ class QueueFull extends Error {}
 /**
  * Au plus `max` tâches à la fois ; `maxQueued` autres attendent leur tour, les suivantes échouent aussitôt (`QueueFull`).
  * Une attente dont le signal est abandonné quitte la file aussitôt (`ReadAborted`) et ne prendra jamais de place.
+ *
+ * Une place libérée va à la première attente qu'on attend vraiment, dans l'ordre d'arrivée, et seulement à défaut à la première attente
+ * `idle` : une lecture que plus personne n'attend et que seul un délai de grâce garde (voir `Flight.idle`) ne retarde ainsi jamais une
+ * lecture demandée entre-temps, mais part dès qu'une place reste libre. `idle` est jugé à ce moment-là, pas à l'arrivée : une lecture
+ * reprise pendant le délai retrouve son rang. Sans `idle`, l'attente est toujours attendue.
  */
-function createLimiter(max: number, maxQueued: number): <T>(task: () => Promise<T>, signal?: AbortSignal) => Promise<T> {
+function createLimiter(max: number, maxQueued: number): <T>(task: () => Promise<T>, signal?: AbortSignal, idle?: () => boolean) => Promise<T> {
   let active = 0;
-  const waiting: (() => void)[] = [];
-  return async (task, signal) => {
+  const waiting: { grant: () => void; idle: () => boolean }[] = [];
+  return async (task, signal, idle = () => false) => {
     if (signal?.aborted) throw new ReadAborted();
     if (active < max) {
       active++;
@@ -508,24 +538,28 @@ function createLimiter(max: number, maxQueued: number): <T>(task: () => Promise<
       throw new QueueFull();
     } else {
       await new Promise<void>((resolve, reject) => {
-        const grant = () => {
-          signal?.removeEventListener('abort', leave);
-          resolve(); // la place libérée nous est transmise
+        const turn = {
+          grant: () => {
+            signal?.removeEventListener('abort', leave);
+            resolve(); // la place libérée nous est transmise
+          },
+          idle,
         };
         const leave = () => {
-          const index = waiting.indexOf(grant);
+          const index = waiting.indexOf(turn);
           if (index >= 0) waiting.splice(index, 1);
           reject(new ReadAborted());
         };
         signal?.addEventListener('abort', leave, { once: true });
-        waiting.push(grant);
+        waiting.push(turn);
       });
     }
     try {
       return await task();
     } finally {
-      const next = waiting.shift();
-      if (next) next();
+      const awaited = waiting.findIndex((turn) => !turn.idle());
+      const [next] = waiting.splice(Math.max(awaited, 0), 1);
+      if (next) next.grant();
       else active--;
     }
   };

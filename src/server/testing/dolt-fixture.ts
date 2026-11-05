@@ -1,7 +1,7 @@
-import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { execFileSync, type SpawnSyncReturns, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join, sep } from 'node:path';
 
 /** Environnement isolé pour piloter dolt en écriture dans un dossier temporaire, sans toucher à ~/.dolt. */
 export function isolatedDoltEnv(): NodeJS.ProcessEnv {
@@ -14,24 +14,70 @@ export function isolatedDoltEnv(): NodeJS.ProcessEnv {
   return { ...process.env, DOLT_ROOT_PATH: root };
 }
 
-/** Les binaires déjà signalés absents : l'avertissement n'est dit qu'une fois par fichier de tests (chacun a son propre module). */
-const reportedMissing = new Set<string>();
+/** Les binaires déjà signalés : l'avertissement n'est dit qu'une fois par binaire et par fichier de tests (chacun a son propre module). */
+const reported = new Set<string>();
 
 /**
  * Le binaire répond-il à `<binaire> version` ? Les tests d'intégration qui l'exigent (`describe.skipIf(!hasBinary('dolt'))`) sont
- * SAUTÉS quand il manque, jamais en échec : un saut silencieux passerait pour un succès, donc l'avertissement le dit (bdesk-38k.33).
+ * SAUTÉS quand il manque ou ne répond pas, jamais en échec : un saut silencieux passerait pour un succès, donc l'avertissement le dit
+ * (bdesk-38k.33), avec la vraie cause : introuvable (dans le PATH, ou à ce chemin), existant mais impossible à lancer, ou lancé mais en
+ * échec à `version` (bdesk-38k.37).
  */
 export const hasBinary = (binary: string): boolean => {
-  const found = spawnSync(binary, ['version'], { stdio: 'ignore' }).status === 0;
-  if (!found && !reportedMissing.has(binary)) {
-    reportedMissing.add(binary);
+  const result = spawnSync(binary, ['version'], { stdio: 'ignore' });
+  if (result.status === 0) return true;
+  if (!reported.has(binary)) {
+    reported.add(binary);
+    const { cause, hint } = unavailable(binary, result);
     console.warn(
-      `ATTENTION : « ${binary} » est introuvable dans le PATH, les tests de ce fichier qui l'exigent sont SAUTÉS (ni réussis, ni échoués). ` +
-        `Installez-le pour les exécuter (voir CLAUDE.md, « Build & Test »).`,
+      `ATTENTION : ${cause}, les tests de ce fichier qui l'exigent sont SAUTÉS (ni réussis, ni échoués). ${hint} (voir CLAUDE.md, « Build & Test »).`,
     );
   }
-  return found;
+  return false;
 };
+
+/** `binary` est un chemin (relatif ou absolu), pas un nom à chercher dans le PATH. */
+const isPath = (binary: string): boolean => binary.includes('/') || binary.includes(sep);
+
+/** Le fichier que `binary` désigne : le chemin lui-même, ou le premier du PATH qui porte ce nom. */
+function locate(binary: string): string | undefined {
+  if (isPath(binary)) return existsSync(binary) ? binary : undefined;
+  return (process.env.PATH ?? '')
+    .split(delimiter)
+    .map((dir) => join(dir, binary))
+    .find((candidate) => existsSync(candidate));
+}
+
+/**
+ * Pourquoi `<binaire> version` n'a pas réussi, et que faire : le binaire manque, le système ne peut pas le lancer, ou il est lancé et échoue.
+ * Le noyau répond ENOENT aussi pour un script dont l'interpréteur manque (`#!/introuvable/sh`) : on regarde donc si le fichier existe avant
+ * de le dire introuvable, et on ne parle du PATH que pour un nom que le PATH devait résoudre, pas pour un chemin.
+ */
+function unavailable(binary: string, { error, status, signal }: SpawnSyncReturns<Buffer>): { cause: string; hint: string } {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  if (code === 'ENOENT') {
+    if (locate(binary)) {
+      return {
+        cause: `« ${binary} » existe mais ne peut pas être lancé (ENOENT : l'interpréteur ou le chargeur de ce fichier est introuvable)`,
+        hint: 'Vérifiez sa première ligne (#!)',
+      };
+    }
+    return isPath(binary)
+      ? { cause: `« ${binary} » est introuvable (ce chemin n'existe pas)`, hint: 'Installez-le ou corrigez le chemin' }
+      : { cause: `« ${binary} » est introuvable dans le PATH`, hint: 'Installez-le pour les exécuter' };
+  }
+  if (error) {
+    return {
+      cause: `« ${binary} » existe mais ne peut pas être lancé (${code ?? error.message})`,
+      hint: code === 'EACCES' ? 'Vérifiez ses droits d’exécution' : 'Lancez-le à la main pour voir pourquoi',
+    };
+  }
+  const outcome = signal ? `signal ${signal}` : `code de sortie ${status}`;
+  return {
+    cause: `« ${binary} » existe mais « ${binary} version » échoue (${outcome})`,
+    hint: 'Lancez cette commande à la main pour voir pourquoi, un HOME ou un DOLT_ROOT_PATH illisible par exemple',
+  };
+}
 
 /** Exécute une commande `dolt` dans `cwd` ; réservé aux bases temporaires créées par les tests. */
 export function dolt(env: NodeJS.ProcessEnv, cwd: string, ...args: string[]): string {

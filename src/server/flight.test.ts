@@ -350,6 +350,90 @@ describe('Flight : un délai de grâce avant d’arrêter une lecture sans deman
   });
 });
 
+describe('Flight : une lecture que personne n’attend vraiment est « idle » (bdesk-38k.37)', () => {
+  // Seules les minuteries sont simulées : les promesses restent réelles.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /**
+   * Une lecture Dolt dont le demandeur est le signal de la lecture `owner`, comme celle que le client Dolt lance pour un `Flight` de
+   * l'historique d'un Projet : il reçoit le signal que ce `Flight` a donné à sa lecture.
+   */
+  function readFor(owner: { probe: { signal?: AbortSignal } }) {
+    const reading = new Flight(manual<string>().run);
+    reading.start();
+    reading.join(owner.probe.signal).catch(() => undefined);
+    return reading;
+  }
+
+  /** L'historique d'un Projet : une lecture à délai de grâce, attendue par un demandeur qui peut partir. */
+  function history() {
+    const owner = manual<string>();
+    const flight = new Flight(owner.run, { graceMs: 500 });
+    flight.start();
+    const asker = new AbortController();
+    flight.join(asker.signal).catch(() => undefined);
+    return { owner, flight, asker };
+  }
+
+  it('est attendue tant que la lecture dont elle dépend a un demandeur', () => {
+    const { owner } = history();
+
+    expect(readFor(owner).idle).toBe(false);
+  });
+
+  it('devient idle quand le dernier demandeur de cette lecture part : il ne reste que son délai de grâce', () => {
+    const { owner, asker } = history();
+    const reading = readFor(owner);
+
+    asker.abort();
+
+    expect(reading.idle).toBe(true);
+  });
+
+  it('redevient attendue quand un demandeur reprend la lecture pendant le délai', () => {
+    const { owner, flight, asker } = history();
+    const reading = readFor(owner);
+    asker.abort();
+    expect(reading.idle).toBe(true);
+
+    flight.join(new AbortController().signal).catch(() => undefined);
+
+    expect(reading.idle).toBe(false);
+  });
+
+  it('est attendue dès qu’un demandeur qui ne part pas, ou dont le signal est ordinaire, s’y joint', () => {
+    const { owner, asker } = history();
+    asker.abort();
+    const withoutSignal = readFor(owner);
+    withoutSignal.join().catch(() => undefined); // sans signal : il ne part jamais
+    const withSignal = readFor(owner);
+    withSignal.join(new AbortController().signal).catch(() => undefined);
+    const alone = readFor(owner);
+
+    expect(withoutSignal.idle).toBe(false);
+    expect(withSignal.idle).toBe(false);
+    expect(alone.idle).toBe(true);
+  });
+
+  it('un demandeur parti ne compte plus : seuls ceux qui attendent encore décident', () => {
+    const { owner, asker } = history();
+    const reading = readFor(owner);
+    const impatient = new AbortController();
+    reading.join(impatient.signal).catch(() => undefined);
+    asker.abort();
+    expect(reading.idle).toBe(false); // le demandeur ordinaire attend encore
+
+    impatient.abort();
+
+    expect(reading.idle).toBe(true);
+  });
+});
+
 const settleMicrotasks = async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 };

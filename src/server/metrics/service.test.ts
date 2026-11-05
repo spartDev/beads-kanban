@@ -1,5 +1,3 @@
-import { setFlagsFromString } from 'node:v8';
-import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { InvalidPeriodError } from '../../domain/calendar';
 import type { StatusSnapshot, TicketHistory } from '../../domain/flow';
@@ -899,11 +897,12 @@ describe('service de métriques : demandes abandonnées (bdesk-38k.20)', () => {
 
   /**
    * Suit les tableaux d'historique que lit le service sans les retenir (`WeakRef`) : `retenus()` demande à V8 de ramasser, puis compte ceux
-   * qui sont encore joignables. `gc` n'est pas exposé à vitest : on le demande à V8.
+   * qui sont encore joignables. `gc` vient de l'option `--expose-gc` que `vite.config.ts` donne à tous les processus de tests (ceux de `web`
+   * aussi), avec le pool `forks` ; sous un autre pool (`--pool=threads`) il manque, et le test échoue avec un message qui le dit.
    */
   function trackHistories(service: ProjectService) {
-    setFlagsFromString('--expose-gc');
-    const collectGarbage = runInNewContext('gc') as () => void;
+    const collectGarbage = (globalThis as { gc?: () => void }).gc;
+    if (!collectGarbage) throw new Error('`gc` n’est pas exposé : lancez vitest avec la configuration du dépôt (pool « forks » et poolOptions.forks.execArgv de vite.config.ts), pas avec --pool=threads.');
     const tracked: WeakRef<TicketHistory[]>[] = [];
     const read = service.histories;
     service.histories = async (id: string, readOptions?: ReadOptions) => {
@@ -941,7 +940,7 @@ describe('service de métriques : demandes abandonnées (bdesk-38k.20)', () => {
   it('un Projet qui disparaît ne garde pas l’historique que personne n’avait recueilli (bdesk-38k.33)', async () => {
     const world = twoProjects();
     const { service, probe } = slowHistories(world);
-    const { retenus } = trackHistories(service);
+    const { reads, retenus } = trackHistories(service);
     const metrics = createMetricsService(service, { ...options, graceMs: 60_000 });
     const leaving = new AbortController();
     // L'erreur d'abandon n'est pas gardée : la trace de pile d'une erreur retient les fonctions de ses appels, donc la lecture qu'elles citent.
@@ -951,7 +950,9 @@ describe('service de métriques : demandes abandonnées (bdesk-38k.20)', () => {
     await gone;
     for (const finish of probe.finish) finish(); // l'historique de a finit pendant le délai, devant personne
     await sleep(20);
-    expect(await retenus()).toBe(1); // il attend la requête suivante
+    // Précondition, qui ne suppose rien de ce que le service fait de la lecture : un historique a bien été lu. Sans elle, « rien n'est retenu »
+    // serait vrai à vide, par exemple si aucun historique n'était jamais lu.
+    expect(reads()).toBeGreaterThanOrEqual(1);
 
     delete world.a; // le Projet disparaît de la liste
     const next = metrics.compute({ projects: ['b'], ...week });
