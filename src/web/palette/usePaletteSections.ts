@@ -1,7 +1,7 @@
 import { useQueries, type UseQueryResult } from '@tanstack/react-query';
 import { Keyboard, LayoutGrid, type LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { isEpic, isReadable } from '../data/helpers';
+import { isBlankTitle, isEpic, isReadable, ticketTitle } from '../data/helpers';
 import { issuesQuery, useProjects } from '../data/hooks';
 import type { Issue, IssuesResponse, Project } from '../data/types';
 import { typeMeta } from '../design/issue-palette';
@@ -91,10 +91,11 @@ const describeProject = (project: Project): Searchable => ({
   keywords: [project.id],
 });
 
+// On cherche ce qu'on a écrit (le titre brut) et ce que la ligne affiche : un ticket sans titre y est « Sans titre » (`ticketTitle`), et « Sans titre » le trouve.
 const describeIssue = ({ issue }: ScopedIssue): Searchable => ({
   id: issue.id,
   text: issue.title,
-  keywords: [issue.type, typeMeta(issue.type).label],
+  keywords: [issue.type, typeMeta(issue.type).label, ...(isBlankTitle(issue.title) ? [ticketTitle(issue)] : [])],
 });
 
 const describeCommand = (command: CommandEntry): Searchable => ({

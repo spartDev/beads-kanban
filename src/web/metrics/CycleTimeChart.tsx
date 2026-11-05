@@ -5,6 +5,7 @@ import { scaleLinear, scaleLog } from '@visx/scale';
 import { useMemo, type PointerEvent } from 'react';
 import { Link } from 'react-router';
 import type { MetricsCycleTimePoint } from '../../shared/api';
+import { ticketTitle } from '../data/helpers';
 import { priorityMeta } from '../design/issue-palette';
 import { paths } from '../paths';
 import { TypeBadge } from '../ui/IssueBadges';
@@ -142,7 +143,7 @@ export function CycleTimePlot({ points, span, dimension, ctx, timeZone, median, 
       {active && point ? (
         <ChartTooltip pointer={active} bounds={{ width, height }}>
           <p className="font-mono text-[11px] text-ink-2">{point.id}</p>
-          <p className="line-clamp-3 font-medium">{point.title}</p>
+          <p className="line-clamp-3 font-medium">{ticketTitle(point)}</p>
           <p className="flex flex-wrap items-center gap-x-2 text-ink-2">
             <TypeBadge type={point.type} />
             <span>{priorityMeta(point.priority).code}</span>
@@ -273,7 +274,7 @@ function CycleTimeTable({
           <th scope="row" className="px-3 py-1 text-left font-normal">
             <Link to={paths.issue(point.project, point.id)} className="flex flex-col text-accent hover:underline">
               <span className="font-mono">{point.id}</span>
-              <span className="max-w-[28ch] truncate text-ink-2">{point.title}</span>
+              <span className="max-w-[28ch] truncate text-ink-2">{ticketTitle(point)}</span>
             </Link>
           </th>
           <td className="whitespace-nowrap px-3 py-1">

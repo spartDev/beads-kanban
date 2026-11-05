@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Issue } from '../data/types';
 import { withAsyncTimeout } from '../test/asyncTimeout';
+import { BLANK_TITLES, UNTITLED } from '../test/blankTitles';
 import { issue, projectsResponse } from '../test/fixtures';
 import { renderApp, stubApi } from '../test/render';
 
@@ -15,27 +16,6 @@ import { renderApp, stubApi } from '../test/render';
 
 // Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`.
 withAsyncTimeout(5_000);
-
-/** Ce que l'interface écrit à la place du titre d'un ticket qui n'en a pas : le panneau (`IssuePanel.untitledEpic.test.tsx`) l'écrit de même. */
-const UNTITLED = 'Sans titre';
-
-/**
- * Les titres qui ne disent rien : vide, espaces, tabulation et saut de ligne, espace insécable (que `trim` retire aussi), et les caractères sans
- * largeur, que `trim` ne retire pas (catégorie Unicode `Cf` : U+200B à U+200D, U+2060, U+00AD) et qu'axe ne voit pas non plus : un lien nommé d'une
- * espace sans largeur n'a aucun nom pour un lecteur d'écran, sans qu'aucune règle automatique ne le signale.
- */
-const BLANK_TITLES = [
-  ['vide', ''],
-  ['fait d’espaces', '   '],
-  ['fait d’une tabulation et d’un saut de ligne', '\t\n '],
-  ['fait d’une espace insécable', '\u00a0'],
-  ['fait d’une espace sans largeur (U+200B)', '\u200b'],
-  ['fait d’une marque d’ordre des octets (U+FEFF)', '\ufeff'],
-  ['fait d’un antiliant et d’un liant sans chasse (U+200C, U+200D)', '\u200c\u200d'],
-  ['fait d’un lien de mots (U+2060)', '\u2060'],
-  ['fait d’un trait d’union conditionnel (U+00AD)', '\u00ad'],
-  ['mêlé d’espaces et de caractères sans largeur', ' \u200b\t\u2060\u00a0'],
-] as const;
 
 const ISSUES: Issue[] = [
   issue({ id: 'bdesk-pret', title: '', status: 'open' }),
@@ -134,5 +114,77 @@ describe('le lien de la carte d’un ticket sans titre', () => {
     const dialog = await screen.findByRole('dialog', { name: `bdesk-zw ${UNTITLED}` });
 
     expect(within(dialog).getByRole('heading', { level: 2, name: UNTITLED })).toBeTruthy();
+  });
+});
+
+/**
+ * Plusieurs cartes sans titre ont le même nom, « Sans titre » : au Tab, ou dans la liste des liens d'un lecteur d'écran, rien ne les départage (axe
+ * `identical-links-same-purpose`, WCAG 2.4.9). L'identifiant est dit juste avant le lien, dans la carte, et le lire dans le nom du lien le ferait dire
+ * deux fois (lecture continue) : le lien est donc décrit par lui (`aria-describedby`) : le nom ne change pas, et un lien focalisé annonce
+ * « Sans titre, lien, bdesk-pret ». Au curseur de VoiceOver, qui lit la description après le nom, l'identifiant reste dit deux fois : compromis connu.
+ */
+describe('le lien d’une carte est décrit par l’identifiant de sa carte', () => {
+  const linkOf = (item: HTMLElement) => {
+    const link = item.querySelector<HTMLAnchorElement>('a[data-card-link]');
+    if (!link) throw new Error(`lien de la carte de « ${item.dataset.cardId} » introuvable`);
+    return link;
+  };
+  /** Ce que le lien déclare pour description : le texte des éléments qu'il désigne. */
+  const described = (link: HTMLElement) =>
+    (link.getAttribute('aria-describedby') ?? '')
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((id) => document.getElementById(id));
+
+  it('pointe, pour chaque carte, vers l’identifiant écrit dans cette même carte', async () => {
+    const { card } = await openBoard();
+
+    for (const id of ['bdesk-pret', 'bdesk-cours', 'bdesk-bloque', 'bdesk-livre', 'bdesk-titre']) {
+      const targets = described(linkOf(card(id)));
+      expect(targets, id).toHaveLength(1);
+      expect(targets[0]?.textContent, id).toBe(id);
+      expect(card(id).contains(targets[0] ?? null), id).toBe(true);
+    }
+  });
+
+  it('distingue ainsi plusieurs cartes « Sans titre » : une description différente chacune', async () => {
+    const { card } = await openBoard();
+
+    const links = ['bdesk-pret', 'bdesk-cours', 'bdesk-bloque', 'bdesk-livre'].map((id) => linkOf(card(id)));
+
+    expect(links.map((link) => link.textContent)).toEqual([UNTITLED, UNTITLED, UNTITLED, UNTITLED]);
+    expect(links.map((link) => described(link)[0]?.textContent)).toEqual(['bdesk-pret', 'bdesk-cours', 'bdesk-bloque', 'bdesk-livre']);
+  });
+
+  it('distingue de même deux tickets qui portent le même titre', async () => {
+    const { card } = await openBoard([issue({ id: 'bdesk-a', title: 'Corriger le bug' }), issue({ id: 'bdesk-b', title: 'Corriger le bug' })]);
+
+    expect(described(linkOf(card('bdesk-a')))[0]?.textContent).toBe('bdesk-a');
+    expect(described(linkOf(card('bdesk-b')))[0]?.textContent).toBe('bdesk-b');
+  });
+
+  it('ne donne à deux cartes aucun identifiant d’élément en commun : une référence ne désigne qu’un élément', async () => {
+    const { card } = await openBoard();
+
+    const references = ['bdesk-pret', 'bdesk-cours', 'bdesk-bloque', 'bdesk-livre', 'bdesk-titre'].map((id) => linkOf(card(id)).getAttribute('aria-describedby'));
+
+    expect(references.every(Boolean)).toBe(true);
+    expect(new Set(references).size).toBe(references.length);
+    for (const reference of references) expect(document.querySelectorAll(`[id="${reference}"]`)).toHaveLength(1);
+  });
+
+  it('laisse au lien son nom : l’identifiant le décrit, il ne le prolonge pas', async () => {
+    const { card } = await openBoard();
+
+    expect(within(card('bdesk-pret')).getByRole('link', { name: UNTITLED })).toBe(linkOf(card('bdesk-pret')));
+    expect(within(card('bdesk-titre')).getByRole('link', { name: 'Un ticket qui a un titre' })).toBe(linkOf(card('bdesk-titre')));
+  });
+});
+
+describe('le titre d’une carte range ses espaces comme celui d’une Epic', () => {
+  it('replie les espaces intérieurs en une seule : « Un   titre » se lit « Un titre »', async () => {
+    const { card } = await openBoard([issue({ id: 'bdesk-esp', title: ' Un   titre \n\t à   espaces  ' })]);
+
+    expect(card('bdesk-esp').querySelector('a[data-card-link]')?.textContent).toBe('Un titre à espaces');
   });
 });

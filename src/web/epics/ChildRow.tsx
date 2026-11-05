@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import { columnFor } from '../../domain/columns';
 import type { EpicProgress } from '../../domain/epics';
+import { ticketTitle } from '../data/helpers';
 import type { Issue } from '../data/types';
 import { typeMeta } from '../design/issue-palette';
 import { COLUMN_META } from '../kanban/meta';
@@ -67,7 +68,7 @@ export function ChildRow({
         {issue.id}
       </span>
       {/* Le titre passe à la ligne, sous l'identifiant, quand la place manque : jamais rogné. */}
-      <span className="min-w-0 flex-1 basis-40 wrap-anywhere text-ink">{issue.title}</span>
+      <span className="min-w-0 flex-1 basis-40 wrap-anywhere text-ink">{ticketTitle(issue)}</span>
       {issue.abandon ? <AbandonBadge abandon={issue.abandon} className="self-center" /> : null}
       <span className="flex shrink-0 flex-wrap items-baseline gap-x-2 text-xs text-ink-3">
         {nested ? (

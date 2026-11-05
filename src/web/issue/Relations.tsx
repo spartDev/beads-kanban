@@ -1,3 +1,4 @@
+import { ticketTitle } from '../data/helpers';
 import type { IssueDetail } from '../data/types';
 import { statusLabel } from '../design/issue-palette';
 import { TypeGlyph } from '../ui/IssueBadges';
@@ -41,7 +42,7 @@ function Group({ group, projectId, held }: { group: RelationGroup; projectId: st
                 <TypeGlyph type={ref.type} className="self-center" />
                 <span className="shrink-0 font-mono text-xs text-ink-3">{id}</span>{' '}
                 {/* Le titre passe à la ligne, sous l'identifiant, quand la place manque : jamais rogné. */}
-                <span className="min-w-0 flex-1 basis-40 wrap-anywhere text-ink">{ref.title}</span>{' '}
+                <span className="min-w-0 flex-1 basis-40 wrap-anywhere text-ink">{ticketTitle(ref)}</span>{' '}
                 <span className="shrink-0 text-xs text-ink-3">{statusLabel(ref.status)}</span>
                 {/* Un ticket « bloqué par » qui n'est pas fermé retient encore celui-ci, s'il n'est pas fermé lui-même. */}
                 {held && group.id === 'blocked-by' && ref.status !== 'closed' ? (

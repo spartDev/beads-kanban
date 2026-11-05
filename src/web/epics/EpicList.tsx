@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { Link } from 'react-router';
 import { epicChildren, epicOf, epicProgress, type EpicProgress } from '../../domain/epics';
 import type { Issue } from '../data/types';
-import { isEpic } from '../data/helpers';
+import { isEpic, ticketTitle } from '../data/helpers';
 import { epicChoices, epicName, indexById } from '../kanban/epics';
 import { formatPercent } from '../metrics/format';
 import { paths } from '../paths';
@@ -23,7 +23,7 @@ function EpicItem({ projectId, epic, progress }: { projectId: string; epic: Issu
         <TypeGlyph type="epic" className="self-center" />
         <span className="sr-only">Epic</span>
         <span className="shrink-0 font-mono text-xs text-ink-3">{epic.id}</span>
-        <span className="min-w-0 flex-1 basis-40 wrap-anywhere font-medium text-ink">{epic.title}</span>
+        <span className="min-w-0 flex-1 basis-40 wrap-anywhere font-medium text-ink">{ticketTitle(epic)}</span>
         {epic.status === 'closed' ? <span className="shrink-0 text-xs text-ink-3">fermée</span> : null}
       </span>
       {progress.total === 0 ? (

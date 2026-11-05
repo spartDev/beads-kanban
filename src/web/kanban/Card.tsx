@@ -1,5 +1,5 @@
 import { Bot, Clock, Lock } from 'lucide-react';
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, type ReactNode, useId } from 'react';
 import { Link, useLocation } from 'react-router';
 import { ticketTitle } from '../data/helpers';
 import type { Issue } from '../data/types';
@@ -16,7 +16,11 @@ const NAMED_BLOCKERS = 2;
 /**
  * Une carte : un ticket, cliquable en entier. Le lien est celui du titre, étiré sur toute la carte (`after:inset-0`) ;
  * ce qui est lui-même un lien (la pastille d'Epic) passe au-dessus (`z-10`). Le focus au clavier entoure la carte. Un ticket sans titre y est
- * « Sans titre » (`ticketTitle`), comme dans son panneau : le lien n'est jamais sans nom (axe `link-name`).
+ * « Sans titre » (`ticketTitle`), comme dans son panneau : le lien n'est jamais sans nom (axe `link-name`). Plusieurs cartes peuvent avoir le même nom
+ * (« Sans titre », ou le même titre) : le lien est décrit par l'identifiant de sa carte (`aria-describedby`), et un lien focalisé annonce « Sans titre,
+ * lien, bdesk-pret ». L'identifiant n'est pas dans le nom : à la lecture continue, où il est lu juste avant, il serait dit deux fois.
+ * Compromis connu, non vérifié avec un lecteur d'écran : au curseur de VoiceOver, qui lit la description après le nom, il est quand même dit deux fois (sur sa
+ * ligne, puis en description du lien) ; NVDA et JAWS ne lisent pas la description en lecture continue.
  * Aucun glisser-déposer : le kanban est en lecture seule.
  */
 export function Card({
@@ -40,6 +44,7 @@ export function Card({
   // une carte ouverte pendant qu'un ticket l'est déjà remplace son entrée d'historique (« Retour » ferme le panneau).
   const { pathname, search } = useLocation();
   const panelOpen = parsePath(pathname).section === 'issue';
+  const idId = useId();
 
   return (
     <li
@@ -52,7 +57,9 @@ export function Card({
           <TypeGlyph type={issue.type} />
           <span className="sr-only">{typeMeta(issue.type).label} </span>
         </span>
-        <span className="min-w-0 flex-1 wrap-anywhere font-mono text-xs leading-5 text-ink-3">{issue.id}</span>
+        <span id={idId} className="min-w-0 flex-1 wrap-anywhere font-mono text-xs leading-5 text-ink-3">
+          {issue.id}
+        </span>
         <PriorityBadge priority={issue.priority} className="shrink-0 text-xs leading-5" />
       </div>
 
@@ -61,6 +68,7 @@ export function Card({
           to={{ pathname: paths.issue(projectId, issue.id), search }}
           replace={panelOpen}
           data-card-link={issue.id}
+          aria-describedby={idId}
           className="block min-h-6 outline-none after:absolute after:inset-0 after:rounded-lg"
         >
           {ticketTitle(issue)}

@@ -1,6 +1,7 @@
 import { ArchiveX, Layers, Lock } from 'lucide-react';
 import { Fragment } from 'react';
 import { Link } from 'react-router';
+import { isBlankTitle, ticketTitle } from '../data/helpers';
 import type { IssueDetail } from '../data/types';
 import { statusLabel } from '../design/issue-palette';
 import { epicName, epicShortName } from '../kanban/epics';
@@ -67,7 +68,7 @@ export function IssueHeader({ issue, projectId }: { issue: IssueDetail; projectI
               ) : (
                 <IssueLink projectId={projectId} id={issue.parentId} className="hover:text-ink hover:underline">
                   <span className="text-ink-3">Parent</span> <span className="font-mono text-xs">{issue.parentId}</span>
-                  {parent ? ` ${parent.title}` : ''}
+                  {parent ? ` ${ticketTitle(parent)}` : ''}
                 </IssueLink>
               )}
             </dd>
@@ -120,7 +121,8 @@ function Abandoned({ abandon, issue, projectId }: { abandon: NonNullable<IssueDe
             <IssueLink projectId={projectId} id={abandon.of} className="font-mono text-xs text-ink hover:underline">
               {abandon.of}
             </IssueLink>{' '}
-            «&nbsp;{target.title}&nbsp;»
+            {/* Un ticket sans titre n'est pas cité entre guillemets : « Sans titre » entre guillemets ne se distinguerait pas d'un ticket réellement intitulé ainsi. */}
+            {isBlankTitle(target.title) ? '(sans titre)' : <>«&nbsp;{ticketTitle(target)}&nbsp;»</>}
           </>
         ) : (
           <>
@@ -148,14 +150,18 @@ function Blocking({ issue, projectId }: { issue: IssueDetail; projectId: string 
       <Lock size={13} aria-hidden="true" className="mt-1 shrink-0 text-ink-3" />
       <span className="min-w-0 wrap-anywhere">
         Bloqué : attend{' '}
-        {issue.blockedBy.map((id, index) => (
-          <Fragment key={id}>
-            {index > 0 ? ', ' : null}
-            <IssueLink projectId={projectId} id={id} title={issue.linked[id]?.title} className="font-mono text-xs text-ink hover:underline">
-              {id}
-            </IssueLink>
-          </Fragment>
-        ))}
+        {issue.blockedBy.map((id, index) => {
+          // Le titre du bloquant, en infobulle : jamais vide (`title=""`), « Sans titre » pour un bloquant qui n'en a pas. Hors du Projet, rien à dire.
+          const blocker = issue.linked[id];
+          return (
+            <Fragment key={id}>
+              {index > 0 ? ', ' : null}
+              <IssueLink projectId={projectId} id={id} title={blocker ? ticketTitle(blocker) : undefined} className="font-mono text-xs text-ink hover:underline">
+                {id}
+              </IssueLink>
+            </Fragment>
+          );
+        })}
       </span>
     </p>
   );

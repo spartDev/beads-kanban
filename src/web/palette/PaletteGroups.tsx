@@ -1,6 +1,6 @@
 import { Command } from 'cmdk';
 import { Check, CornerDownLeft, Globe, TriangleAlert } from 'lucide-react';
-import { isReadable } from '../data/helpers';
+import { isReadable, ticketTitle } from '../data/helpers';
 import type { Issue, Project } from '../data/types';
 import { priorityMeta, statusLabel } from '../design/issue-palette';
 import { cx } from '../lib/cx';
@@ -108,7 +108,7 @@ function EpicRow({
       <Bead />
       <TypeGlyph type="epic" />
       <span className={cx('max-w-[40%] shrink-0 truncate font-mono text-xs', dim)}>{issue.id}</span>
-      <span className={cx('min-w-0 flex-1 truncate', issue.closedAt && dim)}>{issue.title}</span>
+      <span className={cx('min-w-0 flex-1 truncate', issue.closedAt && dim)}>{ticketTitle(issue)}</span>
       {showProject ? <span className={cx('max-w-[30%] shrink-0 truncate text-xs', dim)}>{project.name}</span> : null}
       <EnterHint />
     </Command.Item>
@@ -125,7 +125,7 @@ function IssueRow({ issue, project, go }: { issue: Issue; project: Project; go: 
       <Bead />
       <TypeGlyph type={issue.type} />
       <span className={cx('max-w-[40%] shrink-0 truncate font-mono text-xs', dim)}>{issue.id}</span>
-      <span className={cx('min-w-0 flex-1 truncate', issue.closedAt && dim)}>{issue.title}</span>
+      <span className={cx('min-w-0 flex-1 truncate', issue.closedAt && dim)}>{ticketTitle(issue)}</span>
       {issue.status !== 'open' ? (
         <span className={cx('hidden max-w-[25%] shrink-0 truncate text-xs sm:inline', dim)}>{statusLabel(issue.status)}</span>
       ) : null}

@@ -2,6 +2,7 @@ import { scaleLinear } from '@visx/scale';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import type { MetricsReadyAges } from '../../shared/api';
+import { ticketTitle } from '../data/helpers';
 import { paths } from '../paths';
 import { Button } from '../ui/Button';
 import { TypeGlyph } from '../ui/IssueBadges';
@@ -87,7 +88,7 @@ export function ReadyAgePanel({ ages, dimension, ctx, projectOrder, showProject,
                   <Link to={paths.issue(ticket.project, ticket.id)} className="group/age -mx-2 flex flex-col gap-1.5 rounded-md px-2 py-1 transition-colors hover:bg-hover">
                     <span className="flex min-w-0 items-center gap-2">
                       <TypeGlyph type={ticket.type} />
-                      <span className="min-w-0 flex-1 truncate font-medium text-ink group-hover/age:underline">{ticket.title}</span>
+                      <span className="min-w-0 flex-1 truncate font-medium text-ink group-hover/age:underline">{ticketTitle(ticket)}</span>
                       <span className="tnum shrink-0 font-semibold text-ink">
                         <SpokenText written={formatReadyAge(ticket.age, stagnantAfter)} spoken={spokenReadyAge(ticket.age, stagnantAfter)} spelledOut />
                       </span>
@@ -152,7 +153,7 @@ function ReadyTable({ ages, ctx, showProject, timeZone, moment }: { ages: Metric
           <th scope="row" className="px-3 py-1 text-left font-normal">
             <Link to={paths.issue(ticket.project, ticket.id)} className="flex flex-col text-accent hover:underline">
               <span className="font-mono">{ticket.id}</span>
-              <span className="max-w-[28ch] truncate text-ink-2">{ticket.title}</span>
+              <span className="max-w-[28ch] truncate text-ink-2">{ticketTitle(ticket)}</span>
             </Link>
           </th>
           {showProject ? <td className="whitespace-nowrap px-3 py-1">{ctx.projectName(ticket.project)}</td> : null}

@@ -3,6 +3,7 @@ import { CircleAlert } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import type { MetricsInProgressTicket } from '../../shared/api';
+import { ticketTitle } from '../data/helpers';
 import { paths } from '../paths';
 import { Button } from '../ui/Button';
 import { TypeGlyph } from '../ui/IssueBadges';
@@ -79,7 +80,7 @@ export function AgePanel({ tickets, dimension, ctx, projectOrder, median, p85, s
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <TypeGlyph type={ticket.type} />
-                      <span className="min-w-0 flex-1 truncate font-medium text-ink group-hover/age:underline">{ticket.title}</span>
+                      <span className="min-w-0 flex-1 truncate font-medium text-ink group-hover/age:underline">{ticketTitle(ticket)}</span>
                       <span className="tnum shrink-0 font-semibold text-ink">
                         <SpokenText written={formatDuration(ticket.age)} spoken={spokenDuration(ticket.age)} spelledOut />
                       </span>

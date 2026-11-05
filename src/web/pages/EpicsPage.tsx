@@ -1,5 +1,6 @@
 import { FolderSearch, SearchX } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router';
+import { ticketTitle } from '../data/helpers';
 import { useIssues } from '../data/hooks';
 import type { Issue, Project } from '../data/types';
 import { typeMeta } from '../design/issue-palette';
@@ -126,7 +127,7 @@ function NotAnEpic({ project, ticket }: { project: Project; ticket: Issue }) {
           </Link>
         }
       >
-        <p>{ticket.title}</p>
+        <p>{ticketTitle(ticket)}</p>
         <p>Seul un ticket de type epic regroupe des Enfants et a une page d’avancement.</p>
       </Notice>
     </Page>

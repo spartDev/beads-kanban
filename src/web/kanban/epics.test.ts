@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ticketTitle, withoutInvisible } from '../data/helpers';
 import type { Issue } from '../data/types';
 import { issue } from '../test/fixtures';
 import { epicChoices, epicLabels, epicName, epicShortName, shortTitle } from './epics';
@@ -43,6 +44,53 @@ describe('shortTitle : le titre court d’une Epic', () => {
 
   it('respecte la longueur demandée', () => {
     expect(shortTitle('Distribution : publication npm', 8)).toBe('Distrib…');
+  });
+
+  // Une tête faite de caractères sans largeur (catégorie Unicode `Cf`) passe le seuil des trois caractères sans rien nommer : la pastille serait invisible.
+  it('ne garde pas pour nom une tête faite uniquement de caractères sans largeur : le titre entier, moins ceux de son bord', () => {
+    expect(shortTitle('\u200b\u200b\u200b : Refonte du shell')).toBe(': Refonte du shell');
+    expect(shortTitle('\u2060\u00ad\u200c - Refonte')).toBe('- Refonte');
+  });
+
+  it('ne compte pas non plus les caractères sans largeur dans le seuil : « V1 » suivi d’un seul reste trop mince', () => {
+    expect(shortTitle('V1\u200b : suivi des tickets')).toBe('V1\u200b : suivi des tickets');
+  });
+
+  it('garde une tête qui a du texte, même mêlée de caractères sans largeur', () => {
+    expect(shortTitle('Refonte\u200b : du shell')).toBe('Refonte\u200b');
+    expect(shortTitle('\u200bRefonte : du shell')).toBe('Refonte');
+  });
+
+  // La longueur se mesure en caractères visibles, comme le seuil de la tête : un caractère sans largeur n'occupe aucune place dans la pastille.
+  it('retire les caractères sans largeur des bords, où ils ne lient rien : trente avant « Refonte » ne laissent pas une pastille d’ellipse', () => {
+    expect(shortTitle('\u200b'.repeat(30) + ' Refonte')).toBe('Refonte');
+  });
+
+  it('ne coupe pas un titre qui tient dans la limite une fois ses caractères sans largeur mis de côté', () => {
+    const title = 'Refonte' + '\u200b'.repeat(30) + ' du shell';
+    expect(shortTitle(title)).toBe(title);
+  });
+
+  it('retire de même ceux de la fin du titre', () => {
+    expect(shortTitle('Refonte \u2060\u200b')).toBe('Refonte');
+  });
+
+  it('coupe au dernier caractère visible permis, pas au dernier caractère écrit', () => {
+    const short = shortTitle('A'.repeat(10) + '\u200b'.repeat(30) + 'B'.repeat(30));
+    expect(short).toBe('A'.repeat(10) + '\u200b'.repeat(30) + 'B'.repeat(13) + '…');
+    expect(withoutInvisible(short)).toHaveLength(24);
+  });
+
+  it('juge la fin du dernier mot en caractères visibles : une espace trop tôt à l’écran n’autorise pas la coupe', () => {
+    expect(shortTitle('ab' + '\u200b'.repeat(30) + ' cdefghijklmnopqrstuvwxyz')).toBe('ab' + '\u200b'.repeat(30) + ' cdefghijklmnopqrstuv…');
+  });
+
+  it('ne coupe pas un emoji en deux : la paire de substitution qui dépasserait la limite reste de l’autre côté de la coupe', () => {
+    expect(shortTitle('A'.repeat(22) + '😀' + 'B'.repeat(10))).toBe('A'.repeat(22) + '…');
+  });
+
+  it('ne laisse aucun caractère sans largeur devant l’ellipse : un liant en bout de coupe ne lie rien', () => {
+    expect(shortTitle('A'.repeat(23) + '\u200d' + 'B'.repeat(5))).toBe('A'.repeat(23) + '…');
   });
 });
 
@@ -97,6 +145,38 @@ describe('epicLabels : de quoi reconnaître chaque Epic dans le filtre', () => {
 
   it('garde de même lisible un titre fait uniquement de caractères sans largeur, même partagé : l’identifiant, sans « (identifiant) » en plus', () => {
     expect(labels(epic('a', '\u200b'), epic('b', '\u200b'), epic('c', 'Autre'))).toEqual({ a: 'a', b: 'b', c: 'Autre' });
+  });
+
+  // Deux options qui s'écrivent pareil à l'écran ne se choisissent pas : un caractère sans largeur ne rend pas un titre différent.
+  it.each([
+    ['en tête', '\u200bRefonte du shell'],
+    ['au milieu d’un mot', 'Refonte du sh\u200bell'],
+    ['entre deux mots', 'Refonte \u200b du shell'],
+    ['à la fin', 'Refonte du shell\u2060'],
+  ])('distingue deux Epics qui ne diffèrent que par un caractère sans largeur %s : chacune porte son identifiant', (_where, title) => {
+    expect(labels(epic('a', title), epic('b', 'Refonte du shell'), epic('c', 'Autre'))).toEqual({
+      a: `${title.trim().replace(/\s+/g, ' ')} (a)`,
+      b: 'Refonte du shell (b)',
+      c: 'Autre',
+    });
+  });
+
+  // « Café » écrit avec le é composé (U+00E9, NFC) ou avec un e suivi de l'accent combinant (U+0301, NFD) s'affiche pareil : deux options identiques sans l'identifiant.
+  it('reconnaît le même titre écrit en forme composée (NFC) ou décomposée (NFD) : chacune porte son identifiant, sans que le libellé change', () => {
+    expect(labels(epic('a', 'Caf\u00e9'), epic('b', 'Cafe\u0301'), epic('c', 'Cafe'))).toEqual({
+      a: 'Caf\u00e9 (a)',
+      b: 'Cafe\u0301 (b)',
+      c: 'Cafe',
+    });
+  });
+
+  it('ne laisse pas au libellé un caractère sans largeur de moins : ce que l’Epic écrit, un lecteur le retrouve (ZWJ d’un emoji, ZWNJ)', () => {
+    const title = 'Famille 👨\u200d👩\u200d👧';
+    expect(labels(epic('a', title))).toEqual({ a: title });
+  });
+
+  it('n’ajoute pas d’identifiant à deux titres qui diffèrent par une lettre, caractères sans largeur ou non', () => {
+    expect(labels(epic('a', 'Refonte\u200b A'), epic('b', 'Refonte B'))).toEqual({ a: 'Refonte\u200b A', b: 'Refonte B' });
   });
 });
 
@@ -157,5 +237,22 @@ describe('epicName et epicShortName : le nom d’une Epic', () => {
     const untitled = at('bdesk-invisible', { type: 'epic', title });
     expect(epicName(untitled)).toBe('bdesk-invisible');
     expect(epicLabels([untitled]).get('bdesk-invisible')).toBe('bdesk-invisible');
+  });
+});
+
+/** Un titre de ticket et celui d'une Epic se rangent de même : la règle est une, à deux noms (`ticketTitle`, `epicName`). */
+describe('ticketTitle et epicName rangent un titre de la même façon', () => {
+  it.each([
+    ['des espaces autour', '  Un titre  '],
+    ['des espaces doublés', 'Deux   mots'],
+    ['des tabulations et des sauts de ligne', 'Un\t titre\n sur  deux lignes'],
+    ['des espaces insécables', 'Un\u00a0\u00a0titre'],
+    ['un caractère sans largeur au milieu du texte', 'Un titre\u200b avec une césure\u00ad'],
+  ])('%s', (_kind, title) => {
+    expect(ticketTitle({ title })).toBe(epicName({ id: 'bdesk-e1', title }));
+  });
+
+  it('repliant l’un comme l’autre à une seule espace', () => {
+    expect(ticketTitle({ title: ' \n Un   titre\t\tà   espaces ' })).toBe('Un titre à espaces');
   });
 });
