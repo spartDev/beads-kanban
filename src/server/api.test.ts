@@ -529,6 +529,10 @@ describe('API des métriques', () => {
 describe('API : requêtes abandonnées par le client (bdesk-38k.20)', () => {
   const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   /** Un service qui ne répond que quand le test le décide, et qui note le signal reçu ; il finit en AbortError si ce signal est abandonné. */
   function hanging() {
     const seen: { signal?: AbortSignal; calls: number; answer: () => void } = { calls: 0, answer: () => {} };
@@ -615,6 +619,9 @@ describe('API : requêtes abandonnées par le client (bdesk-38k.20)', () => {
         done();
       },
     });
+    // Le journal doit rester vide : un `TZ` vide (ou que le moteur ne sait pas nommer) lui ferait écrire l'avertissement de démarrage du fuseau du
+    // serveur (bdesk-38k.38), qui n'est pas ce que ce test regarde. `TZ=UTC`, un nom que le moteur connaît, ne dit rien (bdesk-38k.48).
+    vi.stubEnv('TZ', 'UTC');
     const app = buildServer({ config, projects: serviceWith({ issue: wait(detail) }), logger: { level: 'warn', stream } });
     await app.listen({ host: '127.0.0.1', port: 0 });
     const { port } = app.server.address() as AddressInfo;

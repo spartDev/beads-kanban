@@ -1116,6 +1116,33 @@ describe('le panneau d’un ticket : la chronologie dans un autre fuseau', () =>
   });
 });
 
+describe('le panneau d’un ticket : la chronologie quand le navigateur ne nomme pas son fuseau (TZ vide)', () => {
+  // Le moteur nomme « Etc/Unknown » le fuseau d'un navigateur lancé avec TZ vide, et `Date` y compte en UTC (bdesk-38k.48).
+  withTimeZone('');
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-10T09:00:00Z') });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('écrit les heures comme Date les compte, en UTC, et dit « UTC » plutôt que « Etc/Unknown »', async () => {
+    stubApi({
+      projects: projectsResponse,
+      issues: { bdesk: [issue({ id: 'bdesk-1', title: 'Un ticket livré' })] },
+      chronologies: {
+        'bdesk/bdesk-1': chronology({ transitions: [{ status: 'open', at: '2026-10-01T09:00:00.000Z', duration: null }] }),
+      },
+    });
+    renderApp('/p/bdesk/t/bdesk-1');
+    const dialog = await openPanel(/Un ticket livré/);
+
+    const list = await within(dialog).findByRole('list', { name: 'Transitions' });
+    expect(within(list).getAllByRole('listitem')[0]?.textContent).toMatch(/1 oct\. 2026.*09:00/);
+    expect(within(dialog).getByText(/Heures du fuseau UTC$/)).toBeTruthy();
+  });
+});
+
 describe('le panneau d’un ticket : les textes', () => {
   const FULL = issueDetail({
     id: 'bdesk-5',

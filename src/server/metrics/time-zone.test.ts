@@ -1,26 +1,9 @@
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
+import { isKnownTimeZone } from '../../domain/time-zone';
 import { scratchDir } from '../testing/scratch';
-import { isKnownTimeZone, resolveMetricsTimeZone, systemTimeZone } from './time-zone';
-
-describe('isKnownTimeZone', () => {
-  it.each(['UTC', 'Europe/Paris', 'America/New_York', 'Asia/Kolkata', 'Etc/UTC', 'europe/paris'])('reconnaît %s', (name) => {
-    expect(isKnownTimeZone(name)).toBe(true);
-  });
-
-  // « Etc/Unknown » est ce que le moteur répond pour une variable TZ vide (Node 18 à 25) ; `Intl` refuse ce nom.
-  it.each(['Etc/Unknown', 'Invalid/Zone', 'Europe/Pariss', '', ':', ':/etc/localtime', ' UTC'])('refuse %j', (name) => {
-    expect(isKnownTimeZone(name)).toBe(false);
-  });
-
-  // `Intl.DateTimeFormat().resolvedOptions().timeZone` est typé `string` mais vaut `undefined` quand le moteur ne sait pas
-  // nommer le fuseau (`TZ=Invalid/Zone`) : `new Intl.DateTimeFormat('en-US', { timeZone: undefined })` ne lève rien, et pourtant
-  // `undefined` n'est pas un nom de fuseau.
-  it.each([undefined, null, 0, 42, {}, ['UTC']])('refuse ce qui n’est pas un texte : %j', (value) => {
-    expect(isKnownTimeZone(value)).toBe(false);
-  });
-});
+import { resolveMetricsTimeZone, systemTimeZone } from './time-zone';
 
 describe('resolveMetricsTimeZone : le fuseau qui découpe les jours des métriques', () => {
   const none = () => undefined;

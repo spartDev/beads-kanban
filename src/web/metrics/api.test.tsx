@@ -11,6 +11,9 @@ import { metricsFixture } from './testing';
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
+/** Le fuseau que la page donne au serveur : celui de son navigateur (bdesk-38k.48). */
+const timeZone = 'Europe/Paris';
+
 const wrapper = ({ children }: { children: ReactNode }) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
@@ -27,9 +30,20 @@ afterEach(() => {
 });
 
 describe('metricsKey', () => {
-  it('range sous le Projet (`*` pour la Vue globale), puis la période', () => {
-    expect(metricsKey({ project: 'bdesk', period: { kind: 'preset', range: '7d' } })).toEqual(['metrics', 'bdesk', '7d']);
-    expect(metricsKey({ period: { kind: 'custom', from: '2026-10-01', to: '2026-10-15' } })).toEqual(['metrics', '*', '2026-10-01..2026-10-15']);
+  it('range sous le Projet (`*` pour la Vue globale), puis la période, puis le fuseau', () => {
+    expect(metricsKey({ project: 'bdesk', period: { kind: 'preset', range: '7d' }, timeZone })).toEqual(['metrics', 'bdesk', '7d', 'Europe/Paris']);
+    expect(metricsKey({ period: { kind: 'custom', from: '2026-10-01', to: '2026-10-15' }, timeZone })).toEqual([
+      'metrics',
+      '*',
+      '2026-10-01..2026-10-15',
+      'Europe/Paris',
+    ]);
+  });
+
+  it('distingue le fuseau : des chiffres comptés dans un fuseau ne servent pas pour un autre', () => {
+    const period = { kind: 'preset', range: '7d' } as const;
+
+    expect(metricsKey({ period, timeZone: 'Europe/Paris' })).not.toEqual(metricsKey({ period, timeZone: 'Asia/Tokyo' }));
   });
 });
 
@@ -39,20 +53,20 @@ describe('useMetrics', () => {
     const fetchMock = vi.fn<(url: string) => Promise<Response>>(async () => json(data));
     vi.stubGlobal('fetch', fetchMock);
 
-    const { result } = renderHook(() => useMetrics({ project: 'bdesk', period: { kind: 'preset', range: '7d' } }), { wrapper });
+    const { result } = renderHook(() => useMetrics({ project: 'bdesk', period: { kind: 'preset', range: '7d' }, timeZone }), { wrapper });
 
     await waitFor(() => expect(result.current.data).toEqual(data));
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/metrics?project=bdesk&range=7d');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/metrics?project=bdesk&range=7d&timeZone=Europe%2FParis');
   });
 
   it('demande la Vue globale sans Projet, plage personnalisée en « from » et « to »', async () => {
     const fetchMock = vi.fn<(url: string) => Promise<Response>>(async () => json(metricsFixture()));
     vi.stubGlobal('fetch', fetchMock);
 
-    renderHook(() => useMetrics({ period: { kind: 'custom', from: '2026-10-01', to: '2026-10-15' } }), { wrapper });
+    renderHook(() => useMetrics({ period: { kind: 'custom', from: '2026-10-01', to: '2026-10-15' }, timeZone }), { wrapper });
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/metrics?from=2026-10-01&to=2026-10-15');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/metrics?from=2026-10-01&to=2026-10-15&timeZone=Europe%2FParis');
   });
 
   it('garde les chiffres précédents en attendant ceux d’une autre période du même Projet', async () => {
@@ -67,11 +81,11 @@ describe('useMetrics', () => {
 
     const { result, rerender } = renderHook(({ request }: { request: MetricsRequest }) => useMetrics(request), {
       wrapper: sharedWrapper(),
-      initialProps: { request: { project: 'bdesk', period: { kind: 'preset', range: '7d' } } as MetricsRequest },
+      initialProps: { request: { project: 'bdesk', period: { kind: 'preset', range: '7d' }, timeZone } as MetricsRequest },
     });
     await waitFor(() => expect(result.current.data?.range).toBe('7d'));
 
-    rerender({ request: { project: 'bdesk', period: { kind: 'preset', range: '30d' } } });
+    rerender({ request: { project: 'bdesk', period: { kind: 'preset', range: '30d' }, timeZone } });
 
     // En attente de la nouvelle période : l'ancienne reste affichée, marquée comme provisoire.
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(true));
@@ -79,6 +93,37 @@ describe('useMetrics', () => {
 
     release?.();
     await waitFor(() => expect(result.current.data?.range).toBe('30d'));
+    expect(result.current.isPlaceholderData).toBe(false);
+  });
+
+  // bdesk-38k.48 : le fuseau du navigateur peut changer pendant que la page est ouverte (un voyage, un réglage du système).
+  it('redemande les chiffres dans le nouveau fuseau quand celui du navigateur change, en gardant les précédents en attendant', async () => {
+    const paris = metricsFixture({ timeZone: 'Europe/Paris' });
+    const tokyo = metricsFixture({ timeZone: 'Asia/Tokyo' });
+    let release: (() => void) | undefined;
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('Asia%2FTokyo')) await new Promise<void>((resolve) => (release = resolve));
+      return json(url.includes('Asia%2FTokyo') ? tokyo : paris);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result, rerender } = renderHook(({ request }: { request: MetricsRequest }) => useMetrics(request), {
+      wrapper: sharedWrapper(),
+      initialProps: { request: { project: 'bdesk', period: { kind: 'preset', range: '7d' }, timeZone: 'Europe/Paris' } as MetricsRequest },
+    });
+    await waitFor(() => expect(result.current.data?.timeZone).toBe('Europe/Paris'));
+
+    rerender({ request: { project: 'bdesk', period: { kind: 'preset', range: '7d' }, timeZone: 'Asia/Tokyo' } });
+
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(true));
+    expect(result.current.data?.timeZone).toBe('Europe/Paris');
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/metrics?project=bdesk&range=7d&timeZone=Europe%2FParis',
+      '/api/metrics?project=bdesk&range=7d&timeZone=Asia%2FTokyo',
+    ]);
+
+    release?.();
+    await waitFor(() => expect(result.current.data?.timeZone).toBe('Asia/Tokyo'));
     expect(result.current.isPlaceholderData).toBe(false);
   });
 
@@ -92,11 +137,11 @@ describe('useMetrics', () => {
 
     const { result, rerender } = renderHook(({ request }: { request: MetricsRequest }) => useMetrics(request), {
       wrapper: sharedWrapper(),
-      initialProps: { request: { project: 'bdesk', period: { kind: 'preset', range: '7d' } } as MetricsRequest },
+      initialProps: { request: { project: 'bdesk', period: { kind: 'preset', range: '7d' }, timeZone } as MetricsRequest },
     });
     await waitFor(() => expect(result.current.data?.projects[0]?.id).toBe('bdesk'));
 
-    rerender({ request: { project: 'mpm', period: { kind: 'preset', range: '7d' } } });
+    rerender({ request: { project: 'mpm', period: { kind: 'preset', range: '7d' }, timeZone } });
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(result.current.data).toBeUndefined();
@@ -112,7 +157,7 @@ describe('useMetrics', () => {
       vi.fn(async () => json({ statusCode: 400, error: 'Bad Request', message: 'La plage est trop longue : 400 jours, au plus 366.' }, 400)),
     );
 
-    const { result } = renderHook(() => useMetrics({ period: { kind: 'custom', from: '2025-01-01', to: '2026-02-05' } }), { wrapper });
+    const { result } = renderHook(() => useMetrics({ period: { kind: 'custom', from: '2025-01-01', to: '2026-02-05' }, timeZone }), { wrapper });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error).toBeInstanceOf(ApiError);
@@ -144,7 +189,7 @@ describe('métriques à la demande : aucun rafraîchissement automatique', () =>
     vi.stubGlobal('fetch', fetchMock);
     const client = createQueryClient();
     const view = renderHook(
-      () => ({ metrics: useMetrics({ project: 'bdesk', period: { kind: 'preset', range: '7d' } }), projects: useProjects() }),
+      () => ({ metrics: useMetrics({ project: 'bdesk', period: { kind: 'preset', range: '7d' }, timeZone }), projects: useProjects() }),
       { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> },
     );
     const calls = (prefix: string) => fetchMock.mock.calls.filter(([url]) => url.startsWith(prefix)).length;
@@ -180,7 +225,7 @@ describe('métriques à la demande : aucun rafraîchissement automatique', () =>
   });
 
   it('ne programme aucun rafraîchissement : ni au retour sur l’onglet ou du réseau, ni à intervalle', () => {
-    const options = metricsQuery({ project: 'bdesk', period: { kind: 'preset', range: '7d' } });
+    const options = metricsQuery({ project: 'bdesk', period: { kind: 'preset', range: '7d' }, timeZone });
 
     expect(options.refetchOnWindowFocus).toBe(false);
     expect(options.refetchOnReconnect).toBe(false);

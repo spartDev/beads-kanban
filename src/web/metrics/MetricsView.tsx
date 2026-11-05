@@ -1,9 +1,11 @@
 import { FolderSearch } from 'lucide-react';
-import { useCallback, useId, useMemo } from 'react';
+import { useCallback, useId, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
+import { isKnownTimeZone, sameTimeZone } from '../../domain/time-zone';
 import type { MetricsResponse } from '../../shared/api';
 import { useProjects } from '../data/hooks';
 import { cx } from '../lib/cx';
+import { browserTimeZone } from '../lib/instant';
 import { useRetryFocus } from '../lib/useRetryFocus';
 import { paths } from '../paths';
 import { ErrorNotice, Notice } from '../ui/states';
@@ -19,7 +21,7 @@ import { CycleTimePanel } from './CycleTimeChart';
 import { dayInZone } from './format';
 import { HealthTiles } from './HealthTiles';
 import { MetricsSkeleton } from './MetricsSkeleton';
-import { AddressNotices, UnreadableProjects } from './Notices';
+import { AddressNotices, UnreadableProjects, ZoneNotice } from './Notices';
 import { parseMetricsParams, withDimension, withPeriod, type Dimension, type PeriodChoice, type Scope } from './params';
 import { ReadyAgePanel } from './ReadyAgeChart';
 import { SliceTable } from './SliceTable';
@@ -34,8 +36,8 @@ import './metrics.css';
 /** Ce que la page mesure : un Projet, ou tous (Vue globale). */
 export type MetricsScope = { kind: 'global' } | { kind: 'project'; project: { id: string; name: string } };
 
-/** Aujourd'hui (AAAA-MM-JJ) dans le fuseau du navigateur, qui est celui de l'utilisateur et du serveur. */
-const todayHere = (): string => dayInZone(new Date().toISOString(), Intl.DateTimeFormat().resolvedOptions().timeZone);
+/** Aujourd'hui (AAAA-MM-JJ) dans ce fuseau. */
+const todayIn = (timeZone: string): string => dayInZone(new Date().toISOString(), timeZone);
 
 /**
  * Les métriques de flux d'un Projet ou de la Vue globale : réglages (période, découpage), tuiles, graphiques, santé du flux
@@ -50,13 +52,27 @@ const todayHere = (): string => dayInZone(new Date().toISOString(), Intl.DateTim
 export function MetricsView({ scope }: { scope: MetricsScope }) {
   const kind: Scope = scope.kind;
   const [searchParams, setSearchParams] = useSearchParams();
-  const today = todayHere();
+  // Le fuseau du navigateur, celui de l'utilisateur, est la seule source des jours de la page : « aujourd'hui », que les plages ne peuvent pas
+  // dépasser, et les jours que le serveur compte pour elle (`timeZone` de la requête, bdesk-38k.48). Un autre fuseau côté serveur ferait refuser
+  // une plage valable, ou arrêter « 7 derniers jours » à la veille, entre minuit et l'heure de l'écart.
+  const asked = browserTimeZone();
+  // Sauf si le serveur ne le connaît pas (un fuseau plus récent que son ICU) : il compte alors dans le sien et le nomme dans sa réponse. « Aujourd'hui »
+  // se compte dans ce fuseau-là, celui des jours que la page reçoit, pour que les plages qu'elle accepte soient celles que le serveur sert ; la page
+  // continue pourtant de demander le fuseau du navigateur, qu'un serveur à jour comptera. Avant la première réponse, rien ne dit que le serveur ne
+  // le connaît pas : on compte dans le fuseau demandé.
+  const [answered, setAnswered] = useState<{ asked: string; counted: string }>();
+  const counted = answered?.asked === asked && isKnownTimeZone(answered.counted) ? answered.counted : asked;
+  const today = todayIn(counted);
   const { period, by, notices } = useMemo(() => parseMetricsParams(searchParams, kind, today), [searchParams, kind, today]);
 
-  const query = useMetrics({ project: scope.kind === 'project' ? scope.project.id : undefined, period });
+  const query = useMetrics({ project: scope.kind === 'project' ? scope.project.id : undefined, period, timeZone: asked });
   const retry = useRetryFocus(query);
   const projects = useProjects();
   const data = query.data;
+  // La réponse qui vient d'arriver dit dans quel fuseau elle a été comptée. Celle qu'on garde le temps de la suivante (`isPlaceholderData`) peut venir
+  // d'un autre fuseau demandé : elle ne répond pas à celui-ci.
+  const fresh = data !== undefined && !query.isPlaceholderData ? data : undefined;
+  if (fresh !== undefined && (answered?.asked !== asked || answered.counted !== fresh.timeZone)) setAnswered({ asked, counted: fresh.timeZone });
   const ctx = useSeriesContext(data?.projects ?? [], projects.data?.projects);
 
   const changePeriod = useCallback((next: PeriodChoice) => setSearchParams((current) => withPeriod(current, next), { replace: true }), [setSearchParams]);
@@ -89,6 +105,8 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
       <p aria-live="polite" className="sr-only">
         {query.isFetching && data ? 'Calcul des métriques en cours…' : ''}
       </p>
+
+      {fresh !== undefined && !sameTimeZone(fresh.timeZone, asked) ? <ZoneNotice asked={asked} counted={fresh.timeZone} /> : null}
 
       {notices.length > 0 ? <AddressNotices notices={notices} /> : null}
 

@@ -9,7 +9,9 @@ import type {
   MetricsReopening,
 } from '../shared/api';
 import { calendarElapsed, resolvePeriod } from './calendar';
+import { lruMemo } from './lru';
 import { durationStats, type MetricsInput, type MetricsOptions, type TrackedTicket, trend } from './metrics';
+import { MAX_ZONE_FORMATTERS } from './time-zone';
 
 /**
  * Santé du flux : Efficacité du flux, Taux de Réouverture, Taux d'abandon, décomposition du Lead Time (avec l'Attente de
@@ -241,15 +243,15 @@ function readyAgesOf(entries: Entry[], asOf: number, previousAsOf: number, timeZ
 
 const WEEKDAYS: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
 
-const formatters = new Map<string, Intl.DateTimeFormat>();
+/** Le formateur d'un fuseau : un cache borné (le fuseau d'une requête vient du client), voir `lruMemo`. */
+const formatterOf = lruMemo(
+  MAX_ZONE_FORMATTERS,
+  (timeZone: string) => new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short', hour: '2-digit', hourCycle: 'h23' }),
+);
 
 /** Le jour de la semaine (0 pour le lundi) et l'heure du mur (0 à 23) de l'instant dans le fuseau. */
 function slotOf(instant: number, timeZone: string): { weekday: number; hour: number } {
-  let formatter = formatters.get(timeZone);
-  if (!formatter) {
-    formatter = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short', hour: '2-digit', hourCycle: 'h23' });
-    formatters.set(timeZone, formatter);
-  }
+  const formatter = formatterOf(timeZone);
   const parts = Object.fromEntries(formatter.formatToParts(instant).map((part) => [part.type, part.value]));
   return { weekday: WEEKDAYS[parts.weekday ?? ''] ?? 0, hour: Number(parts.hour) % 24 };
 }

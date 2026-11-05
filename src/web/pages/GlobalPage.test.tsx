@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { metricsFixture, metricsRequests, plain, stubChartWidth, stubMetricsApi, warmUpMetricsPages, type MetricsReply } from '../metrics/testing';
 import { bdeskIssues, mpmIssues, projectsResponse } from '../test/fixtures';
 import { renderApp } from '../test/render';
+import { withTimeZone } from '../test/timeZone';
 
 /**
  * La Vue globale : les métriques de tous les Projets, recalculées sur l'union de leurs tickets (le serveur le fait, la
@@ -14,6 +15,9 @@ const api = (reply: (url: URL) => MetricsReply | Promise<MetricsReply> = () => m
 
 // La vue des métriques est chargée à la demande : on lit son module une fois, hors du délai des attentes des tests.
 warmUpMetricsPages();
+
+// Le navigateur est à Paris, comme les fixtures : la page compte « aujourd'hui » dans son fuseau et le donne au serveur (`timeZone`, bdesk-38k.48).
+withTimeZone('Europe/Paris');
 
 // Seule `Date` est figée (le 2 novembre 2026, 20:00 à Paris, l'instant des fixtures) : les minuteries de React Query et de
 // Radix restent réelles. La page lit la date du jour pour refuser une plage qui la dépasse.
@@ -40,7 +44,7 @@ describe('la Vue globale', () => {
     const fetchMock = api();
     await loaded();
 
-    expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?range=30d']);
+    expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?range=30d&timeZone=Europe%2FParis']);
     expect(screen.getByRole('heading', { level: 1, name: 'Vue globale' })).toBeTruthy();
     expect(screen.getAllByRole('article')).toHaveLength(11);
     expect(plain(page().getByRole('article', { name: 'Débit' }).textContent)).toContain('18Livraisons sur la période');
@@ -129,7 +133,7 @@ describe('la Vue globale', () => {
     const fetchMock = api();
     await loaded('/?range=90d&by=type');
 
-    expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?range=90d']);
+    expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?range=90d&timeZone=Europe%2FParis']);
     expect(screen.getByRole('heading', { level: 2, name: 'Découpage par type' })).toBeTruthy();
   });
 

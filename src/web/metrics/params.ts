@@ -87,8 +87,14 @@ export function periodKey(period: PeriodChoice): string {
   return period.kind === 'preset' ? period.range : `${period.from}..${period.to}`;
 }
 
-/** La requête à `GET /api/metrics` : un Projet (ou la Vue globale sans `project`) et une période. */
-export function metricsPath({ project, period }: { project?: string; period: PeriodChoice }): string {
+const TIME_ZONE = 'timeZone';
+
+/**
+ * La requête à `GET /api/metrics` : un Projet (ou la Vue globale sans `project`), une période, et le fuseau dans lequel le serveur compte les
+ * jours : celui de la page (`browserTimeZone`), le même que celui de `today` dans `parseMetricsParams`. Sans lui, le serveur compterait dans
+ * le sien, et « aujourd'hui » ne serait pas le même jour pour la page et pour lui entre minuit et l'heure de leur écart (bdesk-38k.48).
+ */
+export function metricsPath({ project, period, timeZone }: { project?: string; period: PeriodChoice; timeZone: string }): string {
   const query = new URLSearchParams();
   if (project !== undefined) query.set('project', project);
   if (period.kind === 'preset') query.set(RANGE, period.range);
@@ -96,6 +102,7 @@ export function metricsPath({ project, period }: { project?: string; period: Per
     query.set(FROM, period.from);
     query.set(TO, period.to);
   }
+  query.set(TIME_ZONE, timeZone);
   return `/api/metrics?${query}`;
 }
 

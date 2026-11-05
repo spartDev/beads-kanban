@@ -62,6 +62,10 @@ _Avoid_: temps calendaire (se confond avec l'Âge calendaire)
 Le temps passé depuis un instant, compté sur le calendrier de l'utilisateur, dans son fuseau : chaque jour compte pour 24 heures, quelle que soit sa durée réelle, donc un changement d'heure ne l'allonge ni ne le raccourcit. Du mardi 12:00 au mardi 12:00 deux semaines plus tard, il y a 14 jours, que les horloges aient avancé ou reculé entre-temps (la Durée écoulée y compterait 13 jours 23 heures ou 14 jours 1 heure). C'est le sens de l'âge d'un Prêt.
 _Avoid_: temps calendaire (se confond avec la Durée écoulée)
 
+**Fuseau de l'utilisateur**:
+Le fuseau horaire du navigateur qui affiche l'application, et non celui du serveur. C'est lui qui découpe le temps en jours, en semaines et en heures : les périodes des métriques, l'Âge calendaire, la Carte d'activité. Les Durées écoulées n'en dépendent pas.
+_Avoid_: fuseau du serveur, fuseau local
+
 **Lead Time**:
 Durée écoulée entre la création d'un ticket et sa dernière clôture.
 _Avoid_: time to delivery (ambigu), délai
@@ -155,6 +159,7 @@ Partie d'un Blocage où le ticket reste dans la même situation : _avant le prem
 - Une **Epic** a des **Enfants** ; son **Avancement** = **Livraisons** parmi ses **Enfants à livrer**
 - La **Prévision de fin** d'une **Epic** se tire de son **Débit récent**
 - Un **Bug d'origine** est relié à au moins une **Livraison**, qu'il met chacune en échec ; une **Livraison** peut avoir plusieurs Bugs d'origine
+- Les jours des périodes, l'**Âge calendaire** et la **Carte d'activité** se comptent dans le **Fuseau de l'utilisateur**, pas dans celui du serveur
 - La **Vue globale** agrège tous les **Projets** suivis ; le kanban reste centré sur un **Projet**
 - Le kanban, le **Panneau de ticket**, les métriques et la **Chronologie** d'un **Projet** lisent le même **Dernier commit**
 - Un **Blocage** se découpe en **phases** : seule celle en cours de travail compte dans le **Cycle Time** ; celle d'avant le premier démarrage est l'**Attente de dépendance**

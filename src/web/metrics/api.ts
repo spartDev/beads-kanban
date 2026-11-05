@@ -13,10 +13,16 @@ export interface MetricsRequest {
   /** Identifiant du Projet ; absent pour la Vue globale (tous les Projets lisibles). */
   project?: string;
   period: PeriodChoice;
+  /**
+   * Le fuseau IANA dans lequel le serveur compte les jours : celui du navigateur (`browserTimeZone`), dans lequel la page choisit aussi
+   * « aujourd'hui ». Une seule source pour les deux : les jours que la page accepte sont ceux que le serveur compte (bdesk-38k.48). S'il ne le
+   * connaît pas, il compte dans le sien et la réponse le nomme : la page le dit et compte alors « aujourd'hui » dans celui-là (`MetricsView`).
+   */
+  timeZone: string;
 }
 
-/** Clé de cache : le Projet (`*` pour la Vue globale), puis la période. */
-export const metricsKey = ({ project, period }: MetricsRequest) => ['metrics', project ?? '*', periodKey(period)] as const;
+/** Clé de cache : le Projet (`*` pour la Vue globale), la période, puis le fuseau : les chiffres d'un fuseau ne servent pas à un autre. */
+export const metricsKey = ({ project, period, timeZone }: MetricsRequest) => ['metrics', project ?? '*', periodKey(period), timeZone] as const;
 
 export function metricsQuery(request: MetricsRequest) {
   return queryOptions({

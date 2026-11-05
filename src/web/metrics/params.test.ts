@@ -240,21 +240,33 @@ describe('withPeriod et withDimension : écrire dans l’adresse', () => {
 });
 
 describe('metricsPath : la requête à l’API', () => {
+  const timeZone = 'Europe/Paris';
+
   it('demande la Vue globale sans Projet', () => {
-    expect(metricsPath({ period: { kind: 'preset', range: '30d' } })).toBe('/api/metrics?range=30d');
+    expect(metricsPath({ period: { kind: 'preset', range: '30d' }, timeZone })).toBe('/api/metrics?range=30d&timeZone=Europe%2FParis');
   });
 
   it('demande un Projet, identifiant échappé', () => {
-    expect(metricsPath({ project: 'beads-desktop', period: { kind: 'preset', range: '7d' } })).toBe(
-      '/api/metrics?project=beads-desktop&range=7d',
+    expect(metricsPath({ project: 'beads-desktop', period: { kind: 'preset', range: '7d' }, timeZone })).toBe(
+      '/api/metrics?project=beads-desktop&range=7d&timeZone=Europe%2FParis',
     );
-    expect(metricsPath({ project: 'a b/c', period: { kind: 'preset', range: '90d' } })).toBe('/api/metrics?project=a+b%2Fc&range=90d');
+    expect(metricsPath({ project: 'a b/c', period: { kind: 'preset', range: '90d' }, timeZone })).toBe(
+      '/api/metrics?project=a+b%2Fc&range=90d&timeZone=Europe%2FParis',
+    );
   });
 
   it('donne « from » et « to » pour une plage personnalisée, jamais « range » avec', () => {
-    expect(metricsPath({ project: 'bdesk', period: { kind: 'custom', from: '2026-10-01', to: '2026-10-15' } })).toBe(
-      '/api/metrics?project=bdesk&from=2026-10-01&to=2026-10-15',
+    expect(metricsPath({ project: 'bdesk', period: { kind: 'custom', from: '2026-10-01', to: '2026-10-15' }, timeZone })).toBe(
+      '/api/metrics?project=bdesk&from=2026-10-01&to=2026-10-15&timeZone=Europe%2FParis',
     );
+  });
+
+  // bdesk-38k.48 : le serveur compte les jours dans le fuseau que la page lui donne, celui dans lequel elle a choisi « aujourd'hui ».
+  it('donne le fuseau dans lequel le serveur compte les jours, quel qu’il soit', () => {
+    const period = { kind: 'preset', range: '7d' } as const;
+
+    expect(new URL(metricsPath({ period, timeZone: 'Asia/Tokyo' }), 'http://localhost').searchParams.get('timeZone')).toBe('Asia/Tokyo');
+    expect(new URL(metricsPath({ period, timeZone: 'UTC' }), 'http://localhost').searchParams.get('timeZone')).toBe('UTC');
   });
 });
 

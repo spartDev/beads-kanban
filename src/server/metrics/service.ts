@@ -13,6 +13,13 @@ export interface MetricsQuery {
   /** Identifiants des Projets à mesurer ; vide pour la Vue globale (tous les Projets lisibles). */
   projects: string[];
   period: PeriodSpec;
+  /**
+   * Le fuseau IANA qui découpe les jours de cette requête : celui du navigateur qui la pose (bdesk-38k.48), pour que « aujourd'hui » soit le
+   * même jour pour la page et pour le serveur. Absent, celui du service (`MetricsServiceOptions.timeZone`) : la requête n'en demandait pas, ou
+   * demandait un fuseau que ce serveur ne connaît pas (`parseMetricsQuery` l'écarte), et la réponse nomme celui qui a servi. Sous le nom que le
+   * moteur lui donne (`canonicalTimeZone`), que `Intl` connaît : le domaine lève une `RangeError` sur un autre.
+   */
+  timeZone?: string;
 }
 
 export interface MetricsService {
@@ -30,9 +37,10 @@ export interface MetricsServiceOptions {
   /** L'heure, pour les tests (défaut : l'horloge du système). */
   now?: () => Date;
   /**
-   * Fuseau IANA qui découpe les jours (défaut : le fuseau local du serveur, celui de l'utilisateur). Un nom que `Intl` ne reconnaît pas
-   * (le moteur rend `Etc/Unknown` pour un TZ vide, et rien pour un TZ qu'il ne sait pas nommer) ne fait jamais échouer une requête : le service
-   * le remplace dès sa création par le fuseau du système, à défaut par UTC, et le dit à `warn` (voir `resolveMetricsTimeZone`).
+   * Fuseau IANA qui découpe les jours des requêtes qui n'en demandent pas (`MetricsQuery.timeZone` : la page envoie celui du navigateur) ;
+   * défaut : le fuseau local du serveur. Un nom que `Intl` ne reconnaît pas (le moteur rend `Etc/Unknown` pour un TZ vide, et rien pour un
+   * TZ qu'il ne sait pas nommer) ne fait jamais échouer une requête : le service le remplace dès sa création par le fuseau du système, à
+   * défaut par UTC, et le dit à `warn` (voir `resolveMetricsTimeZone`).
    */
   timeZone?: string;
   /** Où lire le fuseau du système quand `timeZone` n'est pas reconnu (défaut : ce que désigne `/etc/localtime`, lien ou chaîne de liens). */
@@ -126,10 +134,12 @@ export function createMetricsService(
   }
 
   return {
-    async compute({ projects: ids, period }, { signal } = {}) {
+    async compute({ projects: ids, period, timeZone: zone = timeZone }, { signal } = {}) {
       if (signal?.aborted) throw new ReadAborted();
       const at = now();
-      resolvePeriod(period, at.getTime(), timeZone); // une période invalide échoue avant de lancer le moindre processus dolt
+      // Les jours se comptent dans le fuseau de la requête, puis dans celui du service : l'analyse d'un Projet, elle, n'en dépend pas (ce sont des
+      // instants), et un fuseau de plus ne coûte ni une lecture ni une entrée du cache.
+      resolvePeriod(period, at.getTime(), zone); // une période invalide échoue avant de lancer le moindre processus dolt
 
       const { projects: known } = await projects.list();
       for (const id of [...cache.keys(), ...historyReads.keys()]) {
@@ -164,11 +174,11 @@ export function createMetricsService(
 
       return {
         generatedAt: at.toISOString(),
-        timeZone,
+        timeZone: zone,
         projects: measured.map(({ id, name }) => ({ id, name })),
         unreadable,
-        ...computeMetrics(measured, { period, now: at, timeZone }),
-        health: computeHealth(measured, { period, now: at, timeZone }),
+        ...computeMetrics(measured, { period, now: at, timeZone: zone }),
+        health: computeHealth(measured, { period, now: at, timeZone: zone }),
       };
     },
   };

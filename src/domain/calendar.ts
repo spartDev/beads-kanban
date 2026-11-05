@@ -1,4 +1,6 @@
 import type { MetricsBucketUnit, MetricsRange, MetricsRangePreset } from '../shared/api';
+import { lruMemo } from './lru';
+import { MAX_ZONE_FORMATTERS } from './time-zone';
 
 /**
  * Jours et périodes d'un fuseau horaire. Les métriques découpent le temps en jours du fuseau local de l'utilisateur :
@@ -235,13 +237,11 @@ function parseDay(day: CivilDay): { year: number; month: number; date: number } 
 const pad = (n: number, width = 2) => String(n).padStart(width, '0');
 const formatDay = (year: number, month: number, day: number): CivilDay => `${pad(year, 4)}-${pad(month)}-${pad(day)}`;
 
-const formatters = new Map<string, Intl.DateTimeFormat>();
-
-/** L'heure du mur dans le fuseau à cet instant. */
-function wallClock(instant: number, timeZone: string) {
-  let formatter = formatters.get(timeZone);
-  if (!formatter) {
-    formatter = new Intl.DateTimeFormat('en-US', {
+/** Le formateur d'un fuseau : un cache borné (le fuseau d'une requête vient du client), voir `lruMemo`. */
+const formatterOf = lruMemo(
+  MAX_ZONE_FORMATTERS,
+  (timeZone: string) =>
+    new Intl.DateTimeFormat('en-US', {
       timeZone,
       hourCycle: 'h23',
       year: 'numeric',
@@ -250,9 +250,12 @@ function wallClock(instant: number, timeZone: string) {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
-    });
-    formatters.set(timeZone, formatter);
-  }
+    }),
+);
+
+/** L'heure du mur dans le fuseau à cet instant. */
+function wallClock(instant: number, timeZone: string) {
+  const formatter = formatterOf(timeZone);
   const parts = Object.fromEntries(formatter.formatToParts(instant).map((part) => [part.type, part.value]));
   return {
     year: Number(parts.year),

@@ -20,8 +20,9 @@ export interface ServerOptions {
   /** Accès aux Projets ; par défaut, celui de la configuration, lu via le CLI `dolt`. */
   projects?: ProjectService;
   /**
-   * Calcul des métriques ; par défaut, celui des `projects`, avec l'horloge et le fuseau du serveur. Quand le moteur ne donne pas de nom IANA
-   * à ce fuseau (variable TZ vide, invalide ou en notation POSIX sans nom IANA, comme `EST5`), les jours, les semaines et les heures se
+   * Calcul des métriques ; par défaut, celui des `projects`, avec l'horloge et le fuseau du serveur. Ce fuseau ne compte les jours que pour les
+   * requêtes qui n'en demandent pas (`timeZone` : la page envoie celui du navigateur, bdesk-38k.48). Quand le moteur ne donne pas de nom IANA
+   * au fuseau du serveur (variable TZ vide, invalide ou en notation POSIX sans nom IANA, comme `EST5`), ces jours, ces semaines et ces heures se
    * comptent dans le fuseau du système, à défaut en UTC (les durées n'en dépendent pas), et le journal le dit une fois (voir `resolveMetricsTimeZone`).
    */
   metrics?: MetricsService;

@@ -2,8 +2,8 @@ import type { MetricsActivity } from '../../shared/api';
 
 /**
  * Carte d'activité : l'API donne les Transitions de la période par jour de la semaine (le lundi d'abord, comme les tranches
- * hebdomadaires) et par heure du fuseau du serveur. La page en tire le niveau de couleur de chaque case, le pic, et les totaux
- * du tableau.
+ * hebdomadaires) et par heure du fuseau de la réponse (celui que la page a demandé : le sien). La page en tire le niveau de couleur
+ * de chaque case, le pic, et les totaux du tableau.
  */
 
 const NBSP = '\u00a0';

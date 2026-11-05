@@ -274,11 +274,15 @@ export interface LiveChangeEvent {
  *   ?project=<id>   Projet à mesurer ; répétable, absent pour la Vue globale (tous les Projets lisibles)
  *   &range=7d|30d|90d        les N derniers jours, aujourd'hui compris (défaut : 30d)
  *   &from=YYYY-MM-DD&to=YYYY-MM-DD   ou une plage personnalisée, bornes incluses (jamais avec `range`)
+ *   &timeZone=<IANA>   le fuseau dans lequel compter les jours (Europe/Paris) ; la page envoie celui de son navigateur. Absent : celui du serveur.
+ *                      Un nom que le serveur ne connaît pas (un fuseau plus récent que son ICU) n'est pas une erreur : il compte dans le sien, et
+ *                      `MetricsResponse.timeZone` nomme celui qui a servi. Vide ou répété : 400
  *
  * Les durées sont des nombres de millisecondes : des Durées écoulées, sauf l'âge d'un Prêt, qui est un Âge calendaire (voir
  * CONTEXT.md). Les instants sont des chaînes ISO 8601 en UTC ;
- * les jours (`YYYY-MM-DD`) sont ceux du fuseau local du serveur, qui est celui de l'utilisateur : c'est lui qui découpe
- * les périodes et les buckets. Une semaine commence le lundi. Une Livraison, un Abandon ou un échec appartient à la
+ * les jours (`YYYY-MM-DD`) sont ceux du fuseau demandé (`timeZone`, celui du navigateur : le fuseau de l'utilisateur), à défaut
+ * du fuseau local du serveur : c'est lui qui découpe les périodes, les buckets et la Carte d'activité, et la réponse le nomme.
+ * Une semaine commence le lundi. Une Livraison, un Abandon ou un échec appartient à la
  * période de sa date de Livraison, c'est-à-dire de sa dernière clôture. Les Epics ne sont mesurées nulle part : ce ne
  * sont pas des Livraisons, et elles resteraient ouvertes dans le WIP et le CFD.
  *
@@ -299,7 +303,7 @@ export type MetricsRangePreset = '7d' | '30d' | '90d';
 /** `custom` quand la période est donnée par `from` et `to`. */
 export type MetricsRange = MetricsRangePreset | 'custom';
 
-/** Plage de jours calendaires du fuseau local du serveur. */
+/** Plage de jours calendaires du fuseau de la réponse (`MetricsResponse.timeZone`). */
 export interface MetricsDateRange {
   /** Premier jour, inclus. */
   from: string;
@@ -707,7 +711,10 @@ export interface MetricsUnreadableProject extends MetricsProject {
 /** `GET /api/metrics` */
 export interface MetricsResponse extends MetricsReport {
   generatedAt: string;
-  /** Fuseau IANA du serveur, celui des jours et des buckets. */
+  /**
+   * Fuseau IANA des jours, des buckets et de la Carte d'activité : celui que la requête demande (`timeZone`) si le serveur le connaît, sous le nom que son
+   * moteur lui donne (`eUrOpE/pArIs` devient `Europe/Paris`) ; à défaut celui du serveur. La page le compare à ce qu'elle a demandé.
+   */
   timeZone: string;
   /** Les Projets mesurés, dans l'ordre de `GET /api/projects`. */
   projects: MetricsProject[];

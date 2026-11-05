@@ -151,8 +151,9 @@ export interface DayTick {
 
 /**
  * Les graduations de l'axe du temps d'une période : un jour sur n, régulièrement, au plus `maxLabels`, chacune au début de
- * son jour dans le fuseau des métriques (celui du serveur, pas du navigateur). Les jours sont ceux du calendrier et non des
- * tranches de 24 h : après un changement d'heure, `début + n × 24 h` tomberait une heure avant ou après le vrai minuit.
+ * son jour dans le fuseau des métriques (celui de la réponse, que le navigateur a demandé : jamais un fuseau lu ici). Les jours sont
+ * ceux du calendrier et non des tranches de 24 h : après un changement d'heure, `début + n × 24 h` tomberait une heure avant ou après
+ * le vrai minuit.
  */
 export function dayTicks({ from, days, timeZone }: { from: string; days: number; timeZone: string }, maxLabels: number): DayTick[] {
   return thinLabels(days, maxLabels).map((index) => {

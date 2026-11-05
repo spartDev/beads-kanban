@@ -15,6 +15,7 @@ import {
 } from '../metrics/testing';
 import { bdeskIssues, mpmIssues, projectsResponse } from '../test/fixtures';
 import { renderApp } from '../test/render';
+import { withTimeZone } from '../test/timeZone';
 
 /**
  * La page Métriques d'un Projet, montée dans l'application entière (routes, shell, données) devant un faux serveur.
@@ -24,8 +25,17 @@ import { renderApp } from '../test/render';
 const api = (reply: (url: URL) => MetricsReply | Promise<MetricsReply> = () => metricsFixture()) =>
   stubMetricsApi({ projects: projectsResponse, issues: { bdesk: bdeskIssues, mpm: mpmIssues } }, reply);
 
+/**
+ * Un faux serveur qui compte dans le fuseau qu'on lui demande, comme le vrai quand il le connaît. Les fixtures disent `Europe/Paris` : une page à un autre
+ * fuseau y verrait un serveur qui ne connaît pas le sien (voir le dernier bloc de ce fichier).
+ */
+const inRequestedZone = (url: URL) => metricsFixture({ timeZone: url.searchParams.get('timeZone') ?? 'Zone du serveur' });
+
 // La vue des métriques est chargée à la demande : on lit son module une fois, hors du délai des attentes des tests.
 warmUpMetricsPages();
+
+// Le navigateur est à Paris, comme les fixtures : la page compte « aujourd'hui » dans son fuseau et le donne au serveur (`timeZone`, bdesk-38k.48).
+withTimeZone('Europe/Paris');
 
 // Seule `Date` est figée (le 2 novembre 2026, 20:00 à Paris, l'instant des fixtures) : les minuteries de React Query et de
 // Radix restent réelles. La page lit la date du jour pour refuser une plage qui la dépasse.
@@ -54,7 +64,7 @@ describe('la page Métriques d’un Projet', () => {
     const fetchMock = api();
     await loaded();
 
-    expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?project=bdesk&range=30d']);
+    expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?project=bdesk&range=30d&timeZone=Europe%2FParis']);
     expect(screen.getByRole('heading', { level: 1, name: 'Métriques' })).toBeTruthy();
     // Six indicateurs, puis cinq tuiles de santé du flux.
     expect(screen.getAllByRole('article')).toHaveLength(11);
@@ -173,7 +183,7 @@ describe('la page Métriques d’un Projet', () => {
 
     await user.click(within(period()).getByRole('radio', { name: '7 jours' }));
 
-    await waitFor(() => expect(metricsRequests(fetchMock)).toContain('/api/metrics?project=bdesk&range=7d'));
+    await waitFor(() => expect(metricsRequests(fetchMock)).toContain('/api/metrics?project=bdesk&range=7d&timeZone=Europe%2FParis'));
     expect(pathname(router)).toBe('/p/bdesk/metrics?range=7d');
     await user.click(within(period()).getByRole('radio', { name: '30 jours' }));
     // Le préréglage par défaut n'est pas écrit dans l'adresse.
@@ -184,7 +194,7 @@ describe('la page Métriques d’un Projet', () => {
     const fetchMock = api();
     await loaded('/p/bdesk/metrics?range=90d&by=priority');
 
-    expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?project=bdesk&range=90d']);
+    expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?project=bdesk&range=90d&timeZone=Europe%2FParis']);
     expect(within(period()).getByRole('radio', { name: '90 jours' })).toHaveProperty('checked', true);
     expect(screen.getByRole('heading', { level: 2, name: 'Découpage par priorité' })).toBeTruthy();
     expect(within(screen.getByRole('group', { name: 'Découper par' })).getByRole('radio', { name: 'Priorité' })).toHaveProperty('checked', true);
@@ -225,7 +235,7 @@ describe('la page Métriques d’un Projet', () => {
     const fetchMock = api(() => metricsFixture({ range: 'custom' }));
     await loaded('/p/bdesk/metrics?from=2026-10-01&to=2026-10-15');
 
-    expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?project=bdesk&from=2026-10-01&to=2026-10-15']);
+    expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?project=bdesk&from=2026-10-01&to=2026-10-15&timeZone=Europe%2FParis']);
     expect(within(period()).getByRole('radio', { name: 'Personnalisée' })).toHaveProperty('checked', true);
     expect((screen.getByLabelText('Du') as HTMLInputElement).value).toBe('2026-10-01');
   });
@@ -251,14 +261,14 @@ describe('la page Métriques d’un Projet', () => {
     await waitFor(() => expect(pathname(router)).toBe('/p/bdesk/metrics?from=2026-10-12&to=2026-10-15'));
     expect(document.activeElement).toBe(from);
     expect(from.value).toBe('2026-10-12');
-    await waitFor(() => expect(metricsRequests(fetchMock)).toContain('/api/metrics?project=bdesk&from=2026-10-12&to=2026-10-15'));
+    await waitFor(() => expect(metricsRequests(fetchMock)).toContain('/api/metrics?project=bdesk&from=2026-10-12&to=2026-10-15&timeZone=Europe%2FParis'));
   });
 
   it('prévient d’un réglage de l’adresse qu’elle ne comprend pas, et affiche la période par défaut', async () => {
     const fetchMock = api();
     await loaded('/p/bdesk/metrics?range=14d&by=status');
 
-    expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?project=bdesk&range=30d']);
+    expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?project=bdesk&range=30d&timeZone=Europe%2FParis']);
     expect(screen.getByText('Réglages de l’adresse ignorés')).toBeTruthy();
     expect(screen.getByText(/La période « 14d » n’existe pas/)).toBeTruthy();
     expect(screen.getByText(/Le découpage « status » n’existe pas/)).toBeTruthy();
@@ -294,7 +304,7 @@ describe('la page Métriques d’un Projet', () => {
     await waitFor(() => expect(metricsRequests(fetchMock)).toHaveLength(2));
   });
 
-  it('dit « Calculé à 20:00 » : l’heure du calcul, dans le fuseau du serveur', async () => {
+  it('dit « Calculé à 20:00 » : l’heure du calcul, dans le fuseau de la réponse (celui que la page a demandé)', async () => {
     api();
     await loaded();
     expect(screen.getByText('Calculé à 20:00')).toBeTruthy();
@@ -412,7 +422,7 @@ describe('états de la page Métriques', () => {
     const { queryClient } = await loaded();
 
     fail = true;
-    await act(() => queryClient.refetchQueries({ queryKey: metricsKey({ project: 'bdesk', period: { kind: 'preset', range: '30d' } }), exact: true }).catch(() => undefined));
+    await act(() => queryClient.refetchQueries({ queryKey: metricsKey({ project: 'bdesk', period: { kind: 'preset', range: '30d' }, timeZone: 'Europe/Paris' }), exact: true }).catch(() => undefined));
     await waitFor(() => expect(screen.getByText(/Actualisation impossible/)).toBeTruthy());
 
     expect(screen.getAllByRole('article')).toHaveLength(11);
@@ -425,5 +435,202 @@ describe('états de la page Métriques', () => {
 
     expect(await screen.findByText('Ce Projet est illisible')).toBeTruthy();
     expect(metricsRequests(fetchMock)).toEqual([]);
+  });
+});
+
+// Le moteur nomme « Etc/Unknown » le fuseau d'un navigateur lancé avec TZ vide, et `Intl` refuse ce nom (bdesk-38k.48) : `Date` y compte en UTC.
+describe('la page Métriques quand le navigateur ne nomme pas son fuseau (TZ vide)', () => {
+  withTimeZone('');
+
+  it('s’affiche au lieu de planter sur « Invalid time zone specified »', async () => {
+    api(inRequestedZone);
+    await loaded();
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Métriques' })).toBeTruthy();
+    expect(screen.getAllByRole('article')).toHaveLength(11);
+  });
+
+  it('compte « aujourd’hui » en UTC, comme Date : une plage qui finit demain en UTC est refusée avant d’être demandée', async () => {
+    vi.setSystemTime(new Date('2026-11-02T23:30:00.000Z')); // le 3 à 00:30 à Paris, encore le 2 en UTC
+    const fetchMock = api(inRequestedZone);
+    await loaded('/p/bdesk/metrics?from=2026-10-27&to=2026-11-03');
+
+    expect(screen.getByText(/La plage dépasse aujourd’hui \(2026-11-03 > 2026-11-02\)/)).toBeTruthy();
+    expect(within(period()).getByRole('radio', { name: '30 jours' })).toHaveProperty('checked', true);
+    expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?project=bdesk&range=30d&timeZone=UTC']); // le serveur compte en UTC, lui aussi
+  });
+});
+
+/**
+ * bdesk-38k.48 : un serveur lancé en UTC et un navigateur à Paris, à 00:30 heure de Paris. La page choisit « aujourd'hui » dans le fuseau de son
+ * navigateur et le donne au serveur, qui compte les jours dedans : la plage qu'elle accepte est celle qu'il sert, et « 7 jours » finit aujourd'hui.
+ * Les chiffres de la réponse sont écrits dans le fuseau qu'elle porte : ici, celui que la page a demandé.
+ */
+describe('la page Métriques et le serveur comptent dans le même fuseau : celui du navigateur', () => {
+  // 23:30 UTC le 4 novembre : déjà le 5 à Paris (00:30) et à Tokyo (08:30), encore le 4 à Honolulu (13:30).
+  const LATE = new Date('2026-11-04T23:30:00.000Z');
+
+  describe('à Paris, à 00:30', () => {
+    withTimeZone('Europe/Paris');
+
+    it('accepte la plage qui finit aujourd’hui, jeudi 5, et la demande dans le fuseau de Paris', async () => {
+      vi.setSystemTime(LATE);
+      const fetchMock = api(inRequestedZone);
+      await loaded('/p/bdesk/metrics?from=2026-10-30&to=2026-11-05');
+
+      expect(screen.queryByText('Réglages de l’adresse ignorés')).toBeNull();
+      expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?project=bdesk&from=2026-10-30&to=2026-11-05&timeZone=Europe%2FParis']);
+      expect(screen.getByTitle('Fuseau Europe/Paris')).toBeTruthy();
+    });
+
+    it('demande « 7 jours » dans le fuseau de Paris : le serveur finit la période aujourd’hui pour l’utilisateur', async () => {
+      vi.setSystemTime(LATE);
+      const fetchMock = api(inRequestedZone);
+      const { user } = await loaded();
+
+      await user.click(within(period()).getByRole('radio', { name: '7 jours' }));
+
+      await waitFor(() => expect(metricsRequests(fetchMock)).toContain('/api/metrics?project=bdesk&range=7d&timeZone=Europe%2FParis'));
+    });
+  });
+
+  describe('à Tokyo, au même instant (jeudi 5, 08:30)', () => {
+    withTimeZone('Asia/Tokyo');
+
+    it('compte « aujourd’hui » le 5 et le dit au serveur : la même plage est acceptée, dans le fuseau de Tokyo', async () => {
+      vi.setSystemTime(LATE);
+      const fetchMock = api(inRequestedZone);
+      await loaded('/p/bdesk/metrics?from=2026-10-30&to=2026-11-05');
+
+      expect(screen.queryByText('Réglages de l’adresse ignorés')).toBeNull();
+      expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?project=bdesk&from=2026-10-30&to=2026-11-05&timeZone=Asia%2FTokyo']);
+      expect(screen.getByTitle('Fuseau Asia/Tokyo')).toBeTruthy();
+    });
+  });
+
+  describe('à Honolulu, au même instant (mercredi 4, 13:30)', () => {
+    withTimeZone('Pacific/Honolulu');
+
+    it('refuse la même plage, qui finit demain : elle n’est même pas demandée', async () => {
+      vi.setSystemTime(LATE);
+      const fetchMock = api(inRequestedZone);
+      await loaded('/p/bdesk/metrics?from=2026-10-30&to=2026-11-05');
+
+      expect(screen.getByText(/La plage dépasse aujourd’hui \(2026-11-05 > 2026-11-04\)/)).toBeTruthy();
+      expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?project=bdesk&range=30d&timeZone=Pacific%2FHonolulu']);
+    });
+  });
+});
+
+/**
+ * Relecture de bdesk-38k.48, bug 1 : Chromium connaît `America/Coyhaique` (tz 2025b), Node 22.13 non. Le serveur ne refuse plus (400) un fuseau qu'il
+ * ne connaît pas : il compte dans le sien et le nomme dans `timeZone`. La page compare ce nom à celui qu'elle a demandé, le dit, et compte « aujourd'hui »
+ * dans le fuseau de la réponse, pour que les plages qu'elle accepte soient celles que le serveur sert.
+ */
+describe('la page Métriques quand le serveur ne connaît pas le fuseau du navigateur', () => {
+  // 23:30 UTC le 4 novembre : le 5 à 00:30 à Paris, encore le 4 à UTC.
+  const LATE = new Date('2026-11-04T23:30:00.000Z');
+  /** Le serveur ne connaît pas le fuseau demandé : il compte dans le sien, UTC, et le dit. */
+  const serverInUtc = () => metricsFixture({ timeZone: 'UTC' });
+  const NOTICE = 'Le serveur ne connaît pas votre fuseau, Europe/Paris';
+  const customTo = () => screen.getByLabelText('Au') as HTMLInputElement;
+
+  withTimeZone('Europe/Paris');
+
+  it('dit que le serveur ne connaît pas le fuseau du navigateur et dans quel fuseau les jours sont comptés', async () => {
+    vi.setSystemTime(LATE);
+    api(serverInUtc);
+    await loaded();
+
+    // Une région de statut nommée par son titre (bdesk-38k.61) : un lecteur d'écran dit de quoi elle parle.
+    const notice = await screen.findByRole('status', { name: NOTICE });
+    expect(plain(notice.textContent)).toContain('Les jours, les semaines et les heures de ces chiffres sont comptés en UTC, le fuseau du serveur.');
+    expect(screen.getByRole('heading', { level: 2, name: 'Indicateurs' })).toBeTruthy(); // les chiffres sont là : la page n'est pas en panne
+  });
+
+  it('compte « aujourd’hui » dans le fuseau de la réponse : une plage ne dépasse pas le jour du serveur (le 4), pas celui de Paris (le 5)', async () => {
+    vi.setSystemTime(LATE);
+    api(serverInUtc);
+    const { user } = await loaded();
+    await screen.findByText(NOTICE);
+
+    await user.click(within(period()).getByRole('radio', { name: 'Personnalisée' }));
+
+    expect(customTo().max).toBe('2026-11-04');
+    expect(customTo().max).not.toBe('2026-11-05');
+  });
+
+  it('refuse alors la plage de l’adresse qui finit le 5, jour de Paris, que le serveur compterait dans le futur : elle n’est pas redemandée', async () => {
+    vi.setSystemTime(LATE);
+    const fetchMock = api(serverInUtc);
+    await loaded('/p/bdesk/metrics?from=2026-10-30&to=2026-11-05');
+
+    expect(await screen.findByText(/La plage dépasse aujourd’hui \(2026-11-05 > 2026-11-04\)/)).toBeTruthy();
+    await waitFor(() => expect(metricsRequests(fetchMock).at(-1)).toBe('/api/metrics?project=bdesk&range=30d&timeZone=Europe%2FParis'));
+  });
+
+  it('continue de demander le fuseau du navigateur : un serveur qui le connaîtra plus tard le comptera', async () => {
+    vi.setSystemTime(LATE);
+    const fetchMock = api(serverInUtc);
+    const { user } = await loaded();
+    await screen.findByText(NOTICE);
+
+    await user.click(screen.getByRole('button', { name: 'Actualiser les métriques' }));
+
+    await waitFor(() => expect(metricsRequests(fetchMock)).toHaveLength(2));
+    expect(new Set(metricsRequests(fetchMock))).toEqual(new Set(['/api/metrics?project=bdesk&range=30d&timeZone=Europe%2FParis']));
+  });
+
+  it('ne dit rien et compte « aujourd’hui » à Paris quand le serveur compte dans le fuseau demandé', async () => {
+    vi.setSystemTime(LATE);
+    api(inRequestedZone);
+    const { user } = await loaded();
+
+    await user.click(within(period()).getByRole('radio', { name: 'Personnalisée' }));
+
+    expect(screen.queryByText(NOTICE)).toBeNull();
+    expect(customTo().max).toBe('2026-11-05');
+  });
+
+  it('ne tient pas pour la réponse à un autre fuseau demandé ce que le serveur a répondu au précédent : le navigateur change de fuseau, la page compte dans le nouveau en attendant', async () => {
+    vi.setSystemTime(LATE); // le 5 à 08:30 à Tokyo, le 5 à 00:30 à Paris, le 4 à 23:30 en UTC
+    let release: (() => void) | undefined;
+    const fetchMock = api((url) => {
+      if (url.searchParams.get('timeZone') !== 'Asia/Tokyo') return serverInUtc(); // Paris : le serveur ne le connaît pas, il compte en UTC
+      return new Promise<MetricsReply>((resolve) => (release = () => resolve(metricsFixture({ timeZone: 'Asia/Tokyo' })))); // Tokyo : il le connaît, mais répond tard
+    });
+    const { user } = await loaded();
+    await screen.findByText(NOTICE);
+
+    try {
+      process.env.TZ = 'Asia/Tokyo'; // le fuseau du navigateur change pendant que la page est ouverte ; un réglage de la période relance le rendu
+      await user.click(within(period()).getByRole('radio', { name: '7 jours' }));
+      await waitFor(() => expect(metricsRequests(fetchMock).at(-1)).toBe('/api/metrics?project=bdesk&range=7d&timeZone=Asia%2FTokyo'));
+      // Les chiffres gardés en attendant sont ceux de la réponse en UTC, pour Paris : ils ne disent rien de Tokyo.
+      expect(screen.queryByText(/Le serveur ne connaît pas votre fuseau/)).toBeNull();
+
+      await user.click(within(period()).getByRole('radio', { name: 'Personnalisée' }));
+      expect(customTo().max).toBe('2026-11-05'); // aujourd'hui à Tokyo, le nouveau fuseau demandé : ni le 4, jour d'UTC, ni attendre la réponse
+      await waitFor(() => expect(metricsRequests(fetchMock).at(-1)).toContain('timeZone=Asia%2FTokyo'));
+
+      await act(async () => release?.());
+      await waitFor(() => expect(screen.getByTitle('Fuseau Asia/Tokyo')).toBeTruthy());
+      expect(screen.queryByText(/Le serveur ne connaît pas votre fuseau/)).toBeNull();
+    } finally {
+      process.env.TZ = 'Europe/Paris';
+    }
+  });
+
+  describe('et le même fuseau sous un autre nom', () => {
+    withTimeZone('UTC');
+
+    it('ne dit rien quand le serveur nomme le fuseau demandé d’un autre nom (UTC et Etc/UTC)', async () => {
+      vi.setSystemTime(LATE);
+      api(() => metricsFixture({ timeZone: 'Etc/UTC' }));
+      await loaded();
+
+      expect(screen.queryByText(/Le serveur ne connaît pas votre fuseau/)).toBeNull();
+      expect(screen.getByTitle('Fuseau Etc/UTC')).toBeTruthy(); // les chiffres sont écrits dans le fuseau de la réponse
+    });
   });
 });
