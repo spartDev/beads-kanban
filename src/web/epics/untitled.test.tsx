@@ -130,6 +130,17 @@ describe('la liste des Epics', () => {
     expect(screen.getByRole('link', { name: /Epic\s*bdesk-v0\s*Sans titre/ })).toBe(row('/p/bdesk/epics?epic=bdesk-v0'));
   });
 
+  // La liste titre un ticket (`ticketTitle`) : un titre de séparateurs seuls y reste ce que l'auteur a écrit, à côté de l'identifiant. Seule la pastille et le nom de l'Epic (`epicName`) n'y trouvent pas d'intitulé (bdesk-38k.62).
+  it('écrit tel quel le titre d’une Epic faite de séparateurs seuls, à côté de son identifiant', async () => {
+    await openList([issue({ id: 'bdesk-sep', title: '-', type: 'epic' })]);
+
+    const link = row('/p/bdesk/epics?epic=bdesk-sep');
+
+    expect(within(link).getByText('-')).toBeTruthy();
+    expect(within(link).getByText('bdesk-sep')).toBeTruthy();
+    expect(within(link).queryByText(UNTITLED)).toBeNull();
+  });
+
   it('range les espaces du titre d’une Epic', async () => {
     await openList([issue({ id: 'bdesk-esp', title: '  Une   Epic \t à   espaces ', type: 'epic' })]);
 

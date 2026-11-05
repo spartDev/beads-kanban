@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Issue } from '../data/types';
 import { withAsyncTimeout } from '../test/asyncTimeout';
+import { SEPARATOR_TITLES } from '../test/blankTitles';
 import { issue, projectsResponse } from '../test/fixtures';
 import { renderApp, stubApi } from '../test/render';
 
@@ -170,6 +171,42 @@ describe.each(TITLES)('le panneau d’un ticket dont le titre est %s', (_kind, t
 
     expect(within(dialog).getByRole('heading', { level: 2, name: UNTITLED })).toBeTruthy();
     expect(unnamedHeadings(dialog)).toEqual([]);
+  });
+});
+
+/**
+ * Une Epic dont le titre n'est fait que de séparateurs (« : », « - ») (bdesk-38k.62). Son nom est dérivé du début de son titre, et il n'y en a pas : là où l'interface la nomme (`epicName`, `epicShortName`),
+ * elle dit son identifiant. Là où elle titre un ticket (`ticketTitle`), elle garde ce que l'auteur a écrit : le panneau de l'Epic elle-même, la liste des Epics.
+ */
+describe.each(SEPARATOR_TITLES)('une Epic dont le titre est %s', (_kind, epicTitle) => {
+  it('est nommée par son identifiant dans le panneau d’un Enfant : lien Parent, lien « Page Epic » et leurs infobulles', async () => {
+    const { dialog } = await openPanel(epicTitle, 'bdesk-fils', 'bdesk-fils Un Enfant');
+
+    const parent = within(dialog).getByRole('link', { name: `Epic : ${EPIC}` });
+    const page = within(dialog).getByRole('link', { name: `Page Epic : ${EPIC}` });
+
+    expect(parent.getAttribute('title')).toBe(EPIC);
+    expect(page.getAttribute('title')).toBe(tooltip(EPIC));
+  });
+
+  it('a pour titre de page et d’onglet son identifiant, et nomme sa barre d’avancement de lui', async () => {
+    stubApi({ projects: projectsResponse, issues: { bdesk: project(epicTitle) } });
+    renderApp(`/p/bdesk/epics?epic=${EPIC}`);
+    await screen.findByRole('link', { name: 'Ouvrir le ticket' });
+
+    expect(screen.getByRole('heading', { level: 1, name: EPIC })).toBeTruthy();
+    await waitFor(() => expect(document.title).toBe(`${EPIC} · beads-desktop · beads-desktop`));
+  });
+
+  it('garde son titre dans son propre panneau, en niveau 2, et non « Sans titre »', async () => {
+    stubApi({ projects: projectsResponse, issues: { bdesk: project(epicTitle) } });
+    renderApp(`/p/bdesk/t/${EPIC}`);
+
+    const dialog = await screen.findByRole('dialog', { name: new RegExp(`^${EPIC} `) });
+    const shown = epicTitle.replace(/\p{Cf}/gu, '').replace(/\s+/g, ' ').trim();
+
+    expect(within(dialog).getByRole('heading', { level: 2, name: (name) => name.replace(/\p{Cf}/gu, '') === shown })).toBeTruthy();
+    expect(within(dialog).queryByRole('heading', { level: 2, name: UNTITLED })).toBeNull();
   });
 });
 

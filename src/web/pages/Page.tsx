@@ -20,7 +20,8 @@ const UNTITLED = 'Sans titre';
  * Le titre est un texte, ou `null` tant qu'il n'est pas arrivé (la page charge) : `Page` dessine alors elle-même le squelette du titre et le nomme (voir plus bas).
  * Un texte qu'on ne verrait pas (vide, fait d'espaces ou de caractères sans largeur : le nom d'un dossier, que `ProjectGate` donne pour titre à un Projet illisible) s'écrit
  * « Sans titre » (`isInvisibleText`) : jamais un `<h1>` muet (bdesk-38k.61). Tout autre texte est écrit tel quel, jusqu'à ses blancs et à sa ponctuation : le titre d'une page est un nom
- * de dossier, d'Epic ou de page, pas un titre de ticket, et ne suit pas sa règle (`ticketTitle` : elle peut compter pour vide plus que ce qu'on ne voit pas, et réécrit les blancs).
+ * de dossier, d'Epic ou de page, pas un titre de ticket, et ne suit pas sa règle (`ticketTitle` réécrit les blancs) ; celui d'une Epic arrive déjà nommé (`epicName`, qui dit l'identifiant d'une Epic
+ * dont le titre n'est fait que de séparateurs).
  */
 export function Page({
   title,

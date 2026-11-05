@@ -18,7 +18,7 @@ export const INVISIBLE_TEXTS = [
 
 /**
  * Des textes qui se voient, donc ce que l'auteur a écrit : ils ne sont pas invisibles, et une page les écrit tels quels, jusqu'à leurs blancs. De la ponctuation seule en est : un dossier
- * peut s'appeler « - » ou « : », et les règles d'une autre partie de l'interface (le titre d'un ticket, dont la règle peut prendre un séparateur seul pour un titre vide) ne sont pas les siennes.
+ * peut s'appeler « - » ou « : », et les règles d'une autre partie de l'interface (le nom d'une Epic, `epicName`, qui dit son identifiant quand son titre n'est fait que de séparateurs) ne sont pas les siennes.
  */
 export const VISIBLE_TEXTS = [
   ['un tiret', '-'],

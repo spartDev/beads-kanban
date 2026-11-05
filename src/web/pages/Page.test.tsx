@@ -258,9 +258,9 @@ describe('Page : un titre sans texte s’écrit « Sans titre » (bdesk-38k.61)'
 
 /**
  * Un titre de page n'est pas un titre de ticket (bdesk-38k.61, revue). Ceux d'une page sont le nom du dossier d'un Projet (`ProjectGate`), le nom d'une Epic, le nom d'une page : `Page` les
- * écrit tels qu'ils sont, jusqu'à leurs blancs, sauf quand on n'en verrait rien. Elle ne passe pas par la règle des titres de ticket (`ticketTitle` : `isBlankTitle`, qui peut compter pour vide
- * un séparateur seul, et `collapseSpaces`, qui réécrit les blancs) : un dossier peut s'appeler « - » ou « : », et sa page ne s'appelle pas « Sans titre » pour autant. Le test est là pour que
- * ni la règle des tickets ni sa réécriture ne change un titre de page sans qu'on le voie.
+ * écrit tels qu'ils sont, jusqu'à leurs blancs, sauf quand on n'en verrait rien. Elle ne passe pas par la règle des titres de ticket (`ticketTitle` : `collapseSpaces` réécrit les blancs) ni par celle
+ * du nom d'une Epic (`epicName`, qui dit l'identifiant d'une Epic dont le titre n'est fait que de séparateurs) : un dossier peut s'appeler « - » ou « : », et sa page ne s'appelle pas « Sans titre » pour
+ * autant. Le test est là pour que ni la règle des tickets ni sa réécriture ne change un titre de page sans qu'on le voie.
  */
 describe('Page : un titre qui se voit est écrit tel quel (bdesk-38k.61)', () => {
   it.each(VISIBLE_TEXTS)('%s : le titre est le texte, sans une lettre de changée', (_kind, text) => {

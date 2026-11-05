@@ -793,6 +793,82 @@ describe('le filtre Epic', () => {
       await waitFor(() => expect(titlesIn(column('Prêt'))).toEqual(['Enfant de la seconde']));
     });
   });
+
+  // Une Epic sans titre se lit par son identifiant dans le filtre : une autre qui porte ce même texte pour titre donnait deux options identiques (bdesk-38k.62).
+  describe('une Epic titrée comme l’identifiant d’une Epic sans titre', () => {
+    const options = () =>
+      [...(screen.getByRole('combobox', { name: 'Epic' }) as HTMLSelectElement).options].map((option) => [option.value, option.textContent]);
+
+    it('se distingue d’elle : la titrée porte son identifiant, l’autre garde le sien', async () => {
+      stubTickets([
+        issue({ id: 'bdesk-e1', title: '   ', type: 'epic', priority: 1 }),
+        issue({ id: 'bdesk-e2', title: 'bdesk-e1', type: 'epic', priority: 2 }),
+      ]);
+      await openBoard();
+
+      expect(options()).toEqual([
+        ['', 'Toutes les Epics'],
+        ['bdesk-e1', 'bdesk-e1'],
+        ['bdesk-e2', 'bdesk-e1 (bdesk-e2)'],
+      ]);
+    });
+
+    it('se distingue aussi quand l’une est ouverte et l’autre fermée, dans leurs groupes', async () => {
+      stubTickets([
+        issue({ id: 'bdesk-e1', title: '', type: 'epic' }),
+        issue({ id: 'bdesk-e2', title: 'BDESK-E1', type: 'epic', status: 'closed' }),
+      ]);
+      await openBoard();
+
+      expect(options()).toEqual([
+        ['', 'Toutes les Epics'],
+        ['bdesk-e1', 'bdesk-e1'],
+        ['bdesk-e2', 'BDESK-E1 (bdesk-e2)'],
+      ]);
+    });
+  });
+
+  // L'option qui retire le filtre se lit « Toutes les Epics » : une Epic qui s'intitule ainsi aurait la même, et choisir l'une ou l'autre ne se distinguerait pas (review62, F1).
+  describe('une Epic titrée comme l’option « Toutes les Epics »', () => {
+    const options = () =>
+      [...(screen.getByRole('combobox', { name: 'Epic' }) as HTMLSelectElement).options].map((option) => [option.value, option.textContent]);
+
+    it('porte son identifiant : l’option qui retire le filtre garde son libellé', async () => {
+      stubTickets([issue({ id: 'lab-kyj', title: 'Toutes les Epics', type: 'epic' })]);
+      await openBoard();
+
+      expect(options()).toEqual([
+        ['', 'Toutes les Epics'],
+        ['lab-kyj', 'Toutes les Epics (lab-kyj)'],
+      ]);
+    });
+
+    it('le fait sans tenir compte de la casse', async () => {
+      stubTickets([issue({ id: 'bdesk-e1', title: 'TOUTES LES EPICS', type: 'epic' })]);
+      await openBoard();
+
+      expect(options()).toEqual([
+        ['', 'Toutes les Epics'],
+        ['bdesk-e1', 'TOUTES LES EPICS (bdesk-e1)'],
+      ]);
+    });
+
+    it('se choisit comme une autre, et « Toutes les Epics » la retire', async () => {
+      stubTickets([
+        issue({ id: 'bdesk-e1', title: 'Toutes les Epics', type: 'epic' }),
+        issue({ id: 'bdesk-1', title: 'Enfant de l’Epic', parentId: 'bdesk-e1' }),
+        issue({ id: 'bdesk-2', title: 'Ticket sans Epic' }),
+      ]);
+      const { user } = await openBoard();
+      const select = screen.getByRole('combobox', { name: 'Epic' });
+
+      await user.selectOptions(select, 'bdesk-e1');
+      await waitFor(() => expect(titlesIn(column('Prêt'))).toEqual(['Enfant de l’Epic']));
+      await user.selectOptions(select, '');
+
+      await waitFor(() => expect(titlesIn(column('Prêt')).sort()).toEqual(['Enfant de l’Epic', 'Ticket sans Epic']));
+    });
+  });
 });
 
 describe('le sélecteur de colonne (mobile)', () => {

@@ -24,3 +24,14 @@ export const BLANK_TITLES = [
 
 /** Trois de ces titres, un par genre (vide, blanc, sans largeur) : de quoi éprouver un endroit qui monte toute l'application sans la monter dix fois. */
 export const BLANK_SAMPLE = [BLANK_TITLES[0], BLANK_TITLES[3], BLANK_TITLES[4]] as const;
+
+/**
+ * Les titres faits des seuls séparateurs de la pastille d'Epic (« : », « – », « — », « - »), avec ou sans blancs ni caractères sans largeur (bdesk-38k.62). Ce ne sont pas des titres vides : un ticket
+ * les garde tels qu'écrits (« - » reste « - »). Une Epic, elle, n'a rien à en lire, dans sa pastille comme dans son nom : elle se nomme par son identifiant (`epicName`, `epicShortName`).
+ */
+export const SEPARATOR_TITLES = [
+  ['fait d’un « : » seul', ':'],
+  ['fait d’un trait d’union seul', '-'],
+  ['fait de plusieurs séparateurs', '- - –'],
+  ['fait de séparateurs, d’espaces et de caractères sans largeur', ' \u200b: \u2060– \u200d- '],
+] as const;

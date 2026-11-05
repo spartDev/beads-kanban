@@ -54,8 +54,8 @@ describe('la page d’un Projet illisible dont le nom est blanc', () => {
 
 /**
  * Le nom d'un dossier qui est de la ponctuation seule reste le titre de la page de son Projet (bdesk-38k.61, revue) : ce n'est pas un titre de ticket, « - » ou « : » se voient, et c'est
- * ce que la barre latérale écrit aussi. La porte du Projet passe le nom tel quel à `Page` (voir `Page.test.tsx`) : la règle des titres de ticket n'a pas à s'y appliquer, même quand elle
- * compte un séparateur seul pour un titre vide.
+ * ce que la barre latérale écrit aussi. La porte du Projet passe le nom tel quel à `Page` (voir `Page.test.tsx`) : ni la règle des titres de ticket ni celle du nom d'une Epic n'ont à s'y appliquer,
+ * celle-ci prenant un séparateur seul pour un titre sans nom.
  */
 describe('la page d’un Projet illisible dont le nom est de la ponctuation', () => {
   it.each([

@@ -187,4 +187,31 @@ describe('le titre d’une carte range ses espaces comme celui d’une Epic', ()
 
     expect(card('bdesk-esp').querySelector('a[data-card-link]')?.textContent).toBe('Un titre à espaces');
   });
+
+  // Un caractère sans largeur n'est pas un blanc pour le navigateur : deux espaces qu'il sépare restaient deux à l'écran (bdesk-38k.62).
+  it('replie de même deux espaces que sépare un caractère sans largeur : une seule se voit, et aucune au bord du titre', async () => {
+    const { card } = await openBoard([issue({ id: 'bdesk-zw2', title: '\u200b Un\u200b \u200b titre \u2060' })]);
+
+    const text = card('bdesk-zw2').querySelector('a[data-card-link]')?.textContent ?? '';
+
+    expect(text.replace(/\p{Cf}/gu, '')).toBe('Un titre');
+  });
+});
+
+// Un titre de séparateurs seuls n'est pas un titre vide : la carte d'un ticket le garde tel qu'écrit, « - » reste « - » (bdesk-38k.62). Seule la pastille d'une Epic n'y trouve pas d'intitulé et dit
+// l'identifiant (`EpicPill.test.tsx`).
+describe('la carte d’un ticket dont le titre n’est fait que de séparateurs', () => {
+  it.each([
+    ['fait d’un « : » seul', ':', ':'],
+    ['fait d’un trait d’union seul', '-', '-'],
+    ['fait de plusieurs séparateurs', '- - –', '- - –'],
+    ['fait de séparateurs, d’espaces et de caractères sans largeur', ' \u200b: \u2060– \u200d- ', ': – -'],
+  ])('garde, pour un titre %s, ce titre : le lien n’est pas « Sans titre »', async (_kind, title, shown) => {
+    const { card } = await openBoard([issue({ id: 'bdesk-sep', title })]);
+
+    const link = card('bdesk-sep').querySelector('a[data-card-link]');
+
+    expect((link?.textContent ?? '').replace(/\p{Cf}/gu, '')).toBe(shown);
+    expect(within(card('bdesk-sep')).queryByText(UNTITLED)).toBeNull();
+  });
 });

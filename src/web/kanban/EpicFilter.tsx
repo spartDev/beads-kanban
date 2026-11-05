@@ -1,14 +1,14 @@
 import { Layers } from 'lucide-react';
 import { useMemo } from 'react';
 import type { Issue } from '../data/types';
-import { epicLabels } from './epics';
+import { ALL_EPICS, epicLabels } from './epics';
 
 const SELECT_ID = 'kanban-epic-filter';
 
 /**
  * Le filtre Epic : une liste native (clavier, lecteurs d'écran et sélecteur du mobile pour rien). Les Epics ouvertes
- * viennent d'abord ; les fermées sont rangées à part dès qu'il y en a. Deux Epics de même titre portent en plus leur
- * identifiant (`epicLabels`), pour qu'on les distingue.
+ * viennent d'abord ; les fermées sont rangées à part dès qu'il y en a. Une option ne se lit jamais comme une autre, « Toutes les Epics »
+ * comprise : une Epic qui s'intitule comme une autre, ou comme elle, porte en plus son identifiant (`epicLabels`).
  */
 export function EpicFilter({
   open,
@@ -42,7 +42,7 @@ export function EpicFilter({
         onChange={(event) => onChange(event.target.value || null)}
         className="h-8 min-w-0 flex-1 rounded-md border border-line-strong bg-panel pl-2 pr-1 text-ui text-ink sm:w-80 sm:flex-none"
       >
-        <option value="">Toutes les Epics</option>
+        <option value="">{ALL_EPICS}</option>
         {closed.length > 0 ? (
           <>
             {open.length > 0 ? <optgroup label="Epics ouvertes">{options(open)}</optgroup> : null}
