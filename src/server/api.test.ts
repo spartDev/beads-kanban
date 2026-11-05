@@ -1,6 +1,8 @@
 import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Writable } from 'node:stream';
+import { inspect } from 'node:util';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InvalidPeriodError } from '../domain/calendar';
 import type { TicketHistory } from '../domain/flow';
@@ -67,6 +69,25 @@ function serviceWith(overrides: Partial<ProjectService> = {}): ProjectService {
 }
 
 const get = (projects: ProjectService, url: string) => buildServer({ config, projects }).inject({ method: 'GET', url });
+
+/**
+ * Ce que le test voit d'un serveur sans en être le client : les codes des réponses qu'il envoie (`sent`), y compris celles qu'aucun client ne
+ * lira (un `inject` abandonné rejette), et de quoi attendre que la connexion d'un client parti soit vue fermée côté serveur (`left`). À poser
+ * avant la première requête.
+ */
+function watch(app: FastifyInstance) {
+  const sent: number[] = [];
+  const replies: FastifyReply[] = [];
+  app.addHook('onRequest', async (_req, reply) => {
+    replies.push(reply);
+  });
+  app.addHook('onSend', async (_req, reply, payload) => {
+    sent.push(reply.statusCode);
+    return payload;
+  });
+  const left = () => vi.waitFor(() => expect(replies[0]?.raw.destroyed).toBe(true), { timeout: 5_000 });
+  return { sent, left };
+}
 
 describe('API des Projets', () => {
   it('GET /api/projects renvoie les Projets et les dossiers ignorés', async () => {
@@ -618,20 +639,20 @@ describe('API : requêtes abandonnées par le client (bdesk-38k.20)', () => {
     await app.close();
   });
 
-  it('un abandon n’est pas une panne : aucune réponse 500 ni 503 n’en sort', async () => {
-    const app = buildServer({
-      config,
-      projects: serviceWith({
-        issue: async () => {
-          throw new ReadAborted();
-        },
-      }),
-    });
+  it('un abandon n’est pas une panne : la réponse que personne ne lira est un 499, ni 500 ni 503', async () => {
+    const { wait } = hanging();
+    const app = buildServer({ config, projects: serviceWith({ issue: wait(detail) }) });
+    const { sent } = watch(app);
+    const controller = new AbortController();
+    const reading = app
+      .inject({ method: 'GET', url: '/api/projects/beads-desktop/issues/bdesk-38k.4', signal: controller.signal })
+      .catch(() => undefined);
+    await sleep(30);
 
-    const res = await app.inject({ method: 'GET', url: '/api/projects/beads-desktop/issues/bdesk-38k.4' });
+    controller.abort(); // le service est interrompu par le signal et rejette par une ReadAborted
+    await reading;
 
-    expect(res.statusCode).not.toBe(500);
-    expect(res.statusCode).not.toBe(503);
+    await vi.waitFor(() => expect(sent).toEqual([499]), { timeout: 5_000 });
     await app.close();
   });
 });
@@ -719,7 +740,8 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
     expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'boum' }); // la réponse, elle, ne change pas
     const [line, ...others] = lines();
     expect(others).toEqual([]); // une seule ligne
-    expect(line).toMatchObject({ level: ERROR, method: 'GET', route, msg: expect.stringContaining('boum'), err: { type: 'Error', message: 'boum' } });
+    // `msg` est fixe : l'erreur, elle, est dans `err` (un message écrit trois fois, dans `msg`, `err.message` et la pile, triplait la ligne)
+    expect(line).toMatchObject({ level: ERROR, method: 'GET', route, msg: 'Erreur inattendue', err: { type: 'Error', message: 'boum' } });
     expect(line?.err?.stack).toContain('Error: boum');
     expect(line?.err?.stack).toContain('api.test.ts'); // la pile de l'erreur d'origine
     expect(line?.reqId).toEqual(expect.any(String)); // de quoi la retrouver parmi les lignes d'accès, que le niveau `info` écrit
@@ -764,7 +786,9 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
     const res = await app.inject({ method: 'GET', url: '/api/projects' });
 
     expect(res.statusCode).toBe(502);
-    expect(lines()).toMatchObject([{ level: ERROR, method: 'GET', route: '/api/projects', msg: expect.stringContaining('passerelle') }]);
+    expect(lines()).toMatchObject([
+      { level: ERROR, method: 'GET', route: '/api/projects', msg: 'Erreur inattendue', err: { type: 'Error', message: 'passerelle', statusCode: 502 } },
+    ]);
   });
 
   // Rien n'oblige le code à lever une `Error` : une valeur sans message, sans code ni pile (`throw 'x'`, `throw null`) est une erreur imprévue comme une autre.
@@ -854,16 +878,6 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
     { name: 'une requête de métriques refusée', url: '/api/metrics?range=1d', status: 400 },
     { name: 'une plage que le domaine refuse', url: '/api/metrics?from=2026-10-15&to=2026-10-01', status: 400 },
     { name: 'une origine que le flux refuse', url: '/api/projects/beads-desktop/events', headers: { origin: 'https://evil.example' }, status: 403 },
-    {
-      name: 'une lecture abandonnée',
-      url: '/api/projects/beads-desktop/issues/bdesk-38k.4',
-      stub: {
-        issue: async () => {
-          throw new ReadAborted();
-        },
-      },
-      status: 499,
-    },
   ];
 
   it.each(QUIET)('$name ($status) : une réponse attendue, rien au journal', async ({ url, stub, headers, status }) => {
@@ -873,5 +887,587 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
 
     expect(res.statusCode).toBe(status);
     expect(lines()).toEqual([]);
+  });
+
+  /**
+   * bdesk-38k.52 (relecture finale de .49, m1) : un message de 200 000 caractères donnait une ligne de 600 000 (dans `msg`, `err.message` et la
+   * pile). Chaque texte écrit au journal est plafonné, et le message n'est plus écrit qu'à sa place, dans `err`.
+   */
+  describe('taille de la ligne (bdesk-38k.52)', () => {
+    const HUGE = 200_000;
+    // Le plafond d'un texte est de l'ordre de quelques milliers de caractères ; une ligne ne dépend plus de la taille de l'erreur. La borne
+    // du test est large (une ligne entière, tous champs compris) : ce qu'elle vérifie, c'est que 200 000 caractères n'en font pas 600 000.
+    const LINE_MAX = 20_000;
+
+    const failing = (error: unknown): Partial<ProjectService> => ({
+      list: async () => {
+        throw error;
+      },
+    });
+
+    it('un message de 200 000 caractères : une ligne bornée, au début du message, avec `msg` fixe', async () => {
+      const { app, lines, text } = serve(failing(new Error(`début-${'x'.repeat(HUGE)}-fin`)));
+
+      const res = await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(res.statusCode).toBe(500);
+      expect(text().length).toBeLessThan(LINE_MAX);
+      const [line, ...others] = lines();
+      expect(others).toEqual([]);
+      expect(line).toMatchObject({ level: ERROR, msg: 'Erreur inattendue', err: { type: 'Error' } });
+      expect(line?.err?.message.startsWith(`début-${'x'.repeat(1_000)}`)).toBe(true); // le début du message, de quoi reconnaître l'erreur
+      expect(line?.err?.message.length).toBeLessThan(HUGE / 10);
+      expect(line?.err?.message).not.toContain('-fin'); // la fin est coupée : le plafond est visible
+      expect(line?.err?.stack.length).toBeLessThan(HUGE / 10); // la pile commence par le message
+    });
+
+    it('un Projet illisible (503) : la ligne `warn` est bornée aussi, quelle que soit la longueur de la raison', async () => {
+      const { app, lines, text } = serve({
+        list: async () => {
+          throw new ProjectUnreadableError('hcp', `début-${'r'.repeat(HUGE)}`);
+        },
+      });
+
+      const res = await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(res.statusCode).toBe(503);
+      expect(text().length).toBeLessThan(LINE_MAX);
+      const [line, ...others] = lines();
+      expect(others).toEqual([]);
+      expect(line).toMatchObject({ level: WARN, method: 'GET', route: '/api/projects' });
+      expect(line?.msg.startsWith('Projet illisible : hcp (début-rrr')).toBe(true);
+    });
+
+    it('un message plus court que le plafond est écrit en entier', async () => {
+      const message = `un message de taille raisonnable : ${'y'.repeat(1_500)}`;
+      const { app, lines } = serve(failing(new Error(message)));
+
+      await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(lines()[0]?.err?.message).toBe(message);
+    });
+
+    it('la `cause` est suivie, mais ses textes sont plafonnés eux aussi, et la chaîne ne dépend pas de sa longueur', async () => {
+      let error = new Error(`dernière-${'z'.repeat(HUGE)}`);
+      for (let depth = 0; depth < 10; depth++) error = new Error(`niveau ${depth} ${'c'.repeat(HUGE)}`, { cause: error });
+      const { app, lines, text } = serve(failing(error));
+
+      await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(text().length).toBeLessThan(LINE_MAX * 4);
+      expect(lines()).toHaveLength(1);
+      const message = lines()[0]?.err?.message ?? '';
+      expect(message).toContain('niveau 9'); // l'erreur
+      expect(message).toContain('niveau 8'); // sa cause, que la ligne suit
+      expect(message).not.toContain('niveau 0'); // mais pas dix niveaux de suite
+    });
+
+    it('les propriétés de l’erreur : les valeurs simples restent (`code`), les textes sont plafonnés, les objets (réponse, en-têtes d’un client HTTP) ne sont pas écrits', async () => {
+      const { app, lines, text } = serve(
+        failing(
+          Object.assign(new Error('boum'), {
+            code: 'E_BOUM',
+            errno: -2,
+            retryable: false,
+            attempts: 10n,
+            parent: null,
+            stdout: `sortie-${'o'.repeat(HUGE)}`,
+            response: { headers: { authorization: 'Bearer s3cret-reponse' }, body: 'b'.repeat(HUGE) },
+          }),
+        ),
+      );
+
+      await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(text().length).toBeLessThan(LINE_MAX);
+      expect(text()).not.toContain('s3cret');
+      const err = lines()[0]?.err as Record<string, unknown> | undefined;
+      expect(err).toMatchObject({ type: 'Error', message: 'boum', code: 'E_BOUM', errno: -2, retryable: false, attempts: 10, parent: null });
+      expect(String(err?.stdout).startsWith('sortie-ooo')).toBe(true);
+      expect(String(err?.stdout).length).toBeLessThan(HUGE / 10);
+      expect(err).not.toHaveProperty('response');
+    });
+
+    it('une valeur levée qui n’est pas une Error : la ligne est bornée aussi, et dit le début de la valeur', async () => {
+      const { app, lines, text } = serve(failing(`début-${'v'.repeat(HUGE)}`));
+
+      const res = await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(res.statusCode).toBe(500);
+      // `inspect` s'arrête à 10 000 caractères par défaut : le plafond du journal est plus bas (une ligne de 10 300 caractères ne passe pas)
+      expect(text().length).toBeLessThan(8_000);
+      const [line, ...others] = lines();
+      expect(others).toEqual([]);
+      expect(line?.msg.startsWith("Erreur inattendue (valeur levée qui n'est pas une Error) : 'début-vvv")).toBe(true);
+    });
+
+    it('un objet levé aux gros textes, et un tableau énorme : bornés de même', async () => {
+      const { app, text } = serve(failing({ texts: [{ a: 'a'.repeat(HUGE) }, 'b'.repeat(HUGE)], list: Array.from({ length: 5_000 }, (_v, i) => `élément ${i}`) }));
+
+      await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(text().length).toBeLessThan(LINE_MAX);
+      expect(text()).toContain('Erreur inattendue');
+    });
+
+    it('un message qui n’est pas un texte ne fait pas échouer le gestionnaire, ni ne fait écrire l’adresse par celui de Fastify', async () => {
+      const error = new Error('boum');
+      Object.defineProperty(error, 'message', { value: { detail: 'objet-sans-texte' } });
+      const { app, lines, text } = serve(failing(error));
+
+      const res = await app.inject({ method: 'GET', url: '/api/projects?token=s3cret-requete' });
+
+      expect(res.statusCode).toBe(500);
+      expect(lines()).toHaveLength(1);
+      expect(text()).not.toContain('s3cret');
+    });
+  });
+
+  /**
+   * bdesk-38k.52 (relecture, B1) : « Fastify ne reprend jamais la main » ne tient que si le gestionnaire ne lève pas. Or il lisait des accesseurs
+   * de l'erreur (`Object.entries`, `cause`) et mettait son message tel quel dans le corps JSON : un accesseur qui lève, un message `BigInt` ou
+   * circulaire (que `JSON.stringify` refuse) faisaient échouer le gestionnaire ou la réponse, et le gestionnaire par défaut de Fastify écrivait alors
+   * l'adresse demandée avec sa requête (`?token=…` mesuré sur un vrai serveur). Le corps ne reçoit que le message qui est un texte, la lecture de
+   * l'erreur est gardée propriété par propriété, et un filet autour de tout le gestionnaire écrit une ligne fixe et répond un 500 générique.
+   */
+  describe('un gestionnaire qui ne lève jamais (bdesk-38k.52)', () => {
+    const GENERIC = 'Erreur inattendue.';
+    const NET = "Erreur inattendue (le gestionnaire d'erreurs a échoué)"; // la ligne fixe du filet
+    const SECRETS = { authorization: 'Bearer s3cret-en-tete', cookie: 'session=s3cret-cookie' };
+    const URL_SECRETE = '/api/projects?token=s3cret-requete';
+
+    const failing = (error: unknown): Partial<ProjectService> => ({
+      list: async () => {
+        throw error;
+      },
+    });
+    /** Une erreur dont le message est autre chose qu'un texte. */
+    const withMessage = (message: unknown, extra: object = {}) =>
+      Object.defineProperty(Object.assign(new Error('boum'), extra), 'message', { value: message });
+    /** Une erreur dont la propriété `key` est un accesseur qui lève. */
+    const withGetter = (key: string, enumerable = false) =>
+      Object.defineProperty(new Error('boum'), key, {
+        enumerable,
+        configurable: true,
+        get() {
+          throw new Error('accesseur-qui-leve');
+        },
+      });
+    /** Une erreur dont la liste des clés ne se lit pas (`Object.keys` lève), et dont le reste se lit. */
+    const proxyWithoutKeys = () =>
+      new Proxy(new Error('boum'), {
+        ownKeys() {
+          throw new Error('clés-illisibles');
+        },
+      });
+    const circular = () => {
+      const object: Record<string, unknown> = { nom: 'cercle' };
+      object.self = object;
+      return object;
+    };
+
+    /** Demande `/api/projects` avec une requête et des en-têtes secrets, et vérifie qu'aucune ligne du journal ne les cite. */
+    async function ask(stub: Partial<ProjectService>) {
+      const served = serve(stub);
+      const res = await served.app.inject({ method: 'GET', url: URL_SECRETE, headers: SECRETS });
+      expect(served.text()).not.toContain('s3cret'); // le gestionnaire par défaut de Fastify, lui, écrit `req.url` avec sa requête
+      expect(served.text()).not.toContain('token');
+      return { res, lines: served.lines };
+    }
+
+    it.each([
+      ['un message BigInt, que JSON.stringify refuse', () => withMessage(10n), GENERIC, '10n'],
+      ['un message objet circulaire', () => withMessage(circular()), GENERIC, expect.stringContaining('Circular')],
+      ['un message objet dont l’inspection lève', () => withMessage({ [inspect.custom]: () => { throw new Error('inspection-qui-leve'); } }), GENERIC, '(illisible)'],
+      ['une propriété énumérable dont l’accesseur lève', () => withGetter('detail', true), 'boum', 'boum'],
+      ['une `cause` dont l’accesseur lève', () => withGetter('cause'), 'boum', 'boum'],
+      ['des clés qui ne se lisent pas (un Proxy dont ownKeys lève)', () => proxyWithoutKeys(), 'boum', 'boum'],
+      ['un `stack` dont l’accesseur lève', () => withGetter('stack'), 'boum', 'boum'],
+      ['un `constructor` dont l’accesseur lève', () => withGetter('constructor'), 'boum', 'boum'],
+      ['un `statusCode` dont l’accesseur lève (le code reste 500)', () => withGetter('statusCode'), 'boum', 'boum'],
+      ['un `status` dont l’accesseur lève (le code reste 500)', () => withGetter('status'), 'boum', 'boum'],
+    ])('500 : %s ne fait pas échouer le gestionnaire : réponse de l’API, une seule ligne `error`, ni adresse ni en-tête', async (_name, thrown, body, message) => {
+      const { res, lines } = await ask(failing(thrown()));
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: body });
+      const [line, ...others] = lines();
+      expect(others).toEqual([]); // la nôtre, pas aussi celle du gestionnaire de Fastify
+      expect(line).toMatchObject({ level: ERROR, method: 'GET', route: '/api/projects', msg: 'Erreur inattendue', err: { message } });
+    });
+
+    it('500 : un `message` dont l’accesseur lève : réponse de l’API, une seule ligne `error`', async () => {
+      const { res, lines } = await ask(failing(withGetter('message')));
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: GENERIC });
+      expect(lines()).toMatchObject([{ level: ERROR, msg: 'Erreur inattendue', err: { type: 'Error' } }]);
+    });
+
+    it.each([
+      ['un message BigInt', () => 10n],
+      ['un message objet', () => ({ secret: 's3cret-objet' })],
+      ['un message circulaire', () => circular()],
+    ])('4xx : %s : le code de l’erreur est gardé, le corps dit un message générique, et l’objet ne part pas au client', async (_name, message) => {
+      const { res, lines } = await ask(failing(withMessage(message(), { statusCode: 400 })));
+
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ statusCode: 400, error: 'Bad Request', message: GENERIC });
+      expect(res.body).not.toContain('s3cret');
+      expect(lines()).toEqual([]); // une requête refusée n'est pas une panne
+    });
+
+    it('un message texte d’une 4xx est dit tel quel au client, comme avant', async () => {
+      const { res } = await ask(failing(Object.assign(new Error('requête mal formée'), { statusCode: 422 })));
+
+      expect(res.statusCode).toBe(422);
+      expect(res.json()).toEqual({ statusCode: 422, error: 'Unprocessable Entity', message: 'requête mal formée' });
+    });
+
+    // Le filet : ce qui, malgré les gardes, ferait lever le gestionnaire (ici, ce qu'il lit avant de journaliser quoi que ce soit)
+    it.each([
+      ['un `name` dont l’accesseur lève (lu pour reconnaître un abandon)', () => withGetter('name')],
+      ['un Proxy dont le prototype ne se lit pas (`instanceof` lève)', () => new Proxy(new Error('boum'), { getPrototypeOf: () => { throw new Error('prototype-illisible'); } })],
+    ])('filet : %s : une ligne fixe sans l’adresse, et une réponse 500 générique', async (_name, thrown) => {
+      const { res, lines } = await ask(failing(thrown()));
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: GENERIC });
+      expect(lines()).toMatchObject([{ level: ERROR, method: 'GET', route: '/api/projects', msg: NET }]);
+    });
+
+    it('filet : une valeur levée dont l’inspection lève : une ligne fixe, une réponse 500 générique', async () => {
+      const thrown = { [inspect.custom]: () => { throw new Error('inspection-qui-leve'); } };
+      const { res, lines } = await ask(failing(thrown));
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: GENERIC });
+      expect(lines()).toMatchObject([{ level: ERROR, msg: NET }]);
+    });
+  });
+
+  /**
+   * bdesk-38k.52 (relecture, remarques mineures) : la ligne est bornée en tout, pas seulement par texte (nombre de propriétés copiées, longueur
+   * des clés), elle garde les erreurs d'un `AggregateError` (que le sérialiseur de pino écrivait avant le plafond), le `code` d'un `DOMException`
+   * et une `cause` qui est un texte, et ne coupe pas une paire de substitution en deux.
+   */
+  describe('ce que la ligne garde, et sa taille totale (bdesk-38k.52)', () => {
+    const HUGE = 200_000;
+    const failing = (error: unknown): Partial<ProjectService> => ({
+      list: async () => {
+        throw error;
+      },
+    });
+    const errOf = (lines: () => LogLine[]) => lines()[0]?.err as unknown as Record<string, unknown>;
+
+    it('300 propriétés de 4 000 caractères : un nombre borné de propriétés est écrit, la ligne ne grossit pas avec leur nombre', async () => {
+      const props = Object.fromEntries(Array.from({ length: 300 }, (_v, i) => [`prop${i}`, 'p'.repeat(4_000)]));
+      const { app, lines, text } = serve(failing(Object.assign(new Error('boum'), props)));
+
+      await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(text().length).toBeLessThan(60_000); // 300 × 4 000 = 1,2 million sans plafond
+      const err = errOf(lines);
+      expect(Object.keys(err).filter((key) => key.startsWith('prop'))).toHaveLength(10);
+      expect(err).toHaveProperty('prop0'); // les premières, dans l'ordre où l'erreur les a posées
+    });
+
+    it('une clé de 200 000 caractères est coupée : la ligne ne grossit pas avec la longueur des clés', async () => {
+      const { app, lines, text } = serve(failing(Object.assign(new Error('boum'), { ['k'.repeat(HUGE)]: 'valeur' })));
+
+      await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(text().length).toBeLessThan(20_000);
+      const keys = Object.keys(errOf(lines)).filter((key) => key.startsWith('kkk'));
+      expect(keys).toHaveLength(1); // la propriété est là, sous une clé coupée
+      expect(keys[0]?.length).toBeLessThanOrEqual(64);
+    });
+
+    it('un AggregateError garde ses erreurs (les premières, chacune plafonnée), comme le sérialiseur de pino avant le plafond', async () => {
+      const inner = [new Error('un'), `deux-${'x'.repeat(HUGE)}`, new Error(`trois-${'y'.repeat(HUGE)}`), new Error('quatre')];
+      const { app, lines, text } = serve(failing(new AggregateError(inner, 'plusieurs échecs')));
+
+      const res = await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(res.statusCode).toBe(500);
+      expect(text().length).toBeLessThan(30_000);
+      const err = errOf(lines) as { type: string; message: string; aggregateErrors: { type: string; message: string }[] };
+      expect(err).toMatchObject({ type: 'AggregateError', message: 'plusieurs échecs' });
+      expect(err.aggregateErrors).toHaveLength(3); // pas les quatre
+      expect(err.aggregateErrors[0]).toMatchObject({ type: 'Error', message: 'un' });
+      expect(String(err.aggregateErrors[1]).startsWith("'deux-xxx")).toBe(true); // une valeur qui n'est pas une Error : dite par `inspect`, plafonnée
+      expect(String(err.aggregateErrors[1]).length).toBeLessThan(HUGE / 10);
+      expect(err.aggregateErrors[2]?.message.startsWith('trois-yyy')).toBe(true);
+      expect(err.aggregateErrors[2]?.message.length).toBeLessThan(HUGE / 10);
+      expect(text()).not.toContain('quatre');
+    });
+
+    it('des AggregateError imbriqués, aux gros messages : la ligne reste bornée (les erreurs d’une erreur n’ont ni cause ni erreurs)', async () => {
+      const tree = (depth: number): AggregateError =>
+        new AggregateError(depth === 0 ? [] : [tree(depth - 1), tree(depth - 1), tree(depth - 1)], `niveau ${depth} ${'m'.repeat(HUGE)}`, { cause: new Error(`cause ${'c'.repeat(HUGE)}`) });
+      const { app, lines, text } = serve(failing(tree(5)));
+
+      await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(lines()).toHaveLength(1);
+      expect(text().length).toBeLessThan(80_000); // 3^5 erreurs, chacune de 400 000 caractères, sans plafond
+    });
+
+    it('un AggregateError qui se contient lui-même : une ligne, sans boucle', async () => {
+      const aggregate = new AggregateError([], 'cercle');
+      aggregate.errors.push(aggregate, new AggregateError([aggregate], 'dedans'));
+      const { app, lines } = serve(failing(aggregate));
+
+      const res = await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(res.statusCode).toBe(500);
+      expect(lines()).toHaveLength(1);
+      expect(errOf(lines)).toMatchObject({ type: 'AggregateError', message: 'cercle' });
+    });
+
+    it.each([
+      ['la paire à cheval sur le plafond n’est pas coupée en deux : le message s’arrête avant elle', 3_999, 'a'.repeat(3_999), 502],
+      ['une paire qui tient dans le plafond est gardée en entier', 3_998, `${'a'.repeat(3_998)}😀`, 500],
+    ])('%s', async (_name, before, kept, rest) => {
+      const { app, lines } = serve(failing(new Error(`${'a'.repeat(before)}😀${'b'.repeat(500)}`)));
+
+      await app.inject({ method: 'GET', url: '/api/projects' });
+
+      const message = (errOf(lines) as { message: string }).message;
+      expect(message).toBe(`${kept}… (+${rest} caractères)`); // ni demi-paire en fin de texte, et ce qui reste est dit
+    });
+
+    it('le `code` d’un DOMException (un accesseur du prototype, que `Object.entries` ne voit pas) est écrit', async () => {
+      const { app, lines } = serve(failing(new DOMException('délai dépassé', 'TimeoutError')));
+
+      await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(errOf(lines)).toMatchObject({ type: 'DOMException', message: 'délai dépassé', code: 23 });
+    });
+
+    it('une `cause` qui est un texte est écrite, plafonnée ; une `cause` qui est une Error est toujours suivie', async () => {
+      const { app, lines, text } = serve(failing(new Error('boum', { cause: `racine-${'c'.repeat(HUGE)}` })));
+      const another = serve(failing(new Error('boum', { cause: 'court' })));
+      const chained = serve(failing(new Error('boum', { cause: new Error('cause d’Error') })));
+
+      await app.inject({ method: 'GET', url: '/api/projects' });
+      await another.app.inject({ method: 'GET', url: '/api/projects' });
+      await chained.app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(text().length).toBeLessThan(20_000);
+      expect(String(errOf(lines).cause).startsWith('racine-ccc')).toBe(true);
+      expect(String(errOf(lines).cause).length).toBeLessThan(HUGE / 10);
+      expect(errOf(another.lines).cause).toBe('court');
+      expect(errOf(chained.lines).message).toBe('boum: cause d’Error');
+    });
+  });
+
+  /**
+   * bdesk-38k.52 (m4) : un `statusCode` qui n'est pas un code HTTP valide faisait lever `reply.code` dans le gestionnaire ; Fastify prenait alors
+   * le relais avec son gestionnaire par défaut, qui écrit l'adresse demandée avec sa requête (`?token=…` mesuré dans le journal). Le code est
+   * donc borné avant `reply.code` : un entier de 400 à 599, sinon 500.
+   */
+  describe('code de statut de l’erreur (bdesk-38k.52)', () => {
+    const failing = (error: unknown): Partial<ProjectService> => ({
+      list: async () => {
+        throw error;
+      },
+    });
+    const withStatusCode = (statusCode: unknown) => failing(Object.assign(new Error('boum'), { statusCode }));
+
+    it.each([
+      ['une chaîne qui n’est pas un nombre', 'abc'],
+      ['un nombre écrit en chaîne', '503'],
+      ['600, juste au-dessus des codes HTTP', 600],
+      ['un très grand nombre', 99_999],
+      ['un code 2xx', 200],
+      ['un code 3xx', 302],
+      ['399, juste sous les erreurs', 399],
+      ['zéro', 0],
+      ['un nombre négatif', -503],
+      ['un nombre à virgule', 503.5],
+      ['NaN', Number.NaN],
+      ['l’infini', Number.POSITIVE_INFINITY],
+      ['null', null],
+      ['un objet', { code: 503 }],
+      ['un booléen', true],
+    ])('statusCode invalide (%s) : 500 en JSON, une seule ligne `error`, et ni l’adresse demandée ni sa requête au journal', async (_name, statusCode) => {
+      const { app, lines, text } = serve(withStatusCode(statusCode));
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/projects?token=s3cret-requete',
+        headers: { authorization: 'Bearer s3cret-en-tete', cookie: 'session=s3cret-cookie' },
+      });
+
+      expect(text()).not.toContain('s3cret'); // le gestionnaire par défaut de Fastify, lui, écrit `req.url` avec sa requête
+      expect(text()).not.toContain('token');
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'boum' });
+      const [line, ...others] = lines();
+      expect(others).toEqual([]); // la nôtre, pas aussi celle du gestionnaire de Fastify
+      expect(line).toMatchObject({ level: ERROR, method: 'GET', route: '/api/projects', msg: 'Erreur inattendue', err: { type: 'Error', message: 'boum' } });
+    });
+
+    it.each([
+      [400, 400, false],
+      [404, 404, false],
+      [499, 499, false],
+      [500, 500, true],
+      [503, 503, true],
+      [599, 599, true],
+    ])('statusCode %i est un code valide : la réponse le garde, et la ligne `error` est écrite à partir de 500 seulement (%s)', async (statusCode, expected, logged) => {
+      const { app, lines } = serve(withStatusCode(statusCode));
+
+      const res = await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(res.statusCode).toBe(expected);
+      expect(res.json()).toMatchObject({ statusCode: expected, message: 'boum' });
+      expect(lines()).toHaveLength(logged ? 1 : 0);
+    });
+
+    // m2 : `status` est la convention de `http-errors` (que `statusCode` double) ; Fastify en aurait pris le code, le gestionnaire l'ignorait (500).
+    it.each([
+      [503, true],
+      [502, true],
+      [404, false],
+      [418, false],
+    ])('une Error qui porte `status` %i (convention de http-errors), sans `statusCode` : la réponse le suit, la ligne `error` aussi (%s)', async (status, logged) => {
+      const { app, lines } = serve(failing(Object.assign(new Error('boum'), { status })));
+
+      const res = await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(res.statusCode).toBe(status);
+      expect(res.json()).toMatchObject({ statusCode: status, message: 'boum' });
+      expect(lines()).toHaveLength(logged ? 1 : 0);
+    });
+
+    it.each([
+      ['une chaîne', '503'],
+      ['un code hors de 400 à 599', 700],
+      ['un code 3xx', 301],
+      ['un nombre à virgule', 404.5],
+    ])('un `status` invalide (%s) vaut 500 comme un `statusCode` invalide : une seule ligne, sans l’adresse demandée', async (_name, status) => {
+      const { app, lines, text } = serve(failing(Object.assign(new Error('boum'), { status })));
+
+      const res = await app.inject({ method: 'GET', url: '/api/projects?token=s3cret-requete' });
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'boum' });
+      expect(lines()).toHaveLength(1);
+      expect(text()).not.toContain('s3cret');
+    });
+
+    it('avec les deux, `statusCode` prime ; s’il est invalide, `status` prend le relais', async () => {
+      const both = serve(failing(Object.assign(new Error('boum'), { statusCode: 418, status: 503 })));
+      expect((await both.app.inject({ method: 'GET', url: '/api/projects' })).statusCode).toBe(418);
+      expect(both.lines()).toEqual([]);
+
+      const fallback = serve(failing(Object.assign(new Error('boum'), { statusCode: 'abc', status: 503 })));
+      expect((await fallback.app.inject({ method: 'GET', url: '/api/projects' })).statusCode).toBe(503);
+      expect(fallback.lines()).toHaveLength(1);
+    });
+
+    it('un objet levé qui n’est pas une Error ne choisit pas son code, `status` ou `statusCode` : 500 comme avant', async () => {
+      const { app } = serve(failing({ status: 404, statusCode: 404 }));
+
+      const res = await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(res.statusCode).toBe(500);
+    });
+  });
+
+  /**
+   * bdesk-38k.52 (m5) : le 499 se décidait au seul nom de l'erreur (`AbortError`). Une `ReadAborted` levée alors que le client attend toujours
+   * (une lecture partagée annulée par d'autres, un délai) répondait 499 sans rien écrire : une panne passée sous silence. Il faut aussi que le
+   * client soit parti, sa connexion fermée avant la réponse. `req.signal` ne le dit pas seul : Fastify ne l'écoute qu'à sa première lecture, et
+   * une route qui ne le lit pas (la liste des Projets) ne le voit jamais abandonné, même quand la connexion est fermée (mesuré).
+   */
+  describe('départ du client (bdesk-38k.52)', () => {
+    /** Un service qui lève `thrown()` quand le test ouvre la porte (`open`), après avoir dit qu'il était arrivé (`entered`). */
+    function gated(thrown: () => unknown) {
+      let open = () => {};
+      let enter = () => {};
+      const opened = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+      const entered = new Promise<void>((resolve) => {
+        enter = resolve;
+      });
+      const fail = async (): Promise<never> => {
+        enter();
+        await opened;
+        throw thrown();
+      };
+      return { fail, open, entered };
+    }
+
+    const ROUTES: [name: string, url: string, stub: (fail: () => Promise<never>) => Partial<ProjectService>][] = [
+      ['la liste des Projets, qui ne lit pas `req.signal`', '/api/projects', (fail) => ({ list: fail })],
+      ['la liste des tickets', '/api/projects/beads-desktop/issues', (fail) => ({ issues: fail })],
+      ['la fiche d’un ticket', '/api/projects/beads-desktop/issues/bdesk-38k.4', (fail) => ({ issue: fail })],
+    ];
+
+    /**
+     * Un client réel : il demande `path`, et l'on rend la main quand le serveur a reçu la requête. Sur une vraie connexion : l'`inject` abandonné de
+     * Fastify écrit lui-même une ligne `error` (« request errored »), que le serveur réel n'écrit pas.
+     */
+    async function connect(app: FastifyInstance, path: string) {
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      const { port } = app.server.address() as AddressInfo;
+      const client = request({ host: '127.0.0.1', port, path });
+      client.on('error', () => undefined);
+      client.end();
+      return client;
+    }
+
+    it.each(ROUTES)('%s : le client ferme sa connexion, puis la lecture finit en abandon : 499 et rien au journal', async (_name, url, stub) => {
+      const { fail, open, entered } = gated(() => new ReadAborted());
+      const { app, lines } = serve(stub(fail));
+      const { sent, left } = watch(app);
+      const client = await connect(app, url);
+      await entered;
+
+      client.destroy();
+      await left();
+      open();
+
+      await vi.waitFor(() => expect(sent).toEqual([499]), { timeout: 5_000 });
+      expect(lines()).toEqual([]);
+    });
+
+    it.each([
+      ['une ReadAborted', () => new ReadAborted(), 'ReadAborted'],
+      ['une AbortError de la plateforme (DOMException)', () => new DOMException('The operation was aborted.', 'AbortError'), 'DOMException'],
+      ['une Error nommée AbortError', () => Object.assign(new Error('délai dépassé'), { name: 'AbortError' }), 'Error'],
+    ])('%s levée alors que le client attend toujours n’est pas son abandon : une panne, 500 et une ligne `error`', async (_name, thrown, type) => {
+      const { app, lines } = serve({
+        list: async () => {
+          throw thrown();
+        },
+      });
+
+      const res = await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toMatchObject({ statusCode: 500, error: 'Internal Server Error' });
+      // `type` est la classe de l'erreur : la copie plafonnée de `loggable` la garde, même pour un DOMException dont les accesseurs lèvent hors de lui
+      expect(lines()).toMatchObject([{ level: ERROR, method: 'GET', route: '/api/projects', msg: 'Erreur inattendue', err: { type, message: expect.any(String) } }]);
+    });
+
+    it('le départ du client ne suffit pas : une vraie panne qui survient après son départ reste une panne, tracée (500, une ligne `error`)', async () => {
+      const { fail, open, entered } = gated(() => new Error('vraie panne'));
+      const { app, lines } = serve({ list: fail });
+      const { sent, left } = watch(app);
+      const client = await connect(app, '/api/projects');
+      await entered;
+
+      client.destroy();
+      await left();
+      open();
+
+      await vi.waitFor(() => expect(sent).toEqual([500]), { timeout: 5_000 });
+      expect(lines()).toMatchObject([{ level: ERROR, msg: 'Erreur inattendue', err: { message: 'vraie panne' } }]);
+    });
   });
 });
