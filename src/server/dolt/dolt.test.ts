@@ -402,8 +402,14 @@ describe.skipIf(!hasBinary('dolt'))('lectures groupées et abandonnées sur une 
         await sleep(25);
       }
     }
-    /** Ce que dolt laisse dans `.dolt/noms` quand on le tue pendant qu'il écrit `manifest` : un fichier temporaire que personne ne nettoie. */
-    const residues = () => readdirSync(join(dir, '.dolt', 'noms')).filter((name) => name.startsWith('nbs_manifest_'));
+    /**
+     * Ce que dolt laisse quand on le tue pendant qu'il écrit `manifest` : un fichier temporaire `nbs_manifest_…` que personne ne nettoie,
+     * dans `.dolt/noms` ou dans la base des statistiques que dolt tient à côté (`.dolt/stats/.dolt/noms`, où tombe de un quart à un tiers des restes).
+     */
+    const residues = () =>
+      [join('.dolt', 'noms'), join('.dolt', 'stats', '.dolt', 'noms')].flatMap((sub) =>
+        existsSync(join(dir, sub)) ? readdirSync(join(dir, sub)).filter((name) => name.startsWith('nbs_manifest_')).map((name) => join(sub, name)) : [],
+      );
     /** Un lanceur qui note le numéro de chaque processus puis devient le vrai dolt (`exec`, donc le même numéro) : de quoi savoir quand ils ont tous fini. */
     function launcher() {
       const folder = mkdtempSync(join(tmpdir(), 'bdesk-launcher-'));
@@ -465,29 +471,53 @@ describe.skipIf(!hasBinary('dolt'))('lectures groupées et abandonnées sur une 
 
     // Le scénario qui laissait des dizaines de fichiers : un parcours rapide des tickets, chaque lecture abandonnée à un âge différent,
     // avant l'ouverture de la base, pendant, et pendant sa fermeture (les deux instants où `manifest` est réécrit par un fichier temporaire).
-    it('un parcours rapide avec abandons ne laisse aucun fichier nbs_manifest_ dans .dolt/noms : les lectures lancées vont au bout', async () => {
+    //
+    // Rien n'y suppose la vitesse de la machine (bdesk-38k.35) : chaque étape attend la condition dont elle dépend. Un lanceur ne note son
+    // numéro qu'à sa première ligne, quelques dizaines de millisecondes après son lancement à chaud, 0,2 à 0,8 s pour le premier lanceur
+    // exécuté d'un fichier neuf (macOS), plusieurs secondes quand d'autres tests créent des exécutables au même moment (la suite
+    // entière). Jusque-là il tient sa place et `finished()` l'ignore (vrai à vide) : la vague suivante, qui croyait la précédente finie,
+    // faisait la queue derrière des places pleines et était abandonnée avant d'être lancée (de deux à cinq vagues sur douze perdues,
+    // d'où « expected 42 to be >= 48 »). Donc, avec les six places de la vraie configuration :
+    // - les abandons des six lectures de la vague ne sont armés que quand leurs six processus ont démarré : 30 à 130 ms après leur
+    //   lancement, c'est l'âge de processus qui tournent, jamais celui d'une lecture encore en file ni d'un processus que la machine n'a
+    //   pas encore laissé démarrer ;
+    // - deux autres lectures par vague font la queue derrière les six places et sont abandonnées aussitôt, avant qu'une place soit rendue :
+    //   elles ne doivent jamais partir (une lecture abandonnée en file ne lance aucun processus, ADR 0003) ;
+    // - une vague ne finit que quand ses six processus ont fini, et le compte des processus est exactement celui des lectures lancées.
+    // Chaque attente a son plafond (20 s) et dit laquelle a échoué ; le délai du test est la somme de ces plafonds pour les douze vagues
+    // (12 × 2 × 20 s, arrondie) : il ne coupe jamais une machine lente avant qu'une attente n'ait dit ce qui manque. Mesuré sous
+    // `taskpolicy -b` : de 30 à 105 s seul, de 107 à 152 s à trois en même temps, mais plus de 180 s six fois sur quinze (6 s au repos).
+    it('un parcours rapide avec abandons ne laisse aucun fichier nbs_manifest_ dans .dolt/noms ni dans .dolt/stats/.dolt/noms : les lectures lancées vont au bout', async () => {
+      const WAVES = 12;
+      const PER_WAVE = 6;
+      const QUEUED = 2;
       const { binary, pids, finished } = launcher();
       const reader = createDoltClient({ binary }).open(dir);
       expect(residues()).toEqual([]);
 
-      for (let wave = 0; wave < 12; wave++) {
-        // Six lectures à la fois (les six places), abandonnées de 30 à 130 ms après leur lancement.
-        const readings = Array.from({ length: 6 }, (_, i) => {
+      for (let wave = 0; wave < WAVES; wave++) {
+        const controllers = Array.from({ length: PER_WAVE }, () => new AbortController());
+        const readings = controllers.map((controller, i) =>
+          reader.query(`select ${wave * PER_WAVE + i} as n`, { signal: controller.signal }).catch((e: unknown) => e),
+        );
+        const queued = Array.from({ length: QUEUED }, (_, i) => {
           const controller = new AbortController();
-          setTimeout(() => controller.abort(), 30 + ((wave * 6 + i) * 17) % 101);
-          return reader.query(`select ${wave * 6 + i} as n`, { signal: controller.signal }).catch((e: unknown) => e);
+          const reading = reader.query(`select ${1000 + wave * QUEUED + i} as q`, { signal: controller.signal }).catch((e: unknown) => e);
+          controller.abort();
+          return reading;
         });
+        for (const error of await Promise.all(queued)) expect(error).toBeInstanceOf(ReadAborted);
+        await until(() => pids().length >= (wave + 1) * PER_WAVE, 'les six processus de la vague ont démarré');
+        controllers.forEach((controller, i) => setTimeout(() => controller.abort(), 30 + ((wave * PER_WAVE + i) * 17) % 101));
         await Promise.all(readings);
         await until(finished, 'les processus de la vague ont fini d’eux-mêmes');
       }
-      await sleep(400); // un processus à peine lancé n'a peut-être pas encore noté son numéro
-      await until(finished, 'plus aucun processus ne tourne');
 
       expect(residues()).toEqual([]);
-      expect(pids().length).toBeGreaterThanOrEqual(48); // la plupart des 72 lectures ont été lancées : sans cela le test ne prouverait rien
+      expect(pids().length).toBe(WAVES * PER_WAVE); // toutes les lectures ont été lancées, et aucune de celles abandonnées en file
       expect(scratch.dolt('fsck')).toContain('No problems found');
       expect(scratch.rows('select a from t order by a')).toEqual([{ a: 1 }, { a: 2 }, { a: 3 }]);
-    }, 60_000);
+    }, 500_000);
 
     // Ce que laisse tout processus dolt tué en cours d'ouverture (le délai de 60 s, qui reste, un Ctrl-C du terminal, un plantage) : l'index
     // du journal est un cache que dolt reconstruit. Si une version de dolt cessait de le tolérer incomplet, ou ne le créait plus, ce test
