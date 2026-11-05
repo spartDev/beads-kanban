@@ -4,7 +4,8 @@ import { useParams } from 'react-router';
 import { ApiError } from '../data/client';
 import { ticketTitle } from '../data/helpers';
 import { useIssue } from '../data/hooks';
-import { focusContainer, focusElement, focusIsAdrift } from '../lib/focus';
+import { focusCardOrZone } from '../kanban/boardFocus';
+import { focusElement, focusIsAdrift } from '../lib/focus';
 import { inertOutside } from '../lib/inert';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useMediaQuery } from '../lib/useMediaQuery';
@@ -33,7 +34,7 @@ const NARROW_SCREEN = '(max-width: 767.98px)';
  *
  * - Il prend le focus à l'ouverture et le rend à ce qui l'avait (la carte), pour que le clavier reprenne où il en était ; à défaut
  *   (adresse collée, champ de la palette qui l'a ouvert et qui est retiré depuis), au contenu principal, jamais au corps de la page
- *   (voir `restoreFocus`). Le corps du panneau change d'un coup d'état (l'avis d'erreur et son bouton « Réessayer » que le squelette remplace,
+ *   (voir `restoreFocus`), et à la carte là où elle est maintenant quand un commit l'a changée de colonne entre-temps. Le corps du panneau change d'un coup d'état (l'avis d'erreur et son bouton « Réessayer » que le squelette remplace,
  *   le contenu qu'un 404 remplace) et ce qui y a le focus part avec lui : le panneau le prend avant, quelle que soit la cause du changement
  *   (un réessai, la fiche relue au retour sur l'onglet, le direct ; voir `keepFocusInPanel`). Après « Réessayer », il le donne au titre quand la
  *   fiche arrive, ce que le lecteur d'écran lit (voir `retry`).
@@ -244,10 +245,13 @@ export function IssuePanel() {
  * Rend le focus à ce qui l'avait avant l'ouverture du panneau (la carte du tableau), sinon au contenu principal : jamais au corps de la page
  * (les règles de `focus.ts`, celles de la palette et de l'aide). Le tableau n'est pas remonté par l'ouverture du panneau (voir `KanbanRoute`) :
  * la carte est toujours là. Mais l'origine peut n'être rien (une adresse collée : le corps de la page) ou avoir disparu (le champ de la palette,
- * quand un choix de la palette a ouvert le panneau, est retiré avec elle). Si le focus est allé ailleurs de lui-même (un lien de la barre
- * latérale, une autre page), on n'y touche pas.
+ * quand un choix de la palette a ouvert le panneau, est retiré avec elle). Si l'origine est le lien d'une carte qu'un commit a changée de colonne
+ * pendant que le panneau était ouvert, ce lien est retiré, et c'est la carte, là où elle est maintenant, qui reçoit le focus ; le contenu principal
+ * quand elle n'est pas à l'écran (la colonne d'arrivée est cachée sur un écran étroit, le ticket est supprimé : voir `focusCardOrZone`). Si le focus est
+ * allé ailleurs de lui-même (un lien de la barre latérale, une autre carte, une autre page), on n'y touche pas.
  */
 function restoreFocus(opener: Element | null): void {
-  if (!focusIsAdrift()) return;
-  if (!focusElement(opener)) focusContainer(document.querySelector('main'));
+  if (!focusIsAdrift() || focusElement(opener)) return;
+  const main = document.querySelector('main');
+  if (main) focusCardOrZone(main, opener ?? undefined);
 }

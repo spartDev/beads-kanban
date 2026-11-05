@@ -1,12 +1,12 @@
 import { type QueryClient } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { type UserEvent } from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { queryKeys } from '../data/hooks';
-import type { IssueChronology, IssueDetail, IssueRef } from '../data/types';
+import type { Issue, IssueChronology, IssueDetail, IssueRef, Project } from '../data/types';
 import { refreshProject } from '../live/refresh';
 import { withAsyncTimeout } from '../test/asyncTimeout';
-import { bdeskIssues, chronology, issueDetail, mpmIssues, projectsResponse } from '../test/fixtures';
+import { bdeskIssues, chronology, issueDetail, mpmIssues, projects, projectsResponse } from '../test/fixtures';
 import { withFocusFixup } from '../test/focusFixup';
 import { renderApp, stubApi } from '../test/render';
 
@@ -868,5 +868,229 @@ describe.each(SCREENS)('une zone de défilement du panneau a le focus quand un c
     await settle();
 
     expect(box.hasAttribute('tabindex')).toBe(false);
+  });
+});
+
+/*
+ * Le panneau est ouvert depuis une carte du tableau, et un commit change cette carte de colonne (bdesk-38k.68). Le panneau retient pour origine l'élément qui avait le focus quand il
+ * s'est ouvert, le lien de la carte, pour le lui rendre à sa fermeture. Le commit a remonté la carte dans l'autre colonne : ce lien n'est plus dans le document, et le focus allait au
+ * contenu principal (le repli prévu), pas à la carte, que le clavier avait sélectionnée. Il va maintenant à la carte, là où elle est ; au contenu principal quand elle n'est pas à
+ * l'écran (la colonne d'arrivée est cachée sur un écran étroit, le ticket est supprimé, le tiroir « En pause » est fermé). Jamais le focus qu'un utilisateur a mis ailleurs.
+ */
+const MOVING = 'bdesk-38k.6';
+/** Les tickets du tableau après un commit qui change `MOVING`. */
+const afterCommit = (change: Partial<Issue>) => bdeskIssues.map((candidate) => (candidate.id === MOVING ? { ...candidate, ...change } : candidate));
+const closedNow = (): Partial<Issue> => {
+  const now = new Date().toISOString();
+  return { status: 'closed', closedAt: now, updatedAt: now };
+};
+const serveBoard = (issues: Issue[]) => stubApi({ projects: projectsResponse, issues: { bdesk: issues, mpm: mpmIssues } });
+const cardLinkOf = (id: string) => document.querySelector<HTMLElement>(`a[data-card-link="${id}"]`)!;
+const mainOf = () => document.querySelector('main');
+
+/** Sur un écran étroit, une seule colonne est affichée : jsdom ne charge pas le CSS de l'application, on y reproduit la règle dont dépend le focus. */
+function withHiddenColumns() {
+  let style: HTMLStyleElement | undefined;
+  beforeEach(() => {
+    style = document.createElement('style');
+    style.textContent = 'section[data-column]:not([data-shown="true"]) { display: none; }';
+    document.head.append(style);
+  });
+  afterEach(() => style?.remove());
+}
+
+describe.each(SCREENS)('le panneau ouvert depuis une carte que le commit change de colonne se ferme : %s', (_screen, narrow) => {
+  if (narrow) withHiddenColumns();
+  /** Où doit aller le focus pour une carte qui arrive dans Terminé : sa carte, ou le contenu principal quand la colonne est cachée. */
+  const expectedTarget = () => (narrow ? mainOf() : cardLinkOf(MOVING));
+
+  /** Le tableau (le tiroir « En pause » ouvert, si on le demande), une carte (En cours) qui prend le focus comme au clavier, et Entrée ouvre son panneau : le panneau retient le lien de la carte. */
+  async function openFromCard({ drawer = false } = {}) {
+    screenIs(narrow);
+    serveBoard(bdeskIssues);
+    const app = renderApp(BOARD);
+    const card = within(await screen.findByRole('region', { name: 'En cours' })).getByRole('link', { name: TITLE });
+    if (drawer) await app.user.click(screen.getByRole('button', { name: /^En pause/ }));
+    act(() => card.focus());
+    await app.user.keyboard('{Enter}');
+    const dialog = await screen.findByRole('dialog', { name: TITLE });
+    expect(dialog.getAttribute('aria-modal')).toBe(String(narrow));
+    return { ...app, card, dialog };
+  }
+  /** Le commit change la carte de colonne : son lien est retiré, un autre est monté dans la colonne d'arrivée. */
+  async function moveCard(queryClient: QueryClient, card: HTMLElement, change: Partial<Issue>) {
+    serveBoard(afterCommit(change));
+    await commit(queryClient);
+    await waitFor(() => expect(card.isConnected).toBe(false));
+    await settle();
+  }
+
+  it('Échap : la carte, là où elle est maintenant, prend le focus (le contenu principal quand sa colonne est cachée)', async () => {
+    const { user, card, queryClient, router } = await openFromCard();
+    await moveCard(queryClient, card, closedNow());
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(pathname(router)).toBe(BOARD));
+    await waitFor(() => expect(document.activeElement).toBe(expectedTarget()));
+    expect(card.isConnected).toBe(false);
+    expect(cardLinkOf(MOVING).closest('li')?.dataset.column).toBe('done');
+    expect(router.state.location.search).toBe(''); // seul un choix de l'utilisateur change la colonne affichée : rien n'est écrit dans l'adresse
+  });
+
+  it('le bouton « Fermer le panneau » le ferme de même', async () => {
+    const { user, dialog, card, queryClient } = await openFromCard();
+    await moveCard(queryClient, card, closedNow());
+
+    await user.click(within(dialog).getByRole('button', { name: 'Fermer le panneau' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(expectedTarget()));
+  });
+
+  it('la carte change de colonne deux fois (fermée, puis rouverte) pendant que le panneau est ouvert : le focus va à la carte, dans sa colonne finale', async () => {
+    const { user, card, queryClient } = await openFromCard();
+    await moveCard(queryClient, card, closedNow());
+    const second = cardLinkOf(MOVING);
+    serveBoard(bdeskIssues); // un autre commit la ramène dans En cours
+    await commit(queryClient);
+    await waitFor(() => expect(second.isConnected).toBe(false));
+    await settle();
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(cardLinkOf(MOVING)));
+    expect(cardLinkOf(MOVING).closest('li')?.dataset.column).toBe('inProgress');
+  });
+
+  it('la carte n’a pas bougé : le focus lui revient, c’est le même lien', async () => {
+    const { user, card } = await openFromCard();
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.activeElement).toBe(card);
+    expect(card.isConnected).toBe(true);
+  });
+
+  it('le ticket part dans le tiroir « En pause », fermé : la carte n’est plus à l’écran, le contenu principal prend le focus', async () => {
+    const { user, card, queryClient } = await openFromCard();
+    await moveCard(queryClient, card, { status: 'deferred' });
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(mainOf()));
+    expect(document.querySelector(`[data-card-id="${MOVING}"]`)).toBeNull();
+  });
+
+  it('le ticket est supprimé : de même', async () => {
+    const { user, card, queryClient } = await openFromCard();
+    serveBoard(bdeskIssues.filter((candidate) => candidate.id !== MOVING));
+    await commit(queryClient);
+    await waitFor(() => expect(card.isConnected).toBe(false));
+    await settle();
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(mainOf()));
+  });
+
+  /*
+   * Jamais le focus qu'un utilisateur a mis ailleurs : le panneau ne rend le focus que quand il n'est nulle part (le corps de la page), et ce qu'il a mis ailleurs reste.
+   */
+  it.skipIf(narrow)('une autre carte du tableau, que le panneau laisse utilisable, a le focus : la carte déplacée ne la lui prend pas', async () => {
+    const { user, card, queryClient } = await openFromCard();
+    const other = cardLinkOf('bdesk-38k.7');
+    act(() => other.focus());
+    await moveCard(queryClient, card, closedNow());
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await settle();
+    expect(document.activeElement).toBe(other);
+  });
+
+  it.skipIf(narrow)('un lien de la barre latérale a le focus : la carte déplacée ne le lui prend pas', async () => {
+    const { user, card, queryClient } = await openFromCard();
+    const sidebarLink = within(screen.getByRole('navigation', { name: 'Navigation principale' })).getByRole('link', { name: /^Métriques/ });
+    act(() => sidebarLink.focus());
+    await moveCard(queryClient, card, closedNow());
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await settle();
+    expect(document.activeElement).toBe(sidebarLink);
+  });
+
+  it('un clic dans le vide a laissé le focus sur le corps de la page : le panneau le rend à la carte, comme sans clic', async () => {
+    const { user, card, queryClient } = await openFromCard();
+    await moveCard(queryClient, card, closedNow());
+    await user.click(document.body);
+    expect(document.activeElement).toBe(document.body);
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(expectedTarget()));
+  });
+
+  it('le tiroir « En pause » est ouvert : la carte y arrive, et le panneau lui rend le focus', async () => {
+    const { user, card, queryClient } = await openFromCard({ drawer: true }); // le tiroir est affiché sur un écran étroit aussi : rien ne le cache
+    await moveCard(queryClient, card, { status: 'deferred' });
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(cardLinkOf(MOVING)));
+    expect(cardLinkOf(MOVING).closest('li')?.dataset.column).toBe('paused');
+  });
+});
+
+/*
+ * Deux Projets ont les mêmes identifiants de tickets : deux copies, ou deux clones d'un même dépôt (même préfixe), bdesk-38k.68 (relecture). Le panneau reste monté d'un Projet à l'autre : la
+ * palette (« Chercher dans tous les Projets ») ouvre un ticket de l'autre Projet sur la même route. Il retient toujours le lien de la carte du premier Projet, que le tableau de l'autre a
+ * remplacé ; à la fermeture, la carte de même identifiant de ce tableau-là n'est pas celle d'où l'on venait, et le focus ne lui est pas rendu : il va au contenu principal.
+ */
+const CLONE: Project = { ...projects[0]!, id: 'clone', name: 'bd-clone', path: '/dev/bd-clone' };
+const serveTwoProjects = () =>
+  stubApi({
+    projects: { projects: [...projectsResponse.projects, CLONE], ignored: projectsResponse.ignored },
+    issues: { bdesk: bdeskIssues, clone: bdeskIssues, mpm: mpmIssues },
+  });
+
+describe.each(SCREENS)('le panneau ouvert depuis une carte du Projet A reste monté quand le Projet B, de mêmes identifiants, ouvre un de ses tickets : %s', (_screen, narrow) => {
+  /** Le panneau de `bdesk-38k.6` ouvert depuis sa carte (Entrée) dans le Projet `bdesk`, puis un ticket de `clone` sur la même route : le même panneau, le tableau de `clone`. */
+  async function openInOtherProject() {
+    screenIs(narrow);
+    serveTwoProjects();
+    const app = renderApp(BOARD);
+    const card = within(await screen.findByRole('region', { name: 'En cours' })).getByRole('link', { name: TITLE });
+    act(() => card.focus());
+    await app.user.keyboard('{Enter}');
+    const dialog = await screen.findByRole('dialog', { name: TITLE });
+
+    await act(() => app.router.navigate('/p/clone/t/bdesk-38k.7')); // « Chercher dans tous les Projets », puis le ticket de bd-clone
+    expect(await screen.findByRole('dialog', { name: OTHER_TITLE })).toBe(dialog); // le même panneau : il n'est pas remonté, il retient toujours le lien de la carte de bdesk
+    await waitFor(() => expect(card.isConnected).toBe(false)); // le tableau de bdesk est parti, celui de clone est là
+    await waitFor(() => expect(cardLinkOf(MOVING)).not.toBeNull());
+    expect(pathname(app.router)).toBe('/p/clone/t/bdesk-38k.7');
+    return { ...app, card, dialog };
+  }
+
+  it('fermer le panneau sur le tableau de B : le contenu principal, pas la carte de même identifiant de B', async () => {
+    const { router, dialog } = await openInOtherProject();
+
+    await act(() => router.navigate('/p/clone/kanban')); // « g k » : le kanban du Projet affiché
+
+    await waitFor(() => expect(dialog.isConnected).toBe(false));
+    await settle();
+    expect(pathname(router)).toBe('/p/clone/kanban');
+    expect(document.activeElement).toBe(mainOf()); // ni le corps de la page, ni la carte `bdesk-38k.6` de bd-clone, où personne n'a rien sélectionné
+    expect(document.activeElement).not.toBe(cardLinkOf(MOVING));
   });
 });

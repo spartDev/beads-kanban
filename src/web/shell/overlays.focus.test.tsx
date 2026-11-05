@@ -3,10 +3,11 @@ import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { StrictMode, useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import { queryKeys } from '../data/hooks';
+import type { Issue, Project } from '../data/types';
 import { ShortcutsProvider, useShortcut } from '../shortcuts/ShortcutsProvider';
 import { withAsyncTimeout } from '../test/asyncTimeout';
 import { withHeldExitAnimations } from '../test/exitAnimation';
-import { bdeskIssues, mpmIssues, projectsResponse } from '../test/fixtures';
+import { bdeskIssues, mpmIssues, projects, projectsResponse } from '../test/fixtures';
 import { renderApp, stubApi } from '../test/render';
 import { OverlayProvider, useShortcutsHelp } from './OverlayProvider';
 import { ShortcutsHelp } from './ShortcutsHelp';
@@ -758,5 +759,199 @@ describe('quand l’élément d’origine ne peut plus recevoir le focus : le pa
     expect(dialog.contains(document.activeElement)).toBe(true);
     await user.keyboard('{Escape}');
     await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+});
+
+/*
+ * L'élément d'origine d'une surcouche est une carte du tableau, et un commit la change de colonne pendant qu'elle est ouverte (bdesk-38k.68). Le lien retenu pour le lui rendre n'est plus dans le
+ * document : le focus allait au panneau d'un ticket ouvert à côté, sinon au contenu principal. Il va à la carte, là où elle est maintenant ; faute de carte à l'écran (colonne cachée, ticket supprimé),
+ * la suite de la liste, comme avant. La palette et l'aide rendent le focus de la même façon (`useFocusReturn`) : la palette est jouée à fond, l'aide par un cas.
+ */
+const MOVING = 'bdesk-38k.6';
+const closedNow = (): Partial<Issue> => {
+  const now = new Date().toISOString();
+  return { status: 'closed', closedAt: now, updatedAt: now };
+};
+const cardLinkOf = (id: string) => document.querySelector<HTMLElement>(`a[data-card-link="${id}"]`)!;
+
+/** Le tableau (ou le panneau d'un autre ticket sur le tableau), dont un commit peut changer `MOVING` de colonne : `move` réécrit le ticket et fait relire la liste, comme le direct. */
+async function startMovable(path = BOARD) {
+  screenIs(false);
+  const issues = [...bdeskIssues];
+  stubApi({ projects: projectsResponse, issues: { bdesk: issues, mpm: mpmIssues } });
+  const app = renderApp(path);
+  await screen.findByRole('navigation', { name: 'Navigation principale', hidden: true });
+  const move = async (card: HTMLElement, change: Partial<Issue>) => {
+    const index = issues.findIndex((candidate) => candidate.id === MOVING);
+    issues[index] = { ...issues[index]!, ...change };
+    await act(() => app.queryClient.invalidateQueries({ queryKey: queryKeys.issues('bdesk') }));
+    await waitFor(() => expect(card.isConnected).toBe(false)); // la carte est remontée dans l'autre colonne : le lien retenu n'est plus dans le document
+  };
+  return { ...app, move };
+}
+
+/** Un second Projet qui a les mêmes tickets (même préfixe, mêmes identifiants) : deux copies, ou deux clones d'un même dépôt. */
+const CLONE: Project = { ...projects[0]!, id: 'clone', name: 'bd-clone', path: '/dev/bd-clone' };
+const serveTwoProjects = () =>
+  stubApi({
+    projects: { projects: [...projectsResponse.projects, CLONE], ignored: projectsResponse.ignored },
+    issues: { bdesk: bdeskIssues, clone: bdeskIssues, mpm: mpmIssues },
+  });
+
+describe.each(MODES)('une surcouche ouverte depuis une carte que le commit change de colonne : %s', (_mode, held) => {
+  const exit = held ? withHeldExitAnimations() : NO_EXIT_ANIMATION;
+
+  /*
+   * Les identifiants de tickets ne sont uniques que dans un Projet (bdesk-38k.68, relecture) : un choix de la palette qui mène à l'autre Projet (deux clones d'un même dépôt : mêmes identifiants) remplace
+   * le tableau par le sien, où une carte porte le même identifiant que celle d'où l'on venait. Ce n'est pas la carte d'où l'on venait : le focus ne lui est pas rendu, il va au contenu principal.
+   */
+  it('la palette ouverte depuis une carte du Projet A, le tableau du Projet B de mêmes identifiants prend sa place : le contenu principal, pas la carte de même identifiant de B', async () => {
+    screenIs(false);
+    serveTwoProjects();
+    const { user, router } = renderApp(BOARD);
+    await screen.findByRole('navigation', { name: 'Navigation principale', hidden: true });
+    const card = await focusBoardCard();
+    await openPalette(user);
+
+    await act(() => router.navigate('/p/clone/kanban')); // un choix de la palette : le tableau de bd-clone, sous la palette encore ouverte
+    await waitFor(() => expect(card.isConnected).toBe(false));
+    await waitFor(() => expect(cardLinkOf(MOVING)).not.toBeNull());
+    await user.keyboard('{Escape}');
+    exit.finish();
+
+    await removed('Palette de commandes');
+    await waitFor(() => expect(document.activeElement).toBe(main()));
+    expect(pathname(router)).toBe('/p/clone/kanban');
+    expect(document.activeElement).not.toBe(cardLinkOf(MOVING));
+  });
+
+  it('la palette, Échap : la carte, là où elle est maintenant, retrouve le focus', async () => {
+    const { user, move } = await startMovable();
+    const card = await focusBoardCard();
+    await openPalette(user);
+    await move(card, closedNow());
+
+    await user.keyboard('{Escape}');
+    exit.finish();
+
+    await removed('Palette de commandes');
+    await waitFor(() => expect(document.activeElement).toBe(cardLinkOf(MOVING)));
+    expect(cardLinkOf(MOVING).closest('li')?.dataset.column).toBe('done');
+  });
+
+  it('la palette, un clic en dehors : de même', async () => {
+    const { user, move } = await startMovable();
+    const card = await focusBoardCard();
+    const dialog = await openPalette(user);
+    const backdrop = dialog.previousElementSibling; // le fond de la palette, juste avant elle
+    if (!(backdrop instanceof HTMLElement)) throw new Error('attendu : le fond de la palette, juste avant elle');
+    await move(card, closedNow());
+
+    await user.click(backdrop);
+    exit.finish();
+
+    await removed('Palette de commandes');
+    await waitFor(() => expect(document.activeElement).toBe(cardLinkOf(MOVING)));
+  });
+
+  it('la pastille d’Epic de la carte avait le focus : la carte, celle de son titre', async () => {
+    const { user, move } = await startMovable();
+    const card = await focusBoardCard();
+    const pill = within(card.closest('li')!).getByRole('link', { name: /^Epic : / });
+    act(() => pill.focus());
+    await openPalette(user);
+    await move(card, closedNow());
+
+    await user.keyboard('{Escape}');
+    exit.finish();
+
+    await removed('Palette de commandes');
+    await waitFor(() => expect(document.activeElement).toBe(cardLinkOf(MOVING)));
+  });
+
+  it('un panneau est ouvert à côté (desktop) : la carte déplacée, qui avait le focus, passe avant le panneau', async () => {
+    const { user, move } = await startMovable('/p/bdesk/t/bdesk-38k.7');
+    const panel = await screen.findByRole('dialog', { name: OTHER_TITLE });
+    const card = await focusBoardCard();
+    await openPalette(user);
+    await move(card, closedNow());
+
+    await user.keyboard('{Escape}');
+    exit.finish();
+
+    await removed('Palette de commandes');
+    await waitFor(() => expect(document.activeElement).toBe(cardLinkOf(MOVING)));
+    expect(panel.isConnected).toBe(true);
+  });
+
+  it('la colonne d’arrivée est cachée (écran étroit) : le contenu principal, comme avant, et la colonne affichée ne change pas', async () => {
+    const hide = document.createElement('style');
+    hide.textContent = 'section[data-column]:not([data-shown="true"]) { display: none; }'; // jsdom ne charge pas le CSS : la règle dont dépend le focus
+    document.head.append(hide);
+    try {
+      const { user, move, router } = await startMovable();
+      const card = await focusBoardCard();
+      await openPalette(user);
+      await move(card, closedNow());
+
+      await user.keyboard('{Escape}');
+      exit.finish();
+
+      await removed('Palette de commandes');
+      await waitFor(() => expect(document.activeElement).toBe(main()));
+      expect(router.state.location.search).toBe('');
+    } finally {
+      hide.remove();
+    }
+  });
+
+  it('le ticket est supprimé pendant ce temps (plus de carte), un panneau est ouvert à côté : le panneau, comme avant', async () => {
+    screenIs(false);
+    const issues = [...bdeskIssues];
+    stubApi({ projects: projectsResponse, issues: { bdesk: issues, mpm: mpmIssues } });
+    const { user, queryClient } = renderApp('/p/bdesk/t/bdesk-38k.7');
+    const panel = await screen.findByRole('dialog', { name: OTHER_TITLE });
+    const card = await focusBoardCard();
+    await openPalette(user);
+    issues.splice(issues.findIndex((candidate) => candidate.id === MOVING), 1);
+    await act(() => queryClient.invalidateQueries({ queryKey: queryKeys.issues('bdesk') }));
+    await waitFor(() => expect(card.isConnected).toBe(false));
+
+    await user.keyboard('{Escape}');
+    exit.finish();
+
+    await waitFor(() => expect(document.activeElement).toBe(panel));
+    expect(document.querySelector(`[data-card-id="${MOVING}"]`)).toBeNull();
+  });
+
+  it('la carte retrouvée quitte la page aussitôt après (un choix a ouvert une autre page, pas encore montée) : le contenu principal, pas le corps de la page', async () => {
+    const { user, move, router } = await startMovable();
+    const card = await focusBoardCard();
+    await openPalette(user);
+    await move(card, closedNow());
+    await user.keyboard('{Escape}');
+    exit.finish();
+    await removed('Palette de commandes');
+    await waitFor(() => expect(document.activeElement).toBe(cardLinkOf(MOVING)));
+    const regained = cardLinkOf(MOVING);
+
+    await act(() => router.navigate(METRICS)); // la page arrive et retire le tableau : le focus ne doit pas tomber sur le corps de la page
+
+    await waitFor(() => expect(regained.isConnected).toBe(false));
+    await waitFor(() => expect(document.activeElement).toBe(main()));
+  });
+
+  it('l’aide, Échap : la carte, là où elle est maintenant, retrouve le focus', async () => {
+    const { user, move } = await startMovable();
+    const card = await focusBoardCard();
+    await user.keyboard('?');
+    await help();
+    await move(card, closedNow());
+
+    await user.keyboard('{Escape}');
+    exit.finish();
+
+    await removed('Raccourcis clavier');
+    await waitFor(() => expect(document.activeElement).toBe(cardLinkOf(MOVING)));
   });
 });

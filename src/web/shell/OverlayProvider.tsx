@@ -1,4 +1,5 @@
 import { createContext, use, useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { movedCardLink } from '../kanban/boardFocus';
 import { focusContainer, focusElement, focusIsAdrift, watchRemoval } from '../lib/focus';
 import { useShortcutRegistry } from '../shortcuts/ShortcutsProvider';
 
@@ -81,8 +82,10 @@ export function OverlayProvider({ children }: { children: ReactNode }) {
  * - `restore` rend le focus quand une surcouche vient d'être retirée de la page (`onCloseAutoFocus`, à la fin de son animation de sortie),
  *   sauf si une autre y est encore, ouverte ou qui finit de se retirer : c'est à la dernière de le rendre. Le focus va, dans l'ordre :
  *   1. à l'élément d'origine, s'il est encore dans le document et peut le recevoir ;
- *   2. au panneau d'un ticket ouvert sur la page (`data-issue-panel`), s'il y en a un ;
- *   3. au contenu principal.
+ *   2. à la carte du tableau dont il était, là où elle est maintenant, quand c'était le lien d'une carte qu'un commit a changée de colonne pendant que la
+ *      surcouche était ouverte (`movedCardLink` : ce lien est retiré, et la carte est ailleurs) ;
+ *   3. au panneau d'un ticket ouvert sur la page (`data-issue-panel`), s'il y en a un ;
+ *   4. au contenu principal.
  *   Jamais au corps de la page. Si le focus est déjà ailleurs, on n'y touche pas : un choix de la palette a pu ouvrir un panneau, qui a
  *   pris le focus, et c'est lui qui doit le garder, non la carte d'où l'on venait. Et si l'élément qui le reçoit est retiré aussitôt après
  *   (le choix change de page, et la page n'était pas encore montée à la fin de l'animation : sur un appareil lent, elle arrive après), le
@@ -108,9 +111,9 @@ function useFocusReturn() {
   return { remember, restore };
 }
 
-/** Rend le focus à `from`, sinon au panneau d'un ticket ouvert, sinon au contenu principal. */
+/** Rend le focus à `from`, sinon à la carte qu'il était et que le commit a remontée ailleurs, sinon au panneau d'un ticket ouvert, sinon au contenu principal. */
 function giveFocus(from: Element | null): void {
-  for (const candidate of [from, document.querySelector(ISSUE_PANEL)]) {
+  for (const candidate of [from, movedCardLink(document.body, from), document.querySelector(ISSUE_PANEL)]) {
     if (candidate && focusElement(candidate)) {
       // La page qu'un choix de la palette ouvre peut arriver juste après, et le retirer : le focus passe alors à la suite.
       watchRemoval(candidate, () => giveFocus(null));

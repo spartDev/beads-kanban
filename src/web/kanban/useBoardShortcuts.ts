@@ -35,8 +35,14 @@ function focusedCard(root: HTMLElement | null): Focused | null {
   return cardId && column ? { id: cardId, lane: column as Lane } : null;
 }
 
-export const cardLink = (root: Element | null, id: string): HTMLAnchorElement | undefined =>
-  [...(root?.querySelectorAll<HTMLAnchorElement>('a[data-card-link]') ?? [])].find((link) => link.dataset.cardLink === id);
+/**
+ * Le lien de la carte `id` dans `root`. Avec `project`, seulement celui de la carte de ce Projet (`data-card-project`) : les identifiants de tickets ne sont uniques que dans un Projet. Sans lui, la
+ * première carte de cet identifiant : le tableau, que les raccourcis parcourent, n'est jamais que celui d'un Projet.
+ */
+export const cardLink = (root: Element | null, id: string, project?: string | null): HTMLAnchorElement | undefined =>
+  [...(root?.querySelectorAll<HTMLAnchorElement>('a[data-card-link]') ?? [])].find(
+    (link) => link.dataset.cardLink === id && (project === undefined || link.closest('[data-card-id]')?.getAttribute('data-card-project') === project),
+  );
 
 /**
  * Le panneau est-il trop étroit pour les cinq colonnes ? Alors une seule est affichée, avec le sélecteur de colonne ;

@@ -22,6 +22,8 @@ const NAMED_BLOCKERS = 2;
  * Compromis connu, non vérifié avec un lecteur d'écran : au curseur de VoiceOver, qui lit la description après le nom, il est quand même dit deux fois (sur sa
  * ligne, puis en description du lien) ; NVDA et JAWS ne lisent pas la description en lecture continue.
  * Aucun glisser-déposer : le kanban est en lecture seule.
+ * Elle porte son Projet (`data-card-project`) avec son identifiant (`data-card-id`) : les identifiants de tickets ne sont uniques que dans un Projet (deux copies ou deux clones d'un même
+ * dépôt ont les mêmes), et c'est avec les deux qu'on la retrouve quand elle est remontée ailleurs (voir `movedCardLink`).
  */
 export function Card({
   issue,
@@ -49,6 +51,7 @@ export function Card({
   return (
     <li
       data-card-id={issue.id}
+      data-card-project={projectId}
       data-column={lane}
       className="relative flex scroll-mb-20 scroll-mt-28 flex-col gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-2 shadow-panel transition-colors hover:border-line-strong has-[a[data-card-link]:focus-visible]:border-accent has-[a[data-card-link]:focus-visible]:ring-2 has-[a[data-card-link]:focus-visible]:ring-accent"
     >

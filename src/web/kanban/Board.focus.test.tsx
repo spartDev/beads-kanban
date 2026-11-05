@@ -7,7 +7,7 @@ import { refreshProject } from '../live/refresh';
 import { withAsyncTimeout } from '../test/asyncTimeout';
 import { issue, projectsResponse } from '../test/fixtures';
 import { renderApp, stubApi } from '../test/render';
-import { useKeepFocusInBoard } from './boardFocus';
+import { focusCardOrZone, movedCardLink, useKeepFocusInBoard } from './boardFocus';
 
 /**
  * Où est le focus quand ce qui l'avait dans le tableau disparaît sur un commit (bdesk-38k.59). La sélection du clavier est le focus de la carte (voir `useBoardShortcuts`) :
@@ -201,6 +201,20 @@ describe('la carte qui a le focus change de colonne sur un commit (cinq colonnes
 
     expect(within(screen.getByRole('region', { name: 'En pause' })).getByRole('link', { name: 'Barre latérale' })).toBe(cardLink('bdesk-c1'));
     expect(document.activeElement).toBe(cardLink('bdesk-c1'));
+  });
+});
+
+describe('une carte porte son Projet : les identifiants de tickets ne sont uniques que dans un Projet', () => {
+  it('chaque carte du tableau, dans une colonne comme dans le tiroir « En pause », porte l’identifiant du Projet affiché', async () => {
+    serve([...TICKETS, issue({ id: 'bdesk-p1', title: 'Reporté', status: 'deferred' })]);
+    const { user } = renderApp('/p/bdesk/kanban');
+    await screen.findByRole('region', { name: 'Prêt' });
+    await user.click(screen.getByRole('button', { name: /^En pause/ }));
+
+    const cards = [...document.querySelectorAll<HTMLElement>('li[data-card-id]')];
+
+    expect(cards.length).toBeGreaterThan(TICKETS.length - 2); // les cartes des colonnes, plus celle du tiroir
+    expect(cards.map((card) => card.dataset.cardProject)).toEqual(cards.map(() => 'bdesk'));
   });
 });
 
@@ -455,5 +469,150 @@ describe('en StrictMode (le développement monte les effets deux fois)', () => {
       observe.mockRestore();
       disconnect.mockRestore();
     }
+  });
+});
+
+/**
+ * Retrouver la carte dont un élément a été retiré (bdesk-38k.68). Le panneau d'un ticket et la palette retiennent l'élément qui avait le focus à leur ouverture (le lien d'une carte) pour
+ * le lui rendre à leur fermeture ; quand un commit a remonté la carte dans une autre colonne, c'est un lien retiré du document, et c'est la carte, par son identifiant, qui reçoit le focus.
+ * Le DOM seul : une carte est un `li[data-card-id]` et son lien `a[data-card-link]`, que React remonte dans la nouvelle colonne en retirant l'ancien `li`.
+ */
+describe('movedCardLink et focusCardOrZone : la carte dont un élément a été retiré, là où elle est maintenant', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  /**
+   * Un tableau de deux colonnes sous le contenu principal, avec la carte `x` du Projet `a` dans `#a` (son lien, et une pastille d'Epic) ; hors du contenu principal, une carte de même identifiant
+   * et de même Projet (elle n'est pas dans le tableau). `move()` fait ce que fait un commit : l'ancien `li` est retiré, un nouveau est monté dans `#b`. Une carte porte son Projet
+   * (`data-card-project`, voir `Card`) : les identifiants de tickets ne sont uniques que dans un Projet.
+   */
+  function mount() {
+    document.body.innerHTML =
+      '<aside><ul><li data-card-id="x" data-card-project="a"><p><a id="ailleurs" data-card-link="x" href="#ailleurs">Ailleurs</a></p></li></ul></aside>' +
+      '<main><div id="tableau"><ul id="a"><li data-card-id="x" data-card-project="a"><p><a id="ancien" data-card-link="x" href="#x">X</a></p><div><a id="pastille" href="#epic">Epic</a></div></li></ul><ul id="b"></ul></div></main>';
+    const $ = (selector: string) => document.querySelector<HTMLElement>(selector)!;
+    const gone = { link: $('#ancien'), pill: $('#pastille') };
+    const move = () => {
+      $('#b').insertAdjacentHTML('beforeend', '<li data-card-id="x" data-card-project="a"><p><a id="nouveau" data-card-link="x" href="#x">X</a></p></li>');
+      $('#a li').remove();
+    };
+    return { $, gone, move };
+  }
+
+  it('le lien de la carte est retiré, la carte est dans une autre colonne : son lien actuel', () => {
+    const { $, gone, move } = mount();
+    move();
+
+    expect(gone.link.isConnected).toBe(false);
+    expect(movedCardLink($('main'), gone.link)).toBe($('#nouveau'));
+  });
+
+  it('c’est la pastille d’Epic qui est retirée avec la carte : le lien de la carte, celui de son titre', () => {
+    const { $, gone, move } = mount();
+    move();
+
+    expect(movedCardLink($('main'), gone.pill)).toBe($('#nouveau'));
+  });
+
+  it('l’élément est encore dans le document (la carte n’a pas bougé) : le lien de sa carte, qui est le sien', () => {
+    const { $, gone } = mount();
+
+    expect(movedCardLink($('main'), gone.pill)).toBe(gone.link);
+    expect(movedCardLink($('main'), gone.link)).toBe(gone.link);
+  });
+
+  it('l’élément n’est pas dans une carte (le champ d’une palette, un bouton) ou il n’y a pas d’élément : aucune carte', () => {
+    const { $ } = mount();
+    const button = document.createElement('button');
+
+    expect(movedCardLink($('main'), button)).toBeNull();
+    expect(movedCardLink($('main'), null)).toBeNull();
+    expect(movedCardLink($('main'), undefined)).toBeNull();
+  });
+
+  it('la carte n’est plus dans le tableau (le ticket est supprimé, ou dans le tiroir fermé) : aucune carte', () => {
+    const { $, gone } = mount();
+    $('#a li').remove();
+
+    expect(movedCardLink($('main'), gone.link)).toBeNull();
+  });
+
+  it('un lien de même identifiant hors de `within` n’est pas la carte : on cherche dans le tableau, pas dans la page', () => {
+    const { $, gone } = mount();
+    $('#a li').remove();
+
+    expect(movedCardLink($('main'), gone.link)).toBeNull();
+    expect(movedCardLink(document.body, gone.link)).toBe($('#ailleurs')); // la page entière le trouverait : `within` est ce qui l'écarte
+  });
+
+  /*
+   * Les identifiants de tickets ne sont uniques que dans un Projet : deux Projets, deux copies ou deux clones d'un même dépôt, ont les mêmes (même préfixe). Le panneau d'un ticket reste monté d'un Projet
+   * à l'autre (un choix de la palette ouvre un ticket de l'autre Projet, sur la même route) : il retient le lien d'une carte du premier, et le tableau qui arrive est celui du second. Sa carte de même
+   * identifiant n'est pas la carte d'où l'on venait : on ne la retrouve qu'avec son Projet.
+   */
+  it('une carte de même identifiant, d’un autre Projet, n’est pas la carte : aucune carte', () => {
+    const { $, gone } = mount();
+    $('#a li').remove();
+    $('#b').insertAdjacentHTML('beforeend', '<li data-card-id="x" data-card-project="b"><p><a id="autre-projet" data-card-link="x" href="#x">X</a></p></li>');
+
+    expect(gone.link.isConnected).toBe(false);
+    expect(movedCardLink($('main'), gone.link)).toBeNull();
+    expect(movedCardLink($('main'), gone.pill)).toBeNull();
+  });
+
+  it('les deux Projets ont une carte de même identifiant dans `within` : celle du Projet de l’élément retiré, quel que soit l’ordre du document', () => {
+    const { $, gone } = mount();
+    $('#a li').remove();
+    $('#a').insertAdjacentHTML('beforeend', '<li data-card-id="x" data-card-project="b"><p><a id="autre-projet" data-card-link="x" href="#x">X</a></p></li>'); // la première du document
+    $('#b').insertAdjacentHTML('beforeend', '<li data-card-id="x" data-card-project="a"><p><a id="nouveau" data-card-link="x" href="#x">X</a></p></li>');
+
+    expect(movedCardLink($('main'), gone.link)).toBe($('#nouveau'));
+    expect(movedCardLink($('main'), gone.pill)).toBe($('#nouveau'));
+  });
+
+  it('focusCardOrZone : la seule carte de cet identifiant est celle d’un autre Projet : le contenu principal, pas cette carte', () => {
+    const { $, gone } = mount();
+    $('#a li').remove();
+    $('#b').insertAdjacentHTML('beforeend', '<li data-card-id="x" data-card-project="b"><p><a id="autre-projet" data-card-link="x" href="#x">X</a></p></li>');
+
+    expect(focusCardOrZone($('main'), gone.link)).toBe(true);
+
+    expect(document.activeElement).toBe($('main'));
+  });
+
+  it('focusCardOrZone : la carte, là où elle est maintenant, prend le focus ; le contenu principal comme `within`, le panneau ne connaît pas le tableau', () => {
+    const { $, gone, move } = mount();
+    move();
+
+    expect(focusCardOrZone($('main'), gone.link)).toBe(true);
+
+    expect(document.activeElement).toBe($('#nouveau'));
+  });
+
+  it('focusCardOrZone : la carte n’est plus à l’écran (colonne cachée, ticket supprimé) : le contenu principal, jamais le corps de la page', () => {
+    const { $, gone, move } = mount();
+    move();
+    const hide = document.createElement('style');
+    hide.textContent = '#b { display: none }'; // la colonne d'arrivée est cachée : le navigateur refuse le focus à son lien
+    document.head.append(hide);
+    try {
+      expect(focusCardOrZone($('main'), gone.link)).toBe(true);
+
+      expect(document.activeElement).toBe($('main'));
+      $('#b').remove();
+      document.body.focus();
+      expect(focusCardOrZone($('main'), gone.link)).toBe(true);
+      expect(document.activeElement).toBe($('main'));
+    } finally {
+      hide.remove();
+    }
+  });
+
+  it('focusCardOrZone : ce qui part n’est pas une carte : le contenu principal, comme avant', () => {
+    const { $ } = mount();
+
+    expect(focusCardOrZone($('main'), document.createElement('button'))).toBe(true);
+    expect(document.activeElement).toBe($('main'));
   });
 });
