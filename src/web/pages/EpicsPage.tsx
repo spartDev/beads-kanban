@@ -8,6 +8,7 @@ import { EpicList } from '../epics/EpicList';
 import { EpicView } from '../epics/EpicView';
 import { EPIC_PARAM } from '../epics/view';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
+import { useRetryFocus } from '../lib/useRetryFocus';
 import { paths } from '../paths';
 import { ErrorNotice, Notice, Skeleton } from '../ui/states';
 import { Page } from './Page';
@@ -28,6 +29,7 @@ export function EpicsPage() {
 
 function EpicsOverview({ project }: { project: Project }) {
   const issues = useIssues(project.id);
+  const retry = useRetryFocus(issues);
   useDocumentTitle('Epics', project.name);
 
   return (
@@ -35,7 +37,7 @@ function EpicsOverview({ project }: { project: Project }) {
       {issues.data ? (
         <EpicList projectId={project.id} issues={issues.data} />
       ) : issues.isError ? (
-        <ErrorNotice error={issues.error} title="Impossible de charger les tickets" onRetry={() => void issues.refetch()} />
+        <ErrorNotice error={issues.error} title="Impossible de charger les tickets" onRetry={retry} />
       ) : (
         <div role="status" aria-busy="true" aria-label="Chargement des Epics" className="flex flex-col gap-2">
           <Skeleton className="h-4 w-56" />
@@ -49,6 +51,7 @@ function EpicsOverview({ project }: { project: Project }) {
 
 function EpicDetail({ project, epicId }: { project: Project; epicId: string }) {
   const issues = useIssues(project.id);
+  const retry = useRetryFocus(issues);
 
   if (issues.data) {
     const epic = issues.data.find((issue) => issue.id === epicId);
@@ -59,7 +62,7 @@ function EpicDetail({ project, epicId }: { project: Project; epicId: string }) {
   if (issues.isError) {
     return (
       <Page title="Epic indisponible">
-        <ErrorNotice error={issues.error} title="Impossible de charger les tickets" onRetry={() => void issues.refetch()} />
+        <ErrorNotice error={issues.error} title="Impossible de charger les tickets" onRetry={retry} />
       </Page>
     );
   }

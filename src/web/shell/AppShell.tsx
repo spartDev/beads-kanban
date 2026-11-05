@@ -42,7 +42,10 @@ function Layout() {
       <div className="flex min-w-0 flex-1 flex-col md:py-2 md:pr-2">
         <main
           id="contenu"
-          // Il prend le focus par programme quand une boîte de dialogue se referme sans rien d'autre à qui le rendre (voir `OverlayProvider`) : pas de contour.
+          // Il prend le focus par programme quand une boîte de dialogue se referme sans rien d'autre à qui le rendre (voir `OverlayProvider`), et quand
+          // ce qui l'avait dans la page disparaît parce que la page se recharge (« Réessayer », voir `zoneFocus`) : pas de contour, et un nom, que le lecteur
+          // d'écran dit alors (comme le lien « Aller au contenu » qui y mène).
+          aria-label="Contenu"
           className="relative flex min-h-0 flex-1 flex-col bg-panel pb-[calc(3.5rem+env(safe-area-inset-bottom))] outline-none md:overflow-y-auto md:rounded-xl md:border md:border-line md:pb-0 md:shadow-panel"
         >
           <TopBar />

@@ -4,6 +4,7 @@ import { useProjects } from '../data/hooks';
 import type { Project } from '../data/types';
 import { cx } from '../lib/cx';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
+import { useRetryFocus } from '../lib/useRetryFocus';
 import { LazyMetricsView } from '../metrics/LazyMetricsView';
 import { paths } from '../paths';
 import { ProjectTile } from '../ui/ProjectTile';
@@ -18,12 +19,14 @@ const MODE_LABELS: Record<Project['mode'], string> = {
 export function GlobalPage() {
   useDocumentTitle('Vue globale');
   const projects = useProjects();
+  const retry = useRetryFocus(projects);
 
   return (
     <Page title="Vue globale" description="Les métriques de flux de tous les Projets suivis, recalculées sur l’ensemble de leurs tickets, puis la liste des Projets." wide>
       <LazyMetricsView scope={{ kind: 'global' }} />
 
-      <section aria-labelledby="projects-title" className="flex flex-col gap-3">
+      {/* Une zone de focus : « Réessayer » ne perd pas le focus quand le squelette remplace l'avis d'erreur (voir `ErrorNotice`). Sans contour : le focus y est transitoire. */}
+      <section aria-labelledby="projects-title" data-focus-zone="" className="flex flex-col gap-3 outline-none">
         <SectionTitle id="projects-title">Projets suivis</SectionTitle>
 
         {/* Un rafraîchissement raté garde la liste affichée : l'erreur n'a la parole que faute de données. */}
@@ -48,7 +51,7 @@ export function GlobalPage() {
             </ul>
           )
         ) : projects.isError ? (
-          <ErrorNotice error={projects.error} title="Impossible de charger les Projets" onRetry={() => void projects.refetch()} />
+          <ErrorNotice error={projects.error} title="Impossible de charger les Projets" onRetry={retry} />
         ) : (
           <div role="status" aria-busy="true" aria-label="Chargement des Projets" className="flex flex-col gap-2">
             <Skeleton className="h-12" />

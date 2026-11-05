@@ -1,4 +1,5 @@
 import { focusElement } from '../lib/focus';
+import { keepFocusIn } from '../lib/zoneFocus';
 
 /** Marque le panneau d'un ticket (`IssuePanel`), que la palette et l'aide cherchent pour lui rendre le focus (voir `OverlayProvider`) : pas un `role="dialog"` quelconque. */
 const ISSUE_PANEL = '[data-issue-panel]';
@@ -17,15 +18,7 @@ export function focusPanelOf(from: Element): boolean {
  * la fiche relue au retour sur l'onglet, le direct. React détache les références avant de retirer le nœud du document, quand le focus y est
  * encore : il passe alors au panneau, au lieu de tomber sur le corps de la page.
  *
- * Ni `blur` ni un effet ne le disent à temps : Chromium envoie `blur` au retrait, l'élément encore dans le document, ce qu'un clic dans le vide
- * fait aussi ; un effet de mise en page vient après le retrait. Le focus qu'un utilisateur a mis ailleurs (un clic dans le vide, une carte du
- * tableau) n'est pas dans le nœud : on n'y touche pas.
- *
- * À garder la même fonction d'un rendu à l'autre : React rejouerait le nettoyage à chaque rendu, et le focus serait pris à chacun.
+ * C'est la règle de toute zone qui se recharge, la même que celle des pages (voir `keepFocusIn` dans `lib/zoneFocus.ts`, qui en donne les raisons) : ici
+ * la zone est le panneau, et rien d'autre.
  */
-export function keepFocusInPanel(node: HTMLElement | null): (() => void) | undefined {
-  if (node === null) return undefined;
-  return () => {
-    if (node.contains(document.activeElement)) focusPanelOf(node);
-  };
-}
+export const keepFocusInPanel = keepFocusIn(focusPanelOf);

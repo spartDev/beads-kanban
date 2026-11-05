@@ -5,6 +5,7 @@ import { useIssues } from '../data/hooks';
 import { Board } from '../kanban/Board';
 import { BoardSkeleton } from '../kanban/BoardSkeleton';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
+import { useRetryFocus } from '../lib/useRetryFocus';
 import { paths } from '../paths';
 import { ErrorNotice, Notice } from '../ui/states';
 import { Page } from './Page';
@@ -18,6 +19,7 @@ import { useProject } from './ProjectGate';
 export function KanbanPage() {
   const project = useProject();
   const issues = useIssues(project.id);
+  const retry = useRetryFocus(issues);
   useDocumentTitle('Kanban', project.name);
 
   return (
@@ -45,7 +47,7 @@ export function KanbanPage() {
             Il a peut-être été masqué dans la configuration, ou son dossier a été déplacé.
           </Notice>
         ) : (
-          <ErrorNotice error={issues.error} title="Impossible de charger les tickets" onRetry={() => void issues.refetch()} />
+          <ErrorNotice error={issues.error} title="Impossible de charger les tickets" onRetry={retry} />
         )
       ) : (
         <BoardSkeleton />

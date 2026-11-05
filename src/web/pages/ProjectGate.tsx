@@ -4,6 +4,7 @@ import { Link, Outlet, useOutletContext, useParams } from 'react-router';
 import { useProjects } from '../data/hooks';
 import type { Project } from '../data/types';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
+import { useRetryFocus } from '../lib/useRetryFocus';
 import { paths } from '../paths';
 import { rememberProject } from '../shell/navigation';
 import { ErrorNotice, Notice, Skeleton } from '../ui/states';
@@ -25,6 +26,7 @@ export function useProject(): Project {
 export function ProjectGate() {
   const { projectId = '' } = useParams();
   const projects = useProjects();
+  const retry = useRetryFocus(projects);
   const project = projects.data?.projects.find((candidate) => candidate.id === projectId);
   // Seuls les états d'erreur titrent la page : sur un Projet lisible, c'est la page enfant qui le fait.
   useDocumentTitle(project?.status === 'ok' ? undefined : (project?.name ?? projectId));
@@ -40,7 +42,7 @@ export function ProjectGate() {
     if (projects.isError) {
       return (
         <Page title="Projets indisponibles">
-          <ErrorNotice error={projects.error} onRetry={() => void projects.refetch()} />
+          <ErrorNotice error={projects.error} onRetry={retry} />
         </Page>
       );
     }

@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router';
 import type { MetricsResponse } from '../../shared/api';
 import { useProjects } from '../data/hooks';
 import { cx } from '../lib/cx';
+import { useRetryFocus } from '../lib/useRetryFocus';
 import { paths } from '../paths';
 import { ErrorNotice, Notice } from '../ui/states';
 import { useMetrics } from './api';
@@ -53,6 +54,7 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
   const { period, by, notices } = useMemo(() => parseMetricsParams(searchParams, kind, today), [searchParams, kind, today]);
 
   const query = useMetrics({ project: scope.kind === 'project' ? scope.project.id : undefined, period });
+  const retry = useRetryFocus(query);
   const projects = useProjects();
   const data = query.data;
   const ctx = useSeriesContext(data?.projects ?? [], projects.data?.projects);
@@ -95,7 +97,7 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
           <Content data={data} by={by} ctx={ctx} projectHref={projectHref} />
         </div>
       ) : query.isError ? (
-        <ErrorNotice error={query.error} title="Impossible de calculer les métriques" onRetry={() => void query.refetch()} />
+        <ErrorNotice error={query.error} title="Impossible de calculer les métriques" onRetry={retry} />
       ) : (
         <MetricsSkeleton />
       )}

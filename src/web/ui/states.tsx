@@ -1,7 +1,8 @@
 import { CircleAlert, RefreshCw, type LucideIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { MouseEvent, ReactNode, Ref } from 'react';
 import { describeError } from '../data/client';
 import { cx } from '../lib/cx';
+import { keepFocusInZone } from '../lib/zoneFocus';
 import { Button } from './Button';
 
 export function Skeleton({ className }: { className?: string }) {
@@ -24,6 +25,7 @@ export function Notice({
   action,
   tone = 'neutral',
   className,
+  ref,
 }: {
   icon: LucideIcon;
   title: string;
@@ -31,10 +33,12 @@ export function Notice({
   action?: ReactNode;
   tone?: 'neutral' | 'danger';
   className?: string;
+  ref?: Ref<HTMLDivElement>;
 }) {
   const danger = tone === 'danger';
   return (
     <div
+      ref={ref}
       role={danger ? 'alert' : 'status'}
       className={cx(
         'flex gap-3 rounded-lg border border-dashed p-4',
@@ -58,7 +62,12 @@ export function Notice({
   );
 }
 
-/** Erreur de chargement : dit ce qui s'est passé et propose de réessayer. */
+/**
+ * Erreur de chargement : dit ce qui s'est passé et propose de réessayer. Le squelette la remplace le temps du rechargement, et le bouton qui avait le
+ * focus part avec elle : l'avis le rend à la zone qui se recharge (voir `keepFocusInZone`), au lieu de le laisser tomber sur le corps de la page. Pour
+ * que le titre de la zone le prenne à l'arrivée du contenu, après un « Réessayer » explicite, l'appelant donne à `onRetry` ce que renvoie
+ * `useRetryFocus`.
+ */
 export function ErrorNotice({
   error,
   title,
@@ -68,7 +77,7 @@ export function ErrorNotice({
   error: unknown;
   /** Titre de contexte (`Impossible de charger les Projets`) : la cause déduite de l'erreur passe dessous. */
   title?: string;
-  onRetry?: () => void;
+  onRetry?: (event: MouseEvent<HTMLButtonElement>) => void;
   className?: string;
 }) {
   const described = describeError(error);
@@ -80,6 +89,7 @@ export function ErrorNotice({
       icon={CircleAlert}
       title={contextual ? title : described.title}
       className={className}
+      ref={keepFocusInZone}
       action={
         onRetry ? (
           <Button onClick={onRetry}>

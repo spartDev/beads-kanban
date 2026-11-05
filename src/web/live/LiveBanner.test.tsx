@@ -106,3 +106,83 @@ describe('LiveBanner : indication discrète d’une connexion perdue', () => {
     expect(onReconnect).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('LiveBanner : le focus que son bouton tenait quand le bandeau part (bdesk-38k.40)', () => {
+  // Le bandeau est dans le contenu principal, sous lequel la page a son titre. Le bouton qui avait le focus le rend au contenu principal en partant ; le titre
+  // de la page le prend seulement quand « Reconnecter » a été pressé et que la connexion est revenue (voir `retryFocus.test.tsx` pour l'application entière).
+  const Page = ({ status }: { status: LiveStatus }) => (
+    <main aria-label="Contenu">
+      <h1>Page</h1>
+      <LiveBanner status={status} onReconnect={() => undefined} graceMs={0} />
+    </main>
+  );
+
+  function lostBanner() {
+    const view = render(<Page status="lost" />);
+    elapse(0); // le délai de grâce passe : le bandeau est là
+    const button = screen.getByRole('button', { name: 'Reconnecter' });
+    act(() => button.focus());
+    return { ...view, button, update: (status: LiveStatus) => view.rerender(<Page status={status} />) };
+  }
+
+  it('« Reconnecter » est pressé, puis la connexion revient : le titre de la page prend le focus', () => {
+    const { button, update } = lostBanner();
+    act(() => button.click());
+
+    update('live');
+
+    expect(screen.queryByRole('button', { name: 'Reconnecter' })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('heading', { level: 1, name: 'Page' }));
+  });
+
+  it('la connexion revient sans que « Reconnecter » soit pressé : le contenu principal garde le focus, pas le titre', () => {
+    const { update } = lostBanner();
+
+    update('live');
+
+    expect(screen.queryByRole('button', { name: 'Reconnecter' })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('main', { name: 'Contenu' }));
+  });
+
+  it('« Reconnecter » est pressé, puis le statut devient « connecting » (l’onglet est caché : le flux est fermé, rien n’est rétabli) : le contenu principal garde le focus', () => {
+    const { button, update } = lostBanner();
+    act(() => button.click());
+
+    update('connecting');
+
+    expect(screen.queryByRole('button', { name: 'Reconnecter' })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('main', { name: 'Contenu' }));
+  });
+
+  it('« Reconnecter » est pressé et le flux reste perdu : le bandeau reste, son bouton garde le focus', () => {
+    const { button, update } = lostBanner();
+    act(() => button.click());
+
+    update('lost');
+
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Reconnecter' }));
+    expect(button.isConnected).toBe(true);
+  });
+
+  it('le focus est ailleurs quand le bandeau part : il n’est pas repris', () => {
+    const view = render(
+      <>
+        <button type="button">Ailleurs</button>
+        <Page status="lost" />
+      </>,
+    );
+    elapse(0);
+    act(() => screen.getByRole('button', { name: 'Reconnecter' }).click());
+    const elsewhere = screen.getByRole('button', { name: 'Ailleurs' });
+    act(() => elsewhere.focus());
+
+    view.rerender(
+      <>
+        <button type="button">Ailleurs</button>
+        <Page status="live" />
+      </>,
+    );
+
+    expect(document.activeElement).toBe(elsewhere);
+  });
+});

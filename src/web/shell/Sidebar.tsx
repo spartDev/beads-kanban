@@ -3,6 +3,8 @@ import { Link, NavLink } from 'react-router';
 import { useProjects } from '../data/hooks';
 import type { Project } from '../data/types';
 import { cx } from '../lib/cx';
+import { useRetryFocus } from '../lib/useRetryFocus';
+import { keepFocusInZone } from '../lib/zoneFocus';
 import { paths, sectionPath } from '../paths';
 import { BrandMark } from '../ui/Brand';
 import { ShortcutKeys } from '../ui/Kbd';
@@ -75,11 +77,14 @@ export function Sidebar() {
 
 function ProjectList() {
   const projects = useProjects();
+  const retry = useRetryFocus(projects);
   const { projectId, section } = useRouteInfo();
 
   return (
-    <section aria-labelledby="sidebar-projects" className="flex flex-col gap-0.5">
-      <h2 id="sidebar-projects" className="flex items-center justify-between px-2 pb-1 text-xs font-medium text-ink-3">
+    // Une zone de focus : « Réessayer » ne perd pas le focus quand le squelette remplace l'alerte (voir `keepFocusInZone`), puis le titre le prend à l'arrivée de la liste.
+    // Sans contour pour la zone (le focus y est transitoire) ; celui du titre reste à l'intérieur : la navigation rogne ce qui la dépasse.
+    <section aria-labelledby="sidebar-projects" data-focus-zone="" className="flex flex-col gap-0.5 outline-none">
+      <h2 id="sidebar-projects" className="flex items-center justify-between rounded-md px-2 pb-1 text-xs font-medium text-ink-3 focus-visible:-outline-offset-2">
         Projets
         {projects.data ? <span className="tnum">{projects.data.projects.length}</span> : null}
       </h2>
@@ -101,11 +106,12 @@ function ProjectList() {
           </ul>
         )
       ) : projects.isError ? (
-        <div role="alert" className="mx-1 flex flex-col items-start gap-1.5 rounded-md border border-danger/40 bg-danger-soft p-2.5 text-xs text-ink-2">
+        // `key` : l'alerte et le squelette sont deux `div` au même endroit, que React mettrait à jour sans retirer l'alerte ; il faut qu'il la retire, avec son bouton, pour que `keepFocusInZone` s'exécute quand le focus y est encore.
+        <div key="failed" ref={keepFocusInZone} role="alert" className="mx-1 flex flex-col items-start gap-1.5 rounded-md border border-danger/40 bg-danger-soft p-2.5 text-xs text-ink-2">
           Projets indisponibles : le serveur ne répond pas.
           <button
             type="button"
-            onClick={() => void projects.refetch()}
+            onClick={retry}
             className="inline-flex items-center gap-1.5 font-medium text-ink hover:underline"
           >
             <RefreshCw size={12} aria-hidden="true" />
@@ -113,7 +119,7 @@ function ProjectList() {
           </button>
         </div>
       ) : (
-        <div role="status" aria-busy="true" aria-label="Chargement des Projets" className="flex flex-col gap-1.5 px-2 pt-1">
+        <div key="loading" role="status" aria-busy="true" aria-label="Chargement des Projets" className="flex flex-col gap-1.5 px-2 pt-1">
           <Skeleton className="h-5" />
           <Skeleton className="h-5 w-4/5" />
           <Skeleton className="h-5 w-3/5" />
