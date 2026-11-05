@@ -2,6 +2,7 @@ import { SearchX, X } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router';
 import { ApiError } from '../data/client';
+import { ticketTitle } from '../data/helpers';
 import { useIssue } from '../data/hooks';
 import { focusContainer, focusElement, focusIsAdrift } from '../lib/focus';
 import { inertOutside } from '../lib/inert';
@@ -24,12 +25,6 @@ import { useClosePanel } from './useClosePanel';
 
 /** En dessous du seuil `md:` de Tailwind (768 px), le panneau prend tout l'écran. */
 const NARROW_SCREEN = '(max-width: 767.98px)';
-
-/**
- * Le titre d'un ticket qui n'en a pas (titre vide, ou fait d'espaces) : pas de `<h2>` vide (axe `empty-heading`). Ce n'est pas son identifiant, qui est déjà juste
- * au-dessus, et que le dialogue (nommé par l'identifiant puis le titre) dirait deux fois.
- */
-const UNTITLED = 'Sans titre';
 
 /**
  * Le panneau d'un ticket (`/p/<projet>/t/<id>`), posé sur le kanban : un panneau latéral sur desktop, l'écran entier sur
@@ -56,7 +51,7 @@ const UNTITLED = 'Sans titre';
  *   dans CONTEXT.md) ; dans ce second cas seulement, il s'affiche ici dès qu'il l'est, la fiche étant relue à chaque mise à jour du Projet.
  * - Tant que la fiche charge, le panneau n'a pas de titre à dire : un squelette en tient la place, sans `<h2>` (un titre vide est une
  *   violation d'accessibilité, axe `empty-heading`), et le dialogue se nomme par l'identifiant seul, que l'adresse donne déjà. Un ticket qui n'a pas
- *   de titre se titre « Sans titre » (`UNTITLED`), pour la même raison.
+ *   de titre se titre « Sans titre » (`ticketTitle`, que la carte du kanban suit aussi), pour la même raison.
  */
 export function IssuePanel() {
   const project = useProject();
@@ -181,7 +176,7 @@ export function IssuePanel() {
               tabIndex={-1}
               className="mt-0.5 w-fit max-w-full wrap-anywhere rounded-sm text-[17px] font-semibold leading-6 tracking-[-0.01em] text-ink focus-visible:outline-offset-1"
             >
-              {gone ? 'Ticket introuvable' : issue ? issue.title.trim() || UNTITLED : 'Ticket indisponible'}
+              {gone ? 'Ticket introuvable' : issue ? ticketTitle(issue) : 'Ticket indisponible'}
             </h2>
           )}
         </div>

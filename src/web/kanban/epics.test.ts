@@ -94,6 +94,10 @@ describe('epicLabels : de quoi reconnaître chaque Epic dans le filtre', () => {
   it('garde un titre vide lisible : l’identifiant', () => {
     expect(labels(epic('a', ''), epic('b', 'Autre'))).toEqual({ a: 'a', b: 'Autre' });
   });
+
+  it('garde de même lisible un titre fait uniquement de caractères sans largeur, même partagé : l’identifiant, sans « (identifiant) » en plus', () => {
+    expect(labels(epic('a', '\u200b'), epic('b', '\u200b'), epic('c', 'Autre'))).toEqual({ a: 'a', b: 'b', c: 'Autre' });
+  });
 });
 
 /**
@@ -118,9 +122,20 @@ describe('epicName et epicShortName : le nom d’une Epic', () => {
     ['fait d’espaces', '   '],
     ['fait d’espaces insécables', '\u00a0\u00a0'],
     ['fait de tabulations et de retours à la ligne', '\t\n \r\n'],
+    ['fait d’une espace sans largeur (U+200B)', '\u200b'],
+    ['fait d’une marque d’ordre des octets (U+FEFF)', '\ufeff'],
+    ['fait d’un antiliant et d’un liant sans chasse (U+200C, U+200D)', '\u200c\u200d'],
+    ['fait d’un lien de mots (U+2060)', '\u2060'],
+    ['fait d’un trait d’union conditionnel (U+00AD)', '\u00ad'],
+    ['mêlé d’espaces et de caractères sans largeur', ' \u200b\t\u2060\u00a0'],
   ])('nomme par son identifiant une Epic dont le titre est %s', (_kind, title) => {
     expect(epicName(epic(title))).toBe('bdesk-e1');
     expect(epicShortName(epic(title))).toBe('bdesk-e1');
+  });
+
+  it('garde un titre qui contient un caractère sans largeur mais aussi du texte : seul un titre fait uniquement de blancs est remplacé', () => {
+    expect(epicName(epic('Refonte\u200b du shell'))).toBe('Refonte\u200b du shell');
+    expect(epicShortName(epic('Refonte\u200b : du shell'))).toBe('Refonte\u200b');
   });
 
   it('n’abrège jamais l’identifiant : coupé, il ne nommerait plus rien', () => {
@@ -133,5 +148,14 @@ describe('epicName et epicShortName : le nom d’une Epic', () => {
   it('dit la même chose que le filtre Epic pour une Epic sans titre', () => {
     const untitled = at('bdesk-vide', { type: 'epic', title: '' });
     expect(epicName(untitled)).toBe(epicLabels([untitled]).get('bdesk-vide'));
+  });
+
+  it.each([
+    ['une espace sans largeur', '\u200b'],
+    ['des caractères sans largeur et des espaces', ' \u200c\u200d\u2060 '],
+  ])('dit la même chose que le filtre Epic pour une Epic dont le titre est fait de %s', (_kind, title) => {
+    const untitled = at('bdesk-invisible', { type: 'epic', title });
+    expect(epicName(untitled)).toBe('bdesk-invisible');
+    expect(epicLabels([untitled]).get('bdesk-invisible')).toBe('bdesk-invisible');
   });
 });

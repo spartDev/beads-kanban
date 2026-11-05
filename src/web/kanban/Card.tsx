@@ -1,6 +1,7 @@
 import { Bot, Clock, Lock } from 'lucide-react';
 import { Fragment, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
+import { ticketTitle } from '../data/helpers';
 import type { Issue } from '../data/types';
 import { statusLabel, typeMeta } from '../design/issue-palette';
 import { formatAge, formatDateTime } from '../lib/relativeTime';
@@ -14,7 +15,8 @@ const NAMED_BLOCKERS = 2;
 
 /**
  * Une carte : un ticket, cliquable en entier. Le lien est celui du titre, étiré sur toute la carte (`after:inset-0`) ;
- * ce qui est lui-même un lien (la pastille d'Epic) passe au-dessus (`z-10`). Le focus au clavier entoure la carte.
+ * ce qui est lui-même un lien (la pastille d'Epic) passe au-dessus (`z-10`). Le focus au clavier entoure la carte. Un ticket sans titre y est
+ * « Sans titre » (`ticketTitle`), comme dans son panneau : le lien n'est jamais sans nom (axe `link-name`).
  * Aucun glisser-déposer : le kanban est en lecture seule.
  */
 export function Card({
@@ -61,7 +63,7 @@ export function Card({
           data-card-link={issue.id}
           className="block min-h-6 outline-none after:absolute after:inset-0 after:rounded-lg"
         >
-          {issue.title}
+          {ticketTitle(issue)}
         </Link>
       </p>
 

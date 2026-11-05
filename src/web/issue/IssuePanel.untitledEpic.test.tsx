@@ -42,6 +42,7 @@ const project = (title: string): Issue[] => [
 const TITLES = [
   ['vide', ''],
   ['fait d’espaces', '   '],
+  ['fait d’une espace sans largeur (U+200B)', '\u200b'],
 ] as const;
 
 /** Les titres de `container` dont le nom accessible est vide : ce que signale axe (`empty-heading`). */
