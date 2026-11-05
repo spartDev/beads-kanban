@@ -4,8 +4,8 @@ import { createMetricsService } from './metrics/service';
 import type { ProjectService } from './projects/service';
 import { buildServer } from './server';
 
-// `identify` (ce que le filet de `registerApi` écrit de l'erreur d'origine) est ici remplacé par une version qui lève. Il ne le peut pas aujourd'hui,
-// chacune de ses lectures est gardée ; mais la ligne fixe du filet ne doit pas dépendre de cette promesse : elle s'écrit, sans `original`.
+// `identify` (ce que le filet de `registerApi` écrit de l'erreur d'origine) est ici remplacé par une version qui lève : la ligne fixe du filet
+// s'écrit quand même, avec un `original` vide.
 vi.mock('./errorLog', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./errorLog')>()),
   identify: () => {
@@ -16,7 +16,7 @@ vi.mock('./errorLog', async (importOriginal) => ({
 const config = { roots: [], projects: [], hiddenProjects: [] };
 
 describe('API : le filet du gestionnaire d’erreurs, quand identify lève (bdesk-38k.55)', () => {
-  it('la ligne fixe est écrite quand même, sans `original`, et sans l’adresse : la réponse est un 500 générique', async () => {
+  it('la ligne fixe est écrite quand même, avec un `original` vide, et sans l’adresse : la réponse est un 500 générique', async () => {
     const chunks: string[] = [];
     const stream = new Writable({
       write(chunk: Buffer, _encoding, done) {
@@ -55,6 +55,7 @@ describe('API : le filet du gestionnaire d’erreurs, quand identify lève (bdes
       .split('\n')
       .filter((line) => line.trim() !== '')
       .map((line) => JSON.parse(line) as Record<string, unknown>);
-    expect(lines).toMatchObject([{ level: 50, method: 'GET', route: '/api/projects', msg: "Erreur inattendue (le gestionnaire d'erreurs a échoué)", original: {} }]);
+    expect(lines).toMatchObject([{ level: 50, method: 'GET', route: '/api/projects', msg: "Erreur inattendue (le gestionnaire d'erreurs a échoué)" }]);
+    expect(lines[0]?.original).toEqual({}); // vide : `toMatchObject({ original: {} })` accepterait n'importe quel objet
   });
 });

@@ -2,8 +2,8 @@ import { inspect } from 'node:util';
 
 /**
  * Ce que le gestionnaire d'erreurs de l'API (`registerApi`) lit d'une erreur et en écrit au journal (ADR 0002). Une erreur est un objet
- * quelconque, voire pas un objet : tout ce qu'on en lit est gardé (un accesseur qui lève ne retire que sa propriété) et tout ce qu'on en écrit
- * est plafonné, de sorte qu'une ligne ne grossisse pas avec l'erreur.
+ * quelconque, voire pas un objet : tout ce qu'on en lit est gardé (un accesseur, ou le piège d'un Proxy, qui lève ne retire que ce qu'il portait) et
+ * tout ce qu'on en écrit est plafonné, de sorte qu'une ligne ne grossisse pas avec l'erreur.
  */
 
 /**
@@ -64,6 +64,17 @@ function plain(value: unknown): string | number | boolean | bigint | null | unde
   return undefined;
 }
 
+/** Le nom de la classe de `error` (`constructor.name`), coupé à `LOG_KEY_MAX` : `undefined` s'il ne se lit pas ou n'est pas un texte. */
+function classNameOf(error: unknown): string | undefined {
+  const name = attempt(() => (error as { constructor: { name: unknown } }).constructor.name, undefined);
+  return typeof name === 'string' ? head(name, LOG_KEY_MAX) : undefined;
+}
+
+/** `value instanceof Error`, sous garde : `instanceof` lit le prototype, et le piège `getPrototypeOf` d'un Proxy peut lever (ce n'est alors pas une `Error` pour le journal). */
+function isError(value: unknown): value is Error {
+  return attempt(() => value instanceof Error, false);
+}
+
 /** Ce que `loggable` écrit lui-même d'une erreur : le reste de ses propriétés est copié par `plain`. */
 const LOGGABLE_OWN = new Set(['message', 'stack', 'cause', 'constructor']);
 
@@ -72,8 +83,8 @@ const LOGGABLE_OWN = new Set(['message', 'stack', 'cause', 'constructor']);
  * pile (plafonnés), les valeurs simples qu'elle porte (`code`, `errno`, `statusCode`…, les textes plafonnés ; dix au plus), sa `cause` de proche en
  * proche (une `Error`, ou un texte) et les premières erreurs d'un `AggregateError`. Pas ses propriétés qui sont des objets (la réponse et les
  * en-têtes d'un client HTTP, des tampons de sortie…) : ni leur taille ni ce qu'ils portent ne sont connus, et ce n'est pas ce que dit l'erreur. Le
- * sérialiseur de Fastify écrit le reste : `type`, `message`, `stack`, `aggregateErrors`. Rien ne lève ici : un accesseur qui lève ne retire que sa
- * propriété.
+ * sérialiseur de Fastify écrit le reste : `type`, `message`, `stack`, `aggregateErrors`. Rien ne lève ici : tout ce qui est lu de l'erreur l'est sous
+ * `attempt`, et un accesseur ou le piège d'un Proxy qui lève ne retire que ce qu'il portait (une propriété, la cause, les erreurs agrégées).
  */
 export function loggable(error: Error, causes = LOG_CAUSES_MAX): Error {
   // Ni `Object.create(Object.getPrototypeOf(error))`, ni une sous-classe : les accesseurs d'un `DOMException` (`name`, `message`, `code`) lèvent sur
@@ -90,8 +101,8 @@ export function loggable(error: Error, causes = LOG_CAUSES_MAX): Error {
   };
   // Pas le constructeur de l'erreur lui-même : le sérialiseur de pino en lit le `name` pour écrire le `type` de la ligne (celui de l'erreur et ceux de
   // ses erreurs agrégées), et ce nom peut avoir n'importe quelle longueur, ou lever. Une fonction qui ne porte que le nom, coupé comme celui du filet
-  // (`identify`), et `Error` quand il ne se lit pas : pino demande une fonction, sinon il lirait `name`.
-  put('constructor', Object.defineProperty(() => {}, 'name', { value: identify(error).type ?? 'Error' }), false);
+  // (`classNameOf`), et `Error` quand il ne se lit pas : pino demande une fonction, sinon il lirait `name`.
+  put('constructor', Object.defineProperty(() => {}, 'name', { value: classNameOf(error) ?? 'Error' }), false);
 
   // `code` d'abord : celui d'un `DOMException` est un accesseur de son prototype, que `Object.keys` ne voit pas.
   let written = 0;
@@ -112,15 +123,22 @@ export function loggable(error: Error, causes = LOG_CAUSES_MAX): Error {
 
   const cause = attempt(() => error.cause, undefined);
   if (typeof cause === 'string') put('cause', clip(cause));
-  else if (causes > 0 && cause instanceof Error) put('cause', loggable(cause, causes - 1), false);
+  else if (causes > 0 && isError(cause)) put('cause', loggable(cause, causes - 1), false);
   // Les erreurs d'un `AggregateError` : les premières seulement, sans leur propre `cause` ni leurs propres erreurs, et celles qui ne sont pas des
   // `Error`, dites par `inspect`. Seules celles de l'erreur du dessus sont écrites : le sérialiseur de pino n'écrit d'une `cause` que son message
   // et sa pile (ajoutés à ceux de l'erreur), jamais ses propriétés ni ses erreurs. Au plus `LOG_AGGREGATED_MAX` erreurs agrégées, donc, quelle que
   // soit la chaîne des causes.
   const errors = causes > 0 ? attempt(() => (error as { errors?: unknown }).errors, undefined) : undefined;
-  if (Array.isArray(errors)) {
-    const inner = (value: unknown) => (value instanceof Error ? loggable(value, 0) : said(value));
-    put('errors', errors.slice(0, LOG_AGGREGATED_MAX).map(inner), false);
+  // La liste est celle de l'erreur : on n'en lit que `length` et les indices, chacun sous garde, et on n'appelle aucune de ses méthodes (`slice`, `map`,
+  // `Symbol.species` : une sous-classe d'`Array` les redéfinit, et le plafond ne serait plus le nôtre). Une liste qui ne se lit pas (`Array.isArray` lève
+  // sur un Proxy révoqué, `length` n'est pas un nombre) n'est pas écrite ; un élément qui ne se lit pas est dit illisible, sans retirer ses voisins.
+  const count = attempt(() => (Array.isArray(errors) ? Math.min(errors.length, LOG_AGGREGATED_MAX) : -1), -1);
+  if (count >= 0) {
+    const errorAt = (i: number) => {
+      const value = attempt(() => (errors as unknown[])[i], '(illisible)');
+      return isError(value) ? loggable(value, 0) : said(value);
+    };
+    put('errors', Array.from({ length: count }, (_value, i) => errorAt(i)), false);
   }
   return copy;
 }
@@ -131,10 +149,10 @@ export function loggable(error: Error, causes = LOG_CAUSES_MAX): Error {
  * n'écrit jamais l'adresse demandée.
  */
 export function identify(error: unknown): { type?: string; message?: string } {
-  const type = attempt(() => (error as { constructor: { name: unknown } }).constructor.name, undefined);
+  const type = classNameOf(error);
   const message = attempt(() => (error as { message: unknown }).message, undefined);
   return {
-    ...(typeof type === 'string' && { type: head(type, LOG_KEY_MAX) }),
+    ...(type !== undefined && { type }),
     ...(typeof message === 'string' && { message: clip(message) }),
   };
 }

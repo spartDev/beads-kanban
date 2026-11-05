@@ -1197,6 +1197,115 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       expect(lines()).toMatchObject([{ level: ERROR, msg: NET }]);
       expect(lines()[0]?.original).toEqual({ type: 'Object' }); // pas une Error : pas de message, et son type est celui d'un objet
     });
+
+    // Les pièges d'un Proxy (bdesk-38k.58) : ce que `loggable` lit des `errors` et de la `cause` est gardé comme un accesseur, et ne retire que ce qu'il
+    // portait. L'erreur laisse donc sa ligne complète (le gestionnaire), pas celle du filet, qui ne dit que le type et le message.
+    const revokedList = () => {
+      const { proxy, revoke } = Proxy.revocable([new Error('un')], {});
+      revoke();
+      return proxy;
+    };
+    const hostile = () => new Proxy(new Error('hostile'), { getPrototypeOf: throws('prototype-illisible') });
+    it.each([
+      ['des `errors` qui sont un Proxy révoqué (`Array.isArray` lève)', () => Object.assign(new AggregateError([], 'boum'), { errors: revokedList() }), 'AggregateError'],
+      [
+        'des `errors` dont le piège `get` lève (`slice` lève)',
+        () => Object.assign(new AggregateError([], 'boum'), { errors: new Proxy([new Error('un')], { get: throws('get-illisible') }) }),
+        'AggregateError',
+      ],
+      ['une erreur agrégée dont `getPrototypeOf` lève (`instanceof` lève)', () => new AggregateError([hostile()], 'boum'), 'AggregateError'],
+      ['une `cause` dont `getPrototypeOf` lève (`instanceof` lève)', () => new Error('boum', { cause: hostile() }), 'Error'],
+    ])('500 : %s : la ligne `error` est celle du gestionnaire, complète (pas celle du filet, sans `original`)', async (_name, thrown, type) => {
+      const { res, lines } = await ask(failing(thrown()));
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'boum' });
+      expect(lines()).toMatchObject([{ level: ERROR, method: 'GET', route: '/api/projects', msg: 'Erreur inattendue', err: { type, message: 'boum' } }]);
+      expect(lines()[0]?.original).toBeUndefined();
+    });
+
+    it('une erreur agrégée qui ne se lit pas ne retire pas ses voisines : les autres sont écrites, celle-là est dite par `inspect`', async () => {
+      const { res, lines } = await ask(failing(new AggregateError([new Error('saine'), hostile(), new Error('aussi saine')], 'boum')));
+
+      expect(res.statusCode).toBe(500);
+      const err = lines()[0]?.err as unknown as { aggregateErrors: (string | { message: string })[] };
+      expect(err.aggregateErrors).toHaveLength(3);
+      expect(err.aggregateErrors[0]).toMatchObject({ message: 'saine' });
+      expect(String(err.aggregateErrors[1])).toContain('hostile');
+      expect(err.aggregateErrors[2]).toMatchObject({ message: 'aussi saine' });
+    });
+
+    // Les `errors` sont une liste que l'erreur fournit : `loggable` n'en lit que `length` et les indices, sous garde, et n'appelle aucune de ses
+    // méthodes (`slice`, `map`, `Symbol.species`, qu'une sous-classe d'`Array` redéfinit). Le plafond de trois erreurs est le sien, pas celui de l'erreur.
+    class SliceMany extends Array<Error> {
+      override slice(): Error[] {
+        return Array.from({ length: 2_000 }, (_value, i) => new Error(`erreur ${i}`));
+      }
+    }
+    class MapHuge extends Array<Error> {
+      override map(): never[] {
+        return ['H'.repeat(1_000_000)] as unknown as never[];
+      }
+    }
+    class SpeciesThrows extends Array<Error> {
+      static override get [Symbol.species](): ArrayConstructor {
+        throw new Error('species-illisible');
+      }
+    }
+    const aggregateErrorsOf = (line: unknown) => (line as { err: { aggregateErrors?: (string | { message: string })[] } }).err.aggregateErrors;
+
+    it.each([
+      ['un `slice` redéfini qui rend 2 000 erreurs', () => SliceMany.from([new Error('une')])],
+      ['un `map` redéfini qui rend un texte d’un million de caractères', () => MapHuge.from([new Error('une')])],
+      ['un `Symbol.species` dont l’accesseur lève', () => SpeciesThrows.from([new Error('une')])],
+    ])('500 : des `errors` avec %s : la seule erreur de la liste est écrite, et la ligne reste bornée', async (_name, list) => {
+      const { res, lines } = await ask(failing(Object.assign(new AggregateError([], 'boum'), { errors: list() })));
+
+      expect(res.statusCode).toBe(500);
+      const [line, ...others] = lines();
+      expect(others).toEqual([]);
+      expect(aggregateErrorsOf(line)).toMatchObject([{ message: 'une' }]); // une, pas 2 000 ni un texte d'un million : ni `slice` ni `map` n'est appelé
+      expect(JSON.stringify(line).length).toBeLessThan(20_000);
+      expect(line?.original).toBeUndefined(); // la ligne du gestionnaire, pas celle du filet
+    });
+
+    it('un élément de `errors` dont l’accesseur lève ne retire pas ses voisins : les deux saines sont écrites, la sienne est dite illisible', async () => {
+      const list: unknown[] = [new Error('saine')];
+      Object.defineProperty(list, 1, { get: throws('élément-illisible'), enumerable: true });
+      list.push(new Error('aussi saine'));
+      const { res, lines } = await ask(failing(Object.assign(new AggregateError([], 'boum'), { errors: list })));
+
+      expect(res.statusCode).toBe(500);
+      const written = aggregateErrorsOf(lines()[0]);
+      expect(written).toHaveLength(3);
+      expect(written?.[0]).toMatchObject({ message: 'saine' });
+      expect(written?.[1]).toBe("'(illisible)'"); // ce qu'`inspect` dit d'un texte
+      expect(written?.[2]).toMatchObject({ message: 'aussi saine' });
+    });
+
+    it.each([
+      ['un Proxy révoqué', () => revokedList()],
+      ['une `length` dont le piège lève', () => new Proxy([new Error('un')], { get: (target, key) => (key === 'length' ? throws('length-illisible')() : Reflect.get(target, key)) })],
+      ['une `length` qui est un BigInt', () => new Proxy([new Error('un')], { get: (target, key) => (key === 'length' ? 1n : Reflect.get(target, key)) })],
+    ])('des `errors` qui sont %s ne se lisent pas : `aggregateErrors` n’est pas écrit (pas un `[]` qui dirait « aucune erreur »), et la ligne est celle du gestionnaire', async (_name, list) => {
+      const { res, lines } = await ask(failing(Object.assign(new AggregateError([], 'boum'), { errors: list() })));
+
+      expect(res.statusCode).toBe(500);
+      expect(lines()).toMatchObject([{ level: ERROR, msg: 'Erreur inattendue', err: { type: 'AggregateError', message: 'boum' } }]);
+      expect(aggregateErrorsOf(lines()[0])).toBeUndefined();
+      expect(lines()[0]?.original).toBeUndefined();
+    });
+
+    it.each([
+      ['un texte', () => 'abc'],
+      ['un objet qui a une `length`', () => ({ length: 2, 0: 'a', 1: 'b' })],
+    ])('des `errors` qui sont %s, et non une liste, ne sont pas écrites : un texte ne devient pas trois « erreurs »', async (_name, errors) => {
+      const { res, lines } = await ask(failing(Object.assign(new Error('boum'), { errors: errors() })));
+
+      expect(res.statusCode).toBe(500);
+      expect(lines()).toMatchObject([{ level: ERROR, msg: 'Erreur inattendue', err: { type: 'Error', message: 'boum' } }]);
+      expect(aggregateErrorsOf(lines()[0])).toBeUndefined();
+    });
   });
 
   /**
