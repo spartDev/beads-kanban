@@ -674,6 +674,7 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
     method?: string;
     route?: string;
     err?: { type: string; message: string; stack: string };
+    original?: { type?: string; message?: string };
   }
 
   /** Un journal que le test lit (`logger: { level, stream }`) : ce que le serveur écrit, ligne par ligne ou en bloc. */
@@ -1053,6 +1054,16 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
           throw new Error('accesseur-qui-leve');
         },
       });
+    /** Une erreur dont `constructor.name` lève (le `type` de la ligne : lu sous garde, il retombe sur `Error`). */
+    const withThrowingClassName = () => {
+      class Nameless extends Error {}
+      Object.defineProperty(Nameless, 'name', {
+        get() {
+          throw new Error('nom-de-classe-illisible');
+        },
+      });
+      return new Nameless('boum');
+    };
     /** Une erreur dont la liste des clés ne se lit pas (`Object.keys` lève), et dont le reste se lit. */
     const proxyWithoutKeys = () =>
       new Proxy(new Error('boum'), {
@@ -1084,6 +1095,7 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       ['des clés qui ne se lisent pas (un Proxy dont ownKeys lève)', () => proxyWithoutKeys(), 'boum', 'boum'],
       ['un `stack` dont l’accesseur lève', () => withGetter('stack'), 'boum', 'boum'],
       ['un `constructor` dont l’accesseur lève', () => withGetter('constructor'), 'boum', 'boum'],
+      ['un `constructor.name` qui lève (le nom de la classe)', () => withThrowingClassName(), 'boum', 'boum'],
       ['un `statusCode` dont l’accesseur lève (le code reste 500)', () => withGetter('statusCode'), 'boum', 'boum'],
       ['un `status` dont l’accesseur lève (le code reste 500)', () => withGetter('status'), 'boum', 'boum'],
     ])('500 : %s ne fait pas échouer le gestionnaire : réponse de l’API, une seule ligne `error`, ni adresse ni en-tête', async (_name, thrown, body, message) => {
@@ -1102,6 +1114,15 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: GENERIC });
       expect(lines()).toMatchObject([{ level: ERROR, msg: 'Erreur inattendue', err: { type: 'Error' } }]);
+    });
+
+    it('500 : un `constructor.name` qui lève : la ligne `error` est celle du gestionnaire, complète (le type retombe sur `Error`), pas celle du filet', async () => {
+      const { res, lines } = await ask(failing(withThrowingClassName()));
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'boum' });
+      expect(lines()).toMatchObject([{ level: ERROR, method: 'GET', route: '/api/projects', msg: 'Erreur inattendue', err: { type: 'Error', message: 'boum' } }]);
+      expect(lines()[0]?.original).toBeUndefined();
     });
 
     it.each([
@@ -1124,16 +1145,47 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       expect(res.json()).toEqual({ statusCode: 422, error: 'Unprocessable Entity', message: 'requête mal formée' });
     });
 
-    // Le filet : ce qui, malgré les gardes, ferait lever le gestionnaire (ici, ce qu'il lit avant de journaliser quoi que ce soit)
+    // Le filet : ce qui, malgré les gardes, ferait lever le gestionnaire (ici, ce qu'il lit avant de journaliser quoi que ce soit). Sa ligne
+    // est fixe, avec au mieux le type et le message de l'erreur (`original`) : ce qui ne se lit pas manque, sans faire échouer le filet.
+    const throws = (what: string) => () => {
+      throw new Error(what);
+    };
+    /** Une erreur que le filet rattrape (`instanceof` lève) et dont le type et le message sont `type` et `message`. */
+    const caught = (message: unknown, type: unknown = 'MonErreur') => {
+      const error = Object.defineProperty(new Error('boum'), 'message', { value: message });
+      Object.defineProperty(error, 'constructor', { value: { name: type } });
+      return new Proxy(error, { getPrototypeOf: throws('prototype-illisible') });
+    };
     it.each([
-      ['un `name` dont l’accesseur lève (lu pour reconnaître un abandon)', () => withGetter('name')],
-      ['un Proxy dont le prototype ne se lit pas (`instanceof` lève)', () => new Proxy(new Error('boum'), { getPrototypeOf: () => { throw new Error('prototype-illisible'); } })],
-    ])('filet : %s : une ligne fixe sans l’adresse, et une réponse 500 générique', async (_name, thrown) => {
+      ['un `name` dont l’accesseur lève (lu pour reconnaître un abandon)', () => withGetter('name'), { type: 'Error', message: 'boum' }],
+      ['un Proxy dont le prototype ne se lit pas (`instanceof` lève)', () => caught('boum', 'Error'), { type: 'Error', message: 'boum' }],
+      ['un Proxy dont le piège `get` lève : rien ne se lit, ni type ni message', () => new Proxy(new Error('boum'), { get: throws('get-illisible') }), {}],
+      ['un message qui n’est pas un texte : il manque, le type reste', () => caught({ secret: 's3cret-objet' }), { type: 'MonErreur' }],
+      ['un type qui n’est pas un texte : il manque, le message reste', () => caught('boum', { secret: 's3cret-objet' }), { message: 'boum' }],
+    ])('filet : %s : une ligne fixe sans l’adresse, et une réponse 500 générique', async (_name, thrown, original) => {
       const { res, lines } = await ask(failing(thrown()));
 
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: GENERIC });
       expect(lines()).toMatchObject([{ level: ERROR, method: 'GET', route: '/api/projects', msg: NET }]);
+      expect(lines()[0]?.original).toEqual(original);
+    });
+
+    it('filet : le type et le message de la ligne sont plafonnés, comme le reste du journal', async () => {
+      const served = serve(failing(caught(`début-${'m'.repeat(200_000)}-fin`, `Nom${'N'.repeat(200_000)}`)));
+
+      await served.app.inject({ method: 'GET', url: URL_SECRETE, headers: SECRETS });
+
+      expect(served.text().length).toBeLessThan(10_000);
+      expect(served.text()).not.toContain('s3cret');
+      const [line, ...others] = served.lines();
+      expect(others).toEqual([]);
+      expect(line).toMatchObject({ msg: NET });
+      expect(line?.original?.type).toMatch(/^NomNNN/);
+      expect(line?.original?.type?.length).toBeLessThanOrEqual(64);
+      expect(line?.original?.message?.startsWith('début-mmm')).toBe(true);
+      expect(line?.original?.message?.length).toBeLessThan(5_000);
+      expect(line?.original?.message).not.toContain('-fin');
     });
 
     it('filet : une valeur levée dont l’inspection lève : une ligne fixe, une réponse 500 générique', async () => {
@@ -1143,6 +1195,7 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       expect(res.statusCode).toBe(500);
       expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: GENERIC });
       expect(lines()).toMatchObject([{ level: ERROR, msg: NET }]);
+      expect(lines()[0]?.original).toEqual({ type: 'Object' }); // pas une Error : pas de message, et son type est celui d'un objet
     });
   });
 
@@ -1159,6 +1212,8 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       },
     });
     const errOf = (lines: () => LogLine[]) => lines()[0]?.err as unknown as Record<string, unknown>;
+    /** `Class`, rebaptisée `name` : le nom de la classe d'une erreur est le `type` que le journal écrit. */
+    const renamed = <T extends object>(Class: T, name: string): T => Object.defineProperty(Class, 'name', { value: name });
 
     it('300 propriétés de 4 000 caractères : un nombre borné de propriétés est écrit, la ligne ne grossit pas avec leur nombre', async () => {
       const props = Object.fromEntries(Array.from({ length: 300 }, (_v, i) => [`prop${i}`, 'p'.repeat(4_000)]));
@@ -1181,6 +1236,63 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       const keys = Object.keys(errOf(lines)).filter((key) => key.startsWith('kkk'));
       expect(keys).toHaveLength(1); // la propriété est là, sous une clé coupée
       expect(keys[0]?.length).toBeLessThanOrEqual(64);
+    });
+
+    it('deux clés coupées au même début de 64 caractères s’écrivent toutes les deux (la seconde suffixée), sans s’écraser ni compter pour une', async () => {
+      const prefix = 'k'.repeat(64);
+      const { app, lines } = serve(
+        failing(Object.assign(new Error('boum'), { [prefix]: 'exacte', [`${prefix}-a`]: 'longue-a', [`${prefix}-b`]: 'longue-b' })),
+      );
+
+      await app.inject({ method: 'GET', url: '/api/projects' });
+
+      const err = errOf(lines);
+      const keys = Object.keys(err).filter((key) => key.startsWith('kkk'));
+      expect(keys).toEqual([prefix, `${'k'.repeat(62)}~2`, `${'k'.repeat(62)}~3`]);
+      expect(keys.map((key) => err[key])).toEqual(['exacte', 'longue-a', 'longue-b']);
+      expect(Math.max(...keys.map((key) => key.length))).toBe(64);
+    });
+
+    // Le nom de la classe est le `type` de la ligne (pino lit `constructor.name`, pour l'erreur et pour chacune de ses erreurs agrégées) : il est
+    // coupé à 64 caractères comme les clés, sans quoi la ligne grossirait avec lui.
+    it('le nom de la classe de l’erreur (le `type` de la ligne) est coupé à 64 caractères : la ligne ne grossit pas avec lui', async () => {
+      const Named = renamed(class extends Error {}, `Nom${'N'.repeat(HUGE)}`);
+      const { app, lines, text } = serve(failing(new Named('boum')));
+
+      const res = await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(res.statusCode).toBe(500);
+      expect(lines()).toHaveLength(1);
+      expect(text().length).toBeLessThan(10_000); // plus de 200 000 sans plafond
+      expect(errOf(lines)).toMatchObject({ type: `Nom${'N'.repeat(61)}`, message: 'boum' });
+    });
+
+    it('de même pour l’AggregateError et ses erreurs : le nom de chaque classe est coupé', async () => {
+      const Named = renamed(class extends Error {}, `Nom${'N'.repeat(HUGE)}`);
+      const Aggregate = renamed(class extends AggregateError {}, `Agg${'A'.repeat(HUGE)}`);
+      const { app, lines, text } = serve(failing(new Aggregate([new Named('a'), new Named('b'), new Named('c'), new Named('d')], 'plusieurs')));
+
+      await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(lines()).toHaveLength(1);
+      expect(text().length).toBeLessThan(20_000); // plus de 800 000 sans plafond
+      const err = errOf(lines) as { type: string; aggregateErrors: { type: string }[] };
+      expect(err.type).toBe(`Agg${'A'.repeat(61)}`);
+      expect(err.aggregateErrors.map((inner) => inner.type)).toEqual(Array(3).fill(`Nom${'N'.repeat(61)}`)); // les trois premières
+    });
+
+    it.each([
+      ['de 64 caractères : gardé en entier', 'N'.repeat(64), 'N'.repeat(64)],
+      ['de 65 caractères : coupé à 64', 'N'.repeat(65), 'N'.repeat(64)],
+      ['dont une paire de substitution est à cheval sur la coupure : elle n’est pas coupée en deux', `${'N'.repeat(63)}😀`, 'N'.repeat(63)],
+      ['court : tel quel', 'ErreurDeLaBase', 'ErreurDeLaBase'],
+    ])('un nom de classe %s', async (_name, name, written) => {
+      const Named = renamed(class extends Error {}, name);
+      const { app, lines } = serve(failing(new Named('boum')));
+
+      await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect((errOf(lines) as { type: string }).type).toBe(written);
     });
 
     it('un AggregateError garde ses erreurs (les premières, chacune plafonnée), comme le sérialiseur de pino avant le plafond', async () => {
@@ -1211,6 +1323,29 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
 
       expect(lines()).toHaveLength(1);
       expect(text().length).toBeLessThan(80_000); // 3^5 erreurs, chacune de 400 000 caractères, sans plafond
+    });
+
+    // Le pire cas, mesuré en octets (ADR 0002 : « au pire quelque 1,4 Mo ») : une `Error` aux textes les plus longs, tous faits de caractères de
+    // contrôle, que JSON écrit en six octets chacun (`\u0001`). Au pire, 57 textes de 4 000 caractères : le message, la pile et dix propriétés de
+    // l'erreur, les messages et les piles de ses trois causes, et, pour chacune des trois erreurs d'un `AggregateError`, son message, sa pile, dix
+    // propriétés et une `cause` qui est un texte ; et quatre noms de classe de 64 caractères (celui de l'`AggregateError` et ceux de ses trois
+    // erreurs), eux aussi de caractères de contrôle. Si ce nombre change, l'ADR aussi.
+    it('le pire cas, en octets : toutes les propriétés, tous les textes et tous les noms de classe au plafond, en caractères de contrôle', async () => {
+      const control = '\u0001'.repeat(10_000);
+      const ClassName = renamed(class extends Error {}, '\u0001'.repeat(HUGE));
+      const AggregateClassName = renamed(class extends AggregateError {}, '\u0001'.repeat(HUGE));
+      const full = (error: Error): Error =>
+        Object.assign(error, { stack: control }, Object.fromEntries(Array.from({ length: 12 }, (_v, i) => ['\u0001'.repeat(70 + i), control])));
+      let chain = full(new ClassName(control));
+      for (let depth = 1; depth < 6; depth++) chain = full(new ClassName(control, { cause: chain })); // six causes : la ligne n'en suit que trois
+      const inner = () => full(new ClassName(control, { cause: control }));
+      const worst = full(new AggregateClassName([inner(), inner(), inner(), inner()], control, { cause: chain }));
+      const { app, text } = serve(failing(worst));
+
+      await app.inject({ method: 'GET', url: '/api/projects' });
+
+      expect(Buffer.byteLength(text())).toBeGreaterThan(1_350_000); // 57 × 4 000 × 6 octets, et les clés et les noms
+      expect(Buffer.byteLength(text())).toBeLessThan(1_400_000);
     });
 
     it('un AggregateError qui se contient lui-même : une ligne, sans boucle', async () => {

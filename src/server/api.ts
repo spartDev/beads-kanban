@@ -1,5 +1,4 @@
 import { STATUS_CODES } from 'node:http';
-import { inspect } from 'node:util';
 import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { InvalidPeriodError } from '../domain/calendar';
 import type {
@@ -12,6 +11,7 @@ import type {
 } from '../shared/api';
 import { isAbortError } from './abort';
 import { type ChronologyService, createChronologyService } from './chronology/service';
+import { attempt, clip, identify, loggable, shown, statusOf, UNEXPECTED } from './errorLog';
 import { InvalidMetricsQueryError, parseMetricsQuery } from './metrics/query';
 import type { MetricsService } from './metrics/service';
 import {
@@ -45,7 +45,8 @@ import {
  *
  * Le gestionnaire ne lève jamais (bdesk-38k.52) : si une erreur le faisait lever, Fastify la passerait à son gestionnaire par défaut, qui journalise
  * la requête avec son adresse (`?token=…`). Ce que l'on lit de l'erreur (un accesseur peut lever) est gardé ; le message du corps n'est celui de
- * l'erreur que s'il est un texte ; et un filet autour de tout écrit une ligne fixe, sans adresse, et répond un 500.
+ * l'erreur que s'il est un texte ; et un filet autour de tout écrit une ligne fixe, sans adresse (avec, au mieux, le type et le message de
+ * l'erreur d'origine), et répond un 500. Ce que l'on lit d'une erreur et ce qu'on en écrit est dans `errorLog.ts`.
  */
 export async function registerApi(
   app: FastifyInstance,
@@ -55,11 +56,15 @@ export async function registerApi(
 ): Promise<void> {
   app.setErrorHandler((error: FastifyError, req, reply) => {
     // Le gestionnaire ne lève jamais : s'il levait, Fastify passerait l'erreur à son gestionnaire par défaut, qui journalise la requête avec son
-    // adresse (`?token=…`). Ce que l'on lit de l'erreur est gardé (`attempt`, le message du corps) ; ce filet est pour tout le reste.
+    // adresse (`?token=…`). Ce que l'on lit de l'erreur est gardé (`attempt`, le message du corps) ; ce filet est pour tout le reste. Sa ligne est
+    // fixe, avec au mieux le type et le message de l'erreur d'origine (`original`, plafonnés), jamais l'adresse.
     try {
       return handleError(error, req, reply);
     } catch {
-      attempt(() => req.log.error(whereOf(req), "Erreur inattendue (le gestionnaire d'erreurs a échoué)"), undefined);
+      // `original` est lu avant la ligne, sous garde : la ligne fixe ne dépend pas de ce que `identify` ferait, il ne lève pas aujourd'hui, mais
+      // rien ne le promet pour demain.
+      const original = attempt(() => identify(error), {});
+      attempt(() => req.log.error({ ...whereOf(req), original }, "Erreur inattendue (le gestionnaire d'erreurs a échoué)"), undefined);
       return send(reply, 500, UNEXPECTED);
     }
   });
@@ -134,113 +139,6 @@ function whereOf(req: FastifyRequest): { method: string; route: string | undefin
  */
 function clientLeft(reply: FastifyReply): boolean {
   return reply.raw.destroyed;
-}
-
-/**
- * Le code HTTP de la réponse à une erreur : celui qu'elle porte, `statusCode` (Fastify) d'abord, puis `status` (la convention de
- * `http-errors`), le premier qui est un entier de 400 à 599 ; sinon 500. Une erreur ne rend jamais un 2xx ou un 3xx, ni un code que Node
- * refuse (`'abc'`, `99999`, `503.5`) : `reply.code` lèverait, et Fastify prendrait le relais avec son gestionnaire par défaut, qui journalise
- * l'adresse demandée avec sa requête.
- */
-function statusOf(error: { statusCode?: unknown; status?: unknown }): number {
-  const isHttpError = (code: unknown): code is number => typeof code === 'number' && Number.isInteger(code) && code >= 400 && code < 600;
-  return [attempt(() => error.statusCode, undefined), attempt(() => error.status, undefined)].find(isHttpError) ?? 500;
-}
-
-/** Plafond d'un texte écrit au journal : un message de 200 000 caractères ne fait pas une ligne de 600 000. */
-const LOG_TEXT_MAX = 4_000;
-/** Combien de `cause` le journal suit, pas plus (chacune a ses textes, plafonnés eux aussi). */
-const LOG_CAUSES_MAX = 3;
-/** Combien de propriétés d'une erreur le journal écrit, et la longueur de leurs clés : sans cela, la ligne grossirait avec leur nombre. */
-const LOG_PROPS_MAX = 10;
-const LOG_KEY_MAX = 64;
-/** Combien d'erreurs d'un `AggregateError` le journal écrit. */
-const LOG_AGGREGATED_MAX = 3;
-/** Le message d'une réponse que rien n'a prévue : ce que le client lit quand l'erreur n'a pas de message texte, ou que le gestionnaire a échoué. */
-const UNEXPECTED = 'Erreur inattendue.';
-
-/** `read()`, ou `fallback` s'il lève : une erreur est un objet quelconque, dont un accesseur peut lever, et le journal ne doit pas en dépendre. */
-function attempt<T>(read: () => T, fallback: T): T {
-  try {
-    return read();
-  } catch {
-    return fallback;
-  }
-}
-
-/** Les `max` premiers caractères de `text`, sans laisser la première moitié d'une paire de substitution (un emoji coupé en deux s'écrit illisible). */
-function head(text: string, max: number): string {
-  const splitsPair = max > 0 && (text.charCodeAt(max - 1) & 0xfc00) === 0xd800;
-  return text.slice(0, splitsPair ? max - 1 : max);
-}
-
-/** `text`, coupé au plafond avec ce qu'il en reste dit. */
-function clip(text: string): string {
-  if (text.length <= LOG_TEXT_MAX) return text;
-  const kept = head(text, LOG_TEXT_MAX);
-  return `${kept}… (+${text.length - kept.length} caractères)`;
-}
-
-/** `value` comme `inspect` la montre (un texte entre guillemets), plafonnée. */
-function shown(value: unknown): string {
-  return clip(inspect(value, { breakLength: Infinity, maxStringLength: LOG_TEXT_MAX }));
-}
-
-/** Une valeur que le journal écrit telle quelle (un texte plafonné, un nombre, un booléen, `null`), ou `undefined` pour tout autre. */
-function plain(value: unknown): string | number | boolean | bigint | null | undefined {
-  if (typeof value === 'string') return clip(value);
-  if (value === null || typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return value;
-  return undefined;
-}
-
-/** Ce que `loggable` écrit lui-même d'une erreur : le reste de ses propriétés est copié par `plain`. */
-const LOGGABLE_OWN = new Set(['message', 'stack', 'cause', 'constructor']);
-
-/**
- * Ce que le journal écrit d'une erreur : une copie qui garde son nom de classe (le `type` de la ligne), son message et sa pile (plafonnés), les
- * valeurs simples qu'elle porte (`code`, `errno`, `statusCode`…, les textes plafonnés ; dix au plus), sa `cause` de proche en proche (une `Error`,
- * ou un texte) et les premières erreurs d'un `AggregateError`. Pas ses propriétés qui sont des objets (la réponse et les en-têtes d'un client
- * HTTP, des tampons de sortie…) : ni leur taille ni ce qu'ils portent ne sont connus, et ce n'est pas ce que dit l'erreur. Le sérialiseur de
- * Fastify écrit le reste : `type`, `message`, `stack`, `aggregateErrors`. Rien ne lève ici : un accesseur qui lève ne retire que sa propriété.
- */
-function loggable(error: Error, causes = LOG_CAUSES_MAX): Error {
-  // Ni `Object.create(Object.getPrototypeOf(error))`, ni une sous-classe : les accesseurs d'un `DOMException` (`name`, `message`, `code`) lèvent sur
-  // autre chose que lui, et le sérialiseur de Fastify les lit. Le `type` de la ligne vient de `constructor.name` : celui de l'erreur.
-  const copy = Object.create(Error.prototype) as Error;
-  // `defineProperty` et non `copy[key] = value` : une propriété nommée `__proto__` changerait le prototype de la copie.
-  const put = (key: string, value: unknown, enumerable = true) =>
-    Object.defineProperty(copy, key, { value, enumerable, configurable: true, writable: true });
-  const constructor = attempt(() => error.constructor, Error);
-  put('constructor', typeof constructor === 'function' ? constructor : Error, false);
-
-  // `code` d'abord : celui d'un `DOMException` est un accesseur de son prototype, que `Object.keys` ne voit pas.
-  let written = 0;
-  for (const key of new Set(['code', ...attempt(() => Object.keys(error), [])])) {
-    if (written === LOG_PROPS_MAX) break;
-    if (LOGGABLE_OWN.has(key)) continue;
-    const value = plain(attempt(() => (error as unknown as Record<string, unknown>)[key], undefined));
-    if (value === undefined) continue;
-    put(key.length > LOG_KEY_MAX ? head(key, LOG_KEY_MAX) : key, value);
-    written++;
-  }
-
-  // Un message écrasé par autre chose qu'un texte ne doit pas faire échouer le gestionnaire (Fastify écrirait alors l'adresse demandée).
-  const said = (value: unknown) => attempt(() => shown(value), '(illisible)');
-  const text = (value: unknown) => (typeof value === 'string' ? clip(value) : said(value));
-  put('message', text(attempt(() => error.message, '(illisible)')), false);
-  put('stack', text(attempt(() => error.stack ?? '', '')), false);
-
-  const cause = attempt(() => error.cause, undefined);
-  if (typeof cause === 'string') put('cause', clip(cause));
-  else if (causes > 0 && cause instanceof Error) put('cause', loggable(cause, causes - 1), false);
-  // Les erreurs d'un `AggregateError` : les premières seulement, sans leur propre `cause` ni leurs propres erreurs (une chaîne de causes de trois
-  // niveaux en a déjà au plus trois fois trois), et celles qui ne sont pas des `Error`, dites par `inspect`.
-  const errors = causes > 0 ? attempt(() => (error as { errors?: unknown }).errors, undefined) : undefined;
-  if (Array.isArray(errors)) {
-    const inner = (value: unknown) => (value instanceof Error ? loggable(value, 0) : said(value));
-    put('errors', errors.slice(0, LOG_AGGREGATED_MAX).map(inner), false);
-  }
-  return copy;
 }
 
 function send(reply: FastifyReply, statusCode: number, message: string, reason?: string): FastifyReply {
