@@ -1,8 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { fakeDolt } from '../testing/fake-dolt';
+import { fakeDolt, fakeDoltRoot } from '../testing/fake-dolt';
 import { createDoltClient } from './client';
 
 /**
@@ -11,7 +10,7 @@ import { createDoltClient } from './client';
  * voie du HEAD, la lecture du HEAD d'une demande arrivée pendant le scan attendait derrière toutes.
  */
 
-const options = (binary: string) => ({ binary, retryDelayMs: 1, rootPath: join(tmpdir(), 'bdesk-fake-dolt-root') });
+const options = (binary: string) => ({ binary, retryDelayMs: 1, rootPath: fakeDoltRoot() });
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const lines = (file: string): string[] => (existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean) : []);
 

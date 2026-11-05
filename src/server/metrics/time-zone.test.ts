@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { scratchDir } from '../testing/scratch';
 import { isKnownTimeZone, resolveMetricsTimeZone, systemTimeZone } from './time-zone';
 
 describe('isKnownTimeZone', () => {
@@ -173,19 +173,13 @@ describe('systemTimeZone : le fuseau que le système déclare, au bout de /etc/l
 });
 
 describe('systemTimeZone sur de vrais liens (le `realpathSync` par défaut, dans un faux système de fichiers)', () => {
-  const roots: string[] = [];
-  afterEach(() => {
-    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-  });
-
   /**
    * Un faux système de fichiers : `usr/share/zoneinfo` avec Antarctica/Troll (un fuseau que la machine qui lance les tests n'a aucune chance de déclarer :
    * lire le vrai `/etc/localtime` ne donnerait pas le bon nom), et ses copies `posix/` et `right/` (Linux), un `etc/` pour les liens, et un
    * `var/db/timezone` à la macOS, où `zoneinfo` est lui-même un lien vers `tz/2026c.1.0/zoneinfo`.
    */
   function system() {
-    const root = mkdtempSync(join(tmpdir(), 'bdesk-zoneinfo-'));
-    roots.push(root);
+    const root = scratchDir('bdesk-zoneinfo-');
     const zoneinfo = join(root, 'usr', 'share', 'zoneinfo');
     for (const copy of ['', 'posix', 'right']) {
       mkdirSync(join(zoneinfo, copy, 'Antarctica'), { recursive: true });

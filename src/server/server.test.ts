@@ -1,10 +1,10 @@
 import { request } from 'node:http';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildServer, startServer } from './server';
+import { scratchDir } from './testing/scratch';
 
 const config = { roots: ['/tmp/roots'], projects: [], hiddenProjects: [] };
 let close: (() => Promise<void>) | undefined;
@@ -25,7 +25,7 @@ describe('serveur', () => {
   });
 
   it('sert l’interface compilée et renvoie index.html pour les routes de l’app', async () => {
-    const webRoot = mkdtempSync(join(tmpdir(), 'bdesk-web-'));
+    const webRoot = scratchDir('bdesk-web-');
     writeFileSync(join(webRoot, 'index.html'), '<!doctype html><title>beads-desktop</title>');
     const app = buildServer({ config, webRoot });
 
@@ -36,7 +36,7 @@ describe('serveur', () => {
   });
 
   it('renvoie 404 en JSON pour une route API inconnue, même avec l’interface servie', async () => {
-    const webRoot = mkdtempSync(join(tmpdir(), 'bdesk-web-'));
+    const webRoot = scratchDir('bdesk-web-');
     writeFileSync(join(webRoot, 'index.html'), '<!doctype html>');
     const app = buildServer({ config, webRoot });
 
@@ -56,7 +56,7 @@ describe('serveur', () => {
 
 /** Une interface compilée minimale : index.html et un fichier dans assets/. */
 function webRootWithAssets(): string {
-  const webRoot = mkdtempSync(join(tmpdir(), 'bdesk-web-'));
+  const webRoot = scratchDir('bdesk-web-');
   writeFileSync(join(webRoot, 'index.html'), '<!doctype html><title>beads-desktop</title>');
   mkdirSync(join(webRoot, 'assets'));
   writeFileSync(join(webRoot, 'assets', 'app.js'), 'console.log("app");');

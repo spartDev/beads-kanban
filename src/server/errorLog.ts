@@ -29,6 +29,11 @@ const LOG_KEY_MAX = 64;
 const LOG_AGGREGATED_MAX = 3;
 /** Le message d'une réponse que rien n'a prévue : ce que le client lit quand l'erreur n'a pas de message texte, ou que le gestionnaire a échoué. */
 export const UNEXPECTED = 'Erreur inattendue.';
+/**
+ * Ce que le journal écrit de ce qui ne se lit pas : un message, un élément de `errors`, une valeur dont `inspect` lève. Toujours tel quel, sans les
+ * guillemets que `inspect` ajoute à un texte : un élément qui est vraiment le texte « (illisible) » s'écrit `'(illisible)'`, et ne se confond pas avec lui.
+ */
+const UNREADABLE = '(illisible)';
 
 /** `read()`, ou `fallback` s'il lève : une erreur est un objet quelconque, dont un accesseur peut lever, et le journal ne doit pas en dépendre. */
 export function attempt<T>(read: () => T, fallback: T): T {
@@ -116,9 +121,9 @@ export function loggable(error: Error, causes = LOG_CAUSES_MAX): Error {
   }
 
   // Un message écrasé par autre chose qu'un texte ne doit pas faire échouer le gestionnaire (Fastify écrirait alors l'adresse demandée).
-  const said = (value: unknown) => attempt(() => shown(value), '(illisible)');
+  const said = (value: unknown) => attempt(() => shown(value), UNREADABLE);
   const text = (value: unknown) => (typeof value === 'string' ? clip(value) : said(value));
-  put('message', text(attempt(() => error.message, '(illisible)')), false);
+  put('message', text(attempt(() => error.message, UNREADABLE)), false);
   put('stack', text(attempt(() => error.stack ?? '', '')), false);
 
   const cause = attempt(() => error.cause, undefined);
@@ -130,12 +135,17 @@ export function loggable(error: Error, causes = LOG_CAUSES_MAX): Error {
   // soit la chaîne des causes.
   const errors = causes > 0 ? attempt(() => (error as { errors?: unknown }).errors, undefined) : undefined;
   // La liste est celle de l'erreur : on n'en lit que `length` et les indices, chacun sous garde, et on n'appelle aucune de ses méthodes (`slice`, `map`,
-  // `Symbol.species` : une sous-classe d'`Array` les redéfinit, et le plafond ne serait plus le nôtre). Une liste qui ne se lit pas (`Array.isArray` lève
-  // sur un Proxy révoqué, `length` n'est pas un nombre) n'est pas écrite ; un élément qui ne se lit pas est dit illisible, sans retirer ses voisins.
+  // `Symbol.species` : une sous-classe d'`Array` les redéfinit, et le plafond ne serait plus le nôtre). `Math.min` convertit `length` en nombre : une
+  // chaîne (`'2'`) ou un objet dont `valueOf` rend 2 compte pour 2, et quoi qu'elle rende il n'y a jamais plus de `LOG_AGGREGATED_MAX` erreurs. La liste
+  // n'est pas écrite si `Array.isArray` est faux ou lève (un texte, un Proxy révoqué), si lire `length` ou la convertir lève (accesseur, piège `get`,
+  // BigInt, Symbol, `valueOf`), ou si elle ne se convertit pas en un nombre d'au moins 0 (NaN, négatif) : pas un `[]`, qui dirait « aucune erreur ».
+  // Un élément qui ne se lit pas s'écrit `(illisible)`, sans retirer ses voisins.
   const count = attempt(() => (Array.isArray(errors) ? Math.min(errors.length, LOG_AGGREGATED_MAX) : -1), -1);
   if (count >= 0) {
+    const unread = Symbol('élément illisible');
     const errorAt = (i: number) => {
-      const value = attempt(() => (errors as unknown[])[i], '(illisible)');
+      const value = attempt<unknown>(() => (errors as unknown[])[i], unread);
+      if (value === unread) return UNREADABLE;
       return isError(value) ? loggable(value, 0) : said(value);
     };
     put('errors', Array.from({ length: count }, (_value, i) => errorAt(i)), false);

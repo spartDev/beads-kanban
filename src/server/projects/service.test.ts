@@ -1,11 +1,11 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReadAborted } from '../abort';
 import type { DoltClient, QueryOptions, Row } from '../dolt/client';
 import { assertReadOnly } from '../dolt/read-only';
 import { buildServer } from '../server';
+import { scratchDir } from '../testing/scratch';
 import { createProjectService, IssueNotFoundError, ProjectNotFoundError, ProjectUnreadableError } from './service';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -26,7 +26,7 @@ async function until(condition: () => boolean, what: string): Promise<void> {
 let root: string;
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-service-')));
+  root = realpathSync(scratchDir('bdesk-service-'));
 });
 
 afterEach(() => {

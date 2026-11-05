@@ -1,12 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, statSync, truncateSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, statSync, truncateSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Config } from '../config';
 import { createDoltClient, type DoltClient } from '../dolt/client';
 import { createDatabase, hasBinary, isolatedDoltEnv, type Scratch } from '../testing/dolt-fixture';
 import { type SqlServer, startSqlServer } from '../testing/dolt-server';
+import { scratchDir } from '../testing/scratch';
 import { type Discovery, discoverProjects } from './discovery';
 
 /**
@@ -23,11 +23,16 @@ import { type Discovery, discoverProjects } from './discovery';
  * Sans `dolt` dans le PATH ces tests sont sautés, avec un avertissement (voir CLAUDE.md).
  */
 
-const env = isolatedDoltEnv();
+let env: NodeJS.ProcessEnv;
+
+// Pas à la collecte : un fichier dont tous les tests sont sautés (sans `dolt`) n'exécute aucun crochet, et le dossier de cet environnement ne serait pas retiré (voir `scratchDir`).
+beforeAll(() => {
+  env = isolatedDoltEnv();
+});
 
 /** Une racine de Projets à part pour chaque test : un scan ne voit que ses propres bases. */
 function sandbox(): { root: string; config: Config } {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-incremental-dolt-')));
+  const root = realpathSync(scratchDir('bdesk-incremental-dolt-'));
   return { root, config: { roots: [root], projects: [], hiddenProjects: [] } };
 }
 

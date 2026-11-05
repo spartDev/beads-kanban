@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -7,6 +6,7 @@ import type { IssueChronologyResponse, IssueResponse, IssuesResponse, ProjectsRe
 import { buildServer } from '../server';
 import { buildLegacyDatabase, createDatabase, day, hasBinary, isolatedDoltEnv } from '../testing/dolt-fixture';
 import { type SqlServer, startSqlServer } from '../testing/dolt-server';
+import { scratchDir } from '../testing/scratch';
 import { createDoltClient } from './client';
 import { readTicketHistories } from './history';
 import { readDependencies, readIssueSummaries } from './reader';
@@ -155,7 +155,7 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)(
     const portOf = async () => String((await client.open(database).query('select @@port as port'))[0]?.port);
 
     beforeAll(async () => {
-      root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-sql-server-')));
+      root = realpathSync(scratchDir('bdesk-sql-server-'));
       const project = buildProject(root, 'projet', mode);
       database = project.database;
       direct = await readEverything();
@@ -240,7 +240,7 @@ describe.skipIf(!hasBinary('dolt'))('Base au schéma des dépendances migré, do
 
   beforeAll(async () => {
     const env = isolatedDoltEnv();
-    const dir = join(realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-sql-server-legacy-'))), 'db');
+    const dir = join(realpathSync(scratchDir('bdesk-sql-server-legacy-')), 'db');
     buildLegacyDatabase(env, dir);
     const db = createDoltClient().open(dir);
     const read = async (): Promise<Reading> => ({

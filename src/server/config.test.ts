@@ -1,8 +1,9 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { loadConfig } from './config';
+import { scratchDir } from './testing/scratch';
 
 const home = '/Users/someone';
 
@@ -16,7 +17,7 @@ describe('loadConfig', () => {
   });
 
   it('lit les racines du fichier de configuration et développe le ~', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'bdesk-config-'));
+    const dir = scratchDir('bdesk-config-');
     const configPath = join(dir, 'config.json');
     writeFileSync(
       configPath,
@@ -31,7 +32,7 @@ describe('loadConfig', () => {
   });
 
   it('signale un fichier de configuration invalide plutôt que de l’ignorer', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'bdesk-config-'));
+    const dir = scratchDir('bdesk-config-');
     const configPath = join(dir, 'config.json');
     writeFileSync(configPath, '{ roots: oops');
 
@@ -40,14 +41,8 @@ describe('loadConfig', () => {
 });
 
 describe('loadConfig : pollIntervalMs (intervalle du sondage des mises à jour en direct)', () => {
-  const dirs: string[] = [];
-  afterEach(() => {
-    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-  });
-
   const configWith = (content: unknown) => {
-    const dir = mkdtempSync(join(tmpdir(), 'bdesk-config-'));
-    dirs.push(dir);
+    const dir = scratchDir('bdesk-config-');
     const configPath = join(dir, 'config.json');
     writeFileSync(configPath, JSON.stringify(content));
     return { configPath, load: () => loadConfig({ home, configPath }) };

@@ -1,12 +1,12 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DoltClient, Row } from '../dolt/client';
 import { createProjectService } from '../projects/service';
 import { startServer } from '../server';
+import { scratchDir } from '../testing/scratch';
 import { openStream, type Stream } from '../testing/sse';
 
 /**
@@ -19,7 +19,7 @@ let app: FastifyInstance | undefined;
 const streams: Stream[] = [];
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-cost-')));
+  root = realpathSync(scratchDir('bdesk-cost-'));
 });
 
 afterEach(async () => {

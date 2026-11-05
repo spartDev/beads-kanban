@@ -1,16 +1,16 @@
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Config } from '../config';
 import { type DoltClient, DoltNotFoundError, DoltQueryError } from '../dolt/client';
+import { scratchDir } from '../testing/scratch';
 import { discoverProjects, slugify } from './discovery';
 
 let root: string;
 
 beforeEach(() => {
   // Chemin canonique : sur macOS, /var/folders est un lien vers /private/var.
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-discovery-')));
+  root = realpathSync(scratchDir('bdesk-discovery-'));
 });
 
 function write(path: string, content = ''): void {
@@ -180,7 +180,7 @@ describe('discoverProjects', () => {
   });
 
   it('ajoute les Projets saisis à la main, hors des racines, et signale ceux qui n’ont pas de .beads', async () => {
-    const elsewhere = mkdtempSync(join(tmpdir(), 'bdesk-elsewhere-'));
+    const elsewhere = scratchDir('bdesk-elsewhere-');
     write(join(elsewhere, 'manuel', '.beads', 'metadata.json'), JSON.stringify({ backend: 'dolt', dolt_mode: 'embedded', dolt_database: 'm' }));
     mkdirSync(join(elsewhere, 'manuel', '.beads', 'embeddeddolt', 'm', '.dolt'), { recursive: true });
     mkdirSync(join(elsewhere, 'vide'));
@@ -238,7 +238,7 @@ describe('discoverProjects', () => {
     });
 
     it('masque un Projet dont le chemin à masquer passe par le lien /var → /private/var de macOS', async () => {
-      const raw = mkdtempSync(join(tmpdir(), 'bdesk-hide-')); // /var/folders/… sur macOS
+      const raw = scratchDir('bdesk-hide-'); // /var/folders/… sur macOS
       const real = realpathSync(raw); // /private/var/folders/…
       write(join(real, 'p', '.beads', 'metadata.json'), JSON.stringify({ backend: 'sqlite', database: 'beads.db' }));
 

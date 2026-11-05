@@ -1,11 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, truncateSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, truncateSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { analyzeFlow } from '../../domain/flow';
 import type { IssueDetail } from '../../shared/api';
 import { buildLegacyDatabase, createDatabase, day, hasBinary, isolatedDoltEnv, type Scratch } from '../testing/dolt-fixture';
+import { scratchDir } from '../testing/scratch';
 import { discoverProjects } from '../projects/discovery';
 import { createProjectService } from '../projects/service';
 import { buildServer } from '../server';
@@ -27,7 +27,7 @@ describe.skipIf(!hasBinary('dolt'))('lecteur Dolt sur une base dont le schéma a
   let db: ReturnType<typeof client.open>;
 
   beforeAll(() => {
-    base = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-legacy-')));
+    base = realpathSync(scratchDir('bdesk-legacy-'));
     buildLegacyDatabase(isolatedDoltEnv(), join(base, 'db'));
     db = client.open(join(base, 'db'));
   }, 60_000);
@@ -103,7 +103,7 @@ describe.skipIf(!hasBinary('dolt'))('Projets sur une vraie base Dolt', () => {
   let root: string;
 
   beforeAll(() => {
-    root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-projects-')));
+    root = realpathSync(scratchDir('bdesk-projects-'));
     const source = join(root, 'source-db');
     buildLegacyDatabase(isolatedDoltEnv(), source);
     const metadata = (mode: string) => JSON.stringify({ database: 'dolt', backend: 'dolt', dolt_mode: mode, dolt_database: 'tdb' });
@@ -178,7 +178,7 @@ describe.skipIf(!hasBinary('dolt'))('Projets sur une vraie base Dolt', () => {
 
   /** Un binaire qui compte ses lancements puis passe la main au vrai `dolt` : chaque ligne du compteur est un processus. */
   function countingBinary() {
-    const bin = mkdtempSync(join(tmpdir(), 'bdesk-counting-dolt-'));
+    const bin = scratchDir('bdesk-counting-dolt-');
     const counter = join(bin, 'calls');
     const binary = join(bin, 'dolt');
     const real = execFileSync('which', ['dolt'], { encoding: 'utf8' }).trim();
@@ -231,7 +231,7 @@ describe.skipIf(!hasBinary('dolt'))('lecture seule sur une vraie base Dolt', () 
   const count = () => Number(scratch.rows('select count(*) as c from t')[0]?.c);
 
   beforeAll(() => {
-    dir = join(realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-readonly-'))), 'db');
+    dir = join(realpathSync(scratchDir('bdesk-readonly-')), 'db');
     scratch = createDatabase(isolatedDoltEnv(), dir);
     scratch.sql('create table t (a int primary key); insert into t values (1)');
     scratch.commit(1, 'init');
@@ -329,7 +329,7 @@ describe.skipIf(!hasBinary('dolt'))('lectures groupées et abandonnées sur une 
   const count = () => Number(scratch.rows('select count(*) as c from t')[0]?.c);
 
   beforeAll(() => {
-    dir = join(realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-grouped-'))), 'db');
+    dir = join(realpathSync(scratchDir('bdesk-grouped-')), 'db');
     scratch = createDatabase(isolatedDoltEnv(), dir);
     scratch.sql('create table t (a int primary key, b varchar(10)); insert into t values (1, \'un\'), (2, \'deux\'), (3, \'trois\')');
     scratch.commit(1, 'init');
@@ -376,7 +376,7 @@ describe.skipIf(!hasBinary('dolt'))('lectures groupées et abandonnées sur une 
   });
 
   it('readIssueBase et readIssueParts rendent ce que rendent les lectures séparées', async () => {
-    const legacy = join(realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-grouped-legacy-'))), 'db');
+    const legacy = join(realpathSync(scratchDir('bdesk-grouped-legacy-')), 'db');
     buildLegacyDatabase(isolatedDoltEnv(), legacy);
     const reader = createDoltClient().open(legacy);
 
@@ -419,7 +419,7 @@ describe.skipIf(!hasBinary('dolt'))('lectures groupées et abandonnées sur une 
      * processus encore vivant, ne retient pas une attente qui ne le concerne plus (bdesk-38k.45).
      */
     function launcher() {
-      const folder = mkdtempSync(join(tmpdir(), 'bdesk-launcher-'));
+      const folder = scratchDir('bdesk-launcher-');
       const log = join(folder, 'pids');
       const binary = join(folder, 'dolt');
       writeFileSync(binary, `#!/bin/sh\necho $$ >> '${log}'\nexec dolt "$@"\n`);
@@ -562,10 +562,13 @@ const ISSUES_AND_DEPENDENCIES = `
 
 /** Historiques tordus, sur de vraies bases Dolt jetables : fusion de branches, horloge qui recule, ticket recréé. */
 describe.skipIf(!hasBinary('dolt'))('historique d’une base Dolt aux commits tordus', () => {
-  const env = isolatedDoltEnv();
+  let env: NodeJS.ProcessEnv;
+  beforeAll(() => {
+    env = isolatedDoltEnv(); // pas à la collecte : sans `dolt`, aucun crochet ne s'exécute pour retirer ce dossier (voir `scratchDir`)
+  });
   const client = createDoltClient();
   const newDatabase = () => {
-    const dir = join(realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-history-'))), 'db');
+    const dir = join(realpathSync(scratchDir('bdesk-history-')), 'db');
     return { dir, ...createDatabase(env, dir) };
   };
   const dateOf = (date: unknown) => new Date(`${String(date).replace(' ', 'T')}Z`);

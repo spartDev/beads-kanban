@@ -279,7 +279,9 @@ const STATEMENT_SEPARATOR = '\n;\n';
  *
  * Les seuls arrêts qui restent sont ceux de `execFile` : le délai (`timeoutMs`, 60 s) et le dépassement de `maxBuffer`. Ils tuent
  * (SIGTERM) un processus qui tourne depuis très longtemps ou qui écrit trop, donc en pleine lecture : ils peuvent laisser un
- * `journal.idx` tronqué, comme un plantage, et un fichier temporaire seulement s'ils tombent dans les 5 ms de la fermeture.
+ * `journal.idx` tronqué, comme un plantage, et un fichier temporaire seulement s'ils tombent dans les quelques millisecondes de la fermeture
+ * (5 ms mesurées sur `.dolt/noms`, non mesurées sur `.dolt/stats` ; mesuré, aucun n'est resté après des lectures tuées en pleine exécution :
+ * ADR 0003, « Ce qui peut encore tuer un `dolt sql` »).
  */
 function run(
   binary: string,

@@ -1,5 +1,4 @@
-import { mkdtempSync, realpathSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { analyzeFlow } from '../../domain/flow';
@@ -7,6 +6,7 @@ import { createDoltClient } from '../dolt/client';
 import { readTicketHistories } from '../dolt/history';
 import { readDependencies, readIssueSummaries } from '../dolt/reader';
 import { createDatabase, hasBinary, isolatedDoltEnv } from '../testing/dolt-fixture';
+import { scratchDir } from '../testing/scratch';
 import { buildIssues } from './issues';
 
 /**
@@ -21,7 +21,7 @@ describe.skipIf(!hasBinary('dolt'))('l’Abandon lu dans une base Dolt', () => {
   let dir: string;
 
   beforeAll(() => {
-    dir = join(realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-abandon-'))), 'db');
+    dir = join(realpathSync(scratchDir('bdesk-abandon-')), 'db');
     const db = createDatabase(isolatedDoltEnv(), dir);
     db.sql(`
       create table issues (

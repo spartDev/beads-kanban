@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { MetricsResponse } from '../../shared/api';
@@ -7,6 +6,7 @@ import { createDoltClient } from '../dolt/client';
 import { createProjectService } from '../projects/service';
 import { buildServer } from '../server';
 import { createDatabase, hasBinary, isolatedDoltEnv } from '../testing/dolt-fixture';
+import { scratchDir } from '../testing/scratch';
 import { createMetricsService } from './service';
 
 /**
@@ -78,7 +78,7 @@ describe.skipIf(!hasBinary('dolt'))('santé du flux sur une vraie base Dolt', ()
   let getAt: (timeZone: 'Europe/Paris' | 'UTC', now: string, query: string) => Promise<{ status: number; body: MetricsResponse }>;
 
   beforeAll(() => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-health-')));
+    const root = realpathSync(scratchDir('bdesk-health-'));
     const beads = join(root, 'gamma', '.beads');
     mkdirSync(beads, { recursive: true });
     writeFileSync(join(beads, 'metadata.json'), JSON.stringify({ backend: 'dolt', database: 'dolt', dolt_mode: 'embedded', dolt_database: 'tdb' }));

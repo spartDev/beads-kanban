@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ReadAborted } from '../abort';
 import { createDoltClient } from '../dolt/client';
 import { createProjectService, type ProjectService } from '../projects/service';
-import { fakeDolt } from '../testing/fake-dolt';
+import { fakeDolt, fakeDoltRoot } from '../testing/fake-dolt';
+import { scratchDir } from '../testing/scratch';
 import { createMetricsService } from './service';
 
 /**
@@ -32,7 +32,7 @@ describe.skipIf(process.platform === 'win32')('Vue globale quittée à froid (bd
   const PLACES = 2;
 
   function setup() {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-left-')));
+    const root = realpathSync(scratchDir('bdesk-left-'));
     for (const name of [...PROJECTS, 'f']) {
       const beads = join(root, name, '.beads');
       mkdirSync(join(beads, 'embeddeddolt', name, '.dolt'), { recursive: true });
@@ -59,7 +59,7 @@ describe.skipIf(process.platform === 'win32')('Vue globale quittée à froid (bd
     const release = () => writeFileSync(join(fake.dir, 'release'), '');
     const real = createProjectService(
       { roots: [root], projects: [], hiddenProjects: [] },
-      { dolt: createDoltClient({ binary: fake.binary, maxConcurrent: PLACES, rootPath: join(tmpdir(), 'bdesk-fake-dolt-root') }) },
+      { dolt: createDoltClient({ binary: fake.binary, maxConcurrent: PLACES, rootPath: fakeDoltRoot() }) },
     );
     // L'historique est hors de la voie des tickets : ici il répond aussitôt, seules les lectures de tickets sont en jeu.
     const projects: ProjectService = { ...real, histories: async () => [] };

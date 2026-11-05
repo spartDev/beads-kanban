@@ -1,7 +1,6 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { promisify } from 'node:util';
@@ -9,6 +8,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startServer } from '../server';
 import { hasBinary, isolatedDoltEnv } from '../testing/dolt-fixture';
+import { scratchDir } from '../testing/scratch';
 import { openStream, type Stream } from '../testing/sse';
 
 const run = promisify(execFile);
@@ -59,7 +59,7 @@ describe.skipIf(!hasBinary('dolt') || !hasBinary('bd'))('flux SSE sur un workspa
   }
 
   beforeAll(async () => {
-    roots = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-live-')));
+    roots = realpathSync(scratchDir('bdesk-live-'));
     workspace = join(roots, 'xx-live');
     database = join(workspace, '.beads', 'embeddeddolt', 'xx');
     // Aucune variable BEADS_* / BD_* de l'environnement ne doit rediriger bd vers un vrai Projet ; pas de métriques d'usage de bd.
@@ -79,7 +79,6 @@ describe.skipIf(!hasBinary('dolt') || !hasBinary('bd'))('flux SSE sur un workspa
   afterAll(async () => {
     for (const stream of streams) stream.close();
     await app?.close();
-    if (roots) rmSync(roots, { recursive: true, force: true });
   });
 
   it('annonce une écriture de bd dans les secondes qui suivent, avec le HEAD de la base', async () => {

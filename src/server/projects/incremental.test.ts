@@ -1,10 +1,10 @@
-import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, renameSync, utimesSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { appendFileSync, copyFileSync, mkdirSync, readdirSync, realpathSync, renameSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Config } from '../config';
 import { type DoltClient, DoltQueryError } from '../dolt/client';
 import { buildServer } from '../server';
+import { scratchDir } from '../testing/scratch';
 import { discoverProjects } from './discovery';
 import { createProjectService } from './service';
 
@@ -26,7 +26,7 @@ import { createProjectService } from './service';
 let root: string;
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-incremental-')));
+  root = realpathSync(scratchDir('bdesk-incremental-'));
 });
 
 afterEach(() => {

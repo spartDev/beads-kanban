@@ -1,14 +1,14 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type DoltClient, DoltQueryError, type Row } from '../dolt/client';
+import { scratchDir } from '../testing/scratch';
 import { createProjectService, ProjectNotFoundError, ProjectUnreadableError } from './service';
 
 let root: string;
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-head-')));
+  root = realpathSync(scratchDir('bdesk-head-'));
 });
 
 afterEach(() => {

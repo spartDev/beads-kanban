@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TicketHistory } from '../../domain/flow';
 import { createChronologyService } from '../chronology/service';
 import { createDoltClient } from '../dolt/client';
-import { fakeDolt } from '../testing/fake-dolt';
+import { fakeDolt, fakeDoltRoot } from '../testing/fake-dolt';
+import { scratchDir } from '../testing/scratch';
 import { createProjectService, type ProjectService } from './service';
 
 /**
@@ -23,7 +23,7 @@ const NAMES = ['p', 'q1', 'q2', 'q3', 'q4', 'q5'];
 let root: string;
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-rescan-voies-')));
+  root = realpathSync(scratchDir('bdesk-rescan-voies-'));
   for (const name of NAMES) {
     const beads = join(root, name, '.beads');
     mkdirSync(join(beads, 'embeddeddolt', name, '.dolt'), { recursive: true });
@@ -88,7 +88,7 @@ describe.skipIf(process.platform === 'win32')('lectures pendant un rescan de nom
     // Une seule place par voie : un scan tient la sienne, les cinq autres lectures de préfixe attendent derrière. Le HEAD doit passer.
     const real = createProjectService(
       { roots: [root], projects: [], hiddenProjects: [] },
-      { dolt: createDoltClient({ binary: fake.binary, maxLight: 1, maxDiscovery: 1, rootPath: join(tmpdir(), 'bdesk-fake-dolt-root') }) },
+      { dolt: createDoltClient({ binary: fake.binary, maxLight: 1, maxDiscovery: 1, rootPath: fakeDoltRoot() }) },
     );
     // L'historique est remplacé (seules les voies du HEAD et des fiches sont en jeu ici) ; le HEAD et les fiches sont les vrais.
     const projects: ProjectService = { ...real, histories: async () => [DELIVERED] };

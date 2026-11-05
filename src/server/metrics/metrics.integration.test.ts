@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { analyzeFlow } from '../../domain/flow';
@@ -9,6 +8,7 @@ import { createDoltClient, type DoltClient } from '../dolt/client';
 import { createProjectService, type ProjectService } from '../projects/service';
 import { buildServer } from '../server';
 import { createDatabase, hasBinary, isolatedDoltEnv, type Scratch } from '../testing/dolt-fixture';
+import { scratchDir } from '../testing/scratch';
 import { createMetricsService } from './service';
 
 const DAY = 86_400_000;
@@ -116,7 +116,7 @@ describe.skipIf(!hasBinary('dolt'))('métriques sur de vraies bases Dolt', () =>
   let get: (query: string) => Promise<{ status: number; body: MetricsResponse & { message?: string } }>;
 
   beforeAll(() => {
-    root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-metrics-')));
+    root = realpathSync(scratchDir('bdesk-metrics-'));
     alpha = buildProject(root, 'alpha', ALPHA);
     buildProject(root, 'beta', BETA);
     // Un Projet dont la base n'est pas sur ce poste : illisible, mais sans incidence sur les autres.

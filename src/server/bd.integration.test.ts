@@ -1,9 +1,8 @@
 import { execFile, execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { analyzeFlow } from '../domain/flow';
 import type { IssueDetail } from '../shared/api';
 import { createDoltClient } from './dolt/client';
@@ -12,6 +11,7 @@ import { readIssueSummaries } from './dolt/reader';
 import { discoverProjects } from './projects/discovery';
 import { buildServer } from './server';
 import { hasBinary } from './testing/dolt-fixture';
+import { scratchDir } from './testing/scratch';
 
 const run = promisify(execFile);
 const SECOND = 1000;
@@ -31,7 +31,7 @@ describe.skipIf(!hasBinary('dolt') || !hasBinary('bd'))('lecteur Dolt sur un wor
   const create = (name: string, ...args: string[]) => (ids[name] = bd('q', name, ...args));
 
   beforeAll(() => {
-    roots = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-bd-')));
+    roots = realpathSync(scratchDir('bdesk-bd-'));
     workspace = join(roots, 'xx-projet');
     // Aucune variable BEADS_* / BD_* de l'environnement ne doit rediriger bd vers un vrai Projet.
     env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(BEADS_|BD_)/.test(key)));
@@ -60,10 +60,6 @@ describe.skipIf(!hasBinary('dolt') || !hasBinary('bd'))('lecteur Dolt sur un wor
     bd('reopen', d);
     bd('dep', 'add', f, g);
   }, 180 * SECOND);
-
-  afterAll(() => {
-    if (roots) rmSync(roots, { recursive: true, force: true });
-  });
 
   const database = () => createDoltClient().open(join(workspace, '.beads', 'embeddeddolt', 'xx'));
 

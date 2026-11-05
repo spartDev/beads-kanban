@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TicketHistory } from '../../domain/flow';
 import { createChronologyService } from '../chronology/service';
 import { createDoltClient } from '../dolt/client';
-import { fakeDolt } from '../testing/fake-dolt';
+import { fakeDolt, fakeDoltRoot } from '../testing/fake-dolt';
+import { scratchDir } from '../testing/scratch';
 import { createProjectService, type ProjectService } from './service';
 
 /**
@@ -19,7 +19,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 let root: string;
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-burst-')));
+  root = realpathSync(scratchDir('bdesk-burst-'));
   const beads = join(root, 'p', '.beads');
   mkdirSync(join(beads, 'embeddeddolt', 'p', '.dolt'), { recursive: true });
   writeFileSync(join(beads, 'metadata.json'), JSON.stringify({ backend: 'dolt', database: 'dolt', dolt_mode: 'embedded', dolt_database: 'p' }));
@@ -71,7 +71,7 @@ describe.skipIf(process.platform === 'win32')('rafale de fiches (bdesk-38k.20)',
     const fake = slowTickets();
     // Deux places seulement, et des requêtes toutes différentes d'une fiche à l'autre : rien à partager, la file est longue.
     const projects = createProjectService(config(), {
-      dolt: createDoltClient({ binary: fake.binary, maxConcurrent: 2, rootPath: join(tmpdir(), 'bdesk-fake-dolt-root') }),
+      dolt: createDoltClient({ binary: fake.binary, maxConcurrent: 2, rootPath: fakeDoltRoot() }),
     });
     await projects.head('p'); // découverte faite
 
@@ -89,7 +89,7 @@ describe.skipIf(process.platform === 'win32')('rafale de fiches (bdesk-38k.20)',
   it('une chronologie à cache chaud n’attend pas la file des fiches', async () => {
     const fake = slowTickets();
     const real = createProjectService(config(), {
-      dolt: createDoltClient({ binary: fake.binary, maxConcurrent: 2, rootPath: join(tmpdir(), 'bdesk-fake-dolt-root') }),
+      dolt: createDoltClient({ binary: fake.binary, maxConcurrent: 2, rootPath: fakeDoltRoot() }),
     });
     // Le HEAD et les fiches sont les vrais ; l'historique, lui, est remplacé : seule la voie du HEAD est en jeu ici.
     const projects: ProjectService = { ...real, histories: async () => [DELIVERED] };
@@ -108,7 +108,7 @@ describe.skipIf(process.platform === 'win32')('rafale de fiches (bdesk-38k.20)',
   it('une fiche abandonnée par son client ne lit rien quand elle attendait encore sa place', async () => {
     const fake = slowTickets();
     const projects = createProjectService(config(), {
-      dolt: createDoltClient({ binary: fake.binary, maxConcurrent: 1, rootPath: join(tmpdir(), 'bdesk-fake-dolt-root') }),
+      dolt: createDoltClient({ binary: fake.binary, maxConcurrent: 1, rootPath: fakeDoltRoot() }),
     });
     await projects.head('p');
     const before = fake.calls();
@@ -164,7 +164,7 @@ describe.skipIf(process.platform === 'win32')('rescan de nombreux Projets (bdesk
     // Une seule place de découverte : les six lectures de préfixe d'un scan se suivent, et le HEAD part avant la deuxième.
     const projects = createProjectService(
       { roots: [root], projects: [], hiddenProjects: [] },
-      { dolt: createDoltClient({ binary: fake.binary, maxLight: 1, maxDiscovery: 1, rootPath: join(tmpdir(), 'bdesk-fake-dolt-root') }) },
+      { dolt: createDoltClient({ binary: fake.binary, maxLight: 1, maxDiscovery: 1, rootPath: fakeDoltRoot() }) },
     );
     await projects.head('p'); // premier scan : six lectures de préfixe, puis le HEAD
     expect(fake.prefixReads()).toBe(6);

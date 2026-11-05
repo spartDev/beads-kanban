@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { analyzeFlow } from '../../domain/flow';
@@ -7,6 +6,7 @@ import type { IssueChronology } from '../../shared/api';
 import { createProjectService, type ProjectService } from '../projects/service';
 import { buildServer } from '../server';
 import { createDatabase, hasBinary, isolatedDoltEnv } from '../testing/dolt-fixture';
+import { scratchDir } from '../testing/scratch';
 
 const DAY = 86_400_000;
 
@@ -55,7 +55,7 @@ describe.skipIf(!hasBinary('dolt'))('chronologie sur une vraie base Dolt', () =>
   let get: (id: string) => Promise<{ status: number; body: { chronology: IssueChronology; message?: string } }>;
 
   beforeAll(() => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-chronology-')));
+    const root = realpathSync(scratchDir('bdesk-chronology-'));
     const beads = join(root, 'gamma', '.beads');
     mkdirSync(beads, { recursive: true });
     writeFileSync(join(beads, 'metadata.json'), JSON.stringify({ backend: 'dolt', database: 'dolt', dolt_mode: 'embedded', dolt_database: 'tdb' }));

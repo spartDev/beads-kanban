@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Config } from '../config';
 import type { DoltClient, Row } from '../dolt/client';
+import { scratchDir } from '../testing/scratch';
 import { createProjectService, ProjectNotFoundError, type ProjectService } from './service';
 
 /**
@@ -24,7 +24,7 @@ import { createProjectService, ProjectNotFoundError, type ProjectService } from 
 let root: string;
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-failure-')));
+  root = realpathSync(scratchDir('bdesk-failure-'));
   for (const name of ['a', 'b', 'c']) project(name);
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-11-05T12:00:00Z'));

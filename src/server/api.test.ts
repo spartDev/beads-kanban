@@ -1209,7 +1209,7 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
     it.each([
       ['des `errors` qui sont un Proxy révoqué (`Array.isArray` lève)', () => Object.assign(new AggregateError([], 'boum'), { errors: revokedList() }), 'AggregateError'],
       [
-        'des `errors` dont le piège `get` lève (`slice` lève)',
+        'des `errors` dont le piège `get` lève (la lecture de `length` lève)',
         () => Object.assign(new AggregateError([], 'boum'), { errors: new Proxy([new Error('un')], { get: throws('get-illisible') }) }),
         'AggregateError',
       ],
@@ -1279,14 +1279,48 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       const written = aggregateErrorsOf(lines()[0]);
       expect(written).toHaveLength(3);
       expect(written?.[0]).toMatchObject({ message: 'saine' });
-      expect(written?.[1]).toBe("'(illisible)'"); // ce qu'`inspect` dit d'un texte
+      expect(written?.[1]).toBe('(illisible)'); // sans guillemets, comme un message ou une valeur qui ne se lisent pas (bdesk-38k.60) : `inspect` en mettrait à un texte
       expect(written?.[2]).toMatchObject({ message: 'aussi saine' });
+    });
+
+    it('un élément de `errors` qui est vraiment le texte « (illisible) » s’écrit entre guillemets, par `inspect` : on ne le prend pas pour un élément qui ne se lit pas', async () => {
+      const { res, lines } = await ask(failing(Object.assign(new AggregateError([], 'boum'), { errors: ['(illisible)'] })));
+
+      expect(res.statusCode).toBe(500);
+      expect(aggregateErrorsOf(lines()[0])).toEqual(["'(illisible)'"]);
+    });
+
+    // `loggable` lit la `length` de la liste par `Math.min`, qui la convertit en nombre : ce n'est pas un contrôle de type (bdesk-38k.60, le commentaire de
+    // `errorLog.ts` et l'ADR 0002 disaient qu'une `length` qui n'est pas un nombre n'était pas écrite). Une `length` qui se convertit en un nombre d'au moins 0
+    // compte pour ce nombre, au plus trois erreurs ; une qui ne s'y convertit pas (qui lève, ou donne NaN ou un nombre négatif) ne fait pas écrire la liste.
+    const listWithLength = (length: unknown) =>
+      new Proxy([new Error('un'), new Error('deux'), new Error('trois'), new Error('quatre')], {
+        get: (target, key) => (key === 'length' ? length : Reflect.get(target, key)),
+      });
+
+    it.each([
+      ['une chaîne qui vaut 2', '2', ['un', 'deux']],
+      ['un objet dont `valueOf` rend 2', { valueOf: () => 2 }, ['un', 'deux']],
+      ['un objet dont `valueOf` rend un milliard', { valueOf: () => 1e9 }, ['un', 'deux', 'trois']],
+      ['Infinity', Infinity, ['un', 'deux', 'trois']],
+    ])('des `errors` dont la `length` est %s : elle est convertie en nombre, et au plus trois erreurs sont écrites', async (_name, length, messages) => {
+      const { res, lines } = await ask(failing(Object.assign(new AggregateError([], 'boum'), { errors: listWithLength(length) })));
+
+      expect(res.statusCode).toBe(500);
+      const written = aggregateErrorsOf(lines()[0]);
+      expect(written).toHaveLength(messages.length);
+      expect(written).toMatchObject(messages.map((message) => ({ message })));
     });
 
     it.each([
       ['un Proxy révoqué', () => revokedList()],
       ['une `length` dont le piège lève', () => new Proxy([new Error('un')], { get: (target, key) => (key === 'length' ? throws('length-illisible')() : Reflect.get(target, key)) })],
-      ['une `length` qui est un BigInt', () => new Proxy([new Error('un')], { get: (target, key) => (key === 'length' ? 1n : Reflect.get(target, key)) })],
+      ['une `length` qui est un BigInt', () => listWithLength(1n)],
+      ['une `length` qui est un Symbol (sa conversion lève)', () => listWithLength(Symbol('length'))],
+      ['une `length` dont `valueOf` lève', () => listWithLength({ valueOf: throws('valueOf-illisible') })],
+      ['une `length` qui vaut NaN', () => listWithLength(NaN)],
+      ['une `length` qui ne se convertit pas en nombre (`undefined`)', () => listWithLength(undefined)],
+      ['une `length` négative', () => listWithLength(-1)],
     ])('des `errors` qui sont %s ne se lisent pas : `aggregateErrors` n’est pas écrit (pas un `[]` qui dirait « aucune erreur »), et la ligne est celle du gestionnaire', async (_name, list) => {
       const { res, lines } = await ask(failing(Object.assign(new AggregateError([], 'boum'), { errors: list() })));
 

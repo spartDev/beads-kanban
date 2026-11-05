@@ -4,7 +4,6 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -17,14 +16,15 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDoltClient, DoltNotFoundError, DoltQueryError, parseDoltDate, parseDoltInteger, sqlIdent, sqlString } from './client';
-import { fakeDolt } from '../testing/fake-dolt';
+import { fakeDolt, fakeDoltRoot } from '../testing/fake-dolt';
+import { scratchDir } from '../testing/scratch';
 import { ReadOnlyViolation } from './read-only';
 
 const LOCKED = 'database "beads" is locked by another dolt process; either clone the database to run a second server';
 
-const options = (binary: string) => ({ binary, retryDelayMs: 1, rootPath: join(tmpdir(), 'bdesk-fake-dolt-root') });
+const options = (binary: string) => ({ binary, retryDelayMs: 1, rootPath: fakeDoltRoot() });
 
 /**
  * Un lecteur de `config_global.json` dans un AUTRE processus, comme le `dolt` d'un autre serveur ou d'un autre worker de
@@ -88,7 +88,12 @@ async function readConcurrently(file: string, count: number, durationMs: number,
 }
 
 describe.skipIf(process.platform === 'win32')('client dolt', () => {
-  const empty = fakeDolt(`echo '{"rows": []}'`);
+  // Un faux dolt qui ne répond rien, partagé par les tests de ce bloc. Pas à la collecte : si aucun test du fichier ne tourne (`-t` qui ne retient rien, `vitest
+  // list`), aucun crochet ne retirerait son dossier (voir `scratchDir`, qui le refuse).
+  let empty: ReturnType<typeof fakeDolt>;
+  beforeAll(() => {
+    empty = fakeDolt(`echo '{"rows": []}'`);
+  });
   const emptyDb = () => createDoltClient(options(empty.binary)).open(empty.dir);
 
   it('renvoie les lignes de la sortie JSON, sans les colonnes NULL', async () => {
@@ -305,7 +310,7 @@ EOF`);
   describe('dossier de configuration de dolt (DOLT_ROOT_PATH)', () => {
     /** Un faux dolt qui répond avec le DOLT_ROOT_PATH qu'il a reçu. */
     const echoRoot = () => fakeDolt(`echo "{\\"rows\\": [{\\"root\\": \\"$DOLT_ROOT_PATH\\"}]}"`);
-    const scratch = () => mkdtempSync(join(tmpdir(), 'bdesk-root-'));
+    const scratch = () => scratchDir('bdesk-root-');
     const mode = (path: string) => statSync(path).mode & 0o777;
     /** root passe outre les droits des fichiers : les cas qui en dépendent n'ont rien à prouver pour lui. */
     const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
@@ -315,7 +320,7 @@ EOF`);
     let tmp = '';
 
     beforeEach(() => {
-      tmp = mkdtempSync(join(tmpdir(), 'bdesk-tmp-'));
+      tmp = scratchDir('bdesk-tmp-');
       vi.stubEnv('TMPDIR', tmp);
     });
 
@@ -808,7 +813,7 @@ EOF`);
   });
 
   it('limite le nombre de processus dolt simultanés', async () => {
-    const log = join(mkdtempSync(join(tmpdir(), 'bdesk-fake-dolt-')), 'events');
+    const log = join(scratchDir('bdesk-fake-dolt-'), 'events');
     const fake = fakeDolt(`echo start >> '${log}'; sleep 0.15; echo end >> '${log}'; echo '{"rows": []}'`);
     const db = createDoltClient({ ...options(fake.binary), maxConcurrent: 2 }).open(fake.dir);
 

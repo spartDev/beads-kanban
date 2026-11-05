@@ -1,17 +1,21 @@
 import { execFileSync, type SpawnSyncReturns, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { delimiter, join, sep } from 'node:path';
+import { scratchDir } from './scratch';
 
-/** Environnement isolé pour piloter dolt en écriture dans un dossier temporaire, sans toucher à ~/.dolt. */
+/**
+ * Environnement isolé pour piloter dolt en écriture dans un dossier temporaire, sans toucher à ~/.dolt. Le dossier est retiré à la fin du fichier de tests
+ * (voir `scratchDir`). `DOLT_DISABLE_EVENT_FLUSH` : sans lui, dolt lance après chaque commande un processus détaché (`dolt send-metrics`) qui recrée
+ * `DOLT_ROOT_PATH` s'il a disparu, même avec `metrics.disabled` : le dossier retiré à la fin du fichier, juste après sa dernière commande, revenait (bdesk-38k.60).
+ */
 export function isolatedDoltEnv(): NodeJS.ProcessEnv {
-  const root = mkdtempSync(join(tmpdir(), 'bdesk-dolt-root-'));
+  const root = scratchDir('bdesk-dolt-root-');
   mkdirSync(join(root, '.dolt'), { recursive: true });
   writeFileSync(
     join(root, '.dolt', 'config_global.json'),
     JSON.stringify({ 'user.name': 'testeur', 'user.email': 'testeur@example.com', 'metrics.disabled': 'true' }),
   );
-  return { ...process.env, DOLT_ROOT_PATH: root };
+  return { ...process.env, DOLT_ROOT_PATH: root, DOLT_DISABLE_EVENT_FLUSH: '1' };
 }
 
 /** Les binaires déjà signalés : l'avertissement n'est dit qu'une fois par binaire et par fichier de tests (chacun a son propre module). */

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { isAbortError, ReadAborted } from '../abort';
 import { Flight } from '../flight';
-import { fakeDolt } from '../testing/fake-dolt';
+import { fakeDolt, fakeDoltRoot } from '../testing/fake-dolt';
 import { createDoltClient, type DoltDatabase, DoltQueryError, queryAll, type Row, withOptions } from './client';
 import { ReadOnlyViolation } from './read-only';
 
@@ -15,7 +15,7 @@ import { ReadOnlyViolation } from './read-only';
  */
 
 const LOCKED = 'database "beads" is locked by another dolt process; either clone the database to run a second server';
-const options = (binary: string) => ({ binary, retryDelayMs: 1, rootPath: join(tmpdir(), 'bdesk-fake-dolt-root') });
+const options = (binary: string) => ({ binary, retryDelayMs: 1, rootPath: fakeDoltRoot() });
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Les lignes du journal d'un faux dolt (une par événement). */

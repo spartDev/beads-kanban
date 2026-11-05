@@ -1,11 +1,11 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { IssueChronology, MetricsResponse } from '../../shared/api';
 import { createProjectService } from '../projects/service';
 import { buildServer } from '../server';
 import { createDatabase, hasBinary, isolatedDoltEnv } from '../testing/dolt-fixture';
+import { scratchDir } from '../testing/scratch';
 import { createMetricsService } from './service';
 
 // La première lecture d'un Projet lance le CLI `dolt` et relit toute sa lignée : plusieurs secondes sur une machine chargée.
@@ -192,7 +192,7 @@ describe.skipIf(!hasBinary('dolt'))('horloge de commit qui recule, sur une vraie
   let metrics: (query: string) => Promise<MetricsResponse>;
 
   beforeAll(() => {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-clock-back-')));
+    const root = realpathSync(scratchDir('bdesk-clock-back-'));
     buildProject(root, 'epsilon', 'e', EPSILON);
     buildProject(root, 'zeta', 'z', ZETA);
     buildProject(root, 'eta', 'h', ETA);

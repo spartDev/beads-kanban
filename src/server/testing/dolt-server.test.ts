@@ -1,12 +1,12 @@
 import { type ChildProcess, spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, realpathSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { type AddressInfo, createServer } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { createDatabase, hasBinary, isolatedDoltEnv } from './dolt-fixture';
 import { freePort, retryableStartFailure, servedPort, startSqlServer } from './dolt-server';
+import { scratchDir } from './scratch';
 
 /** La racine du dépôt, où `tsx` est installé. */
 const ROOT = fileURLToPath(new URL('../../..', import.meta.url));
@@ -93,7 +93,7 @@ describe('retryableStartFailure : quand un autre port répare le démarrage', ()
 describe.skipIf(!hasBinary('dolt'))('le dolt sql-server d’essai (bdesk-38k.44)', { timeout: 120_000 }, () => {
   it('sert la base sur un port libre où `dolt sql` passe, puis s’arrête en libérant le port et la base', async () => {
     const env = isolatedDoltEnv();
-    const dir = join(realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-sql-server-helper-'))), 'db');
+    const dir = join(realpathSync(scratchDir('bdesk-sql-server-helper-')), 'db');
     const db = createDatabase(env, dir);
     db.sql('create table t (id int primary key, n int); insert into t values (1, 7)');
     db.commit(1, 'x');
@@ -120,7 +120,7 @@ describe.skipIf(!hasBinary('dolt'))('le dolt sql-server d’essai (bdesk-38k.44)
   // et l'essai échoue sans réessayer ni dire pourquoi.
   it('choisit un autre port quand celui qu’il avait choisi vient d’être pris, et sert la base', async () => {
     const env = isolatedDoltEnv();
-    const dir = join(realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-sql-server-busy-'))), 'db');
+    const dir = join(realpathSync(scratchDir('bdesk-sql-server-busy-')), 'db');
     const db = createDatabase(env, dir);
     db.sql('create table t (id int primary key, n int); insert into t values (1, 7)');
     db.commit(1, 'x');
@@ -149,7 +149,7 @@ describe.skipIf(!hasBinary('dolt'))('le dolt sql-server d’essai (bdesk-38k.44)
 
   it('abandonne au troisième port pris, en rapportant ce que dolt a écrit', async () => {
     const env = isolatedDoltEnv();
-    const dir = join(realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-sql-server-busy-'))), 'db');
+    const dir = join(realpathSync(scratchDir('bdesk-sql-server-busy-')), 'db');
     createDatabase(env, dir);
     const thief = await occupiedPort();
     let picks = 0;
@@ -172,7 +172,7 @@ describe.skipIf(!hasBinary('dolt'))('le dolt sql-server d’essai (bdesk-38k.44)
   // `dolt sql` du helper quand le port choisi est pris (il accepte déjà les connexions). Un autre port répare cela aussi.
   it('choisit un autre port quand un autre dolt tient la base au moment du démarrage', async () => {
     const env = isolatedDoltEnv();
-    const dir = join(realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-sql-server-locked-'))), 'db');
+    const dir = join(realpathSync(scratchDir('bdesk-sql-server-locked-')), 'db');
     createDatabase(env, dir);
     const holder = spawn('dolt', ['sql'], { cwd: dir, env, stdio: ['pipe', 'pipe', 'inherit'] }); // il tient la base tant que son entrée reste ouverte
     try {
@@ -214,7 +214,7 @@ describe.skipIf(!hasBinary('dolt'))('le dolt sql-server d’essai (bdesk-38k.44)
     ['sort sans avoir arrêté le serveur', 'exit'],
   ] as const)('arrête le serveur quand le processus qui l’a lancé %s', async (_name, how) => {
     const env = isolatedDoltEnv();
-    const dir = join(realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-sql-server-orphan-'))), 'db');
+    const dir = join(realpathSync(scratchDir('bdesk-sql-server-orphan-')), 'db');
     createDatabase(env, dir);
     const parent = spawn(process.execPath, ['--import', 'tsx', PARENT, dir, how], { cwd: ROOT, env, stdio: ['pipe', 'pipe', 'inherit'] });
     try {
@@ -236,7 +236,7 @@ describe.skipIf(!hasBinary('dolt'))('le dolt sql-server d’essai (bdesk-38k.44)
   // il garde son superviseur, donc le serveur, pour toujours (le superviseur ne voit son entrée se fermer que quand le parent disparaît).
   it('arrête le serveur quand le processus qui l’a lancé disparaît avant qu’on ne tue le parent', async () => {
     const env = isolatedDoltEnv();
-    const dir = join(realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-sql-server-orphan-'))), 'db');
+    const dir = join(realpathSync(scratchDir('bdesk-sql-server-orphan-')), 'db');
     createDatabase(env, dir);
     const parent = spawn(process.execPath, ['--import', 'tsx', PARENT, dir, 'kill'], { cwd: ROOT, env, stdio: ['pipe', 'pipe', 'inherit'] });
     try {

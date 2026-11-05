@@ -1,12 +1,12 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ReadAborted } from '../abort';
 import { createDoltClient } from '../dolt/client';
 import { createMetricsService, type MetricsService } from '../metrics/service';
 import { createProjectService } from '../projects/service';
-import { fakeDolt } from '../testing/fake-dolt';
+import { fakeDolt, fakeDoltRoot } from '../testing/fake-dolt';
+import { scratchDir } from '../testing/scratch';
 import { createChronologyService } from './service';
 
 /**
@@ -36,7 +36,7 @@ describe.skipIf(process.platform === 'win32')('Vue globale quittée à froid, pu
   const PLACES = 2;
 
   function setup() {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-left-chrono-')));
+    const root = realpathSync(scratchDir('bdesk-left-chrono-'));
     for (const name of [...GLOBAL, 'f']) {
       const beads = join(root, name, '.beads');
       mkdirSync(join(beads, 'embeddeddolt', name, '.dolt'), { recursive: true });
@@ -71,7 +71,7 @@ describe.skipIf(process.platform === 'win32')('Vue globale quittée à froid, pu
     };
     const projects = createProjectService(
       { roots: [root], projects: [], hiddenProjects: [] },
-      { dolt: createDoltClient({ binary: fake.binary, maxAnalysis: PLACES, rootPath: join(tmpdir(), 'bdesk-fake-dolt-root') }) },
+      { dolt: createDoltClient({ binary: fake.binary, maxAnalysis: PLACES, rootPath: fakeDoltRoot() }) },
     );
     // Une grâce de cinq secondes : la fin de la grâce ne peut pas servir la requête suivante (le test dure moins longtemps).
     const metrics = createMetricsService(projects, { graceMs: 5_000 });

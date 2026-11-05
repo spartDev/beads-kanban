@@ -1,5 +1,4 @@
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { columnFor } from '../../domain/columns';
@@ -9,6 +8,7 @@ import { createDoltClient, type DoltClient, queryAll } from '../dolt/client';
 import { createMetricsService } from '../metrics/service';
 import { createDatabase, hasBinary, isolatedDoltEnv, type Scratch } from '../testing/dolt-fixture';
 import { readsOutsideHead, tablesRead } from '../testing/reads-at-head';
+import { scratchDir } from '../testing/scratch';
 import { createProjectService, IssueNotFoundError, type ProjectService } from './service';
 
 /**
@@ -160,7 +160,7 @@ describe.skipIf(!hasBinary('dolt'))('le tableau lit l’état du dernier commit,
   const config = () => ({ roots: [root], projects: [], hiddenProjects: [] });
 
   beforeAll(() => {
-    root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-committed-')));
+    root = realpathSync(scratchDir('bdesk-committed-'));
     buildProject(root, 'alpha', { commitDayThree: false });
     buildProject(root, 'beta', { commitDayThree: true });
     gamma = buildProject(root, 'gamma', { commitDayThree: false });

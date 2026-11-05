@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Config } from '../config';
 import { type DoltClient, DoltQueryError, type Row } from '../dolt/client';
 import { buildServer } from '../server';
+import { scratchDir } from '../testing/scratch';
 import { createProjectService, ProjectNotFoundError, ProjectUnreadableError } from './service';
 
 /**
@@ -22,7 +22,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 let root: string;
 
 beforeEach(() => {
-  root = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-rescan-')));
+  root = realpathSync(scratchDir('bdesk-rescan-'));
 });
 
 afterEach(() => {

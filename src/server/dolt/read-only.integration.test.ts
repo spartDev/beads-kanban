@@ -1,8 +1,8 @@
-import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createDatabase, dolt, hasBinary, isolatedDoltEnv } from '../testing/dolt-fixture';
+import { scratchDir } from '../testing/scratch';
 import { createDoltClient, queryAll } from './client';
 import { assertReadOnly, READ_ONLY_PREFIX, ReadOnlyViolation } from './read-only';
 
@@ -56,9 +56,13 @@ describe.skipIf(!hasBinary('dolt'))('garde en lecture seule face à un vrai Dolt
 
   beforeAll(() => {
     env = isolatedDoltEnv();
-    base = realpathSync(mkdtempSync(join(tmpdir(), 'bdesk-readonly-')));
+    base = realpathSync(scratchDir('bdesk-readonly-'));
     dirs = { plain: join(base, 'plain'), ansi: join(base, 'ansi') };
+    // Le client copie `process.env` à sa création et lance dolt sur la racine de configuration isolée : sans la variable que `isolatedDoltEnv` pose, chacune de ses lectures
+    // laisse le processus de fond de dolt, qui recrée cette racine une fois retirée à la fin du fichier (bdesk-38k.60).
+    vi.stubEnv('DOLT_DISABLE_EVENT_FLUSH', env.DOLT_DISABLE_EVENT_FLUSH);
     client = createDoltClient({ rootPath: env.DOLT_ROOT_PATH, retries: 0 });
+    vi.unstubAllEnvs();
     for (const dir of Object.values(dirs)) {
       const scratch = createDatabase(env, dir);
       scratch.sql("create table issues (id varchar(20) primary key, title varchar(100)); insert into issues values ('c-1', 'commite');");
@@ -67,10 +71,6 @@ describe.skipIf(!hasBinary('dolt'))('garde en lecture seule face à un vrai Dolt
     }
     dolt(env, dirs.ansi, 'sql', '-q', "set @@persist.sql_mode = 'ANSI_QUOTES'");
   }, 60_000);
-
-  afterAll(() => {
-    rmSync(base, { recursive: true, force: true });
-  });
 
   describe('commentaires exécutables', () => {
     let executed: string[];

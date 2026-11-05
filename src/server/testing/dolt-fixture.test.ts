@@ -1,8 +1,9 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { dolt, hasBinary, isolatedDoltEnv } from './dolt-fixture';
 import { fakeDolt } from './fake-dolt';
+import { scratchDir } from './scratch';
 
 /**
  * Les tests d'intégration sur une vraie base Dolt (`describe.skipIf(!hasBinary('dolt'))`) sont sautés, jamais en échec, quand le
@@ -11,23 +12,16 @@ import { fakeDolt } from './fake-dolt';
  */
 describe.skipIf(process.platform === 'win32')('hasBinary : un binaire absent, ou qui ne répond pas à « version », fait sauter des tests, et le dit', () => {
   const startDirectory = process.cwd();
-  /** Les dossiers que ces tests ont créés (scripts, faux binaires) : retirés à la fin de chacun (bdesk-38k.45), ils ne s'accumulent pas dans le dossier temporaire. */
-  const created: string[] = [];
 
   afterEach(() => {
-    process.chdir(startDirectory);
-    for (const dir of created.splice(0)) rmSync(dir, { recursive: true, force: true });
+    process.chdir(startDirectory); // sort du dossier où un test s'est placé, que `scratchDir` retire à la fin du fichier
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
     vi.resetModules();
   });
 
-  /** Un faux binaire `dolt` (voir `fakeDolt`), dont le dossier est retiré à la fin du test. */
-  function fake(body: string) {
-    const made = fakeDolt(body);
-    created.push(made.dir);
-    return made;
-  }
+  /** Un faux binaire `dolt` (voir `fakeDolt`) : comme les scripts ci-dessous, son dossier est retiré à la fin du fichier (`scratchDir`, bdesk-38k.45 puis bdesk-38k.60). */
+  const fake = fakeDolt;
 
   /** Un module neuf : la mémoire des binaires déjà signalés est celle d'un fichier de tests qui commence. */
   async function fresh() {
@@ -38,8 +32,7 @@ describe.skipIf(process.platform === 'win32')('hasBinary : un binaire absent, ou
 
   /** Un script exécutable dont l'interpréteur n'existe pas : le noyau répond ENOENT pour le script, qui est pourtant là. */
   function scriptWithoutInterpreter(name: string) {
-    const dir = mkdtempSync(join(tmpdir(), 'bdesk-sans-interpreteur-'));
-    created.push(dir);
+    const dir = scratchDir('bdesk-sans-interpreteur-');
     const script = join(dir, name);
     writeFileSync(script, '#!/introuvable/interpreteur\nexit 0\n');
     chmodSync(script, 0o755);
@@ -166,5 +159,25 @@ describe.skipIf(process.platform === 'win32')('hasBinary : un binaire absent, ou
     hasBinary('/introuvable/bd');
 
     expect(warn).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * `dolt` lance, après chaque commande, un processus détaché (`dolt send-metrics`) qui recrée `DOLT_ROOT_PATH` s'il a disparu, même quand ses métriques sont
+ * désactivées : mesuré, un dossier retiré revenait dans les 100 ms qui suivaient la dernière commande, avec un `config_global.json` de `{}` et un `eventsData`.
+ * Le dossier d'un fichier de tests, retiré à sa fin (`scratchDir`) juste après sa dernière commande, restait donc dans le dossier temporaire (bdesk-38k.60) :
+ * `isolatedDoltEnv` demande à dolt de ne pas lancer ce processus (`DOLT_DISABLE_EVENT_FLUSH`).
+ */
+describe.skipIf(!hasBinary('dolt'))('isolatedDoltEnv : le dossier de configuration retiré après une commande de dolt ne revient pas (bdesk-38k.60)', () => {
+  it('reste retiré : dolt ne lance pas, après sa commande, le processus qui le recréerait', async () => {
+    const env = isolatedDoltEnv();
+    const root = String(env.DOLT_ROOT_PATH);
+    const database = scratchDir('bdesk-essai-');
+    dolt(env, database, 'init', '--name', 'testeur', '--email', 'testeur@example.com');
+    dolt(env, database, 'sql', '-r', 'json', '-q', 'select 1'); // la lecture que l'app fait toute la journée
+    rmSync(root, { recursive: true, force: true });
+
+    await new Promise((resolve) => setTimeout(resolve, 800)); // le processus revenait en moins de 100 ms ; une machine chargée peut l'allonger
+    expect(existsSync(root)).toBe(false);
   });
 });
