@@ -35,7 +35,7 @@ function focusedCard(root: HTMLElement | null): Focused | null {
   return cardId && column ? { id: cardId, lane: column as Lane } : null;
 }
 
-const cardLink = (root: HTMLElement | null, id: string): HTMLAnchorElement | undefined =>
+export const cardLink = (root: Element | null, id: string): HTMLAnchorElement | undefined =>
   [...(root?.querySelectorAll<HTMLAnchorElement>('a[data-card-link]') ?? [])].find((link) => link.dataset.cardLink === id);
 
 /**

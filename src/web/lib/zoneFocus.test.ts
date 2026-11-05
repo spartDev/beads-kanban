@@ -1,5 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { focusTitleOf, focusTitleWhenReady, focusZoneOf, keepFocusIn, keepFocusInContent, keepFocusInZone, showsSkeletonTitle, titleOf, zoneOf } from './zoneFocus';
+import {
+  focusTitleOf,
+  focusTitleWhenReady,
+  focusZoneOf,
+  keepFocusIn,
+  keepFocusInContent,
+  keepFocusInZone,
+  showsSkeletonTitle,
+  titleOf,
+  watchContent,
+  zoneOf,
+} from './zoneFocus';
 
 /**
  * Où le focus revient quand ce qui le tenait disparaît parce que sa zone se recharge (bdesk-38k.40) : la zone la plus proche, le panneau d'un ticket
@@ -551,6 +562,166 @@ describe.each([
     cleanup?.();
 
     expect(document.activeElement).toBe($('main'));
+  });
+});
+
+/**
+ * `watchContent` : la veille de `keepFocusInContent`, sans la ref (bdesk-38k.59). Le tableau du kanban la pose sur son contenu : une carte que le commit change de colonne est remontée dans
+ * une autre, et `give` reçoit l'élément qui avait le focus, retiré du document, pour retrouver la carte là où elle est maintenant. Ce qui part, c'est un élément du contenu : le nœud lui-même
+ * qui part (une autre page) n'est pas une veille, et ne rend rien. Les garanties sont celles de `keepFocusInContent` : le focus qu'un utilisateur a mis ailleurs n'est jamais repris.
+ */
+describe.each([
+  ['le retrait est la première mutation du tour : la vérification du `focusout` passe avant l’observateur', true],
+  ['une mutation précède le retrait dans le même tour : l’observateur passe avant la vérification du `focusout`', false],
+] as const)('watchContent : l’élément du contenu qui part rend le focus à ce que `give` désigne : %s', (_order, firstMutation) => {
+  /** Laisse passer les micro-tâches (l'observateur de mutations, la vérification d'un `focusout`) et les minuteries de 0 ms. */
+  const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+  /** Deux colonnes de cartes dans `#contenu` (une carte est un `li` qui porte son identifiant, son lien en est le focus), la zone d'un tableau autour, un bouton hors d'elle. */
+  const PAGE =
+    '<main><div id="tableau"><button id="filtre">Filtre</button><div id="contenu"><ul id="a"><li data-card-id="x"><p><a id="x" href="#x">X</a></p></li><li data-card-id="y"><p><a id="y" href="#y">Y</a></p></li></ul><ul id="b"></ul></div></div></main><button id="ailleurs">Ailleurs</button>';
+
+  /** Une carte devient celle de l'autre colonne : un nouvel `li` dans `#b`, l'ancien retiré (ce que fait React, qui ne déplace pas un nœud d'un parent à l'autre). */
+  const moveCard = ($: (selector: string) => HTMLElement, id: string) => {
+    const old = $(`#a [data-card-id="${id}"]`);
+    $('#b').insertAdjacentHTML('beforeend', `<li data-card-id="${id}"><p><a id="${id}-neuf" href="#${id}">${id.toUpperCase()}</a></p></li>`);
+    old.remove();
+  };
+
+  /** Le tableau, veillé par `watchContent` : `give` dit où le focus doit aller, et on compte combien de fois on le lui a demandé. */
+  async function mount(find: (node: Element, gone?: Element) => Element | null = () => null) {
+    const $ = html(PAGE);
+    const give = vi.fn((node: Element, gone?: Element) => {
+      const target = find(node, gone);
+      if (target instanceof HTMLElement) target.focus();
+      return target !== null && document.activeElement === target;
+    });
+    const stop = watchContent($('#contenu'), give);
+    if (firstMutation) await settle();
+    return { $, give, stop };
+  }
+  /** Où `give` envoie le focus : la carte de même identifiant que celle qui part, là où elle est maintenant (le lien de son titre). */
+  const sameCard = (node: Element, gone?: Element) => {
+    const id = gone?.closest('[data-card-id]')?.getAttribute('data-card-id');
+    return id ? ([...node.querySelectorAll('a')].find((link) => link.closest('[data-card-id]')?.getAttribute('data-card-id') === id && link.isConnected) ?? null) : null;
+  };
+
+  it('la carte qui a le focus change de colonne : `give` reçoit le nœud veillé et l’élément retiré, et le focus suit la carte', async () => {
+    const { $, give } = await mount(sameCard);
+    $('#x').focus();
+
+    moveCard($, 'x');
+    await settle();
+
+    expect(give).toHaveBeenCalledTimes(1);
+    expect(give.mock.calls[0]?.[0]).toBe($('#contenu'));
+    expect(give.mock.calls[0]?.[1]?.id).toBe('x'); // l'ancien lien : retiré du document, mais le sous-arbre détaché tient (`closest`)
+    expect(give.mock.calls[0]?.[1]?.isConnected).toBe(false);
+    expect(document.activeElement).toBe($('#x-neuf'));
+  });
+
+  it('le focus est sur un élément d’une carte qui part avec elle (pas son lien) : `give` retrouve la carte par l’ancêtre de ce qui part', async () => {
+    const { $, give } = await mount(sameCard);
+    $('#x').parentElement!.insertAdjacentHTML('beforeend', '<span><a id="pastille" href="#epic">Epic</a></span>');
+    $('#pastille').focus();
+
+    moveCard($, 'x');
+    await settle();
+
+    expect(give.mock.calls[0]?.[1]?.id).toBe('pastille');
+    expect(document.activeElement).toBe($('#x-neuf'));
+  });
+
+  it('`give` ne trouve rien (la carte n’est plus à l’écran) : il a été appelé une fois, le focus reste où le navigateur l’a laissé', async () => {
+    const { $, give } = await mount(sameCard);
+    $('#y').focus();
+
+    $('#a [data-card-id="y"]').remove();
+    await settle();
+
+    expect(give).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('une autre carte a le focus : celle qui change de colonne ne le lui prend pas', async () => {
+    const { $, give } = await mount(sameCard);
+    $('#y').focus();
+
+    moveCard($, 'x');
+    await settle();
+
+    expect(give).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe($('#y'));
+  });
+
+  it('le focus est hors du contenu (un bouton du tableau, un lien d’ailleurs) : la carte qui part ne le lui prend pas', async () => {
+    const { $, give } = await mount(sameCard);
+    $('#x').focus();
+    $('#filtre').focus();
+    moveCard($, 'x');
+    await settle();
+    expect(document.activeElement).toBe($('#filtre'));
+
+    $('#y').focus();
+    $('#ailleurs').focus();
+    moveCard($, 'y');
+    await settle();
+
+    expect(document.activeElement).toBe($('#ailleurs'));
+    expect(give).not.toHaveBeenCalled();
+  });
+
+  it('l’utilisateur a cliqué dans le vide (le corps de la page a le focus) : la carte qui part ensuite ne le lui reprend pas', async () => {
+    const { $, give } = await mount(sameCard);
+    $('#x').focus();
+    $('#x').blur();
+    await settle();
+
+    moveCard($, 'x');
+    await settle();
+
+    expect(document.activeElement).toBe(document.body);
+    expect(give).not.toHaveBeenCalled();
+  });
+
+  it('un élément déplacé (retiré puis réinséré dans le même tour) n’est pas un élément retiré : rien n’est rendu', async () => {
+    const { $, give } = await mount(sameCard);
+    $('#x').focus();
+
+    $('#a').append($('#a [data-card-id="x"]')); // le navigateur lui retire le focus : il est toujours dans le document
+    await settle();
+
+    expect(give).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it('la fonction rendue arrête la veille : ce qui part ensuite ne rend rien, et le nœud veillé lui-même qui part n’est pas une veille', async () => {
+    const { $, give, stop } = await mount(sameCard);
+    $('#x').focus();
+
+    stop(); // le nœud part (une autre page) avec le focus qu'il tient : `keepFocusInContent` le rendrait à la zone, pas cette veille
+    expect(give).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe($('#x'));
+    moveCard($, 'x');
+    await settle();
+
+    expect(give).not.toHaveBeenCalled();
+  });
+
+  it('elle retire ses écouteurs et coupe son observateur', () => {
+    const $ = html(PAGE);
+    const added = vi.spyOn($('#contenu'), 'addEventListener');
+    const removed = vi.spyOn($('#contenu'), 'removeEventListener');
+    const disconnect = vi.spyOn(MutationObserver.prototype, 'disconnect');
+    try {
+      watchContent($('#contenu'), () => false)();
+
+      expect(added.mock.calls.length).toBeGreaterThan(0);
+      expect(removed.mock.calls.map(([type, listener]) => [type, listener])).toEqual(added.mock.calls.map(([type, listener]) => [type, listener]));
+      expect(disconnect).toHaveBeenCalledTimes(1);
+    } finally {
+      disconnect.mockRestore();
+    }
   });
 });
 

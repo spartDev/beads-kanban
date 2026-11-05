@@ -1,7 +1,7 @@
 import { ImageIcon, Square, SquareCheckBig } from 'lucide-react';
 import { createContext, type ReactNode, use, useMemo, useRef } from 'react';
 import { cx } from '../lib/cx';
-import { useOverflow } from '../lib/useOverflow';
+import { useScrollFocusable } from '../lib/useOverflow';
 import { type Align, type Block, type Inline, parseMarkdown } from './parse';
 
 /**
@@ -75,12 +75,13 @@ function InlineNode({ inline }: { inline: Inline }): ReactNode {
 /**
  * Une zone qui défile en largeur (bloc de code, tableau large). Elle n'est atteignable au clavier que lorsqu'elle défile
  * vraiment : sans cela, personne ne pourrait la faire défiler sans souris, et chaque bloc court serait un arrêt de tabulation de plus.
+ * Elle garde son `tabindex` tant qu'elle a le focus, même quand le texte raccourcit ou que la fenêtre s'élargit, et qu'elle ne défile plus : le focus ne tombe pas sur le corps de la page (voir `useScrollFocusable`).
  */
 function ScrollBox({ className, children }: { className?: string; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
-  const scrolls = useOverflow(ref, 'x');
+  const focusable = useScrollFocusable(ref, 'x');
   return (
-    <div ref={ref} tabIndex={scrolls ? 0 : undefined} className={cx('max-w-full overflow-x-auto', className)}>
+    <div ref={ref} tabIndex={focusable ? 0 : undefined} className={cx('max-w-full overflow-x-auto', className)}>
       {children}
     </div>
   );

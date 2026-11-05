@@ -8,7 +8,7 @@ import { focusContainer, focusElement, focusIsAdrift } from '../lib/focus';
 import { inertOutside } from '../lib/inert';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useMediaQuery } from '../lib/useMediaQuery';
-import { useOverflow } from '../lib/useOverflow';
+import { useScrollFocusable } from '../lib/useOverflow';
 import { useProject } from '../pages/ProjectGate';
 import { usePalette, useShortcutsHelp } from '../shell/OverlayProvider';
 import { useShortcut } from '../shortcuts/ShortcutsProvider';
@@ -74,8 +74,9 @@ export function IssuePanel() {
   const bodyRef = useRef<HTMLDivElement>(null);
   // « Réessayer » a été activé, et son issue n'est pas arrivée (voir `retry`).
   const retrying = useRef(false);
-  // Un ticket long défile : la zone doit alors prendre le focus, pour qu'on puisse la faire défiler au clavier.
-  const scrolls = useOverflow(bodyRef, 'y');
+  // Un ticket long défile : la zone doit alors prendre le focus, pour qu'on puisse la faire défiler au clavier. Elle le garde tant qu'elle l'a, même quand un commit
+  // raccourcit le texte au point qu'il ne défile plus : lui retirer son `tabindex` la ferait perdre le focus, qui tomberait sur le corps de la page (voir `useScrollFocusable`).
+  const focusable = useScrollFocusable(bodyRef, 'y');
   const idId = useId();
   const titleId = useId();
 
@@ -199,9 +200,9 @@ export function IssuePanel() {
       <div
         ref={bodyRef}
         data-panel-body
-        role={scrolls ? 'region' : undefined}
-        aria-label={scrolls ? 'Contenu du ticket' : undefined}
-        tabIndex={scrolls ? 0 : undefined}
+        role={focusable ? 'region' : undefined}
+        aria-label={focusable ? 'Contenu du ticket' : undefined}
+        tabIndex={focusable ? 0 : undefined}
         // Le contour reste à l'intérieur : le panneau rogne ce qui le dépasse.
         className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-4 py-4 focus-visible:-outline-offset-2"
       >

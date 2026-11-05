@@ -123,8 +123,11 @@ export function keepFocusIn(give: (from: Element) => boolean): (node: HTMLElemen
  * le retirer. (Ce cas n'a pas été mesuré dans un vrai navigateur : un navigateur sans tête ne peut pas défocaliser sa fenêtre. Il tient aux tests.)
  *
  * Ne vaut que pour un élément *retiré* du document : un élément déplacé (retiré puis réinséré) ne l'est pas, et ce qu'il devient est celui du navigateur.
+ *
+ * `give` reçoit le nœud et, quand c'est un élément du contenu qui part, cet élément (`gone`) : retiré du document, mais le sous-arbre qui est parti avec lui tient (`closest`). C'est de quoi
+ * rendre le focus à son équivalent, quand l'élément n'est pas supprimé mais remonté ailleurs (voir `watchContent`).
  */
-export function keepFocusInContent(give: (from: Element) => boolean): (node: HTMLElement | null) => (() => void) | undefined {
+export function keepFocusInContent(give: (from: Element, gone?: Element) => boolean): (node: HTMLElement | null) => (() => void) | undefined {
   const leaving = keepFocusIn(give);
   return (node) => {
     if (node === null) return undefined;
@@ -144,8 +147,12 @@ const lostFocus = (element: Element) => element.isConnected && document.activeEl
 /**
  * L'observation de `keepFocusInContent` : l'élément de `node` qui a le focus (`held`), et le focus rendu quand il quitte le document. Renvoie de quoi s'arrêter.
  * `held` ne vaut que tant que rien ne le contredit (les causes d'oubli sont dans la doc de `keepFocusInContent`) : un élément retenu qui n'a plus le focus ferait reprendre, à son retrait, un focus qu'il n'a pas laissé.
+ *
+ * Exportée pour qui veille un contenu sans qu'il soit l'enveloppe d'un état (le tableau du kanban : une carte que le commit change de colonne est remontée dans une autre, voir `kanban/boardFocus.ts`).
+ * Seul un élément du contenu qui part rend le focus, en le demandant à `give(node, gone)`. Quand c'est le nœud lui-même qui part (une autre page), la fonction rendue arrête la veille sans rien rendre :
+ * rendre le focus que le nœud tient en partant est ce que `keepFocusInContent` ajoute pour une enveloppe d'état.
  */
-function watchContent(node: HTMLElement, give: (from: Element) => boolean): () => void {
+export function watchContent(node: HTMLElement, give: (from: Element, gone?: Element) => boolean): () => void {
   let held: Element | null = null;
   const remember = (event: FocusEvent) => {
     held = event.target instanceof Element ? event.target : null;
@@ -164,7 +171,7 @@ function watchContent(node: HTMLElement, give: (from: Element) => boolean): () =
       return;
     }
     held = null;
-    if (focusIsAdrift()) give(node);
+    if (focusIsAdrift()) give(node, gone);
   });
   node.addEventListener('focusin', remember);
   node.addEventListener('focusout', maybeForget);

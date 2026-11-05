@@ -5,6 +5,7 @@ import type { Issue, Project } from '../data/types';
 import { Button } from '../ui/Button';
 import { Notice } from '../ui/states';
 import { useNow } from '../lib/useNow';
+import { useKeepFocusInBoard } from './boardFocus';
 import { Card } from './Card';
 import { useCardFlash } from './cardFlash';
 import { Column } from './Column';
@@ -29,7 +30,7 @@ import { useBoardShortcuts, type Lanes } from './useBoardShortcuts';
  *   qui la vide ne fait pas sauter le tableau d'une colonne à l'autre. Seul un choix de l'utilisateur la change.
  * - Quand tous les tickets du tableau sont en pause, aucune colonne n'a de carte : un état vide le dit et renvoie au
  *   tiroir « En pause », qu'il ouvre.
- * - Lecture seule : rien ne se déplace, une carte ouvre son ticket.
+ * - Lecture seule : rien ne se déplace, une carte ouvre son ticket. Mais un commit peut la changer de colonne : elle garde alors le focus (voir `boardFocus`).
  */
 export function Board({ project, issues }: { project: Project; issues: readonly Issue[] }) {
   const params = useBoardParams();
@@ -69,6 +70,8 @@ export function Board({ project, issues }: { project: Project; issues: readonly 
   useBoardShortcuts({ rootRef, lanes, column, onColumn: params.setColumn });
   // Mises à jour en direct : la carte d'un ticket qui change (déplacée, nouvelle) s'éclaire un instant.
   useCardFlash(rootRef, issues);
+  // Et le focus qu'elle avait la suit : une carte qui change de colonne est remontée dans l'autre (voir `boardFocus`).
+  useKeepFocusInBoard(rootRef);
 
   // Ouvre le tiroir depuis l'état vide, et y amène le focus : le bouton de l'état vide disparaît une fois le tiroir ouvert.
   const showPaused = () => {

@@ -1,12 +1,13 @@
 import { type QueryClient } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { type UserEvent } from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { queryKeys } from '../data/hooks';
 import type { IssueChronology, IssueDetail, IssueRef } from '../data/types';
 import { refreshProject } from '../live/refresh';
 import { withAsyncTimeout } from '../test/asyncTimeout';
 import { bdeskIssues, chronology, issueDetail, mpmIssues, projectsResponse } from '../test/fixtures';
+import { withFocusFixup } from '../test/focusFixup';
 import { renderApp, stubApi } from '../test/render';
 
 /**
@@ -715,5 +716,157 @@ describe('le panneau d’un ticket qui se ferme laisse le focus là où l’util
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     await settle();
     expect(document.activeElement).toBe(link);
+  });
+});
+
+/*
+ * La zone de défilement du panneau a le focus (le clavier la fait défiler) et un commit raccourcit le contenu au point qu'il ne défile plus (bdesk-38k.59) : elle cesse d'être
+ * focalisable (plus de `tabindex`), et le navigateur lui retirait le focus, qui tombait sur le corps de la page : hors du panneau, et sur mobile hors de la boîte de dialogue modale.
+ * Elle le garde tant que le focus est sur elle, et cesse d'être un arrêt de tabulation dès qu'il la quitte. Même chose pour un bloc de code ou un tableau du texte, qui défile en largeur.
+ * `withFocusFixup` : jsdom retire le focus à un élément qui cesse d'être focalisable, comme les navigateurs ; jsdom ne mesure rien : on fixe la mesure, selon le texte.
+ */
+const LONG_MARK = 'FIN-LONGUE';
+const LONG_DETAIL: IssueDetail = issueDetail({ ...SHELL_UI, description: `${'Un paragraphe de plus.\n\n'.repeat(40)}${LONG_MARK}` });
+const SHORT_DETAIL: IssueDetail = issueDetail({ ...SHELL_UI, description: 'Court.' });
+const WIDE_MARK = 'LIGNE-LONGUE';
+const WIDE_DETAIL: IssueDetail = issueDetail({ ...SHELL_UI, description: `Un bloc de code :\n\n\`\`\`\nconst ${WIDE_MARK} = '${'x'.repeat(200)}';\n\`\`\`` });
+const SHORT_CODE_DETAIL: IssueDetail = issueDetail({ ...SHELL_UI, description: 'Un bloc de code :\n\n```\nconst court = 1;\n```' });
+
+/** Le contenu du panneau dépasse sa hauteur tant que le texte porte `LONG_MARK`, et le bloc de code sa largeur tant qu'il porte `WIDE_MARK`. */
+function measureOverflow() {
+  const text = (element: HTMLElement) => element.textContent ?? '';
+  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) {
+    return this.hasAttribute('data-panel-body') && text(this).includes(LONG_MARK) ? 2400 : 0;
+  });
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
+    return this.hasAttribute('data-panel-body') ? 700 : 0;
+  });
+  vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (this: HTMLElement) {
+    return this.classList.contains('overflow-x-auto') && text(this).includes(WIDE_MARK) ? 1600 : 0;
+  });
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
+    return this.classList.contains('overflow-x-auto') ? 400 : 0;
+  });
+}
+
+describe.each(SCREENS)('une zone de défilement du panneau a le focus quand un commit raccourcit le contenu : %s', (_screen, narrow) => {
+  withFocusFixup();
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** Le panneau d'un ticket au texte long : sa zone de défilement est une région nommée, focalisable. */
+  async function openLong(detail: IssueDetail) {
+    screenIs(narrow);
+    measureOverflow();
+    serve(detail, chronology());
+    const app = renderApp(TICKET);
+    const dialog = await screen.findByRole('dialog', { name: TITLE });
+    expect(dialog.getAttribute('aria-modal')).toBe(String(narrow));
+    return { ...app, dialog };
+  }
+  /** Le commit raccourcit le texte (`mark` n'y est plus) : plus rien ne défile. */
+  async function commitShorter(queryClient: QueryClient, detail: IssueDetail, mark: string) {
+    serve(detail, chronology());
+    await commit(queryClient);
+    await waitFor(() => expect(screen.queryByText(new RegExp(mark))).toBeNull());
+    await settle();
+  }
+
+  it('la zone qui défile a le focus : le contenu raccourcit et elle le garde, au lieu de le laisser tomber sur le corps de la page', async () => {
+    const { dialog, queryClient } = await openLong(LONG_DETAIL);
+    const region = await within(dialog).findByRole('region', { name: 'Contenu du ticket' });
+    act(() => region.focus());
+    expect(document.activeElement).toBe(region);
+
+    await commitShorter(queryClient, SHORT_DETAIL, LONG_MARK);
+
+    expect(within(dialog).getByText('Court.')).toBeTruthy();
+    expect(document.activeElement).toBe(region); // pas le corps de la page ; à 375, le focus ne sort pas de la boîte de dialogue modale
+    expect(region.getAttribute('tabindex')).toBe('0');
+    expect(within(dialog).getByRole('region', { name: 'Contenu du ticket' })).toBe(region); // toujours nommée : le lecteur d'écran dit où est le focus
+  });
+
+  it('le focus quitte la zone (Tab vers « Fermer le panneau » : elle ne défile plus) : elle n’est pas un arrêt de tabulation de plus', async () => {
+    const { dialog, queryClient } = await openLong(LONG_DETAIL);
+    const region = await within(dialog).findByRole('region', { name: 'Contenu du ticket' });
+    act(() => region.focus());
+    await commitShorter(queryClient, SHORT_DETAIL, LONG_MARK);
+    const close = within(dialog).getByRole('button', { name: 'Fermer le panneau' });
+
+    act(() => close.focus());
+    await settle();
+
+    expect(document.activeElement).toBe(close);
+    expect(region.hasAttribute('tabindex')).toBe(false);
+    expect(region.hasAttribute('role')).toBe(false);
+    expect(within(dialog).queryByRole('region', { name: 'Contenu du ticket' })).toBeNull();
+  });
+
+  it('le focus a déjà quitté la zone (« Fermer le panneau » l’a) : le commit qui raccourcit le contenu ne le lui rend pas', async () => {
+    const { dialog, queryClient } = await openLong(LONG_DETAIL);
+    const region = await within(dialog).findByRole('region', { name: 'Contenu du ticket' });
+    const close = within(dialog).getByRole('button', { name: 'Fermer le panneau' });
+    act(() => region.focus());
+    act(() => close.focus());
+
+    await commitShorter(queryClient, SHORT_DETAIL, LONG_MARK);
+
+    expect(document.activeElement).toBe(close);
+    expect(region.hasAttribute('tabindex')).toBe(false);
+  });
+
+  it('l’utilisateur a cliqué dans le vide (le corps de la page a le focus) : le commit qui raccourcit le contenu ne lui reprend rien', async () => {
+    const { user, dialog, queryClient } = await openLong(LONG_DETAIL);
+    const region = await within(dialog).findByRole('region', { name: 'Contenu du ticket' });
+    act(() => region.focus());
+    await user.click(document.body);
+    expect(document.activeElement).toBe(document.body);
+
+    await commitShorter(queryClient, SHORT_DETAIL, LONG_MARK);
+
+    expect(document.activeElement).toBe(document.body);
+    expect(region.hasAttribute('tabindex')).toBe(false);
+  });
+
+  it('la fenêtre est en second plan quand le commit arrive (la zone reste l’élément actif du document) : elle garde le focus', async () => {
+    const { dialog, queryClient } = await openLong(LONG_DETAIL);
+    const region = await within(dialog).findByRole('region', { name: 'Contenu du ticket' });
+    act(() => region.focus());
+    act(() => void region.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))); // la fenêtre perd le focus : le navigateur envoie `blur` à la zone, qui reste l'élément actif
+    expect(document.activeElement).toBe(region);
+
+    await commitShorter(queryClient, SHORT_DETAIL, LONG_MARK);
+
+    expect(document.activeElement).toBe(region);
+    expect(region.getAttribute('tabindex')).toBe('0');
+  });
+
+  it('un bloc de code du texte, qui défile en largeur, a le focus : le code raccourcit et il le garde', async () => {
+    const { dialog, queryClient } = await openLong(WIDE_DETAIL);
+    await waitFor(() => expect(dialog.querySelector('div.overflow-x-auto')?.getAttribute('tabindex')).toBe('0'));
+    const box = dialog.querySelector<HTMLElement>('div.overflow-x-auto')!;
+    act(() => box.focus());
+    expect(document.activeElement).toBe(box);
+
+    await commitShorter(queryClient, SHORT_CODE_DETAIL, WIDE_MARK);
+
+    expect(within(dialog).getByText(/const court = 1;/)).toBeTruthy();
+    expect(dialog.querySelector('div.overflow-x-auto')).toBe(box); // le même bloc : il n'est pas remonté
+    expect(document.activeElement).toBe(box);
+    expect(box.getAttribute('tabindex')).toBe('0');
+  });
+
+  it('le focus quitte le bloc de code qui ne défile plus : il n’est pas un arrêt de tabulation de plus', async () => {
+    const { dialog, queryClient } = await openLong(WIDE_DETAIL);
+    await waitFor(() => expect(dialog.querySelector('div.overflow-x-auto')?.getAttribute('tabindex')).toBe('0'));
+    const box = dialog.querySelector<HTMLElement>('div.overflow-x-auto')!;
+    act(() => box.focus());
+    await commitShorter(queryClient, SHORT_CODE_DETAIL, WIDE_MARK);
+
+    act(() => within(dialog).getByRole('button', { name: 'Fermer le panneau' }).focus());
+    await settle();
+
+    expect(box.hasAttribute('tabindex')).toBe(false);
   });
 });
