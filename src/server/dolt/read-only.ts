@@ -47,7 +47,8 @@ export class ReadOnlyViolation extends DoltQueryError {
  * pas un `select`, qu'il n'admet pas plus en tête de requête que glissée dans une sous-requête. Il ne juge pas pour
  * autant l'état lu : `select … from issues` sans `as of 'HEAD'` passe (comme `as of 'WORKING'`, `dolt_diff` ou
  * `dolt_status`), et c'est au filet des tests (`testing/reads-at-head.ts`) de le signaler. Il juge ce que la requête
- * est, non ce qu'elle lit.
+ * est, non ce qu'elle lit. Ni ce que la base porte : une vue ou une colonne générée qu'elle contient s'exécute à la lecture, avec n'importe quel SQL, et aucun texte
+ * de requête ne le dit (`stored-sql.ts`, bdesk-38k.69 : c'est lui qui précède chaque lecture des Projets, pas ce garde).
  */
 export function assertReadOnly(sql: string): void {
   try {

@@ -5,6 +5,7 @@ import { analyzeFlow } from '../../domain/flow';
 import { readsOutsideHead, tablesRead } from '../testing/reads-at-head';
 import { type DoltDatabase, DoltQueryError, type Row } from './client';
 import { type Commit, dependencyLifetimes, readTicketHistories } from './history';
+import { StoredSqlError } from './stored-sql';
 
 const at = (iso: string) => new Date(`${iso}Z`);
 const commits: Commit[] = ['c0', 'c1', 'c2', 'c3', 'c4', 'c5'].map((hash, i) => ({ hash, at: at(`2026-10-0${i + 1}T10:00:00`) }));
@@ -189,7 +190,18 @@ const columns = (fields: string[], source = '') => ({
   match: new RegExp(`^show columns from ${source.replace(/[/`]/g, '\\$&')}\\.?dolt_history_dependencies$`),
   rows: fields.map((Field) => ({ Field, Type: 'varchar(64)' })),
 });
-const reads = (db: { queries: string[] }) => db.queries.filter((q) => /^select .*from .*dolt_history_dependencies/s.test(q));
+/**
+ * La réponse à `show full tables from <base>/<commit>` : la base de révision d'une ancre, avec sa table (`dependencies`), les deux vues que bd met dans toutes ses bases
+ * (`ready_issues`, `blocked_issues` : jamais refusées) et les vues qu'on lui donne.
+ */
+const viewsOf = (revision: string, names: string[] = []) => ({
+  match: new RegExp(`^show full tables from ${revision.replace(/[/`]/g, '\\$&')}$`),
+  rows: [
+    { Table_type: 'BASE TABLE', [`Tables_in_${revision}`]: 'dependencies' },
+    ...['ready_issues', 'blocked_issues', ...names].map((name) => ({ Table_type: 'VIEW', [`Tables_in_${revision}`]: name })),
+  ],
+});
+const reads = (db: { queries: string[] }) => db.queries.filter((q) => /^select .*from .*dolt_history_dependencies/s.test(q) );
 
 describe('readTicketHistories', () => {
   const log = [
@@ -328,6 +340,7 @@ describe('readTicketHistories', () => {
       { match: /select database\(\)/, rows: [{ name: 'ma_base' }] },
       // Époque du schéma d'origine, relue comme la voyait le commit c1 : cible dans depends_on_id.
       columns(OLD_COLUMNS, '`ma_base/c1`'),
+      viewsOf('`ma_base/c1`'),
       {
         match: /^select `commit_hash`, `issue_id`, `type`, `depends_on_id` from `ma_base\/c1`\.dolt_history_dependencies$/,
         rows: [
@@ -371,6 +384,7 @@ describe('readTicketHistories', () => {
       { match: /select database\(\)/, rows: [{ name: 'ma_base' }] },
       // Relu comme le voyait c2, le dernier commit sans cible, l'historique voit aussi c1 (lu comme c1, il perdrait c2).
       columns(OLD_COLUMNS, '`ma_base/c2`'),
+      viewsOf('`ma_base/c2`'),
       {
         match: /^select .* from `ma_base\/c2`\.dolt_history_dependencies$/s,
         rows: [
@@ -402,6 +416,7 @@ describe('readTicketHistories', () => {
       { match: /select l\.commit_hash/, rows: log },
       { match: /select database\(\)/, rows: [{ name: 'ma_base' }] },
       columns(CURRENT_COLUMNS, '`ma_base/c3`'),
+      viewsOf('`ma_base/c3`'),
       { match: /^select .* from `ma_base\/c3`\.dolt_history_dependencies$/s, rows: withoutTarget },
       columns(CURRENT_COLUMNS),
       { match: /^select .* from dolt_history_dependencies$/s, rows: withoutTarget },
@@ -411,6 +426,80 @@ describe('readTicketHistories', () => {
 
     expect(first?.dependencies).toEqual([]);
     expect(reads(db)).toHaveLength(2);
+  });
+
+  describe('du SQL stocké dans une source de l’historique des dépendances (bdesk-38k.69)', () => {
+    /** La base : un commit sans cible (c0 à c3 : le schéma courant n'en a pas), relu dans la base de révision de l'ancre c3, avec ce que `anchor` y trouve. */
+    const eraDb = (anchor: { match: RegExp; rows: Row[] }[], current = columns(CURRENT_COLUMNS)) =>
+      fakeDb([
+        { match: /from issues/, rows: tickets },
+        { match: /lag\(/, rows: statuses },
+        { match: /select l\.commit_hash/, rows: log },
+        { match: /select database\(\)/, rows: [{ name: 'ma_base' }] },
+        ...anchor,
+        { match: /^select .* from `ma_base\/c3`\.dolt_history_dependencies$/s, rows: [] },
+        current,
+        { match: /^select .* from dolt_history_dependencies$/s, rows: [{ commit_hash: 'c3', issue_id: 'p-1', type: 'blocks' }] },
+      ]);
+
+    it('refuse une vue dolt_history_dependencies dans le commit d’ancre d’une époque, sans lire la source : la vue masquerait la table système', async () => {
+      const db = eraDb([columns(CURRENT_COLUMNS, '`ma_base/c3`'), viewsOf('`ma_base/c3`', ['dolt_history_dependencies'])]);
+
+      const error = await readTicketHistories(db).catch((err: unknown) => err);
+
+      expect(error).toBeInstanceOf(StoredSqlError);
+      expect((error as Error).message).toContain('« dolt_history_dependencies » est une vue');
+      expect(db.queries.filter((q) => /^select `commit_hash`/.test(q) && q.includes('`ma_base/c3`'))).toEqual([]);
+    });
+
+    it.each([
+      ['le s long (U+017F)', 'dolt_history_dependencieſ'],
+      ['des majuscules', 'DOLT_HISTORY_DEPENDENCIES'],
+      ['un nom qui n’est pas de bd', 'rapport_perso'],
+    ])('refuse une vue de l’ancre qui s’écrit avec %s (%s) : Dolt la lit comme la table système, et JavaScript ne reconnaît pas son nom', async (_label, name) => {
+      const db = eraDb([columns(CURRENT_COLUMNS, '`ma_base/c3`'), viewsOf('`ma_base/c3`', [name])]);
+
+      const error = await readTicketHistories(db).catch((err: unknown) => err);
+
+      expect(error).toBeInstanceOf(StoredSqlError);
+      expect((error as Error).message).toContain(`« ${name} » est une vue`);
+      expect(db.queries.filter((q) => /^select `commit_hash`/.test(q) && q.includes('`ma_base/c3`'))).toEqual([]);
+    });
+
+    it('refuse une colonne générée dans l’époque, virtuelle ou stockée, sans lire la source', async () => {
+      const generated = { match: /^show columns from `ma_base\/c3`\.dolt_history_dependencies$/, rows: [{ Field: 'type', Extra: 'VIRTUAL GENERATED' }, { Field: 'commit_hash', Extra: '' }] };
+      const db = eraDb([generated, viewsOf('`ma_base/c3`')]);
+
+      const error = await readTicketHistories(db).catch((err: unknown) => err);
+
+      expect(error).toBeInstanceOf(StoredSqlError);
+      expect((error as Error).message).toContain('colonne générée « type »');
+      expect((error as Error).message).toContain('époque du commit c3');
+      expect((error as Error).message).not.toContain('ma_base/');
+      expect(db.queries.filter((q) => /^select `commit_hash`/.test(q) && q.includes('`ma_base/c3`'))).toEqual([]);
+    });
+
+    it('refuse aussi une colonne générée du schéma courant, avant de lire l’historique', async () => {
+      const db = fakeDb([
+        { match: /from issues/, rows: tickets },
+        { match: /lag\(/, rows: statuses },
+        { match: /select l\.commit_hash/, rows: log },
+        { match: /^show columns from dolt_history_dependencies$/, rows: [{ Field: 'issue_id', Extra: '' }, { Field: 'type', Extra: 'STORED GENERATED' }] },
+      ]);
+
+      await expect(readTicketHistories(db)).rejects.toBeInstanceOf(StoredSqlError);
+      expect(reads(db)).toEqual([]);
+    });
+
+    it('lit une source dont les valeurs par défaut sont ce que bd écrit (DEFAULT_GENERATED, DEFAULT_GENERATED on update CURRENT_TIMESTAMP)', async () => {
+      const columnsWithDefaults = {
+        match: /^show columns from dolt_history_dependencies$/,
+        rows: CURRENT_COLUMNS.map((Field) => ({ Field, Extra: Field === 'created_by' ? 'DEFAULT_GENERATED on update CURRENT_TIMESTAMP' : 'DEFAULT_GENERATED' })),
+      };
+      const db = fakeDb([...base(), columnsWithDefaults].reverse());
+
+      await expect(readTicketHistories(db)).resolves.toHaveLength(2);
+    });
   });
 
   it('repart de zéro après un trou : seule la dernière vie d’un ticket supprimé puis recréé est conservée', async () => {

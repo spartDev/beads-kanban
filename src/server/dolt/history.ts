@@ -1,8 +1,9 @@
 import { ABANDON_LINK_TYPES } from '../../domain/abandon';
 import type { DependencyHistory, StatusSnapshot, TicketHistory } from '../../domain/flow';
-import { type DoltDatabase, parseDoltDate, parseDoltInteger, sqlIdent, sqlString } from './client';
+import { type DoltDatabase, parseDoltDate, parseDoltInteger, queryAll, sqlIdent, sqlString } from './client';
 import { ascendingDates } from './commit-dates';
 import { asText, AT_HEAD, TARGET_COLUMNS, toDependency } from './reader';
+import { revisionTablesSql, StoredSqlError, storedSqlInSource } from './stored-sql';
 
 /** Un commit de l'historique Dolt, tel que listé par `dolt_log`. */
 export interface Commit {
@@ -151,11 +152,13 @@ export async function readTicketHistories(db: DoltDatabase, { now = () => new Da
 async function readDependencyAppearances(db: DoltDatabase, commits: Promise<Commit[]>): Promise<DependencyAppearance[]> {
   const appearances: DependencyAppearance[] = [];
   let source = 'dolt_history_dependencies';
+  /** La base de révision de l'ancre (voir `dependencyColumns`), absente pour l'état courant. */
+  let revision: string | undefined;
   let anchor: string | undefined;
   let pending: Set<string> | undefined;
 
   for (let era = 0; era < MAX_SCHEMA_ERAS; era++) {
-    const rows = await db.query(`select ${await dependencyColumns(db, source)} from ${source}`);
+    const rows = await db.query(`select ${await dependencyColumns(db, source, revision && anchor ? { revision, anchor } : undefined)} from ${source}`);
     const found: DependencyAppearance[] = [];
     const unresolved = new Set<string>();
     for (const row of rows) {
@@ -172,7 +175,8 @@ async function readDependencyAppearances(db: DoltDatabase, commits: Promise<Comm
     anchor = latest;
     pending = unresolved;
     const name = asText((await db.query('select database() as name'))[0]?.name);
-    source = `${sqlIdent(`${name}/${anchor}`)}.dolt_history_dependencies`;
+    revision = sqlIdent(`${name}/${anchor}`);
+    source = `${revision}.dolt_history_dependencies`;
   }
   return appearances;
 }
@@ -182,8 +186,15 @@ async function readDependencyAppearances(db: DoltDatabase, commits: Promise<Comm
  * et, s'il l'a, la date de pose des liens d'Abandon (`PLACED_AT`). L'historique répète chaque ligne à chaque commit : on ne lit pas
  * `metadata` et consorts.
  */
-async function dependencyColumns(db: DoltDatabase, source: string): Promise<string> {
-  const existing = new Set((await db.query(`show columns from ${source}`)).map((row) => asText(row.Field)));
+async function dependencyColumns(db: DoltDatabase, source: string, era?: { revision: string; anchor: string }): Promise<string> {
+  // Une époque est relue dans la base de révision de son ancre, un commit : ce qu'elle porte (une vue `dolt_history_dependencies` qui masquerait la table système, une
+  // colonne générée) s'exécuterait à la lecture, et l'assertion qui précède les lectures de l'état courant (`stored-sql.ts`) ne voit pas cette base. Le commit ne peut pas
+  // changer : ce qu'on y lit ici vaut pour la lecture qui suit.
+  const [shown = [], tables = []] = await queryAll(db, [`show columns from ${source}`, ...(era ? [revisionTablesSql(era.revision)] : [])]);
+  // L'époque se dit par son commit (huit caractères), non par le nom de la base de révision, qui porte le hash entier.
+  const problems = storedSqlInSource(shown, tables, era ? `époque du commit ${era.anchor.slice(0, 8)}` : 'historique des dépendances');
+  if (problems.length > 0) throw new StoredSqlError(problems, db.dir);
+  const existing = new Set(shown.map((row) => asText(row.Field)));
   const columns = ['commit_hash', 'issue_id', 'type', ...TARGET_COLUMNS].filter((column) => existing.has(column)).map(sqlIdent);
   return (existing.has('created_at') ? [...columns, PLACED_AT] : columns).join(', ');
 }

@@ -2,9 +2,10 @@ import type { TicketHistory } from '../../domain/flow';
 import type { Issue, IssueDetail, Project, ProjectsResponse } from '../../shared/api';
 import { ReadAborted } from '../abort';
 import type { Config } from '../config';
-import { createDoltClient, type DoltClient, type DoltDatabase, DoltNotFoundError, DoltQueryError, withOptions } from '../dolt/client';
+import { type DoltClient, type DoltDatabase, DoltNotFoundError, DoltQueryError, withOptions } from '../dolt/client';
 import { readTicketHistories } from '../dolt/history';
 import { readHead, readIssueBase, readIssueParts } from '../dolt/reader';
+import { createCheckedDoltClient } from '../dolt/stored-sql';
 import { type Discovery, type DiscoveredProject, discoverProjects } from './discovery';
 import { buildIssueDetail, buildIssues } from './issues';
 
@@ -63,6 +64,10 @@ export interface ProjectService {
 }
 
 export interface ProjectServiceOptions {
+  /**
+   * Le client Dolt (défaut : `createCheckedDoltClient`, qui refuse de lire une base dont une vue ou une colonne générée serait exécutée à la lecture : bdesk-38k.69). Un
+   * client sans cette vérification ne protège pas des bases venues d'un remote partagé : seuls les essais lui en substituent un.
+   */
   dolt?: DoltClient;
   /**
    * Délai minimal entre deux scans provoqués par un Projet inconnu ou illisible (défaut : 5 s), et plafond du délai qui suit un scan
@@ -102,7 +107,7 @@ interface Scan {
 
 export function createProjectService(
   config: Config,
-  { dolt = createDoltClient(), rescanIntervalMs = RESCAN_MIN_INTERVAL_MS }: ProjectServiceOptions = {},
+  { dolt = createCheckedDoltClient(), rescanIntervalMs = RESCAN_MIN_INTERVAL_MS }: ProjectServiceOptions = {},
 ): ProjectService {
   /** Le dernier scan lancé, achevé ou non, qu'il ait réussi ou échoué (voir `discover`). */
   let latest: Scan | undefined;

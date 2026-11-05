@@ -1,10 +1,11 @@
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { IssueChronologyResponse, IssueResponse, IssuesResponse, ProjectsResponse } from '../../shared/api';
+import { ProjectUnreadableError, createProjectService } from '../projects/service';
 import { buildServer } from '../server';
-import { buildLegacyDatabase, createDatabase, day, hasBinary, isolatedDoltEnv } from '../testing/dolt-fixture';
+import { buildLegacyDatabase, createDatabase, day, dolt, hasBinary, isolatedDoltEnv } from '../testing/dolt-fixture';
 import { type SqlServer, startSqlServer } from '../testing/dolt-server';
 import { scratchDir } from '../testing/scratch';
 import { createDoltClient } from './client';
@@ -133,6 +134,7 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)(
   (mode) => {
     let root: string;
     let database: string;
+    let env: NodeJS.ProcessEnv;
     let server: SqlServer;
     let direct: Dump;
     let served: Dump;
@@ -159,6 +161,7 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)(
       root = realpathSync(scratchDir('bdesk-sql-server-'));
       const project = buildProject(root, 'projet', mode);
       database = project.database;
+      env = project.env;
       direct = await readEverything();
       directHistories = await readTicketHistories(client.open(database));
       portSeenWithoutServer = await portOf();
@@ -222,6 +225,26 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)(
       for (const key of Object.keys(direct)) expect(served[key], key).toEqual(direct[key]);
       expect(servedHistories).toEqual(directHistories);
       expect(body<ProjectsResponse>(served, 'projects').projects).toMatchObject([{ id: 'projet', mode, status: 'ok', prefix: 's' }]);
+    });
+
+    // La vérification du SQL stocké (bdesk-38k.69) précède chaque lecture du service, derrière le serveur comme sans lui : `dolt sql` s'y connecte de lui-même, et l'assertion
+    // y est une instruction comme une autre. Les lectures de tous les tests ci-dessus l'ont déjà passée, sans fausse alerte. Ici, une vue sur `dolt_query_diff` qui écrit un fichier.
+    it('refuse de lire une base qui porte une vue, et la lecture ne crée aucun fichier', async () => {
+      const file = join(database, 'out-serveur.txt');
+      dolt(env, database, 'sql', '-q', `drop table labels; create view labels as select 'x' as issue_id, diff_type as label from dolt_query_diff('select ''x'' as v into outfile ''${file}''', 'select 1 as v')`);
+      dolt(env, database, 'sql', '-q', 'select * from labels'); // sans la vérification : la lecture, par le serveur, crée le fichier
+      expect(existsSync(file)).toBe(true);
+      rmSync(file);
+
+      const projects = createProjectService({ roots: [root], projects: [], hiddenProjects: [] }, { rescanIntervalMs: 0 });
+      const error = await projects.issue('projet', 's-1').then(
+        () => undefined,
+        (err: unknown) => err,
+      );
+
+      expect(error).toBeInstanceOf(ProjectUnreadableError);
+      expect((error as ProjectUnreadableError).reason).toContain('« labels »');
+      expect(existsSync(file)).toBe(false);
     });
   },
 );

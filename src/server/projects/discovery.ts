@@ -2,8 +2,9 @@ import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import type { IgnoredFolder, Project, ProjectMode } from '../../shared/api';
 import type { Config } from '../config';
-import { createDoltClient, type DoltClient } from '../dolt/client';
+import type { DoltClient } from '../dolt/client';
 import { readIssuePrefix } from '../dolt/reader';
+import { createCheckedDoltClient } from '../dolt/stored-sql';
 import { databaseFingerprint } from './fingerprint';
 
 /**
@@ -49,7 +50,7 @@ const SKIPPED_FOLDERS = new Set(['node_modules']);
  * ajoutés à la main, moins ceux masqués. Seuls les workspaces Dolt sont des Projets ; les autres sont
  * listés à part avec la raison pour laquelle ils sont ignorés.
  */
-export async function discoverProjects(config: Config, { dolt = createDoltClient(), previous }: DiscoveryOptions = {}): Promise<Discovery> {
+export async function discoverProjects(config: Config, { dolt = createCheckedDoltClient(), previous }: DiscoveryOptions = {}): Promise<Discovery> {
   // Masqués par chemin canonique (sur macOS, /var et /tmp sont des liens vers /private/…), comme les dossiers trouvés.
   const hidden = new Set(await Promise.all(config.hiddenProjects.map(canonicalPath)));
   const scanned = (await Promise.all(config.roots.map((root) => findWorkspaces(resolve(root))))).flat();

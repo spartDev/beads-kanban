@@ -44,6 +44,12 @@ describe('tableReads', () => {
     expect(tableReads("select hashof('HEAD') as head")).toEqual([]);
     expect(tableReads('select database() as name')).toEqual([]);
   });
+
+  it('ne prend pas la base de `show tables from` pour une table, mais lit la table de `show columns from`', () => {
+    expect(tableReads('show full tables from `projet/abc123`')).toEqual([]);
+    expect(tableReads('show tables from projet')).toEqual([]);
+    expect(tableReads('show columns from dolt_history_dependencies')).toEqual([{ table: 'dolt_history_dependencies', atHead: false }]);
+  });
 });
 
 describe('readsOutsideHead', () => {

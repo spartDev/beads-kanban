@@ -154,6 +154,8 @@ const isAsOfHead = (tokens: readonly Token[], at: number) =>
 /** Les tables qu'une requête lit, dans l'ordre : celles du `from`, d'un `join` (de toute sorte) ou d'une virgule du `from`, de `table t`, hors sous-requêtes et requêtes communes. */
 export function tableReads(sql: string): TableRead[] {
   const tokens = tokenize(sql);
+  // `show [full] tables from <base>` liste les tables d'une base (celle d'une ancre d'époque : `stored-sql.ts`, bdesk-38k.69) : son `from` nomme la base, non une table.
+  if (isWord(tokens[0], 'show') && (isWord(tokens[1], 'tables') || (isWord(tokens[1], 'full') && isWord(tokens[2], 'tables')))) return [];
   const reads: TableRead[] = [];
   const stack: Scope[] = [newScope()];
 
