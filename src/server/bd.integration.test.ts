@@ -92,6 +92,8 @@ describe.skipIf(!hasBinary('dolt') || !hasBinary('bd'))('lecteur Dolt sur un wor
       closeReason: 'terminé',
       labels: ['foo'],
       comments: [{ author: 'testeur', text: 'Un commentaire\nsur deux lignes' }],
+      // Avec un vrai bd : le ticket a été créé `--parent` de l'Epic, que la fiche nomme (bdesk-38k.29).
+      epic: { id: ids.Epic, title: 'Epic' },
     });
     expect(detail.dependencies).toEqual([
       { to: ids['Bloquant B'], type: 'blocks' },

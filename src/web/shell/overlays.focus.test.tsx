@@ -126,7 +126,7 @@ describe.each(MODES)('la palette ⌘K rend le focus à ce qui l’avait avant so
   it('Échap : le lien du panneau qui l’avait la retrouve, pas le panneau', async () => {
     const { user } = await start(TICKET);
     const panel = await ticketPanel();
-    const link = within(panel).getByRole('link', { name: /Epic : beads-desktop V1/ });
+    const link = within(panel).getByRole('link', { name: /^Epic : beads-desktop V1/ });
     act(() => link.focus());
     await openPalette(user);
 

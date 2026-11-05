@@ -30,6 +30,32 @@ export function descendantIds(rootId: string, issues: readonly Pick<Issue, 'id' 
   return descendants;
 }
 
+/**
+ * L'Epic d'un ticket : son parent quand il est de type epic, sinon l'Epic la plus proche parmi ses ancêtres (l'Enfant d'un Enfant d'une
+ * Epic en a donc une). Aucune pour un ticket qui n'en a pas au-dessus de lui, dont un ancêtre n'est pas dans `byId`, ou que ses parents
+ * ramènent à lui-même : à l'abri des boucles. Une Epic n'est pas sa propre Epic : celle d'une Epic imbriquée est l'Epic qui la contient.
+ *
+ * C'est la règle unique de l'Epic d'un ticket : la pastille des cartes du kanban, le décompte de la liste des Epics et le serveur, qui
+ * nomme l'Epic dans la fiche d'un ticket (`IssueDetail.epic`), l'appliquent à la lettre. Un sous-ticket garde donc la pastille de l'Epic de
+ * son parent, et le filtre Epic (qui garde les Enfants indirects : `descendantIds`) ne montre jamais une carte sans pastille : un ticket est
+ * un Enfant de l'Epic qu'elle lui donne, et d'aucune qui soit plus proche.
+ */
+export function epicOf<T extends Pick<Issue, 'id' | 'type' | 'parentId'>>(
+  issue: Pick<Issue, 'id' | 'parentId'>,
+  byId: ReadonlyMap<string, T>,
+): T | null {
+  const seen = new Set<string>([issue.id]);
+  for (let parentId = issue.parentId; parentId !== null; ) {
+    if (seen.has(parentId)) return null;
+    seen.add(parentId);
+    const parent = byId.get(parentId);
+    if (!parent) return null;
+    if (parent.type === 'epic') return parent;
+    parentId = parent.parentId;
+  }
+  return null;
+}
+
 export interface EpicChildren<T> {
   /**
    * Les Enfants de l'Epic hors Epics imbriquées, Abandons compris : ses descendants qui ne sont pas eux-mêmes des Epics, directs

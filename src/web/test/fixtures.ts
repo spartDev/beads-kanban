@@ -47,6 +47,7 @@ export function issueDetail(overrides: Partial<IssueDetail> & Pick<IssueDetail, 
     dependencies: [],
     dependents: [],
     linked: {},
+    epic: null,
     comments: [],
     ...overrides,
   };

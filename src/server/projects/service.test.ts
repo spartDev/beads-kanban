@@ -271,6 +271,38 @@ describe('lectures regroupées et abandonnables (bdesk-38k.20)', () => {
     expect(seen.groups.map((group) => group.length).sort()).toEqual([2, 3]);
   });
 
+  it('nomme l’Epic de la fiche sans un processus de plus : elle se tire des tickets que la fiche lit déjà (bdesk-38k.29)', async () => {
+    const tickets = [
+      { ...SUMMARY, id: 'x-1', title: 'L’Epic', issue_type: 'epic' },
+      { ...SUMMARY, id: 'x-2', title: 'L’Enfant' },
+      { ...SUMMARY, id: 'x-3', title: 'Le petit-enfant' },
+    ];
+    const parentChild = [
+      { issue_id: 'x-2', depends_on_issue_id: 'x-1', type: 'parent-child' },
+      { issue_id: 'x-3', depends_on_issue_id: 'x-2', type: 'parent-child' },
+    ];
+    const projectWith = (links: Row[]) => (sql: string): Row[] => {
+      if (sql.includes("hashof('HEAD')")) return [{ head: 'h1' }];
+      if (sql.includes('from labels') || sql.includes('from comments')) return [];
+      if (sql.includes('from dependencies')) return links;
+      if (sql.includes('where id =')) return tickets.filter((ticket) => sql.includes(`'${ticket.id}'`));
+      return tickets;
+    };
+    const withoutEpic = groupingDolt(projectWith([]));
+    const withEpic = groupingDolt(projectWith(parentChild));
+
+    const bare = await serviceFor(withoutEpic.dolt).issue('a', 'x-3');
+    const detail = await serviceFor(withEpic.dolt).issue('a', 'x-3');
+
+    expect(bare.epic).toBeNull();
+    expect(detail.epic).toEqual({ id: 'x-1', title: 'L’Epic' });
+    // Les mêmes deux processus que pour une fiche sans Epic, et les mêmes requêtes, mot pour mot : l'Epic ne coûte aucune lecture.
+    expect(withEpic.seen.processes).toBe(2);
+    expect(withEpic.seen.singles).toEqual([]);
+    expect(withEpic.seen.groups.map((group) => group.length).sort()).toEqual([2, 3]);
+    expect(withEpic.seen.groups).toEqual(withoutEpic.seen.groups);
+  });
+
   it('lit la liste des tickets en un seul processus', async () => {
     const { dolt, seen } = groupingDolt();
 

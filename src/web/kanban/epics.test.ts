@@ -1,50 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { Issue } from '../data/types';
 import { issue } from '../test/fixtures';
-import { epicChoices, epicLabels, epicOf, indexById, shortTitle } from './epics';
+import { epicChoices, epicLabels, shortTitle } from './epics';
 
 const at = (id: string, extra: Partial<Issue> = {}) => issue({ id, title: `Titre ${id}`, ...extra });
-
-describe('epicOf : l’Epic d’une carte', () => {
-  const issues = [
-    at('E1', { type: 'epic' }),
-    at('E2', { type: 'epic', parentId: 'E1' }),
-    at('direct', { parentId: 'E1' }),
-    at('task', { parentId: 'E1' }),
-    at('subtask', { parentId: 'task' }),
-    at('in-nested', { parentId: 'E2' }),
-    at('lonely'),
-    at('lost', { parentId: 'absent' }),
-    at('plain-parent'),
-    at('plain-child', { parentId: 'plain-parent' }),
-  ];
-  const byId = indexById(issues);
-  const epicIdOf = (id: string) => epicOf(byId.get(id)!, byId)?.id ?? null;
-
-  it('est le parent quand il est de type epic', () => {
-    expect(epicIdOf('direct')).toBe('E1');
-  });
-
-  it('remonte à l’Epic d’un ticket parent : un sous-ticket garde la pastille de l’Epic de son parent', () => {
-    expect(epicIdOf('subtask')).toBe('E1');
-  });
-
-  it('prend l’Epic la plus proche quand des Epics s’imbriquent', () => {
-    expect(epicIdOf('in-nested')).toBe('E2');
-    expect(epicIdOf('E2')).toBe('E1');
-  });
-
-  it('est absente d’un ticket sans parent, au parent inconnu, ou sans Epic parmi ses ancêtres', () => {
-    expect(epicIdOf('lonely')).toBeNull();
-    expect(epicIdOf('lost')).toBeNull();
-    expect(epicIdOf('plain-child')).toBeNull();
-  });
-
-  it('termine malgré une boucle de parentés', () => {
-    const loop = indexById([at('a', { parentId: 'b' }), at('b', { parentId: 'a' })]);
-    expect(epicOf(loop.get('a')!, loop)).toBeNull();
-  });
-});
 
 describe('shortTitle : le titre court d’une Epic', () => {
   it.each([

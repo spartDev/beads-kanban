@@ -3,7 +3,8 @@ import { render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi } from 'vitest';
 import { createMemoryRouter, RouterProvider } from 'react-router';
-import type { Issue, IssueChronology, IssueDetail, IssueRef, ProjectsResponse } from '../data/types';
+import { epicOf } from '../../domain/epics';
+import type { Issue, IssueChronology, IssueDetail, IssueEpic, IssueRef, ProjectsResponse } from '../data/types';
 import { routes } from '../routes';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import { chronology as defaultChronology, issueDetail } from './fixtures';
@@ -52,6 +53,12 @@ function linkedTo(listed: Issue, list: Issue[]): Record<string, IssueRef> {
   return Object.fromEntries(named.map((other) => [other.id, toRef(other)]));
 }
 
+/** L'Epic que la fiche d'un ticket de la liste nomme (`epic`), comme le serveur : la règle du domaine (`epicOf`) sur les tickets du Projet. */
+function epicNamedBy(listed: Issue, list: Issue[]): IssueEpic | null {
+  const epic = epicOf(listed, new Map(list.map((candidate) => [candidate.id, candidate])));
+  return epic ? { id: epic.id, title: epic.title } : null;
+}
+
 /** Remplace fetch par un faux serveur d'API ; renvoie le mock pour inspecter les appels. */
 export function stubApi({ projects, issues = {}, details = {}, chronologies = {} }: ApiFixture) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -82,7 +89,7 @@ export function stubApi({ projects, issues = {}, details = {}, chronologies = {}
     if (list instanceof Error || isFailure(list)) return respond(list);
     const listed = list.find((candidate) => candidate.id === issueId);
     return listed
-      ? json({ issue: issueDetail({ ...listed, linked: linkedTo(listed, list) }) })
+      ? json({ issue: issueDetail({ ...listed, linked: linkedTo(listed, list), epic: epicNamedBy(listed, list) }) })
       : notFound(`Ticket inconnu dans ${projectId} : ${issueId}`);
   });
   vi.stubGlobal('fetch', fetchMock);

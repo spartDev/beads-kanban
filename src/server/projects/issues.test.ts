@@ -272,4 +272,77 @@ describe('buildIssueDetail', () => {
       expect(detailOf([]).linked).toEqual({});
     });
   });
+
+  describe('epic : l’Epic du ticket, nommée par la fiche (bdesk-38k.29)', () => {
+    const summaries = [
+      summary('e-1', 'open', { title: 'Epic racine', type: 'epic' }),
+      summary('e-2', 'open', { title: 'Epic imbriquée', type: 'epic' }),
+      summary('a', 'open', { title: 'Enfant direct' }),
+      summary('a-1', 'open', { title: 'Petit-enfant' }),
+      summary('a-1x', 'open', { title: 'Arrière-petit-enfant' }),
+      summary('b', 'open', { title: 'Enfant direct de l’Epic imbriquée' }),
+      summary('b-1', 'open', { title: 'Petit-enfant sous l’Epic imbriquée' }),
+      summary('n', 'open', { title: 'Chantier hors Epic' }),
+      summary('n-1', 'open', { title: 'Sous-chantier hors Epic' }),
+      summary('l-1'),
+      summary('l-2'),
+    ];
+    const child = (from: string, to: string) => dep(from, to, 'parent-child');
+    const links = [
+      child('e-2', 'e-1'),
+      child('a', 'e-1'),
+      child('a-1', 'a'),
+      child('a-1x', 'a-1'),
+      child('b', 'e-2'),
+      child('b-1', 'b'),
+      child('n-1', 'n'),
+      child('l-1', 'l-2'),
+      child('l-2', 'l-1'),
+    ];
+    /** La fiche d'un ticket, construite comme le fait le service : les tickets du Projet par identifiant (`known`) sont ceux de la liste. */
+    const detailOf = (id: string, deps: DependencyRecord[] = links) => {
+      const all = buildIssues(summaries, deps);
+      const issue = all.find((i) => i.id === id);
+      if (!issue) throw new Error('ticket attendu');
+      const record: IssueRecord = { ...summary(id), description: '', design: '', acceptanceCriteria: '', notes: '', closeReason: '' };
+      return buildIssueDetail(issue, record, deps, [], [], new Map(all.map((i) => [i.id, i])));
+    };
+
+    it('nomme l’Epic parent d’un Enfant direct : son identifiant et son titre', () => {
+      expect(detailOf('a').epic).toEqual({ id: 'e-1', title: 'Epic racine' });
+    });
+
+    it('nomme l’Epic d’un petit-enfant et d’un arrière-petit-enfant : celle de l’Enfant dont ils descendent', () => {
+      expect(detailOf('a-1').epic).toEqual({ id: 'e-1', title: 'Epic racine' });
+      expect(detailOf('a-1x').epic).toEqual({ id: 'e-1', title: 'Epic racine' });
+    });
+
+    it('nomme l’Epic imbriquée la plus proche, non la racine qui la contient', () => {
+      expect(detailOf('b').epic).toEqual({ id: 'e-2', title: 'Epic imbriquée' });
+      expect(detailOf('b-1').epic).toEqual({ id: 'e-2', title: 'Epic imbriquée' });
+    });
+
+    it('nomme, pour une Epic imbriquée, l’Epic qui la contient ; une Epic sans Epic au-dessus n’en a pas', () => {
+      expect(detailOf('e-2').epic).toEqual({ id: 'e-1', title: 'Epic racine' });
+      expect(detailOf('e-1').epic).toBeNull();
+    });
+
+    it('est nulle hors de toute Epic : sans parent, sous un ticket qui n’en a pas, et quand les parents se bouclent', () => {
+      expect(detailOf('n').epic).toBeNull();
+      expect(detailOf('n-1').epic).toBeNull();
+      expect(detailOf('l-1').epic).toBeNull();
+    });
+
+    it('est nulle quand la chaîne des parents sort du Projet : un parent qui n’est pas un de ses tickets n’en est pas un', () => {
+      expect(detailOf('a-1', [child('a-1', 'a'), child('a', 'external:autre-projet:x-1')]).epic).toBeNull();
+    });
+
+    it('n’ajoute pas l’Epic à `linked` : la fiche ne nomme toujours que ce qu’elle touche, parent compris', () => {
+      const detail = detailOf('a-1');
+
+      expect(detail.epic).toEqual({ id: 'e-1', title: 'Epic racine' });
+      expect(detail.linked).not.toHaveProperty('e-1');
+      expect(detail.linked['a']).toMatchObject({ id: 'a', title: 'Enfant direct' });
+    });
+  });
 });

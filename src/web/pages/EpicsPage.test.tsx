@@ -4,7 +4,7 @@ import { queryKeys } from '../data/hooks';
 import type { Issue } from '../data/types';
 import { shownText, spokenText } from '../metrics/testing';
 import { withAsyncTimeout } from '../test/asyncTimeout';
-import { issue, projectsResponse } from '../test/fixtures';
+import { issue, issueDetail, projectsResponse } from '../test/fixtures';
 import { httpFailure, renderApp, stubApi } from '../test/render';
 import { withTimeZone } from '../test/timeZone';
 
@@ -602,7 +602,7 @@ describe('la page Epic : y arriver et en repartir', () => {
     const { user, router } = renderApp('/p/bdesk/t/bdesk-e1');
     const dialog = await screen.findByRole('dialog', { name: /Shell UI/ });
 
-    await user.click(within(dialog).getByRole('link', { name: 'Page Epic' }));
+    await user.click(within(dialog).getByRole('link', { name: 'Page Epic : Shell UI' }));
 
     expect(await screen.findByRole('heading', { level: 1, name: /Shell UI/ })).toBeTruthy();
     expect(router.state.location.pathname + router.state.location.search).toBe('/p/bdesk/epics?epic=bdesk-e1');
@@ -614,15 +614,15 @@ describe('la page Epic : y arriver et en repartir', () => {
     renderApp('/p/bdesk/t/bdesk-a');
     const dialog = await screen.findByRole('dialog', { name: /Palette/ });
 
-    expect(within(dialog).getByRole('link', { name: 'Page Epic' }).getAttribute('href')).toBe('/p/bdesk/epics?epic=bdesk-e1');
+    expect(within(dialog).getByRole('link', { name: 'Page Epic : Shell UI' }).getAttribute('href')).toBe('/p/bdesk/epics?epic=bdesk-e1');
   });
 
-  it('n’est pas proposée dans le panneau d’un ticket qui n’a pas d’Epic pour parent', async () => {
+  it('n’est pas proposée dans le panneau d’un ticket qui n’est dans aucune Epic', async () => {
     stub(PROJECT);
     renderApp('/p/bdesk/t/bdesk-z');
     const dialog = await screen.findByRole('dialog', { name: /Hors Epic/ });
 
-    expect(within(dialog).queryByRole('link', { name: 'Page Epic' })).toBeNull();
+    expect(within(dialog).queryByRole('link', { name: /^Page Epic/ })).toBeNull();
   });
 
   it('ramène à la liste des Epics par un lien en tête de page', async () => {
@@ -653,6 +653,258 @@ describe('la page Epic : y arriver et en repartir', () => {
 
     await waitFor(() => expect(router.state.location.pathname + router.state.location.search).toBe('/p/bdesk/epics?epic=bdesk-e1'));
     expect(screen.getByRole('heading', { level: 1, name: /Shell UI/ })).toBeTruthy();
+  });
+});
+
+/**
+ * Le lien « Page Epic » du panneau, à tous les niveaux (bdesk-38k.29). Un petit-enfant est un Enfant de l’Epic au sens du glossaire, comme
+ * l’Enfant direct : son panneau propose la page de l’Epic la plus proche au-dessus de lui, celle que sa pastille mène à sur le kanban, et la
+ * nomme (« Page Epic : <titre court> », comme la pastille « Epic : … »). C’est la fiche qui la nomme (`epic`, calculée par le serveur avec la règle
+ * du domaine, `epicOf`) : le lien vient avec le titre, sans autre lecture. Une Epic imbriquée garde son propre lien ; un ticket hors de toute
+ * Epic n’en a pas.
+ */
+describe('le panneau d’un ticket : le lien « Page Epic » à tous les niveaux', () => {
+  freezeClock();
+
+  //   bdesk-e1 (Epic)                                  bdesk-x     un chantier hors de toute Epic
+  //   ├─ bdesk-a          Enfant direct                └─ bdesk-y
+  //   │  └─ bdesk-sous    petit-enfant                    └─ bdesk-w
+  //   │     └─ bdesk-detail   arrière-petit-enfant
+  //   └─ bdesk-sub (Epic imbriquée)
+  //      └─ bdesk-s1
+  //         └─ bdesk-s2
+  const PROJECT: Issue[] = [
+    EPIC,
+    child('bdesk-a', 'Palette', { status: 'in_progress' }),
+    issue({ id: 'bdesk-sous', title: 'Sous-ticket de la palette', parentId: 'bdesk-a' }),
+    issue({ id: 'bdesk-detail', title: 'Détail du sous-ticket', parentId: 'bdesk-sous' }),
+    child('bdesk-sub', 'Sous-Epic', { type: 'epic' }),
+    issue({ id: 'bdesk-s1', title: 'Enfant de la sous-Epic', parentId: 'bdesk-sub' }),
+    issue({ id: 'bdesk-s2', title: 'Petit-enfant de la sous-Epic', parentId: 'bdesk-s1' }),
+    issue({ id: 'bdesk-x', title: 'Chantier hors Epic' }),
+    issue({ id: 'bdesk-y', title: 'Sous-chantier hors Epic', parentId: 'bdesk-x' }),
+    issue({ id: 'bdesk-w', title: 'Détail du sous-chantier hors Epic', parentId: 'bdesk-y' }),
+  ];
+
+  const titleOf = (id: string) => {
+    const found = PROJECT.find((candidate) => candidate.id === id);
+    if (!found) throw new Error(`Pas de ticket ${id} dans le Projet du test.`);
+    return found.title;
+  };
+
+  /** Le nom du panneau d’un ticket une fois sa fiche arrivée : l’identifiant, puis le titre. */
+  const panelName = (id: string) => `${id} ${titleOf(id)}`;
+
+  /** Où mène le lien « Page Epic » du panneau (celui qui porte ce nom, par défaut n’importe lequel), ou `null` quand le panneau n’en a pas. */
+  const pageEpic = (dialog: HTMLElement, name: string | RegExp = /^Page Epic/) => within(dialog).queryByRole('link', { name })?.getAttribute('href') ?? null;
+
+  /** Le panneau d’un ticket ouvert par son adresse, dès que sa fiche est là (le titre) : le lien, s’il y en a un, vient avec elle. */
+  async function openPanelOf(id: string) {
+    stub(PROJECT);
+    const app = renderApp(`/p/bdesk/t/${id}`);
+    const dialog = await screen.findByRole('dialog', { name: panelName(id) });
+    return { ...app, dialog };
+  }
+
+  /** La liste des tickets du Projet tarde : sa réponse, et elle seule (ni les fiches, ni les chronologies), attend `release()`. */
+  function holdList(fetchMock: ReturnType<typeof stubApi>) {
+    const healthy = fetchMock.getMockImplementation();
+    if (!healthy) throw new Error('holdList attend le mock renvoyé par stubApi.');
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fetchMock.mockImplementation(async (input) => {
+      if (/\/issues$/.test(String(input))) await gate;
+      return healthy(input);
+    });
+    return release;
+  }
+
+  it('est proposé dans le panneau d’un petit-enfant de l’Epic, et mène à elle', async () => {
+    const { dialog } = await openPanelOf('bdesk-sous');
+
+    expect(pageEpic(dialog)).toBe('/p/bdesk/epics?epic=bdesk-e1');
+  });
+
+  it('l’est aussi à trois niveaux sous l’Epic', async () => {
+    const { dialog } = await openPanelOf('bdesk-detail');
+
+    expect(pageEpic(dialog)).toBe('/p/bdesk/epics?epic=bdesk-e1');
+  });
+
+  it('mène à une page qui compte ce petit-enfant parmi les Enfants de l’Epic, comme le filtre Epic du kanban', async () => {
+    const { user, dialog } = await openPanelOf('bdesk-detail');
+
+    await user.click(within(dialog).getByRole('link', { name: /^Page Epic/ }));
+
+    expect(await screen.findByRole('heading', { level: 1, name: /Shell UI/ })).toBeTruthy();
+    expect(within(section('Prêt')).getByRole('link', { name: /Détail du sous-ticket/ })).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('mène, sous une Epic imbriquée, à la plus proche des deux : celle de la pastille du kanban', async () => {
+    const { dialog } = await openPanelOf('bdesk-s2');
+
+    expect(pageEpic(dialog)).toBe('/p/bdesk/epics?epic=bdesk-sub');
+  });
+
+  it('mène une Epic imbriquée à sa propre page, non à celle de l’Epic qui la contient', async () => {
+    const { dialog } = await openPanelOf('bdesk-sub');
+
+    expect(pageEpic(dialog)).toBe('/p/bdesk/epics?epic=bdesk-sub');
+  });
+
+  it('mène l’Enfant direct d’une Epic imbriquée à cette Epic, non à celle qui la contient', async () => {
+    const { dialog } = await openPanelOf('bdesk-s1');
+
+    expect(pageEpic(dialog)).toBe('/p/bdesk/epics?epic=bdesk-sub');
+  });
+
+  it.each(['bdesk-x', 'bdesk-y', 'bdesk-w'])('n’est pas proposé dans le panneau de %s, hors de toute Epic, quelle que soit sa profondeur', async (id) => {
+    const { dialog } = await openPanelOf(id);
+
+    expect(pageEpic(dialog)).toBeNull();
+  });
+
+  it('n’est pas proposé, et ne fige rien, quand les parents se bouclent : aucune Epic au bout', async () => {
+    stub([
+      issue({ id: 'bdesk-b1', title: 'Boucle un', parentId: 'bdesk-b2' }),
+      issue({ id: 'bdesk-b2', title: 'Boucle deux', parentId: 'bdesk-b1' }),
+    ]);
+    renderApp('/p/bdesk/t/bdesk-b1');
+    const dialog = await screen.findByRole('dialog', { name: 'bdesk-b1 Boucle un' });
+
+    expect(pageEpic(dialog)).toBeNull();
+  });
+
+  describe('nomme l’Epic visée', () => {
+    it('par « Page Epic : » et son titre court, comme la pastille « Epic : … » de la carte : le petit-enfant sait vers quelle Epic il va', async () => {
+      const { dialog } = await openPanelOf('bdesk-sous');
+
+      expect(pageEpic(dialog, 'Page Epic : Shell UI')).toBe('/p/bdesk/epics?epic=bdesk-e1');
+    });
+
+    it.each([
+      ['l’Enfant direct d’une Epic', 'bdesk-a', 'Page Epic : Shell UI', '/p/bdesk/epics?epic=bdesk-e1'],
+      ['un arrière-petit-enfant', 'bdesk-detail', 'Page Epic : Shell UI', '/p/bdesk/epics?epic=bdesk-e1'],
+      ['un petit-enfant sous une Epic imbriquée : la plus proche', 'bdesk-s2', 'Page Epic : Sous-Epic', '/p/bdesk/epics?epic=bdesk-sub'],
+      ['une Epic imbriquée : la sienne', 'bdesk-sub', 'Page Epic : Sous-Epic', '/p/bdesk/epics?epic=bdesk-sub'],
+      ['l’Epic elle-même', 'bdesk-e1', 'Page Epic : Shell UI', '/p/bdesk/epics?epic=bdesk-e1'],
+    ])('la nomme aussi pour %s', async (_who, id, name, href) => {
+      const { dialog } = await openPanelOf(id);
+
+      expect(pageEpic(dialog, name)).toBe(href);
+    });
+
+    it('porte le même titre court que la pastille « Epic : … » de la carte du même ticket : la carte et le panneau nomment la même Epic', async () => {
+      stub(PROJECT);
+      const { user } = renderApp('/p/bdesk/kanban');
+      const card = (await screen.findByRole('link', { name: 'Détail du sous-ticket' })).closest('li') as HTMLElement;
+      const pill = within(card).getByRole('link', { name: /^Epic : / });
+
+      await user.click(within(card).getByRole('link', { name: 'Détail du sous-ticket' }));
+      const dialog = await screen.findByRole('dialog', { name: panelName('bdesk-detail') });
+
+      expect(pill.textContent).toBe('Epic : Shell UI');
+      expect(pageEpic(dialog, `Page ${pill.textContent}`)).toBe(pill.getAttribute('href'));
+    });
+
+    it('abrège un long titre comme la pastille, et donne le titre entier en infobulle', async () => {
+      const LONG = 'Une très longue Epic sans séparateur qui dépasse largement la limite';
+      stub([issue({ id: 'bdesk-long', title: LONG, type: 'epic' }), issue({ id: 'bdesk-fils', title: 'Un Enfant', parentId: 'bdesk-long' })]);
+      renderApp('/p/bdesk/t/bdesk-fils');
+      const dialog = await screen.findByRole('dialog', { name: 'bdesk-fils Un Enfant' });
+
+      const link = within(dialog).getByRole('link', { name: 'Page Epic : Une très longue Epic…' });
+
+      expect(link.getAttribute('title')).toContain(LONG);
+    });
+
+    it('dit l’identifiant d’une Epic sans titre : pas de « Page Epic : » qui ne nomme rien', async () => {
+      stub([issue({ id: 'bdesk-vide', title: '', type: 'epic' }), issue({ id: 'bdesk-fils', title: 'Un Enfant', parentId: 'bdesk-vide' })]);
+      renderApp('/p/bdesk/t/bdesk-fils');
+      const dialog = await screen.findByRole('dialog', { name: 'bdesk-fils Un Enfant' });
+
+      expect(pageEpic(dialog, 'Page Epic : bdesk-vide')).toBe('/p/bdesk/epics?epic=bdesk-vide');
+    });
+  });
+
+  describe('vient avec la fiche', () => {
+    it.each([
+      ['un petit-enfant', 'bdesk-sous', '/p/bdesk/epics?epic=bdesk-e1'],
+      ['un arrière-petit-enfant', 'bdesk-detail', '/p/bdesk/epics?epic=bdesk-e1'],
+      ['un petit-enfant sous une Epic imbriquée', 'bdesk-s2', '/p/bdesk/epics?epic=bdesk-sub'],
+      ['l’Enfant direct d’une Epic', 'bdesk-a', '/p/bdesk/epics?epic=bdesk-e1'],
+      ['une Epic imbriquée', 'bdesk-sub', '/p/bdesk/epics?epic=bdesk-sub'],
+    ])('pour %s, est là avec le titre, sans attendre la liste des tickets : la fiche nomme l’Epic', async (_who, id, href) => {
+      holdList(stub(PROJECT)); // la liste n’arrive jamais
+      renderApp(`/p/bdesk/t/${id}`);
+      const dialog = await screen.findByRole('dialog', { name: panelName(id) });
+
+      expect(pageEpic(dialog)).toBe(href);
+    });
+
+    it('est là dès que le titre l’est quand le panneau s’ouvre depuis une carte du tableau', async () => {
+      stub(PROJECT);
+      const { user } = renderApp('/p/bdesk/kanban');
+      await user.click(await screen.findByRole('link', { name: 'Détail du sous-ticket' }));
+
+      const dialog = await screen.findByRole('dialog', { name: panelName('bdesk-detail') });
+
+      expect(pageEpic(dialog)).toBe('/p/bdesk/epics?epic=bdesk-e1');
+    });
+
+    it('ne demande ni la fiche des ancêtres ni une seconde liste : le tableau dessous a déjà demandé celle-ci', async () => {
+      const fetchMock = stub(PROJECT);
+      renderApp('/p/bdesk/t/bdesk-detail');
+      const dialog = await screen.findByRole('dialog', { name: panelName('bdesk-detail') });
+      await screen.findByRole('region', { name: 'En cours' });
+
+      const urls = fetchMock.mock.calls.map(([input]) => String(input));
+      expect(pageEpic(dialog)).not.toBeNull();
+      expect(urls.filter((url) => url === '/api/projects/bdesk/issues')).toHaveLength(1);
+      expect(urls.filter((url) => /\/issues\/[^/]+$/.test(url))).toEqual(['/api/projects/bdesk/issues/bdesk-detail']);
+    });
+
+    it.each([
+      ['l’Enfant direct d’une Epic', 'bdesk-a', '/p/bdesk/epics?epic=bdesk-e1'],
+      ['un petit-enfant', 'bdesk-sous', '/p/bdesk/epics?epic=bdesk-e1'],
+      ['un ticket sans parent', 'bdesk-x', null],
+    ])('ne relit jamais la liste des tickets, même périmée, pour %s : le panneau ne la lit pas', async (_who, id, href) => {
+      const fetchMock = stub(PROJECT);
+      const { user } = renderApp('/p/bdesk/kanban');
+      const card = await screen.findByRole('link', { name: titleOf(id) });
+      vi.setSystemTime(Date.parse(NOW) + 60_000); // la liste date de plus de 15 s : une relecture serait permise
+
+      await user.click(card);
+      const dialog = await screen.findByRole('dialog', { name: panelName(id) });
+
+      expect(pageEpic(dialog)).toBe(href);
+      const urls = fetchMock.mock.calls.map(([input]) => String(input));
+      expect(urls.filter((url) => url === '/api/projects/bdesk/issues')).toHaveLength(1);
+    });
+
+    it('ne dépend pas de la liste des tickets : la fiche nomme l’Epic même quand la liste ne peut pas être lue', async () => {
+      stubApi({
+        projects: projectsResponse,
+        issues: { bdesk: new Error('database is locked') },
+        details: {
+          'bdesk/bdesk-sous': issueDetail({
+            id: 'bdesk-sous',
+            title: 'Sous-ticket de la palette',
+            parentId: 'bdesk-a',
+            linked: { 'bdesk-a': { id: 'bdesk-a', title: 'Palette', type: 'task', status: 'in_progress', priority: 2 } },
+            epic: { id: 'bdesk-e1', title: 'Shell UI : thèmes, navigation et raccourcis' },
+          }),
+        },
+      });
+      renderApp('/p/bdesk/t/bdesk-sous');
+      const dialog = await screen.findByRole('dialog', { name: panelName('bdesk-sous') });
+      await screen.findByText('Impossible de charger les tickets');
+
+      expect(pageEpic(dialog, 'Page Epic : Shell UI')).toBe('/p/bdesk/epics?epic=bdesk-e1');
+    });
   });
 });
 

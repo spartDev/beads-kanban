@@ -1,10 +1,10 @@
 import { Zap } from 'lucide-react';
 import { useMemo } from 'react';
 import { Link } from 'react-router';
-import { epicChildren, epicProgress, type EpicProgress } from '../../domain/epics';
+import { epicChildren, epicOf, epicProgress, type EpicProgress } from '../../domain/epics';
 import type { Issue } from '../data/types';
 import { isEpic } from '../data/helpers';
-import { epicChoices, epicOf, indexById } from '../kanban/epics';
+import { epicChoices, indexById } from '../kanban/epics';
 import { formatPercent } from '../metrics/format';
 import { paths } from '../paths';
 import { TypeGlyph } from '../ui/IssueBadges';

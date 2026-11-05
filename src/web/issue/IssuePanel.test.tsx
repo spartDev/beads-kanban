@@ -67,7 +67,7 @@ describe('le panneau d’un ticket : son adresse', () => {
     const dialog = await openPanel(/Shell UI façon Linear/);
 
     // Dès que le titre est là, le Parent y est aussi : aucun `findBy`, aucune attente.
-    const parent = within(dialog).getByRole('link', { name: /beads-desktop V1/ });
+    const parent = within(dialog).getByRole('link', { name: /^Epic : beads-desktop V1/ });
     expect(parent.getAttribute('href')).toBe('/p/bdesk/t/bdesk-38k');
   });
 });
@@ -104,7 +104,7 @@ describe('le panneau d’un ticket : l’en-tête', () => {
 
     const dialog = await openPanel(/Shell UI façon Linear/);
 
-    const pill = within(dialog).getByRole('link', { name: /Epic : beads-desktop V1/ });
+    const pill = within(dialog).getByRole('link', { name: /^Epic : beads-desktop V1/ });
     expect(pill.getAttribute('href')).toBe('/p/bdesk/t/bdesk-38k');
   });
 
@@ -287,7 +287,7 @@ describe('le panneau d’un ticket : jamais de titre vide (bdesk-38k.25)', () =>
     const first = await openPanel(/Shell UI façon Linear/);
     const release = holdDetail(fetchMock);
 
-    await user.click(within(first).getByRole('link', { name: /Epic : beads-desktop V1/ }));
+    await user.click(within(first).getByRole('link', { name: /^Epic : beads-desktop V1/ }));
 
     const loading = await screen.findByRole('dialog', { name: 'bdesk-38k' });
     expect(within(loading).getByRole('status', { name: 'Chargement du ticket' })).toBeTruthy();
@@ -467,7 +467,7 @@ describe('le panneau d’un ticket : le fermer, quelle que soit la façon dont o
     await act(() => router.navigate('/p/bdesk/kanban'));
     await user.click(await cardIn('En cours', /Shell UI façon Linear/));
     const dialog = await openPanel(/Shell UI façon Linear/);
-    await user.click(await within(dialog).findByRole('link', { name: /Epic : beads-desktop V1/ }));
+    await user.click(await within(dialog).findByRole('link', { name: /^Epic : beads-desktop V1/ }));
     await openPanel(/beads-desktop V1/);
 
     await user.click(screen.getByRole('button', { name: 'Fermer le panneau' }));

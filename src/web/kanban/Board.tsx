@@ -1,5 +1,6 @@
 import { CirclePause, SearchX } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
+import { epicOf } from '../../domain/epics';
 import type { Issue, Project } from '../data/types';
 import { Button } from '../ui/Button';
 import { Notice } from '../ui/states';
@@ -10,7 +11,7 @@ import { Column } from './Column';
 import { ColumnSelector } from './ColumnSelector';
 import { buildBoard, defaultColumn, doneSince, onlyPaused, type Lane } from './columns';
 import { EpicFilter } from './EpicFilter';
-import { epicChoices, epicOf, indexById } from './epics';
+import { epicChoices, indexById } from './epics';
 import { COLUMNS, countLabel, onlyPausedNotice } from './meta';
 import { PausedDrawer } from './PausedDrawer';
 import { useBoardParams } from './useBoardParams';

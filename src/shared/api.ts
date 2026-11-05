@@ -105,6 +105,12 @@ export interface IssueRef {
   priority: number;
 }
 
+/** L'Epic d'un ticket, de quoi la nommer et ouvrir sa page sans autre requête. */
+export interface IssueEpic {
+  id: string;
+  title: string;
+}
+
 export interface IssueDetail extends Issue {
   /** Champs texte : chaîne vide quand ils ne sont pas renseignés. */
   description: string;
@@ -124,6 +130,13 @@ export interface IssueDetail extends Issue {
    * Projet (référence externe) : il n'y a rien à ouvrir.
    */
   linked: Record<string, IssueRef>;
+  /**
+   * L'Epic du ticket (`epicOf`, src/domain/epics.ts : la règle de la pastille des cartes du kanban) : son parent quand il est de type epic,
+   * sinon l'Epic la plus proche parmi ses ancêtres, à tous les niveaux. `null` hors de toute Epic. Ce n'est jamais le ticket lui-même : celle
+   * d'une Epic imbriquée est l'Epic qui la contient, et une Epic qui n'en a pas au-dessus d'elle n'en a pas. Tirée des tickets du Projet que la
+   * fiche lit déjà, elle ne coûte aucune lecture de plus et vient avec la fiche : de quoi nommer l'Epic et ouvrir sa page sans autre requête.
+   */
+  epic: IssueEpic | null;
   comments: IssueComment[];
 }
 

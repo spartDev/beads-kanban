@@ -5,24 +5,6 @@ import { compareIssues } from './columns';
 /** Les tickets d'un Projet par identifiant. */
 export const indexById = (issues: readonly Issue[]): Map<string, Issue> => new Map(issues.map((issue) => [issue.id, issue]));
 
-/**
- * L'Epic d'un ticket : son parent quand il est de type epic, sinon l'Epic la plus proche parmi ses ancêtres. Un
- * sous-ticket garde donc la pastille de l'Epic de son parent, et le filtre Epic (qui garde les Enfants indirects)
- * ne montre jamais une carte sans pastille. À l'abri des boucles de parentés.
- */
-export function epicOf(issue: Issue, byId: ReadonlyMap<string, Issue>): Issue | null {
-  const seen = new Set<string>([issue.id]);
-  for (let parentId = issue.parentId; parentId !== null; ) {
-    if (seen.has(parentId)) return null;
-    seen.add(parentId);
-    const parent = byId.get(parentId);
-    if (!parent) return null;
-    if (isEpic(parent)) return parent;
-    parentId = parent.parentId;
-  }
-  return null;
-}
-
 const MIN_HEAD = 3;
 const SEPARATOR = /\s*[:–—]\s+|\s+-\s+/;
 

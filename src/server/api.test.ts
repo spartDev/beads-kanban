@@ -51,6 +51,7 @@ const detail: IssueDetail = {
   dependencies: [{ to: 'bdesk-38k.1', type: 'blocks' }],
   dependents: [{ from: 'bdesk-38k.7', type: 'blocks' }],
   linked: {},
+  epic: null,
   comments: [{ author: 'tom', text: 'ok', createdAt: '2026-10-20T12:00:00.000Z' }],
 };
 
@@ -110,6 +111,15 @@ describe('API des Projets', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ issue: detail });
     expect(seen).toEqual([['beads-desktop', 'bdesk-38k.4']]);
+  });
+
+  it('GET …/issues/:issueId sert l’Epic que la fiche nomme, telle quelle : son identifiant et son titre (bdesk-38k.29)', async () => {
+    const named: IssueDetail = { ...detail, epic: { id: 'bdesk-38k', title: 'beads-desktop V1 : suivi des tickets et métriques de flux' } };
+
+    const res = await get(serviceWith({ issue: async () => named }), '/api/projects/beads-desktop/issues/bdesk-38k.4');
+
+    expect(res.json<{ issue: IssueDetail }>().issue.epic).toEqual({ id: 'bdesk-38k', title: 'beads-desktop V1 : suivi des tickets et métriques de flux' });
+    expect(res.json<{ issue: IssueDetail }>().issue.linked).toEqual({});
   });
 
   it('renvoie 404 en JSON pour un Projet inconnu', async () => {

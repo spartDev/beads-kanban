@@ -4,6 +4,7 @@ import { COLUMNS } from './columns';
 import {
   descendantIds,
   epicChildren,
+  epicOf,
   epicProgress,
   epicTree,
   forecastEnd,
@@ -71,6 +72,74 @@ describe('descendantIds : les Enfants d’un ticket, directs ou indirects', () =
     const loop = [ticket('x', { parentId: 'z' }), ticket('y', { parentId: 'x' }), ticket('z', { parentId: 'y' })];
 
     expect([...descendantIds('x', loop)].sort()).toEqual(['y', 'z']);
+  });
+});
+
+describe('epicOf : l’Epic d’un ticket', () => {
+  const issues = [
+    epic('E1'),
+    epic('E2', { parentId: 'E1' }),
+    ticket('direct', { parentId: 'E1' }),
+    ticket('task', { parentId: 'E1' }),
+    ticket('subtask', { parentId: 'task' }),
+    ticket('in-nested', { parentId: 'E2' }),
+    ticket('under-nested', { parentId: 'in-nested' }),
+    ticket('lonely'),
+    ticket('lost', { parentId: 'absent' }),
+    ticket('plain-parent'),
+    ticket('plain-child', { parentId: 'plain-parent' }),
+  ];
+  const byId = new Map(issues.map((issue) => [issue.id, issue]));
+  const epicIdOf = (id: string) => epicOf(byId.get(id)!, byId)?.id ?? null;
+
+  it('est le parent quand il est de type epic', () => {
+    expect(epicIdOf('direct')).toBe('E1');
+  });
+
+  it('remonte à l’Epic d’un ticket parent : un Enfant d’Enfant garde l’Epic de son parent', () => {
+    expect(epicIdOf('subtask')).toBe('E1');
+  });
+
+  it('prend l’Epic la plus proche quand des Epics s’imbriquent, à tous les niveaux sous elle', () => {
+    expect(epicIdOf('in-nested')).toBe('E2');
+    expect(epicIdOf('under-nested')).toBe('E2');
+    expect(epicIdOf('E2')).toBe('E1');
+  });
+
+  it('est absente d’une Epic sans Epic au-dessus, d’un ticket sans parent, au parent inconnu, ou sans Epic parmi ses ancêtres', () => {
+    expect(epicIdOf('E1')).toBeNull();
+    expect(epicIdOf('lonely')).toBeNull();
+    expect(epicIdOf('lost')).toBeNull();
+    expect(epicIdOf('plain-child')).toBeNull();
+  });
+
+  it('termine malgré une boucle de parentés', () => {
+    const loop = new Map([ticket('a', { parentId: 'b' }), ticket('b', { parentId: 'a' })].map((issue) => [issue.id, issue]));
+
+    expect(epicOf(loop.get('a')!, loop)).toBeNull();
+  });
+
+  it('rend le ticket même de la liste, de quoi le nommer ou l’ouvrir', () => {
+    expect(epicOf(byId.get('subtask')!, byId)).toBe(byId.get('E1'));
+  });
+
+  // Le panneau d’un ticket, la pastille des cartes et le décompte de la liste des Epics s’appuient sur elle ; le filtre Epic du tableau et la
+  // page Epic, sur `descendantIds` : un ticket est un Enfant de l’Epic que la première lui donne.
+  it('s’accorde avec les Enfants d’une Epic (`descendantIds`) : c’est la plus proche des Epics dont le ticket descend', () => {
+    const epics = issues.filter((issue) => issue.type === 'epic');
+    for (const subject of issues) {
+      const holders = epics.filter((candidate) => descendantIds(candidate.id, issues).has(subject.id)).map((candidate) => candidate.id);
+      const own = epicIdOf(subject.id);
+      if (own === null) {
+        expect(holders, `les Epics de ${subject.id}`).toEqual([]);
+        continue;
+      }
+      expect(holders, `les Epics de ${subject.id}`).toContain(own);
+      // Celles dont il descend aussi contiennent la sienne : elle est la plus proche.
+      for (const other of holders.filter((id) => id !== own)) {
+        expect(descendantIds(other, issues).has(own), `${own} dans ${other}`).toBe(true);
+      }
+    }
   });
 });
 

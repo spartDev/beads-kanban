@@ -1,4 +1,5 @@
 import { abandonOf, type AbandonLink } from '../../domain/abandon';
+import { epicOf } from '../../domain/epics';
 import type { Issue, IssueDetail, IssueRef } from '../../shared/api';
 import type { CommentRecord, DependencyRecord, IssueRecord, IssueSummary } from '../dolt/reader';
 
@@ -62,7 +63,8 @@ export function buildIssues(summaries: IssueSummary[], dependencies: DependencyR
 
 /**
  * La fiche d'un ticket. `known` donne les tickets du Projet par identifiant (ceux de `buildIssues`) : c'est d'eux que
- * `linked` tire les titres et les statuts des tickets que la fiche nomme.
+ * `linked` tire les titres et les statuts des tickets que la fiche nomme, et `epic` l'Epic la plus proche au-dessus du ticket
+ * (`epicOf`, la règle du domaine que suit aussi la pastille des cartes). Rien n'est lu de plus : les tickets sont déjà là.
  */
 export function buildIssueDetail(
   issue: Issue,
@@ -80,6 +82,7 @@ export function buildIssueDetail(
     const other = id === null || id === record.id ? undefined : known.get(id);
     if (other) linked[other.id] = { id: other.id, title: other.title, type: other.type, status: other.status, priority: other.priority };
   }
+  const epic = epicOf(issue, known);
   return {
     ...issue,
     description: record.description,
@@ -91,6 +94,7 @@ export function buildIssueDetail(
     dependencies: outgoing.map(({ to, type }) => ({ to, type })).sort((a, b) => byType(a, b) || a.to.localeCompare(b.to)),
     dependents: incoming.map(({ from, type }) => ({ from, type })).sort((a, b) => byType(a, b) || a.from.localeCompare(b.from)),
     linked,
+    epic: epic ? { id: epic.id, title: epic.title } : null,
     comments: comments.map((c) => ({ author: c.author, text: c.text, createdAt: c.createdAt.toISOString() })),
   };
 }

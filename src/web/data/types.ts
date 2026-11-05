@@ -17,6 +17,7 @@ export type {
   IssueDependency,
   IssueDependent,
   IssueDetail,
+  IssueEpic,
   IssueOutcome,
   IssueRef,
   IssueResponse,
