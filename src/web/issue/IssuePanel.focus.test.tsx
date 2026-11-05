@@ -1,7 +1,7 @@
 import { type QueryClient } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { type UserEvent } from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { queryKeys } from '../data/hooks';
 import { refreshProject } from '../live/refresh';
 import { withAsyncTimeout } from '../test/asyncTimeout';
@@ -15,10 +15,8 @@ import { renderApp, stubApi } from '../test/render';
  * le corps de la page, hors du panneau (sur mobile, hors d'une boîte de dialogue modale).
  */
 
-// Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`. Le délai d'un test (5 s par
-// défaut) monte avec lui : sinon « Test timed out » couperait l'attente avant que Testing Library ne dise ce qui était à l'écran.
+// Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`.
 withAsyncTimeout(5_000);
-vi.setConfig({ testTimeout: 10_000 });
 
 const stubDefaultApi = () => stubApi({ projects: projectsResponse, issues: { bdesk: bdeskIssues, mpm: mpmIssues } });
 /** Seule la fiche du ticket échoue (500, « database is locked ») : la liste des tickets du Projet reste lisible. */

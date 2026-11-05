@@ -44,6 +44,14 @@ export default defineConfig({
           environment: 'jsdom',
           include: ['src/web/**/*.test.{ts,tsx}'],
           setupFiles: ['src/web/test/setup.ts'],
+          // Un test qui monte l'application entière dure 10 à 25 fois plus quand la machine est chargée (la suite en parallèle, d'autres
+          // processus) : les plus longs passent alors les 5 s de vitest. Ce délai doit valoir au moins le double des attentes de Testing
+          // Library, qui montent à 5 s (`withAsyncTimeout`), sinon « Test timed out » les coupe avant le DOM : elles le vérifient avant
+          // chaque test.
+          testTimeout: 20_000,
+          // Les crochets (10 s par défaut) ont le même délai : `warmUpMetricsPages` lit le module des graphiques dans un `beforeAll`, et
+          // cette lecture s'allonge comme un test.
+          hookTimeout: 20_000,
         },
       },
     ],

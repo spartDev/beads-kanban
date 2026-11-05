@@ -11,6 +11,18 @@ const br: Inline = { type: 'br' };
 
 const paragraph = (...children: Inline[]): Block => ({ type: 'paragraph', children });
 
+/**
+ * Le temps de calcul que demande `work`, en ms : celui du processeur, pas celui de l'horloge. Un budget de calcul (« jamais plus d'une
+ * seconde ») doit échouer sur un algorithme quadratique, pas parce que la machine est chargée et que le processus attend son tour : cette
+ * attente passe sur l'horloge, jamais dans le temps du processeur.
+ */
+function cpuMs(work: () => void): number {
+  const before = process.cpuUsage();
+  work();
+  const { user, system } = process.cpuUsage(before);
+  return (user + system) / 1000;
+}
+
 describe('parseInline', () => {
   it('garde le texte tel quel', () => {
     expect(parseInline('Un texte simple, avec des accents : é ü ⌘K.')).toEqual([text('Un texte simple, avec des accents : é ü ⌘K.')]);
@@ -326,9 +338,8 @@ describe('parseMarkdown : un texte quelconque ne fait jamais échouer', () => {
       ('1. a\n' + ' '.repeat(3)).repeat(500),
     ];
     for (const input of inputs) {
-      const started = Date.now();
-      expect(() => parseMarkdown(input)).not.toThrow();
-      expect(Date.now() - started, input.slice(0, 20)).toBeLessThan(1500);
+      const spent = cpuMs(() => expect(() => parseMarkdown(input)).not.toThrow());
+      expect(spent, input.slice(0, 20)).toBeLessThan(1500);
     }
   });
 
@@ -409,11 +420,9 @@ describe('parseMarkdown : un texte quelconque ne fait jamais durer', () => {
   ];
 
   it.each(pathological)('lit en moins d’une seconde %s', (_name, input) => {
-    const started = performance.now();
+    const spent = cpuMs(() => expect(() => parseMarkdown(input)).not.toThrow());
 
-    expect(() => parseMarkdown(input)).not.toThrow();
-
-    expect(performance.now() - started).toBeLessThan(1000);
+    expect(spent).toBeLessThan(1000);
   });
 
   it('rend le texte tel quel quand les marques ne trouvent rien à ouvrir ni à fermer : le même résultat qu’un lecteur qui prend son temps', () => {

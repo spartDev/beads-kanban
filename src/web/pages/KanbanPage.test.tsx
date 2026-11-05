@@ -7,10 +7,8 @@ import { issue, projectsResponse } from '../test/fixtures';
 import { httpFailure, renderApp, stubApi } from '../test/render';
 import { withTimeZone } from '../test/timeZone';
 
-// Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`. Le délai d'un test (5 s par
-// défaut) monte avec lui : sinon « Test timed out » couperait l'attente avant que Testing Library ne dise ce qui était à l'écran.
+// Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`.
 withAsyncTimeout(5_000);
-vi.setConfig({ testTimeout: 10_000 });
 
 const DAY = 86_400_000;
 const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
@@ -240,14 +238,34 @@ describe('une carte', () => {
     expect(within(orphan).queryByRole('link', { name: /^Epic/ })).toBeNull();
   });
 
-  it('dit son âge, et l’assigné quand il y en a un', async () => {
-    stubTickets();
-    await openBoard();
+  describe('le mercredi 4 novembre 2026, 10:00 à Paris', () => {
+    freezeClock('2026-11-04T09:00:00Z');
 
-    const done = within(column('Terminé')).getByRole('listitem');
-    expect(done.textContent).toMatch(/hier/);
-    const [barre] = within(column('En cours')).getAllByRole('listitem');
-    expect(barre!.textContent).toContain('spartDev');
+    it('dit son âge, et l’assigné quand il y en a un', async () => {
+      // Aucun titre ne dit « hier » ni « avant-hier » : seule l'étiquette d'âge de la carte peut les écrire. Le ticket fermé a été mis à
+      // jour après sa clôture : la carte de Terminé doit dire l'âge de la clôture, pas celui de la dernière mise à jour.
+      stubTickets([
+        issue({ id: 'bdesk-1', title: 'Livraison de la veille', status: 'closed', closedAt: '2026-11-03T09:00:00Z', updatedAt: '2026-11-04T08:30:00Z' }),
+        issue({ id: 'bdesk-2', title: 'Chantier confié', status: 'in_progress', assignee: 'spartDev', updatedAt: '2026-11-02T09:00:00Z' }),
+        issue({ id: 'bdesk-3', title: 'Chantier libre', status: 'in_progress', updatedAt: '2026-11-03T09:00:00Z' }),
+      ]);
+      await openBoard();
+
+      const card = (region: string, title: string) => within(column(region)).getByText(title).closest('li') as HTMLElement;
+      const ageOf = (item: HTMLElement) => within(item).getByRole('time').textContent;
+
+      const done = card('Terminé', 'Livraison de la veille');
+      expect(ageOf(done)).toBe('Fermé hier');
+      expect(within(done).queryByText('spartDev')).toBeNull();
+
+      const assigned = card('En cours', 'Chantier confié');
+      expect(ageOf(assigned)).toBe('Mis à jour avant-hier');
+      expect(within(assigned).getByText('spartDev')).toBeTruthy();
+
+      const unassigned = card('En cours', 'Chantier libre');
+      expect(ageOf(unassigned)).toBe('Mis à jour hier');
+      expect(within(unassigned).queryByText('spartDev')).toBeNull();
+    });
   });
 });
 

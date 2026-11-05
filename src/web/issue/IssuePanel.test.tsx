@@ -6,10 +6,8 @@ import { bdeskIssues, chronology, issue, issueDetail, mpmIssues, projectsRespons
 import { failRequests, httpFailure, renderApp, stubApi } from '../test/render';
 import { withTimeZone } from '../test/timeZone';
 
-// Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`. Le délai d'un test (5 s par
-// défaut) monte avec lui : sinon « Test timed out » couperait l'attente avant que Testing Library ne dise ce qui était à l'écran.
+// Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`.
 withAsyncTimeout(5_000);
-vi.setConfig({ testTimeout: 10_000 });
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;

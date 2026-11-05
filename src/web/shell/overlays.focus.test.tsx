@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { StrictMode, useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { queryKeys } from '../data/hooks';
 import { ShortcutsProvider, useShortcut } from '../shortcuts/ShortcutsProvider';
 import { withAsyncTimeout } from '../test/asyncTimeout';
@@ -21,10 +21,8 @@ import { ShortcutsHelp } from './ShortcutsHelp';
  * dialogue montée, fermée, pendant 90 ms avant de la retirer, et c'est alors seulement que le focus peut être rendu.
  */
 
-// Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`. Chaque cas ouvre une boîte de
-// dialogue, la ferme et attend le focus : le délai d'un test (5 s) y est court aussi.
+// Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`.
 withAsyncTimeout(5_000);
-vi.setConfig({ testTimeout: 20_000 });
 
 const stubDefaultApi = () => stubApi({ projects: projectsResponse, issues: { bdesk: bdeskIssues, mpm: mpmIssues } });
 const pathname = (router: { state: { location: { pathname: string; search: string } } }) =>

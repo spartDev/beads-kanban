@@ -10,10 +10,8 @@ import { bdeskIssues, issueDetail, mpmIssues, projectsResponse } from '../test/f
 import { failRequests, renderApp, stubApi } from '../test/render';
 import { LiveUpdates } from './LiveUpdates';
 
-// Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`. Le délai d'un test (5 s par
-// défaut) monte avec lui : sinon « Test timed out » couperait l'attente avant que Testing Library ne dise ce qui était à l'écran.
+// Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`.
 withAsyncTimeout(5_000);
-vi.setConfig({ testTimeout: 10_000 });
 
 afterEach(() => {
   vi.useRealTimers();

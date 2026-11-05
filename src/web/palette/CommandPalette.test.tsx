@@ -8,11 +8,15 @@ import { issuesQuery, queryKeys } from '../data/hooks';
 import { routes } from '../routes';
 import { OverlayProvider, usePalette } from '../shell/OverlayProvider';
 import { ShortcutsProvider, useShortcut } from '../shortcuts/ShortcutsProvider';
+import { withAsyncTimeout } from '../test/asyncTimeout';
 import { withHeldExitAnimations } from '../test/exitAnimation';
 import { bdeskIssues, issue, mpmIssues, projects, projectsResponse } from '../test/fixtures';
 import { renderApp, stubApi } from '../test/render';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import { CommandPalette } from './CommandPalette';
+
+// Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`.
+withAsyncTimeout(5_000);
 
 const stubDefaultApi = () => stubApi({ projects: projectsResponse, issues: { bdesk: bdeskIssues, mpm: mpmIssues } });
 const pathname = (router: { state: { location: { pathname: string; search: string } } }) =>
