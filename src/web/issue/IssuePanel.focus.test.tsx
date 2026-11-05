@@ -3,9 +3,10 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import { type UserEvent } from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { queryKeys } from '../data/hooks';
+import type { IssueChronology, IssueDetail, IssueRef } from '../data/types';
 import { refreshProject } from '../live/refresh';
 import { withAsyncTimeout } from '../test/asyncTimeout';
-import { bdeskIssues, mpmIssues, projectsResponse } from '../test/fixtures';
+import { bdeskIssues, chronology, issueDetail, mpmIssues, projectsResponse } from '../test/fixtures';
 import { renderApp, stubApi } from '../test/render';
 
 /**
@@ -395,6 +396,248 @@ describe('ce qui a le focus dans le panneau part avec le corps qui change d’é
     await screen.findByRole('dialog', { name: /Ticket introuvable/ });
     expect(link.isConnected).toBe(false);
     expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+});
+
+/*
+ * Ce qui a le focus dans le panneau part SANS que le panneau change d'état (bdesk-38k.46) : la fiche reste une fiche, la chronologie une chronologie, et c'est un
+ * de leurs liens qui disparaît (un commit en direct retire le parent, une relation, un Blocage, un lien du texte). L'enveloppe du corps reste : aucune ref ne se
+ * détache (bdesk-38k.32), et le focus tombait sur le corps de la page, hors du panneau (sur mobile, hors d'une boîte de dialogue modale).
+ */
+const PARENT: IssueRef = { id: 'bdesk-38k.7', title: 'Kanban par Projet (lecture seule)', type: 'feature', status: 'open', priority: 1 };
+const BLOCKER: IssueRef = { id: 'bdesk-b7q', title: 'Le graphique du Débit se décale après minuit', type: 'bug', status: 'open', priority: 0 };
+const EPIC = { id: 'bdesk-38k', title: 'beads-desktop V1 : suivi des tickets' };
+
+const SHELL_UI = bdeskIssues.find((candidate) => candidate.id === 'bdesk-38k.6')!;
+/** La fiche avec tout ce qu'elle porte de liens : son parent, son Epic, un ticket qui la bloque (en-tête et relations), un lien dans sa description. */
+const LINKED_DETAIL: IssueDetail = issueDetail({
+  ...SHELL_UI,
+  parentId: PARENT.id,
+  blockedBy: [BLOCKER.id],
+  dependencies: [
+    { to: PARENT.id, type: 'parent-child' },
+    { to: BLOCKER.id, type: 'blocks' },
+  ],
+  linked: { [PARENT.id]: PARENT, [BLOCKER.id]: BLOCKER },
+  epic: EPIC,
+  description: 'Voir [la maquette](https://example.org/maquette).',
+});
+/** La même fiche après un commit qui lui retire tout cela : toujours une fiche (le texte reste, sans lien), mais plus aucun de ses liens. */
+const BARE_DETAIL: IssueDetail = issueDetail({ ...SHELL_UI, parentId: null, blockedBy: [], dependencies: [], linked: {}, epic: null, description: 'Voir la maquette.' });
+/** Sa chronologie avec un Blocage (qui attend `bdesk-b7q`), puis sans. */
+const BLOCKED_CHRONOLOGY: IssueChronology = chronology({
+  blockages: [
+    {
+      from: '2026-10-02T09:00:00.000Z',
+      to: null,
+      blockedBy: [BLOCKER.id],
+      statusBlocked: false,
+      phases: [{ kind: 'dependencyWait', from: '2026-10-02T09:00:00.000Z', to: null }],
+    },
+  ],
+});
+
+/** Ce que le serveur dit de la fiche et de la chronologie du ticket, à partir de maintenant. */
+const serve = (detail: IssueDetail, history: IssueChronology) =>
+  stubApi({
+    projects: projectsResponse,
+    issues: { bdesk: bdeskIssues, mpm: mpmIssues },
+    details: { 'bdesk/bdesk-38k.6': detail },
+    chronologies: { 'bdesk/bdesk-38k.6': history },
+  });
+/** Un commit du Projet, en direct : la fiche et la chronologie affichées sont relues. */
+const commit = (queryClient: QueryClient) => act(() => refreshProject(queryClient, 'bdesk'));
+
+/** Les liens du panneau qui peuvent avoir le focus et partir : chacun est cherché dans le panneau tel que `LINKED_DETAIL` l'écrit. */
+const FOCUSABLE_LINKS: readonly [string, (dialog: HTMLElement) => HTMLElement][] = [
+  ['le lien « Parent » de l’en-tête (un ticket qui n’est pas une Epic)', (dialog) => within(dialog).getByRole('link', { name: /^Parent bdesk-38k\.7 / })],
+  ['le lien de la page Epic', (dialog) => within(dialog).getByRole('link', { name: /^Page Epic : / })],
+  // Le premier dans l'ordre du document : l'en-tête précède la chronologie, qui nomme aussi le ticket (un Blocage), et les relations, qui ajoutent son titre au nom du lien.
+  ['le ticket qui bloque, dans « Bloqué : attend » de l’en-tête', (dialog) => within(dialog).getAllByRole('link', { name: 'bdesk-b7q' })[0]!],
+  ['un ticket de la liste des relations (« Parent »)', (dialog) => within(within(dialog).getByRole('list', { name: 'Parent' })).getByRole('link')],
+  ['un ticket de la liste des relations (« Bloqué par »)', (dialog) => within(within(dialog).getByRole('list', { name: 'Bloqué par' })).getByRole('link')],
+  ['un lien du texte de la description (du Markdown, pas un lien de ticket)', (dialog) => within(dialog).getByRole('link', { name: 'la maquette' })],
+];
+
+describe.each(SCREENS)('un lien du panneau qui a le focus disparaît sans que le panneau change d’état (un commit en direct) : %s', (_screen, narrow) => {
+  /** La fiche avec tous ses liens, sa chronologie avec un Blocage : le panneau est ouvert sur le ticket. */
+  async function openLinked() {
+    screenIs(narrow);
+    serve(LINKED_DETAIL, BLOCKED_CHRONOLOGY);
+    const app = renderApp(TICKET);
+    const dialog = await screen.findByRole('dialog', { name: TITLE });
+    expect(dialog.getAttribute('aria-modal')).toBe(String(narrow));
+    await within(dialog).findByRole('list', { name: 'Blocages' });
+    return { ...app, dialog };
+  }
+  /** Le commit retire tous les liens de la fiche et de la chronologie ; renvoie ce que le panneau en dit (le panneau ne change pas d'état). */
+  async function commitWithoutLinks(queryClient: QueryClient, gone: HTMLElement) {
+    serve(BARE_DETAIL, chronology());
+    await commit(queryClient);
+    await waitFor(() => expect(gone.isConnected).toBe(false));
+    await settle();
+  }
+
+  it.each(FOCUSABLE_LINKS)('%s part : le panneau prend le focus, ni le corps de la page ni rien', async (_link, find) => {
+    const { dialog, queryClient } = await openLinked();
+    const link = find(dialog);
+    act(() => link.focus());
+    expect(document.activeElement).toBe(link);
+
+    await commitWithoutLinks(queryClient, link);
+
+    // Le panneau n'a pas changé d'état : le même panneau, la même fiche (un titre, pas « Ticket introuvable »), relue sans son parent.
+    expect(screen.getByRole('dialog', { name: TITLE })).toBe(dialog);
+    expect(within(dialog).getByRole('heading', { level: 2, name: TITLE })).toBeTruthy();
+    expect(within(dialog).queryByRole('link', { name: /^Parent / })).toBeNull();
+    expect(document.activeElement).toBe(dialog); // ni le corps de la page ni rien ; à 375, le focus ne sort pas de la boîte de dialogue modale
+  });
+
+  it('le lien d’un Blocage de la chronologie part (seule la chronologie est relue) : le panneau prend le focus', async () => {
+    const { dialog, queryClient } = await openLinked();
+    const link = within(within(dialog).getByRole('list', { name: 'Blocages' })).getByRole('link', { name: 'bdesk-b7q' });
+    act(() => link.focus());
+    serve(LINKED_DETAIL, chronology()); // la fiche ne change pas : seule la chronologie perd son Blocage
+
+    await commit(queryClient);
+    await waitFor(() => expect(link.isConnected).toBe(false));
+    await settle();
+
+    expect(within(dialog).queryByRole('list', { name: 'Blocages' })).toBeNull();
+    expect(within(dialog).getByRole('link', { name: /^Parent bdesk-38k\.7 / })).toBeTruthy(); // la fiche, elle, a gardé ses liens
+    expect(document.activeElement).toBe(dialog);
+  });
+
+  it('le panneau prend le focus une fois rendu : l’utilisateur le met sur un autre lien, qui part à son tour, et le panneau le reprend', async () => {
+    const { dialog, queryClient } = await openLinked();
+    const parent = within(dialog).getByRole('link', { name: /^Parent bdesk-38k\.7 / });
+    act(() => parent.focus());
+    await commitWithoutLinks(queryClient, parent);
+    expect(document.activeElement).toBe(dialog);
+    serve(LINKED_DETAIL, BLOCKED_CHRONOLOGY); // un autre commit lui rend ses liens
+    await commit(queryClient);
+    const blocker = (await within(dialog).findAllByRole('link', { name: 'bdesk-b7q' }))[0]!;
+    act(() => blocker.focus());
+
+    await commitWithoutLinks(queryClient, blocker);
+
+    expect(document.activeElement).toBe(dialog);
+  });
+
+  it('la fenêtre est en second plan quand le commit arrive (le lien garde le focus du document, sans l’avoir pour l’écran) : le panneau le prend', async () => {
+    const { dialog, queryClient } = await openLinked();
+    const link = within(dialog).getByRole('link', { name: /^Parent bdesk-38k\.7 / });
+    act(() => link.focus());
+    act(() => void link.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))); // la fenêtre perd le focus : le navigateur envoie `blur` au lien, qui reste l'élément actif
+    expect(document.activeElement).toBe(link);
+
+    await commitWithoutLinks(queryClient, link);
+
+    expect(document.activeElement).toBe(dialog);
+  });
+
+  it('un premier commit ne retire pas le lien, la fenêtre étant en second plan (seule la chronologie change) : le lien garde le focus du document, et le commit qui le retire rend le focus au panneau', async () => {
+    const { dialog, queryClient } = await openLinked();
+    const link = within(dialog).getByRole('link', { name: /^Parent bdesk-38k\.7 / });
+    act(() => link.focus());
+    act(() => void link.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))); // la fenêtre perd le focus : le lien reste l'élément actif du document
+    serve(LINKED_DETAIL, chronology()); // la chronologie perd son Blocage, la fiche garde le lien « Parent »
+    await commit(queryClient);
+    await waitFor(() => expect(within(dialog).queryByRole('list', { name: 'Blocages' })).toBeNull());
+    await settle();
+    expect(link.isConnected).toBe(true);
+    expect(document.activeElement).toBe(link);
+
+    await commitWithoutLinks(queryClient, link);
+
+    expect(document.activeElement).toBe(dialog);
+  });
+
+  it('le lien a perdu le focus sans événement (déplacé dans le document : Firefox et Safari n’en envoient pas), puis il part : le corps de la page, qui a le focus depuis, le garde', async () => {
+    const { dialog, queryClient } = await openLinked();
+    const link = within(dialog).getByRole('link', { name: /^Parent bdesk-38k\.7 / });
+    act(() => link.focus());
+    act(() => void link.parentElement!.insertBefore(link, link.nextSibling)); // déplacé sur place : le focus est perdu, sans un événement, le lien est toujours dans le panneau
+    await settle();
+    expect(link.isConnected).toBe(true);
+    expect(document.activeElement).toBe(document.body);
+
+    await commitWithoutLinks(queryClient, link);
+
+    expect(document.activeElement).toBe(document.body); // le panneau ne reprend pas un focus que le lien n'avait plus
+  });
+
+  it('l’utilisateur a mis le focus sur le bouton « Fermer le panneau » : le lien qui part ensuite ne le lui prend pas', async () => {
+    const { dialog, queryClient } = await openLinked();
+    const link = within(dialog).getByRole('link', { name: /^Parent bdesk-38k\.7 / });
+    const close = within(dialog).getByRole('button', { name: 'Fermer le panneau' });
+    act(() => link.focus());
+    act(() => close.focus());
+
+    await commitWithoutLinks(queryClient, link);
+
+    expect(document.activeElement).toBe(close);
+  });
+
+  it('l’utilisateur est passé à un autre lien du panneau (Tab) : le lien qui part ensuite ne le lui prend pas', async () => {
+    const { dialog, queryClient } = await openLinked();
+    const parent = within(dialog).getByRole('link', { name: /^Parent bdesk-38k\.7 / });
+    const maquette = within(dialog).getByRole('link', { name: 'la maquette' });
+    act(() => parent.focus());
+    act(() => maquette.focus());
+    serve(issueDetail({ ...LINKED_DETAIL, parentId: null, dependencies: [], linked: {}, epic: null }), BLOCKED_CHRONOLOGY); // le parent part, le texte garde son lien
+    await commit(queryClient);
+    await waitFor(() => expect(parent.isConnected).toBe(false));
+    await settle();
+
+    expect(document.activeElement).toBe(maquette);
+  });
+
+  it('l’utilisateur a cliqué dans le vide (le corps de la page a le focus) : le lien qui part ensuite ne lui rend pas le focus', async () => {
+    const { user, dialog, queryClient } = await openLinked();
+    const link = within(dialog).getByRole('link', { name: /^Parent bdesk-38k\.7 / });
+    act(() => link.focus());
+    await user.click(document.body);
+    expect(document.activeElement).toBe(document.body);
+
+    await commitWithoutLinks(queryClient, link);
+
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  it.skipIf(narrow)('l’utilisateur est passé à une carte du tableau, que le panneau laisse utilisable : le lien qui part ensuite ne la lui reprend pas', async () => {
+    const { dialog, queryClient } = await openLinked();
+    const link = within(dialog).getByRole('link', { name: /^Parent bdesk-38k\.7 / });
+    const card = within(await screen.findByRole('region', { name: 'En cours' })).getByRole('link', { name: TITLE });
+    act(() => link.focus());
+    act(() => card.focus());
+
+    await commitWithoutLinks(queryClient, link);
+
+    expect(document.activeElement).toBe(card);
+  });
+
+  it.skipIf(narrow)('l’utilisateur est passé à la barre latérale : le lien qui part ensuite ne le lui reprend pas', async () => {
+    const { dialog, queryClient } = await openLinked();
+    const link = within(dialog).getByRole('link', { name: /^Parent bdesk-38k\.7 / });
+    const sidebarLink = within(screen.getByRole('navigation', { name: 'Navigation principale' })).getByRole('link', { name: /^Métriques/ });
+    act(() => link.focus());
+    act(() => sidebarLink.focus());
+
+    await commitWithoutLinks(queryClient, link);
+
+    expect(document.activeElement).toBe(sidebarLink);
+  });
+
+  it('un élément du panneau qui part sans avoir le focus (rien n’en a dans le panneau) ne le donne à personne', async () => {
+    const { dialog, queryClient } = await openLinked();
+    act(() => (document.activeElement as HTMLElement).blur()); // le panneau avait le focus à son ouverture : le corps de la page l'a maintenant
+    expect(document.activeElement).toBe(document.body);
+    const link = within(dialog).getByRole('link', { name: /^Parent bdesk-38k\.7 / });
+
+    await commitWithoutLinks(queryClient, link);
+
+    expect(document.activeElement).toBe(document.body);
   });
 });
 

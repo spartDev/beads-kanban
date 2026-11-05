@@ -1,4 +1,4 @@
-import { focusContainer } from './focus';
+import { focusContainer, focusIsAdrift } from './focus';
 
 /**
  * Où le focus revient quand ce qui le tenait disparaît parce que sa zone se recharge (l'avis d'erreur et son bouton « Réessayer » que le squelette
@@ -93,6 +93,87 @@ export function keepFocusIn(give: (from: Element) => boolean): (node: HTMLElemen
     return () => {
       if (node.contains(document.activeElement)) give(node);
     };
+  };
+}
+
+/**
+ * Fabrique une ref à poser sur l'enveloppe d'un état stable : un nœud qui *reste* (le corps d'un panneau qui garde sa fiche, une chronologie qui garde ses
+ * Transitions) tandis que son contenu change. Elle fait ce que fait `keepFocusIn` quand l'enveloppe part avec l'état, et elle fait la même chose quand c'est
+ * un élément du contenu qui part, l'enveloppe restant : un commit en direct retire le parent, une relation, un Blocage ou un lien du texte pendant qu'un lien a le
+ * focus. Sans elle, ce focus tombait sur le corps de la page (hors du panneau, et sur mobile hors de la boîte de dialogue modale), parce que React ne détache la ref
+ * que de ce qu'il retire : celle de l'enveloppe, qui reste, ne dit rien.
+ *
+ * Aucune ref ne dit ici « ce qui part avait le focus », et ce qu'on peut observer à la place est moins sûr que le nettoyage d'une ref : un effet vient après le retrait, et ce que le navigateur dit
+ * du retrait varie selon le moteur. Mesuré le 2026-11-05 sur Chromium 156, Firefox 137 et WebKit 18.2 (le moteur de Safari 18.2), sur une page minimale dont on retire, déplace ou cache l'élément qui a le focus :
+ * - le retirer : Chromium envoie `blur` puis `focusout`, l'élément encore dans le document ; Firefox et WebKit n'envoient rien ;
+ * - le déplacer (retiré puis réinséré) : Chromium envoie les deux événements, Firefox et WebKit rien, et l'élément reste dans le document sans le focus ;
+ * - lui retirer son `tabindex`, le cacher (`hidden`, `visibility: hidden`) ou le rendre `inert` : les trois moteurs envoient `blur` et `focusout`, aussitôt ou au rendu suivant.
+ * Les moteurs évoluent : cela peut changer, et rien ici n'en dépend, avec ou sans ces événements c'est l'observateur qui reconnaît le retrait.
+ *
+ * Le nœud retient donc l'élément qui a le focus (`focusin`), et un observateur de mutations, qui s'exécute juste après le retrait et avant tout affichage, constate que cet élément n'est plus dans le
+ * document. Alors, et seulement si le focus n'est nulle part (`focusIsAdrift` : rien n'a pris sa place), la zone le prend. Le focus qu'un utilisateur a mis ailleurs, dans le panneau comme hors de lui, n'est
+ * jamais repris, ni celui qu'il a laissé sur le corps de la page (un clic dans le vide) : ce qui est retenu est l'élément qui a le focus *maintenant*.
+ *
+ * L'élément retenu s'oublie dès que rien ne dit plus qu'il a le focus :
+ * - au `focusout`, vérifié au tour suivant (une micro-tâche) et non pendant l'événement : Chromium envoie `focusout` au retrait comme à un clic dans le vide, et seul ce qui suit les distingue (l'élément
+ *   a quitté le document dans le premier cas, il y est resté dans le second) ;
+ * - quand un changement du contenu le trouve dans le document sans qu'il soit l'élément actif : il a perdu le focus sans `focusout` (déplacé, sous Firefox et WebKit). Sans cela, son retrait, plus tard,
+ *   prendrait au corps de la page un focus que l'élément n'avait plus.
+ * Quand la fenêtre passe au second plan, en revanche, le navigateur envoie `focusout` à l'élément qui reste l'élément actif du document : il n'est pas oublié, le commit que l'utilisateur ne voit pas peut
+ * le retirer. (Ce cas n'a pas été mesuré dans un vrai navigateur : un navigateur sans tête ne peut pas défocaliser sa fenêtre. Il tient aux tests.)
+ *
+ * Ne vaut que pour un élément *retiré* du document : un élément déplacé (retiré puis réinséré) ne l'est pas, et ce qu'il devient est celui du navigateur.
+ */
+export function keepFocusInContent(give: (from: Element) => boolean): (node: HTMLElement | null) => (() => void) | undefined {
+  const leaving = keepFocusIn(give);
+  return (node) => {
+    if (node === null) return undefined;
+    const stopWatching = watchContent(node, give);
+    const nodeLeaves = leaving(node);
+    return () => {
+      // Le focus est rendu avant que l'observateur ne s'arrête, pour que ce qui part avec le nœud ne soit pas rendu deux fois.
+      nodeLeaves?.();
+      stopWatching();
+    };
+  };
+}
+
+/** `element` est resté dans le document et n'a plus le focus : un autre élément (le corps de la page) est l'élément actif. */
+const lostFocus = (element: Element) => element.isConnected && document.activeElement !== element;
+
+/**
+ * L'observation de `keepFocusInContent` : l'élément de `node` qui a le focus (`held`), et le focus rendu quand il quitte le document. Renvoie de quoi s'arrêter.
+ * `held` ne vaut que tant que rien ne le contredit (les causes d'oubli sont dans la doc de `keepFocusInContent`) : un élément retenu qui n'a plus le focus ferait reprendre, à son retrait, un focus qu'il n'a pas laissé.
+ */
+function watchContent(node: HTMLElement, give: (from: Element) => boolean): () => void {
+  let held: Element | null = null;
+  const remember = (event: FocusEvent) => {
+    held = event.target instanceof Element ? event.target : null;
+  };
+  const maybeForget = (event: FocusEvent) => {
+    const left = event.target;
+    queueMicrotask(() => {
+      if (held === left && left instanceof Element && lostFocus(left)) held = null;
+    });
+  };
+  const observer = new MutationObserver(() => {
+    const gone = held;
+    if (gone === null) return;
+    if (gone.isConnected) {
+      if (lostFocus(gone)) held = null; // resté dans le document sans le focus : perdu sans `focusout`
+      return;
+    }
+    held = null;
+    if (focusIsAdrift()) give(node);
+  });
+  node.addEventListener('focusin', remember);
+  node.addEventListener('focusout', maybeForget);
+  observer.observe(node, { childList: true, subtree: true });
+  return () => {
+    observer.disconnect();
+    node.removeEventListener('focusin', remember);
+    node.removeEventListener('focusout', maybeForget);
+    held = null;
   };
 }
 

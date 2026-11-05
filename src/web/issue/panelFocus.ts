@@ -1,5 +1,5 @@
 import { focusElement } from '../lib/focus';
-import { keepFocusIn } from '../lib/zoneFocus';
+import { keepFocusInContent } from '../lib/zoneFocus';
 
 /** Marque le panneau d'un ticket (`IssuePanel`), que la palette et l'aide cherchent pour lui rendre le focus (voir `OverlayProvider`) : pas un `role="dialog"` quelconque. */
 const ISSUE_PANEL = '[data-issue-panel]';
@@ -20,5 +20,9 @@ export function focusPanelOf(from: Element): boolean {
  *
  * C'est la règle de toute zone qui se recharge, la même que celle des pages (voir `keepFocusIn` dans `lib/zoneFocus.ts`, qui en donne les raisons) : ici
  * la zone est le panneau, et rien d'autre.
+ *
+ * Elle vaut aussi quand l'enveloppe reste et que c'est un élément de son contenu qui part (voir `keepFocusInContent`) : un commit en direct retire le parent du ticket
+ * alors que le lien « Parent » a le focus, une relation, un Blocage, un lien du texte. L'état du panneau ne change pas, aucune ref ne se détache : sans cela, ce focus tombait
+ * sur le corps de la page. Le focus qu'un utilisateur a mis ailleurs reste où il est.
  */
-export const keepFocusInPanel = keepFocusIn(focusPanelOf);
+export const keepFocusInPanel = keepFocusInContent(focusPanelOf);
