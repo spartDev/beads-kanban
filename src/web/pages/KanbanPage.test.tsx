@@ -2,9 +2,15 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { queryKeys } from '../data/hooks';
 import type { Issue } from '../data/types';
+import { withAsyncTimeout } from '../test/asyncTimeout';
 import { issue, projectsResponse } from '../test/fixtures';
 import { httpFailure, renderApp, stubApi } from '../test/render';
 import { withTimeZone } from '../test/timeZone';
+
+// Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`. Le délai d'un test (5 s par
+// défaut) monte avec lui : sinon « Test timed out » couperait l'attente avant que Testing Library ne dise ce qui était à l'écran.
+withAsyncTimeout(5_000);
+vi.setConfig({ testTimeout: 10_000 });
 
 const DAY = 86_400_000;
 const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();

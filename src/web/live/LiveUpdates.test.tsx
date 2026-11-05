@@ -4,10 +4,16 @@ import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { queryKeys } from '../data/hooks';
 import type { Issue, IssueDetail } from '../data/types';
+import { withAsyncTimeout } from '../test/asyncTimeout';
 import { FakeEventSource, installFakeEventSource } from '../test/eventSource';
 import { bdeskIssues, issueDetail, mpmIssues, projectsResponse } from '../test/fixtures';
 import { failRequests, renderApp, stubApi } from '../test/render';
 import { LiveUpdates } from './LiveUpdates';
+
+// Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`. Le délai d'un test (5 s par
+// défaut) monte avec lui : sinon « Test timed out » couperait l'attente avant que Testing Library ne dise ce qui était à l'écran.
+withAsyncTimeout(5_000);
+vi.setConfig({ testTimeout: 10_000 });
 
 afterEach(() => {
   vi.useRealTimers();

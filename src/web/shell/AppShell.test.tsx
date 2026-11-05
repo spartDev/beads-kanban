@@ -1,8 +1,14 @@
 import { screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { THEME_STORAGE_KEY } from '../theme/theme';
+import { withAsyncTimeout } from '../test/asyncTimeout';
 import { bdeskIssues, mpmIssues, projectsResponse } from '../test/fixtures';
 import { renderApp, stubApi } from '../test/render';
+
+// Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`. Le délai d'un test (5 s par
+// défaut) monte avec lui : sinon « Test timed out » couperait l'attente avant que Testing Library ne dise ce qui était à l'écran.
+withAsyncTimeout(5_000);
+vi.setConfig({ testTimeout: 10_000 });
 
 const stubDefaultApi = () =>
   stubApi({ projects: projectsResponse, issues: { bdesk: bdeskIssues, mpm: mpmIssues } });
