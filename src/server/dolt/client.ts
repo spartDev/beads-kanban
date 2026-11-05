@@ -257,7 +257,10 @@ export function withOptions(db: DoltDatabase, defaults: QueryOptions): DoltDatab
   };
 }
 
-/** Entre deux instructions d'un groupe : le saut de ligne referme un commentaire de fin de ligne, qui avalerait sinon le « ; » et la suite. */
+/**
+ * Entre deux instructions d'un groupe. Le garde n'admet plus ni commentaire ni point-virgule (bdesk-38k.63) : le saut de ligne n'a plus de commentaire de fin de ligne
+ * à refermer, et chaque instruction est seule entre deux séparateurs. Il reste ce qu'il a toujours été, une précaution.
+ */
 const STATEMENT_SEPARATOR = '\n;\n';
 
 /**
@@ -391,15 +394,12 @@ function describeFailure(error: ExecFileException, binary: string): string {
 /**
  * Dolt répète l'instruction en échec avant sa cause (« error on line 1 for query <instruction>: <cause> »). On la
  * retire : sur une requête de plusieurs lignes, la cause arrive après les lignes que `firstLines` garde, et la
- * requête n'a pas sa place dans un message d'erreur. Dolt la cite sans les blancs qui la précèdent ni le `;` qui la
- * termine (« select 1; » devient « select 1 ») : c'est cette forme rognée que l'on cherche. Il ne la répète pas
- * toujours telle quelle (commentaire après le `;`, en tête de requête…) : alors rien n'est retiré.
+ * requête n'a pas sa place dans un message d'erreur. Dolt la cite sans les blancs qui la précèdent ni ceux qui la
+ * terminent : c'est cette forme rognée que l'on cherche. Le garde n'admet plus de point-virgule ni de commentaire
+ * (bdesk-38k.63) : Dolt n'a plus de `;` final à ôter, ni de commentaire à ne pas répéter.
  */
 function withoutQuery(text: string, sql: string): string {
-  // Une boucle plutôt que /[\s;]+$/ : cette expression est quadratique sur une longue suite de blancs.
-  let end = sql.length;
-  while (end > 0 && /[\s;]/.test(sql.charAt(end - 1))) end--;
-  const quoted = sql.slice(0, end).trimStart();
+  const quoted = sql.trim();
   return quoted ? text.split(quoted).join('[…]') : text;
 }
 

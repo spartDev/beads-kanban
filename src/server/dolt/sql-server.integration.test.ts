@@ -152,7 +152,8 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)(
       }
     };
     const client = createDoltClient();
-    const portOf = async () => String((await client.open(database).query('select @@port as port'))[0]?.port);
+    // Le garde n'admet plus de variable système (bdesk-38k.63) : `show variables like 'port'` rend le même port que `select @@port`.
+    const portOf = async () => String((await client.open(database).query("show variables like 'port'"))[0]?.Value);
 
     beforeAll(async () => {
       root = realpathSync(scratchDir('bdesk-sql-server-'));
@@ -250,7 +251,7 @@ describe.skipIf(!hasBinary('dolt'))('Base au schéma des dépendances migré, do
     });
     direct = await read();
     server = await startSqlServer(env, dir);
-    portSeen = String((await db.query('select @@port as port'))[0]?.port);
+    portSeen = String((await db.query("show variables like 'port'"))[0]?.Value);
     served = await read();
   }, 180_000);
 

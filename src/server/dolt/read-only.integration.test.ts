@@ -1,9 +1,9 @@
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createDatabase, dolt, hasBinary, isolatedDoltEnv } from '../testing/dolt-fixture';
 import { scratchDir } from '../testing/scratch';
-import { createDoltClient, queryAll } from './client';
+import { createDoltClient, DoltQueryError, queryAll, sqlIdent, sqlString } from './client';
 import { assertReadOnly, READ_ONLY_PREFIX, ReadOnlyViolation } from './read-only';
 
 /** Le verdict du garde pour cette requête : refusée (`true`) ou admise. */
@@ -235,7 +235,6 @@ describe.skipIf(!hasBinary('dolt'))('garde en lecture seule face à un vrai Dolt
       // chaînes, identifiants et marques de commentaire qui n'en sont pas : admis, et Dolt les lit comme une instruction
       [`select 'a${P}b'`, true],
       [`select 'it''s${P}'`, true],
-      [`select 'it\\'s${P}'`, true],
       [`select 'a\\\\' , '${P}'`, true],
       [`select 'a\\\\\n\\\\' , '${P}'`, true],
       [`select 'a\n${P}\nb'`, true],
@@ -243,16 +242,70 @@ describe.skipIf(!hasBinary('dolt'))('garde en lecture seule face à un vrai Dolt
       [`select 1 as \`a\`\`${P}b\``, true],
       [`select 1 as \`a'${P}"b\``, true],
       [`select 1 as \`#\` , '#${P}'`, true],
-      [`select "a${P}b"`, true],
-      [`select "a""${P}b"`, true],
-      [`select "a'${P}\`b"`, true],
-      [`select 1 as \`a\`, '\\\`${P}'`, true],
       [`select '-- ${P}\n' , 2`, true],
       [`select '/* ${P} */' , 2`, true],
       [`select '/*/ ' , '*/ -- ${P}'`, true],
       [`select '/*/ '' */ -- ' , '${P}'`, true],
       [`select 1 as \`/*/ ' */ -- ${P}\``, true],
       [`select '#${P}\n' , '*/ /*'`, true],
+      // bdesk-38k.63 : plus de guillemets doubles, et dans une chaîne l'antislash n'est admis que doublé (c'est ce que sqlString écrit)
+      [`select 'it\\'s${P}'`, false],
+      [`select "a${P}b"`, false],
+      [`select "a""${P}b"`, false],
+      [`select "a'${P}\`b"`, false],
+      [`select 1 as \`a\`, '\\\`${P}'`, false],
+      // bdesk-38k.63 : introducteurs séparés par une espace, alias sans AS, charges `delimiter`, `use`, `source`, `exit` et `\G` dans une chaîne
+      [`select _utf8 'a${P}b'`, true],
+      [`select _binary 'a${P}'`, true],
+      [`select 1 'a${P}b'`, true],
+      [`select 'a;delimiter //\nselect 7*11 as zq//'`, true],
+      [`select 'a;use p1;select 7*11 as zq;'`, true],
+      [`select 'a;exit;select 7*11 as zq;'`, true],
+      [`select 'a;source /dev/null;select 7*11 as zq;'`, true],
+      [`select 'a\\\\G ${P}'`, true],
+      // retour chariot, caractères hors BMP, demi-paires et caractères de contrôle, dans une chaîne ou un identifiant
+      [`select 'a\r\n${P}'`, true],
+      [`select '\r${P}'`, true],
+      [`select 'a\\\\\r\n\\\\${P}'`, true],
+      [`select 1 as \`a\r${P}\``, true],
+      [`select '😀${P}'`, true],
+      [`select 1 as \`😀${P}\``, true],
+      [`select '\ud83d${P}'`, true],
+      [`select '\u{10ffff}${P}'`, true],
+      [`select '\u0001\u001a\u007f\u0085\u2028 ${P}'`, true],
+      // guillemets doublés, contre la fin de l'identifiant ou de la chaîne
+      [`select 1 as \`a\`\`\`\`${P}b\``, true],
+      [`select 1 as \`\`\`${P}\`\`\``, true],
+      [`select 1 as \`a\`\`\``, true],
+      [`select 'a''''${P}'`, true],
+      [`select '''${P}'''`, true],
+      [`select 'a'''`, true],
+      // préfixes de chaînes collés (N'…', _utf8'…', x'…', b'…', 0x…'…') et \G : refusés
+      [`select N'a${P}b'`, false],
+      [`select n'a${P}b'`, false],
+      [`select _utf8'a${P}b'`, false],
+      [`select _utf8mb4'a${P}b'`, false],
+      [`select x'41${P}'`, false],
+      [`select X'41'`, false],
+      [`select b'101'`, false],
+      [`select 0x41'a${P}'`, false],
+      [`select 'a'b`, false],
+      [`select 1\\G`, false],
+      [`select 1 \\G`, false],
+      [`select 1;\\G`, false],
+      // commandes du client : refusées comme premier mot, et le point-virgule l'est aussi
+      ['delimiter //', false],
+      [`select 1;\ndelimiter //\nselect 2//`, false],
+      ['use p1', false],
+      ['source /dev/null', false],
+      ['exit', false],
+      // tout ce que le lecteur n'écrit pas hors des chaînes
+      [`select 1${P}`, false],
+      [`select @x${P}`, false],
+      [`select @@version`, false],
+      [`select 1\t${P}`, false],
+      [`select 'a' \r${P}`, false],
+      [`select 😀`, false],
       // antislash devant un saut de ligne, ou entre accents graves : refusés
       [`select 'a\\\n\\'b' -- '${P} -- '`, false],
       [`select '\\\n\\\\' -- '${P} -- '`, false],
@@ -282,8 +335,21 @@ describe.skipIf(!hasBinary('dolt'))('garde en lecture seule face à un vrai Dolt
       [`select 1 # ${P.replace(/;/g, '')}\n , 2`, false],
     ];
 
+    // Le découpeur lit la requête par pages de 4 096 octets, et regarde le caractère qui suit un guillemet : une séquence à cheval sur une limite de page ne doit
+    // rien changer. Chaque forme place un guillemet doublé, un antislash doublé ou la charge à une distance différente du début de la requête.
+    const FILL = (n: number) => 'a'.repeat(n);
+    const OFFSETS = [4040, 4060, 4070, 4075, 4078, 4079, 4080, 4081, 4082, 4083, 4084, 4085, 4086, 4090, 4100, 8160, 8170, 8174, 8175, 8176, 8177, 8178, 8180, 8190];
+    for (const n of OFFSETS) {
+      forms.push([`select '${FILL(n)}''${P}'`, true]); // l'apostrophe doublée est une apostrophe : la chaîne contient la charge
+      forms.push([`select '${FILL(n)}'${P}'`, false]); // la chaîne se ferme, la charge est du code : refusée
+      forms.push([`select '${FILL(n)}''''${P}'`, true]);
+      forms.push([`select '${FILL(n)}\\\\${P}'`, true]);
+      forms.push([`select 1 as \`${FILL(n)}\`\`${P}\``, true]);
+      forms.push([`select '${FILL(n)}', '${P}'`, true]);
+    }
+
     it('le garde admet et refuse comme prévu', () => {
-      expect(forms.filter(([sql, admitted]) => refused(sql) === admitted).map(([sql]) => sql)).toEqual([]);
+      expect(forms.filter(([sql, admitted]) => refused(sql) === admitted).map(([sql]) => sql.slice(0, 80))).toEqual([]);
     });
 
     it('les formes admises passent le client en un seul processus, comme queryAll : un résultat chacune, et la charge ne s’exécute jamais', async () => {
@@ -294,6 +360,109 @@ describe.skipIf(!hasBinary('dolt'))('garde en lecture seule face à un vrai Dolt
       expect(results).toHaveLength(admitted.length);
       expect(results.map((rows) => rows.length)).toEqual(admitted.map(() => 1));
       expect(results.flat().filter((row) => 'zq' in row)).toEqual([]);
+    });
+  });
+
+  // « Zéro refus à tort » avec un vrai Dolt : toute valeur que l'app met dans une requête par `sqlString` (un littéral) ou `sqlIdent` (un identifiant) passe le garde,
+  // et Dolt la lit comme une valeur, sans exécuter ce qu'elle contient. 300 valeurs tirées au hasard dans des atomes hostiles, 100 requêtes par processus, comme queryAll.
+  describe('valeurs hostiles (bdesk-38k.63)', () => {
+    const atoms = ['a', ' ', "'", "''", '`', '``', '"', '\\', '\\\\', '\\\n', '\n', '\r', '\r\n', '\t', ';', ';select 7*11 as zq;', '-- ', '--', '#', '/*', '*/', '/*/', '%', '_', '@', 'é', '😀', '\ud83d', '\u0001', '\u001a', ' ', '\u0085', 'delimiter ', 'x', 'N', '0x41'];
+    const values = (() => {
+      let seed = 6363;
+      const next = (n: number) => {
+        seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+        return Math.floor((seed / 2 ** 32) * n);
+      };
+      return Array.from({ length: 300 }, () => Array.from({ length: 1 + next(8) }, () => atoms[next(atoms.length)]).join(''));
+    })();
+
+    it('toutes passent le client, et rien de ce qu’elles contiennent ne s’exécute', async () => {
+      const db = client.open(dirs.plain);
+      const sqls = values.map((value, i) =>
+        i % 4 === 0
+          ? `select 1 as ${sqlIdent(value.replaceAll('\\', '').slice(0, 30) || 'x')} from issues as of 'HEAD' limit 1`
+          : `select id from issues as of 'HEAD' where id = ${sqlString(value)} or ${sqlString(value)} = '' limit 1`,
+      );
+      const results: Awaited<ReturnType<typeof queryAll>> = [];
+      for (let i = 0; i < sqls.length; i += 100) results.push(...(await queryAll(db, sqls.slice(i, i + 100))));
+
+      expect(results).toHaveLength(300);
+      expect(results.flat().filter((row) => 'zq' in row)).toEqual([]);
+    }, 120_000);
+
+    it('un octet nul n’est pas une affaire du garde (c’est un caractère de chaîne) : le client le dit, car dolt ne peut pas le recevoir en argument', async () => {
+      const error = await client.open(dirs.plain).query(`select id from issues as of 'HEAD' where id = ${sqlString('a\u0000b')}`).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(DoltQueryError);
+      expect(error).not.toBeInstanceOf(ReadOnlyViolation);
+    });
+  });
+
+  // bdesk-38k.63, reprise (B1 et B2 de la relecture). Deux contournements, antérieurs à la liste blanche des caractères : Dolt lit `` `load_file`(…) `` comme l'appel de la
+  // fonction, et `dolt_query_diff('…', '…')` exécute le SQL de ses chaînes. Par l'un ou l'autre, un `select … into outfile` écrit un fichier dans le dossier de la base
+  // (c'est le `secure_file_priv` de `dolt sql`), un `load_file` en lit un. Un fichier témoin est posé dans ce dossier : il ne doit être lu par aucune requête admise, et
+  // aucun fichier ne doit y être créé.
+  describe('fonctions : aucun fichier lu, aucun fichier créé (bdesk-38k.63)', () => {
+    const CANARY = 'CANARY-LU-PAR-DOLT';
+    /** `%` : le dossier de la base. */
+    const reads = [
+      "select `load_file`('%/canary.txt') as v",
+      "select `LOAD_FILE` ('%/canary.txt') as v",
+      "select `Load_File`  (  '%/canary.txt'  ) as v",
+      "select * from dolt_query_diff('select load_file(''%/canary.txt'') as v', 'select 1 as v')",
+      "select * from `dolt_query_diff`('select load_file(''%/canary.txt'') as v', 'select 1 as v')",
+      "select * from DOLT_QUERY_DIFF ('select `load_file`(''%/canary.txt'') as v', 'select 1 as v')",
+    ];
+    const writes: [string, string][] = [
+      ['out-0.txt', "select * from dolt_query_diff('select ''x'' as v into outfile ''%/out-0.txt''', 'select 1 as v')"],
+      ['out-1.txt', "select * from `dolt_query_diff`('select ''x'' as v into outfile ''%/out-1.txt''', 'select 1 as v')"],
+      ['out-2.txt', "select * from dolt_query_diff ('select ''x'' as v into dumpfile ''%/out-2.txt''', 'select 1 as v')"],
+      ['out-3.txt', "select * from DOLT_QUERY_DIFF('select 1 as v', 'select ''x'' as v into outfile ''%/out-3.txt''')"],
+    ];
+    const at = (template: string) => template.replaceAll('%', dirs.plain);
+
+    beforeAll(() => {
+      writeFileSync(join(dirs.plain, 'canary.txt'), `${CANARY}\n`);
+    });
+
+    it('Dolt lit le fichier témoin par load_file entre accents graves, et par dolt_query_diff : les faits que le garde doit arrêter', () => {
+      expect(direct(dirs.plain, at(reads[0] as string)).join('\n')).toContain(CANARY);
+      expect(direct(dirs.plain, at(reads[3] as string)).join('\n')).toContain(CANARY);
+    });
+
+    it('Dolt écrit un fichier par dolt_query_diff, avec into outfile ou into dumpfile', () => {
+      for (const [file, template] of writes.slice(0, 3)) {
+        try {
+          direct(dirs.plain, at(template)); // Dolt écrit le fichier, puis échoue à rendre le résultat : seul le fichier compte
+        } catch {
+          /* attendu */
+        }
+        expect(existsSync(join(dirs.plain, file))).toBe(true);
+      }
+    });
+
+    it('le garde refuse chacune de ces requêtes', () => {
+      expect([...reads, ...writes.map(([, template]) => template)].filter((template) => !refused(at(template)))).toEqual([]);
+    });
+
+    it('le client les refuse avant de lancer dolt : aucun contenu lu, aucun fichier créé', async () => {
+      const db = client.open(dirs.plain);
+      for (const [file] of writes) rmSync(join(dirs.plain, file), { force: true });
+
+      for (const template of [...reads, ...writes.map(([, w]) => w)]) await expect(db.query(at(template))).rejects.toBeInstanceOf(ReadOnlyViolation);
+
+      expect(writes.filter(([file]) => existsSync(join(dirs.plain, file)))).toEqual([]);
+    });
+
+    it('les fonctions de la liste blanche et les listes de colonnes se lisent toujours, par le vrai client', async () => {
+      const db = client.open(dirs.plain);
+
+      expect(Number((await db.query("select count(*) as c from issues as of 'HEAD'"))[0]?.c)).toBe(1);
+      expect(String((await db.query("select hashof('HEAD') as h"))[0]?.h)).toHaveLength(32);
+      expect(await db.query('select database() as d')).toEqual([{ d: 'plain' }]);
+      expect(await db.query("select id, lag(id) over (order by id) as p from issues as of 'HEAD'")).toEqual([{ id: 'c-1' }]);
+      expect(await db.query('with a (x, y) as (select 1, 2), b (z) as (select 3) select x, y, z from a, b')).toEqual([{ x: 1, y: 2, z: 3 }]);
+      expect(await db.query("select id from issues as of 'HEAD' where id in ('c-1', 'w-2') and (id = 'c-1' or id = 'x')")).toEqual([{ id: 'c-1' }]);
     });
   });
 

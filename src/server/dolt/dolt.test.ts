@@ -11,6 +11,7 @@ import { createProjectService } from '../projects/service';
 import { buildServer } from '../server';
 import { ReadAborted } from '../abort';
 import { createDoltClient, type DoltDatabase, DoltQueryError, queryAll } from './client';
+import { ReadOnlyViolation } from './read-only';
 import { readTicketHistories } from './history';
 import { readComments, readDependencies, readIssue, readIssueBase, readIssueParts, readIssuePrefix, readIssueSummaries, readLabels } from './reader';
 
@@ -290,19 +291,20 @@ describe.skipIf(!hasBinary('dolt'))('lecture seule sur une vraie base Dolt', () 
     expect((error as Error).message).not.toMatch(/select|from t/);
   });
 
-  // Dolt cite l'instruction sans son `;` final (et sans ce qui le suit) : la requête citée n'est plus celle que l'on a envoyée.
+  // Dolt cite l'instruction sans son `;` final (et sans ce qui le suit) : la requête citée n'était plus celle que l'on avait envoyée. Le lecteur n'écrit aucun
+  // point-virgule et le garde n'en admet plus (bdesk-38k.63) : ces requêtes sont refusées avant que dolt soit lancé, sans que le refus cite la requête.
   it.each([
     ['un point-virgule', 'select colonne_inconnue from t;'],
     ['un point-virgule précédé d’un blanc', 'select colonne_inconnue from t ;'],
     ['un point-virgule suivi d’un saut de ligne', 'select colonne_inconnue\n  from t;\n'],
     ['des points-virgules en série', 'select colonne_inconnue from t;;'],
     ['des points-virgules et des blancs en série', 'select colonne_inconnue from t ; ;  \n'],
-  ])('signale par sa cause une requête terminée par %s, sans la requête que Dolt cite', async (_label, sql) => {
+  ])('refuse une requête terminée par %s, sans la citer', async (_label, sql) => {
     const error = await db.query(sql).catch((e: unknown) => e);
 
-    expect(error).toBeInstanceOf(DoltQueryError);
-    expect((error as Error).message).toContain('could not be found');
-    expect((error as Error).message).not.toMatch(/select|from t/);
+    expect(error).toBeInstanceOf(ReadOnlyViolation);
+    expect((error as Error).message).toContain('lecture seule');
+    expect((error as Error).message).not.toMatch(/select|from t|colonne_inconnue/);
   });
 
   // ADR 0001 : la lignée se lit par une CTE récursive, donc un Projet de plus de ~10 000 commits est illisible (503).

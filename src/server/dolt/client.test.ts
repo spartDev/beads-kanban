@@ -254,17 +254,15 @@ EOF`);
       expect((error as Error).message).not.toContain('table_secrete');
     });
 
-    it('retire aussi la requête terminée par un point-virgule, que Dolt cite sans lui', async () => {
-      // Comme le vrai, ce faux dolt retire le `;` final de l'instruction qu'il cite : « select 1; » devient « select 1 ».
-      const fake = fakeDolt(
-        `q="\${5#start transaction read only; }"\nq="\${q%;}"\nprintf 'error on line 1 for query %s: WITH RECURSIVE iteration limit exceeded\\n' "$q" >&2\nexit 1`,
-      );
+    it('refuse la requête terminée par un point-virgule avant de lancer dolt, sans la citer (le garde n\u2019en admet plus : bdesk-38k.63)', async () => {
+      // Dolt cite l'instruction sans son `;` final : « select 1; » devient « select 1 ». Le lecteur n'écrit aucun point-virgule, et le garde n'en admet plus.
+      const fake = fakeDolt(`printf 'error on line 1 for query x: WITH RECURSIVE iteration limit exceeded\\n' >&2\nexit 1`);
 
       const error = await failure(fake.binary, 'select a,\n  b\n  from table_secrete\n  where c = 1;');
 
-      expect(error).toBeInstanceOf(DoltQueryError);
-      expect((error as Error).message).toContain('WITH RECURSIVE iteration limit exceeded');
+      expect(error).toBeInstanceOf(ReadOnlyViolation);
       expect((error as Error).message).not.toContain('table_secrete');
+      expect(fake.calls()).toBe(0);
     });
   });
 
