@@ -26,6 +26,8 @@ export function AddressNotices({ notices }: { notices: readonly string[] }) {
  * se calcule, quand une période échoue et sous le squelette d'une page qui s'ouvre : retiré puis remis avec la réponse, il faisait sauter la page et laissait passer
  * sans lui les chiffres gardés (bdesk-38k.71). Il n'a donc pas toujours de chiffres à côté de lui : il parle des métriques, et non de « ces chiffres », que la période
  * suivante soit en attente, en échec ou à l'écran. Une seule phrase pour tous ces états : un texte qui change dans une région de statut peut être relu par un lecteur d'écran.
+ * Il tient aussi quand la requête de la page échoue plus de cinq minutes, le cache ayant retiré la réponse qui le portait (bdesk-38k.79). Quand le fuseau du navigateur change,
+ * il ne dit rien du nouveau tant que le serveur n'a pas répondu, et les chiffres de l'ancien ne restent pas à l'écran sans lui : le squelette les remplace jusqu'à la réponse.
  */
 export function ZoneNotice({ asked, counted }: { asked: string; counted: string }) {
   return (

@@ -1,3 +1,4 @@
+import type { QueryClient } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { metricsKey } from '../metrics/api';
@@ -598,7 +599,9 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
     expect(customTo().max).toBe('2026-11-05');
   });
 
-  it('ne tient pas pour la réponse à un autre fuseau demandé ce que le serveur a répondu au précédent : le navigateur change de fuseau, la page compte dans le nouveau en attendant', async () => {
+  // bdesk-38k.79 (R-a) : et les chiffres de cette réponse ne sont pas gardés non plus. Ils sont comptés en UTC (le fuseau du serveur, qui ne connaissait pas Paris), ils ne disent
+  // rien de Tokyo, et aucun avis n'est là pour le dire : l'avis suit la réponse au fuseau du navigateur, qui est maintenant celui de Tokyo. Le squelette tient leur place.
+  it('ne tient pas pour la réponse à un autre fuseau demandé ce que le serveur a répondu au précédent, ni ses chiffres : le navigateur change de fuseau, la page compte dans le nouveau en attendant', async () => {
     vi.setSystemTime(LATE); // le 5 à 08:30 à Tokyo, le 5 à 00:30 à Paris, le 4 à 23:30 en UTC
     let release: (() => void) | undefined;
     const fetchMock = api((url) => {
@@ -607,13 +610,17 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
     });
     const { user } = await loaded();
     await screen.findByText(NOTICE);
+    expect(screen.getByTitle('Fuseau UTC')).toBeTruthy(); // les chiffres de Paris sont à l'écran, comptés en UTC
 
     try {
       process.env.TZ = 'Asia/Tokyo'; // le fuseau du navigateur change pendant que la page est ouverte ; un réglage de la période relance le rendu
       await user.click(within(period()).getByRole('radio', { name: '7 jours' }));
       await waitFor(() => expect(metricsRequests(fetchMock).at(-1)).toBe('/api/metrics?project=bdesk&range=7d&timeZone=Asia%2FTokyo'));
-      // Les chiffres gardés en attendant sont ceux de la réponse en UTC, pour Paris : ils ne disent rien de Tokyo.
+      // La réponse en UTC, pour Paris, ne dit rien de Tokyo : pas d'avis. Et ses chiffres, comptés autrement que ceux que Tokyo aura, ne restent pas à l'écran sans lui.
       expect(screen.queryByText(/Le serveur ne connaît pas votre fuseau/)).toBeNull();
+      expect(screen.queryByRole('heading', { level: 2, name: 'Indicateurs' })).toBeNull();
+      expect(screen.queryByTitle('Fuseau UTC')).toBeNull();
+      expect(screen.getByRole('status', { name: 'Chargement des métriques' })).toBeTruthy();
 
       await user.click(within(period()).getByRole('radio', { name: 'Personnalisée' }));
       expect(customTo().max).toBe('2026-11-05'); // aujourd'hui à Tokyo, le nouveau fuseau demandé : ni le 4, jour d'UTC, ni attendre la réponse
@@ -807,6 +814,155 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
       await act(async () => release?.());
       expect(await screen.findByRole('heading', { level: 2, name: 'Indicateurs' })).toBeTruthy();
       expect(screen.queryByText(/Le serveur ne connaît pas votre fuseau/)).toBeNull();
+    } finally {
+      process.env.TZ = 'Europe/Paris';
+    }
+  });
+
+  /**
+   * bdesk-38k.79 (R-b) : tant que sa propre requête n'a pas abouti, la page lit l'avis dans la réponse d'une requête qu'elle a quittée (la période précédente, la page d'un Projet).
+   * Le cache retire une requête cinq minutes après que plus aucune vue ne l'observe (`gcTime`) : si celle de la page échoue plus longtemps, l'avis ne s'en va pas pour autant, car
+   * rien n'a dit que le serveur connaît le fuseau. Les minuteries du cache sont celles de la page : le temps de ces tests ne passe que quand ils le disent.
+   */
+  describe('quand la requête de la page échoue plus de cinq minutes', () => {
+    const FIVE_MINUTES = 5 * 60_000;
+    /** `Date` et les minuteries du cache (`gcTime`), posées avant tout rendu : une requête qui perd son dernier observateur y programme son retrait. Les attentes de Testing Library suivent le temps réel. */
+    const clockAt = (instant: Date) => {
+      vi.useRealTimers();
+      vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'], shouldAdvanceTime: true });
+      vi.setSystemTime(instant);
+    };
+    const inCache = (client: QueryClient, ...key: string[]) => client.getQueryCache().findAll({ queryKey: ['metrics', ...key] }).length;
+    /** Combien de fois cette requête a échoué : le « Réessayer » est fini quand il augmente. */
+    const failures = (client: QueryClient, ...key: Parameters<typeof metricsKey>) => client.getQueryCache().find({ queryKey: metricsKey(...key) })?.state.errorUpdateCount;
+
+    it('Vue globale : l’avis tient quand la réponse du Projet, seule à dire ce que le serveur sait du fuseau, quitte le cache', async () => {
+      clockAt(LATE);
+      api((url) => (url.searchParams.has('project') ? serverInUtc() : new Error('database is locked')));
+      const { router, queryClient, user } = await loaded();
+      await screen.findByRole('status', { name: NOTICE });
+
+      await go(router, '/');
+      expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy(); // la Vue globale n'a jamais abouti
+      expect(screen.getByRole('status', { name: NOTICE })).toBeTruthy(); // l'avis vient de la réponse du Projet
+      const overall = { period: { kind: 'preset', range: '30d' }, timeZone: 'Europe/Paris' } as const;
+      expect(failures(queryClient, overall)).toBe(1);
+
+      act(() => void vi.advanceTimersByTime(FIVE_MINUTES + 1_000));
+      expect(inCache(queryClient, 'bdesk')).toBe(0); // plus aucune vue n'observait la réponse du Projet : le cache l'a retirée
+      await user.click(page().getByRole('button', { name: /Réessayer/ })); // le rendu suivant
+      await waitFor(() => expect(failures(queryClient, overall)).toBe(2));
+
+      expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy();
+      expect(screen.getByRole('status', { name: NOTICE })).toBeTruthy();
+    });
+
+    it('période suivante : l’avis tient quand la réponse de la période précédente quitte le cache', async () => {
+      clockAt(LATE);
+      api((url) => (url.searchParams.get('range') === '7d' ? new Error('database is locked') : serverInUtc()));
+      const { queryClient, user } = await loaded();
+      await screen.findByRole('status', { name: NOTICE });
+
+      await user.click(within(period()).getByRole('radio', { name: '7 jours' }));
+      expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy(); // les 7 jours n'ont jamais abouti
+      const week = { project: 'bdesk', period: { kind: 'preset', range: '7d' }, timeZone: 'Europe/Paris' } as const;
+      expect(failures(queryClient, week)).toBe(1);
+
+      act(() => void vi.advanceTimersByTime(FIVE_MINUTES + 1_000));
+      expect(inCache(queryClient, 'bdesk', '30d')).toBe(0); // les 30 jours, qui portaient l'avis, ne sont plus observés depuis cinq minutes
+      await user.click(page().getByRole('button', { name: /Réessayer/ }));
+      await waitFor(() => expect(failures(queryClient, week)).toBe(2));
+
+      expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy();
+      expect(screen.getByRole('status', { name: NOTICE })).toBeTruthy();
+    });
+
+    // bdesk-38k.79 (relecture, R3) : la retenue ne vaut que tant que le serveur n'a pas pu changer. Le flux en direct ne suit ni la Vue globale ni les pages de métriques, donc un redémarrage
+    // (une mise à jour de Node, un autre `TZ`) n'est pas vu : la page oublie cinq minutes après la dernière page de métriques, comme le cache, au lieu d'afficher l'ancien avis sous le squelette.
+    it('ne le rend plus à une page de métriques qui s’ouvre plus de cinq minutes après la dernière : le serveur a pu être mis à jour (la Vue globale après le kanban)', async () => {
+      clockAt(LATE);
+      const fetchMock = api((url) => (url.searchParams.has('project') ? serverInUtc() : new Error('database is locked')));
+      const { router, queryClient } = await loaded();
+      await screen.findByRole('status', { name: NOTICE });
+      await go(router, '/p/bdesk/kanban');
+      await screen.findByRole('heading', { level: 1, name: 'Kanban' });
+
+      act(() => void vi.advanceTimersByTime(FIVE_MINUTES + 1_000));
+      expect(inCache(queryClient, 'bdesk')).toBe(0);
+      const before = metricsRequests(fetchMock).length;
+      await go(router, '/');
+
+      expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy();
+      expect(metricsRequests(fetchMock)).toHaveLength(before + 1);
+      expect(screen.queryByRole('status', { name: NOTICE })).toBeNull(); // rien n'est connu du serveur : l'erreur parle seule, comme à l'ouverture
+    });
+
+    it('le rend encore à une page de métriques qui s’ouvre moins de cinq minutes après la dernière : la Vue globale après le kanban', async () => {
+      clockAt(LATE);
+      api((url) => (url.searchParams.has('project') ? serverInUtc() : new Error('database is locked')));
+      const { router } = await loaded();
+      await screen.findByRole('status', { name: NOTICE });
+      await go(router, '/p/bdesk/kanban');
+      await screen.findByRole('heading', { level: 1, name: 'Kanban' });
+
+      act(() => void vi.advanceTimersByTime(2 * 60_000));
+      await go(router, '/');
+
+      expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy();
+      expect(screen.getByRole('status', { name: NOTICE })).toBeTruthy();
+    });
+  });
+
+  /**
+   * bdesk-38k.79 (relecture, B1) : l'ordre des réponses ne dépend pas de l'horloge. L'horloge du système recule (une correction NTP, un réglage manuel, une machine virtuelle qu'on reprend) :
+   * la requête relue répond avec une date antérieure à celle de la réponse qu'elle remplace. Elle dit pourtant la vérité du moment, et l'avis doit s'en aller avec les chiffres qu'elle apporte.
+   */
+  it('retire l’avis quand la requête relue répond honoré après un recul de l’horloge du système', async () => {
+    vi.setSystemTime(LATE);
+    let serverKnowsTheZone = false;
+    api((url) => (serverKnowsTheZone ? inRequestedZone(url) : serverInUtc()));
+    const { user } = await loaded();
+    await screen.findByRole('status', { name: NOTICE });
+
+    vi.setSystemTime(new Date(LATE.getTime() - 10 * 60_000)); // l'horloge recule de dix minutes
+    serverKnowsTheZone = true; // et le serveur a été mis à jour
+    await user.click(screen.getByRole('button', { name: 'Actualiser les métriques' }));
+
+    await waitFor(() => expect(screen.getByTitle('Fuseau Europe/Paris')).toBeTruthy()); // la réponse honorée est à l'écran…
+    expect(screen.queryByRole('status', { name: NOTICE })).toBeNull(); // … et l'avis ne la contredit pas
+    await user.click(within(period()).getByRole('radio', { name: 'Personnalisée' }));
+    expect(customTo().max).toBe('2026-11-05'); // et « aujourd'hui » est de nouveau celui de Paris
+  });
+
+  /**
+   * bdesk-38k.79 (relecture, remarque 3) : au changement de fuseau, le squelette remplace les chiffres. Le focus qu'ils tenaient (une puce de tendance, un lien, le résumé d'une table de données)
+   * ne tombe pas sur le corps de la page : il revient au contenu principal, comme celui d'un avis d'erreur que le squelette remplace (`keepFocusInZone`). Le changement de fuseau n'est vu qu'au
+   * rendu suivant, et celui-ci peut venir de n'importe où (un autre réglage de l'adresse, la liste des Projets relue au retour sur l'onglet) : rien ne dit que le focus a quitté les chiffres.
+   */
+  it('rend le focus au contenu principal quand le squelette remplace les chiffres qui le tenaient (le fuseau du navigateur change)', async () => {
+    vi.setSystemTime(LATE);
+    let release: (() => void) | undefined;
+    api((url) =>
+      url.searchParams.get('timeZone') === 'Asia/Tokyo'
+        ? new Promise<MetricsReply>((resolve) => (release = () => resolve(metricsFixture({ timeZone: 'Asia/Tokyo' }))))
+        : serverInUtc(),
+    );
+    const { router } = await loaded();
+    await screen.findByRole('status', { name: NOTICE });
+    const trend = document.querySelector<HTMLElement>('[data-trend]'); // la puce de tendance d'une tuile : focalisable au clavier
+    expect(trend).not.toBeNull();
+    act(() => trend?.focus());
+    expect(document.activeElement).toBe(trend);
+
+    try {
+      process.env.TZ = 'Asia/Tokyo'; // le navigateur change de fuseau ; un rendu que rien dans les chiffres n'a demandé le fait voir
+      await go(router, '/p/bdesk/metrics?range=7d');
+
+      expect(await screen.findByRole('status', { name: 'Chargement des métriques' })).toBeTruthy();
+      expect(trend?.isConnected).toBe(false); // les chiffres qui tenaient le focus sont partis…
+      expect(document.activeElement).toBe(screen.getByRole('main')); // … il est au contenu principal, pas sur le corps de la page
+      await act(async () => release?.());
+      expect(await screen.findByRole('heading', { level: 2, name: 'Indicateurs' })).toBeTruthy();
     } finally {
       process.env.TZ = 'Europe/Paris';
     }

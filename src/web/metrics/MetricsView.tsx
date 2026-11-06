@@ -7,6 +7,7 @@ import { useProjects } from '../data/hooks';
 import { cx } from '../lib/cx';
 import { browserTimeZone } from '../lib/instant';
 import { useRetryFocus } from '../lib/useRetryFocus';
+import { keepFocusInZone } from '../lib/zoneFocus';
 import { paths } from '../paths';
 import { ErrorNotice, Notice } from '../ui/states';
 import { useMetrics, useZoneAnswer } from './api';
@@ -47,7 +48,7 @@ const todayIn = (timeZone: string): string => dayInZone(new Date().toISOString()
  *
  * Un rafraîchissement qui échoue garde les chiffres à l'écran (TanStack Query conserve `data`) : le bandeau du shell le
  * signale, et l'erreur n'a la parole que faute de chiffres. Les chiffres provisoires d'une période en attente de la
- * suivante sont atténués.
+ * suivante sont atténués ; ceux d'un autre Projet ou d'un autre fuseau ne sont pas gardés (`useMetrics`).
  */
 export function MetricsView({ scope }: { scope: MetricsScope }) {
   const kind: Scope = scope.kind;
@@ -62,7 +63,9 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
   // connaît pas : on compte dans le fuseau demandé. Honoré, c'est le même fuseau, quel que soit le nom que la réponse lui donne : la page ne compare pas de noms.
   //
   // C'est la dernière réponse du serveur à ce fuseau qui le dit, celle du cache des requêtes, et non celle des chiffres affichés : pendant qu'une période se calcule, ces
-  // chiffres sont ceux de la précédente (`isPlaceholderData`), comptés dans le même fuseau du serveur ; et le cache survit à la vue, d'une page de métriques à l'autre.
+  // chiffres sont ceux de la précédente (`isPlaceholderData`), comptés dans le même fuseau du serveur ; et le cache survit à la vue, d'une page de métriques à l'autre. La page
+  // retient cette réponse même quand le cache la retire (cinq minutes sans vue qui l'observe) : si sa propre requête échoue plus longtemps, l'avis ne s'en va pas (bdesk-38k.79).
+  // Quand le fuseau du navigateur change, ni la réponse du précédent ni ses chiffres ne valent pour le nouveau : `useMetrics` ne les garde pas en attendant, le squelette tient leur place.
   const lastAnswer = useZoneAnswer(asked);
   const elsewhere = lastAnswer !== undefined && !lastAnswer.honoured ? lastAnswer : undefined;
   const counted = elsewhere !== undefined && isKnownTimeZone(elsewhere.counted) ? elsewhere.counted : asked;
@@ -107,13 +110,20 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
       </p>
 
       {/* L'avis suit la dernière réponse du serveur, pas les chiffres affichés : pendant que la période suivante se calcule, les chiffres gardés sont encore ceux de la
-          précédente, comptés dans le même fuseau du serveur. Retiré puis remis avec la réponse, il faisait sauter la page (bdesk-38k.71). */}
+          précédente, comptés dans le même fuseau du serveur (jamais ceux d'un autre fuseau demandé : bdesk-38k.79). Retiré puis remis avec la réponse, il faisait sauter la page (bdesk-38k.71). */}
       {elsewhere !== undefined ? <ZoneNotice asked={asked} counted={elsewhere.counted} /> : null}
 
       {notices.length > 0 ? <AddressNotices notices={notices} /> : null}
 
       {data ? (
-        <div aria-busy={query.isPlaceholderData} className={cx('flex min-w-0 flex-col gap-6 transition-opacity', query.isPlaceholderData && 'opacity-60')}>
+        // Les chiffres partent, et le squelette les remplace, quand le fuseau du navigateur change (`useMetrics` ne garde pas ceux de l'ancien) ; le focus qu'ils tenaient (une puce de tendance,
+        // un lien, un résumé) revient alors au contenu principal, au lieu de tomber sur le corps de la page (`keepFocusInZone`, comme pour l'avis d'erreur que le squelette remplace). Le
+        // changement de fuseau n'est vu qu'à un rendu que rien dans les chiffres n'a demandé (un autre réglage de l'adresse, la liste des Projets relue au retour sur l'onglet).
+        <div
+          ref={keepFocusInZone}
+          aria-busy={query.isPlaceholderData}
+          className={cx('flex min-w-0 flex-col gap-6 transition-opacity', query.isPlaceholderData && 'opacity-60')}
+        >
           <Content data={data} by={by} ctx={ctx} projectHref={projectHref} />
         </div>
       ) : query.isError ? (
