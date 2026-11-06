@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bdeskIssues, mpmIssues, projectsResponse } from '../test/fixtures';
 import { renderApp } from '../test/render';
+import { withTimeZone } from '../test/timeZone';
 import { emptyMetricsFixture, stubChartWidth, stubMetricsApi, warmUpMetricsPages } from './testing';
 
 /**
@@ -13,6 +14,11 @@ import { emptyMetricsFixture, stubChartWidth, stubMetricsApi, warmUpMetricsPages
 const api = () => stubMetricsApi({ projects: projectsResponse, issues: { bdesk: bdeskIssues, mpm: mpmIssues } }, () => emptyMetricsFixture());
 
 warmUpMetricsPages();
+
+// Le navigateur est à Paris, comme les fixtures (`emptyMetricsFixture` compte en `Europe/Paris`) et comme dans MetricsPage.test.tsx : la page demande ce fuseau au serveur et le nomme dans son avis de fuseau (dernier test).
+// Sans cela, le fuseau de la machine décide de la page. Avant bdesk-38k.71, la page ajoutait cet avis hors de Paris même à une réponse que la fixture donne pour honorée : une région de statut de plus, hors
+// de toute carte, que `emptyCharts` comptait pour un dixième graphique (bdesk-38k.75).
+withTimeZone('Europe/Paris');
 
 // Seule `Date` est figée (le 2 novembre 2026, 20:00 à Paris, l'instant des fixtures) : comme dans MetricsPage.test.tsx.
 beforeEach(() => {
@@ -55,6 +61,23 @@ describe('la page Métriques d’un Projet au flux vide', () => {
       ['Arrivées et Débit cumulés', 'Carte d’activité', 'Cycle Time', 'Débit', 'Décomposition du Lead Time', 'Flux cumulé', 'Prêts qui stagnent', 'Répartition par type', 'Âge des tickets en cours'].sort(),
     );
     for (const { status, title } of charts) expect(screen.getAllByRole('status', { name: title }), title).toContain(status);
+    expect(screen.queryAllByRole('status', { name: '' })).toEqual([]);
+  });
+});
+
+describe('la page Métriques d’un Projet au flux vide, quand le serveur ne connaît pas le fuseau du navigateur', () => {
+  it('ajoute aux neuf graphiques une dixième région de statut, l’avis de fuseau, nommée du fuseau fixé du navigateur et non de celui de la machine', async () => {
+    // Le serveur compte en UTC faute de connaître le fuseau demandé, et le dit (`timeZoneHonoured`, bdesk-38k.71) : la page ajoute son avis.
+    stubMetricsApi({ projects: projectsResponse, issues: { bdesk: bdeskIssues, mpm: mpmIssues } }, () => emptyMetricsFixture({ timeZone: 'UTC', timeZoneHonoured: false }));
+    renderApp('/p/bdesk/metrics');
+    await screen.findByRole('heading', { level: 2, name: 'Indicateurs' });
+
+    // Le titre de l'avis dit le fuseau du navigateur : Paris, parce que ce fichier le fixe. Sans `withTimeZone`, ce serait celui de la machine, et ce test rougirait partout ailleurs qu'à Paris.
+    const notice = await screen.findByRole('status', { name: 'Le serveur ne connaît pas votre fuseau, Europe/Paris' });
+
+    const charts = emptyCharts();
+    expect(charts).toHaveLength(10);
+    expect(charts.filter(({ title }) => title === '(hors d’une carte)').map(({ status }) => status)).toEqual([notice]);
     expect(screen.queryAllByRole('status', { name: '' })).toEqual([]);
   });
 });

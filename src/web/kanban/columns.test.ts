@@ -30,8 +30,11 @@ const local = (year: number, month: number, day: number, hour = 0, minute = 0, s
   new Date(year, month - 1, day, hour, minute, second, ms).getTime();
 const iso = (ms: number): string => new Date(ms).toISOString();
 
-/** Jeudi 23 octobre 2026, midi, heure de Paris. */
-const NOW = local(2026, 10, 23, 12);
+/**
+ * Vendredi 23 octobre 2026, midi, heure de Paris (UTC+2 ce jour-là) : un instant fixe. `local(2026, 10, 23, 12)` ici, au chargement du fichier, serait lu avant que `withTimeZone` ait posé le fuseau
+ * (au `beforeAll`) : donc dans celui du lanceur, où il désigne un autre instant, et un autre jour à Paris sous UTC−10 et plus à l'ouest (bdesk-38k.75).
+ */
+const NOW = Date.UTC(2026, 9, 23, 10);
 const ago = (ms: number) => iso(NOW - ms);
 /** À la même heure, `days` jours calendaires plus tôt. */
 const daysAgo = (days: number) => iso(local(2026, 10, 23 - days, 12));
