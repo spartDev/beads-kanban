@@ -365,6 +365,18 @@ describe('isOwnRequest : la requête est-elle celle de l’application elle-mêm
     expect(own({ origin })).toBe(true);
   });
 
+  // Des écritures que le navigateur n'envoie jamais (il écrit l'origine en minuscules et le port sans zéros initiaux) : acceptées, sans effet (relecture finale de
+  // bdesk-38k.64, remarque 3, documentée sur `LOCAL_ORIGIN`). Seul un client qui n'est pas un navigateur les envoie, et il passe déjà en n'envoyant pas `Origin`.
+  // Le port reste comparé comme un nombre : des zéros devant n'en font pas passer un autre.
+  it('accepte les écritures que seul un client sans navigateur envoie (zéros devant le port), et compare le port comme un nombre', () => {
+    expect(own({ origin: 'http://127.0.0.1:05179' })).toBe(true);
+    expect(own({ origin: 'HTTP://LOCALHOST:05179' })).toBe(true);
+    expect(own({ origin: 'http://localhost:05180' })).toBe(false); // le port 5180, avec un zéro devant
+    expect(own({ origin: 'http://localhost:0517' })).toBe(false); // le port 517
+    expect(own({ origin: 'http://localhost:005179' })).toBe(false); // six chiffres : pas un port
+    expect(own({ origin: 'http://localhost:+5179' })).toBe(false);
+  });
+
   it.each([
     ['un autre port local', 'http://localhost:5173'],
     ['un autre port local, 127.0.0.1', 'http://127.0.0.1:3000'],

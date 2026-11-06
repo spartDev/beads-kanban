@@ -1,10 +1,13 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import { frameAncestorsPlugin } from './src/server/framing';
 
 export default defineConfig({
   root: 'src/web',
-  plugins: [react(), tailwindcss()],
+  // Le greffon d'encadrement en premier : en développement c'est Vite qui sert la page, et il refuse d'être encadré par une page d'un autre site comme le serveur de production
+  // (bdesk-38k.67). Un greffon et pas `server.headers`, que Vite 6.4.4 n'applique pas à la 304 d'une page revalidée : voir `refuseFramingInDev`, src/server/framing.ts.
+  plugins: [frameAncestorsPlugin(), react(), tailwindcss()],
   build: { outDir: '../../dist/web', emptyOutDir: true },
   server: {
     // En développement, l'API (src/server, `--dev`) tourne à part : tout ce qui commence par /api lui est transmis.

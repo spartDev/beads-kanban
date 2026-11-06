@@ -4,6 +4,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, 
 import type { ApiErrorBody } from '../shared/api';
 import { registerApi } from './api';
 import type { Config } from './config';
+import { refuseFraming } from './framing';
 import { createWatcherLog } from './live/log';
 import { registerLiveRoutes } from './live/routes';
 import { createHeadWatcher, type HeadWatcher } from './live/watcher';
@@ -101,7 +102,9 @@ export function buildServer({
   });
 
   if (webRoot) {
-    app.register(fastifyStatic, { root: webRoot });
+    // Le document HTML (`/`, `/index.html`, et le repli ci-dessous) refuse d'être encadré par une page d'un autre site (bdesk-38k.67) : voir `framing.ts`. Pas l'API, pas
+    // les fichiers, pas les 404 : seul un document se charge dans un cadre, et celui-là appelle l'API en `same-origin`, ce que le contrôle ci-dessus laisse passer.
+    app.register(fastifyStatic, { root: webRoot, setHeaders: refuseFraming });
     // Ce qui n'est ni un fichier ni une route de l'API : index.html pour les routes de l'app, 404 sinon.
     app.setNotFoundHandler((req, reply) => {
       if (isAppRoute(req)) return reply.sendFile('index.html');
