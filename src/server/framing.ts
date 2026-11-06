@@ -45,7 +45,18 @@ export function refuseFramingInDev(req: { url?: string }, res: { setHeader(name:
   next();
 }
 
-/** Le greffon de Vite qui installe `refuseFramingInDev`. `enforce: 'pre'` : son intergiciel est enregistré avant ceux des autres greffons, qui passeraient sinon devant le sien. */
+/**
+ * Le greffon de Vite qui installe `refuseFramingInDev`.
+ *
+ * `enforce: 'pre'` met le `configureServer` du greffon avant celui de tout greffon qui n'est pas `pre`, où qu'il soit dans `plugins`, et avant celui de `vite:esbuild`, le seul greffon de Vite qui en ait un
+ * (Vite 6.4.4 : `sortUserPlugins`, `resolvePlugins`).
+ *
+ * Deux choses passent quand même devant lui : un autre greffon `pre` placé plus haut dans `plugins` (entre greffons `pre`, c'est l'ordre de `plugins` qui décide), et un hook déclaré `{ order: 'pre' }`
+ * (`getSortedPluginsByHook`). Le greffon est premier ici parce qu'il est aussi en tête de `plugins` (vite.config.ts), devant ceux de React et de Tailwind, `pre` eux aussi.
+ *
+ * Ce n'est pas `enforce` qui place l'intergiciel avant ceux de Vite, mais l'absence de fonction de retour (voir `refuseFramingInDev`). Aujourd'hui aucun autre greffon (de Vite, de React, de Tailwind) n'enregistre
+ * d'intergiciel dans `configureServer` : sans `enforce`, la pile d'intergiciels serait la même. `enforce` tient cette place contre un greffon qu'on ajouterait sans `enforce`, où qu'on le mette dans `plugins`.
+ */
 export function frameAncestorsPlugin(): Plugin {
   return {
     name: 'frame-ancestors',

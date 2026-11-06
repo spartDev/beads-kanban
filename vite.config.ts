@@ -7,6 +7,8 @@ export default defineConfig({
   root: 'src/web',
   // Le greffon d'encadrement en premier : en développement c'est Vite qui sert la page, et il refuse d'être encadré par une page d'un autre site comme le serveur de production
   // (bdesk-38k.67). Un greffon et pas `server.headers`, que Vite 6.4.4 n'applique pas à la 304 d'une page revalidée : voir `refuseFramingInDev`, src/server/framing.ts.
+  // Le premier de la liste : il est `enforce: 'pre'` comme ceux de React et de Tailwind, et entre greffons `pre` c'est l'ordre de cette liste qui décide
+  // (voir `frameAncestorsPlugin`, src/server/framing.ts).
   plugins: [frameAncestorsPlugin(), react(), tailwindcss()],
   build: { outDir: '../../dist/web', emptyOutDir: true },
   server: {
