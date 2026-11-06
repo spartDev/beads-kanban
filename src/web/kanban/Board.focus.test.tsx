@@ -4,10 +4,11 @@ import { StrictMode, useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Issue } from '../data/types';
 import { refreshProject } from '../live/refresh';
+import { focusContainer } from '../lib/focus';
 import { withAsyncTimeout } from '../test/asyncTimeout';
 import { issue, projectsResponse } from '../test/fixtures';
 import { renderApp, stubApi } from '../test/render';
-import { focusCardOrZone, movedCardLink, useKeepFocusInBoard } from './boardFocus';
+import { focusCardOrZone, movedCardLink, openedFromCard, panelOpener, useKeepFocusInBoard } from './boardFocus';
 
 /**
  * Où est le focus quand ce qui l'avait dans le tableau disparaît sur un commit (bdesk-38k.59). La sélection du clavier est le focus de la carte (voir `useBoardShortcuts`) :
@@ -614,5 +615,190 @@ describe('movedCardLink et focusCardOrZone : la carte dont un élément a été 
 
     expect(focusCardOrZone($('main'), document.createElement('button'))).toBe(true);
     expect(document.activeElement).toBe($('main'));
+  });
+});
+
+/**
+ * L'origine que le panneau d'un ticket retient à son ouverture (bdesk-38k.72). L'élément qui a le focus, le lien de la carte au clavier comme à la souris dans Chromium et Firefox ; mais WebKit ne donne pas le focus au lien qu'on
+ * clique : le corps de la page l'a, ou le contenu principal quand il l'avait, et le lien de la carte, qui a écrit sa carte dans l'entrée d'historique qu'il ouvre (`openedFromCard`), est l'origine. Le DOM seul : le panneau
+ * (`IssuePanel`) l'appelle avec l'état de l'adresse et le type de navigation du routeur, les tests de l'application jouent le reste (`IssuePanel.opener.test.tsx`).
+ */
+describe('panelOpener : l’origine que le panneau d’un ticket retient à son ouverture', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  /** Un lien hors du tableau, le contenu principal avec deux cartes (`x` et `y`) du Projet `a` dont la première a une pastille d'Epic, et une carte `x` du Projet `b`, dans l'autre colonne. */
+  function mount() {
+    document.body.innerHTML =
+      '<nav><a id="barre" href="#barre">Métriques</a></nav>' +
+      '<main><ul id="a"><li data-card-id="x" data-card-project="a"><p><a id="carte" data-card-link="x" href="#x">X</a></p><div><a id="pastille" href="#epic">Epic</a></div></li>' +
+      '<li data-card-id="y" data-card-project="a"><p><a id="autre" data-card-link="y" href="#y">Y</a></p></li></ul><ul id="b"></ul></main>';
+    const $ = (selector: string) => document.querySelector<HTMLElement>(selector)!;
+    return { $, main: $('main') };
+  }
+  const fromX = openedFromCard('x', 'a');
+
+  it('un lien a le focus (au clavier, ou à la souris dans Chromium et Firefox) : c’est lui, quelle que soit la carte que l’adresse dit', () => {
+    const { $ } = mount();
+    $('#autre').focus();
+
+    expect(panelOpener(fromX, false)).toBe($('#autre'));
+    expect(panelOpener(null, false)).toBe($('#autre'));
+  });
+
+  it('le lien de la carte a le focus : c’est lui, avec ou sans l’adresse de la carte', () => {
+    const { $ } = mount();
+    $('#carte').focus();
+
+    expect(panelOpener(fromX, false)).toBe($('#carte'));
+    expect(panelOpener(null, false)).toBe($('#carte'));
+  });
+
+  it('un élément de la carte qui n’est pas son lien a le focus (la pastille d’Epic) : c’est lui, la carte le retrouve', () => {
+    const { $ } = mount();
+    $('#pastille').focus();
+
+    expect(panelOpener(fromX, false)).toBe($('#pastille'));
+  });
+
+  it('un lien hors du tableau a le focus (la barre latérale) : le clic sur la carte ne le lui aurait pas laissé, mais il n’est pas pris pour autant', () => {
+    const { $ } = mount();
+    $('#barre').focus();
+
+    expect(panelOpener(fromX, false)).toBe($('#barre'));
+  });
+
+  it('le corps de la page a le focus (WebKit) et le lien d’une carte ouvre le panneau : le lien de cette carte', () => {
+    const { $ } = mount();
+    expect(document.activeElement).toBe(document.body);
+
+    expect(panelOpener(fromX, false)).toBe($('#carte'));
+    expect(panelOpener(openedFromCard('y', 'a'), false)).toBe($('#autre'));
+  });
+
+  it('le contenu principal a le focus, qui contient la carte (WebKit le lui laisse : son clic ne quitte qu’un élément qu’il ne focalise pas) : le lien de la carte', () => {
+    const { $, main } = mount();
+    focusContainer(main);
+    expect(document.activeElement).toBe(main);
+
+    expect(panelOpener(fromX, false)).toBe($('#carte'));
+  });
+
+  it('l’élément qui avait le focus a été retiré : le focus n’est nulle part, le lien de la carte', () => {
+    const { $ } = mount();
+    const gone = document.createElement('button');
+    document.body.append(gone);
+    gone.focus();
+    gone.remove();
+
+    expect(panelOpener(fromX, false)).toBe($('#carte'));
+  });
+
+  it('« Retour » ou « Avancer » rouvre le panneau (POP) : l’entrée a gardé la carte, mais ce n’est pas un clic sur elle, et l’origine est l’élément qui a le focus', () => {
+    const { $ } = mount();
+
+    expect(panelOpener(fromX, true)).toBe(document.body);
+    $('#autre').focus();
+    expect(panelOpener(fromX, true)).toBe($('#autre'));
+  });
+
+  it.each<readonly [string, unknown]>([
+    ['aucun état (la palette, la pastille d’Epic, une ligne de la page Epics, l’adresse collée)', null],
+    ['un état indéfini', undefined],
+    ['un état vide', {}],
+    ['un état d’un autre auteur', { from: 'ailleurs' }],
+    ['du texte', 'x'],
+    ['un nombre', 42],
+    ['une carte nulle', { openedFromCard: null }],
+    ['une carte sans Projet', { openedFromCard: { id: 'x' } }],
+    ['une carte sans identifiant', { openedFromCard: { project: 'a' } }],
+    ['un identifiant qui n’est pas du texte', { openedFromCard: { id: 1, project: 'a' } }],
+    ['un Projet qui n’est pas du texte', { openedFromCard: { id: 'x', project: null } }],
+  ])('%s : le corps de la page, l’origine de WebKit à l’ordinaire', (_kind, state) => {
+    mount();
+
+    expect(panelOpener(state, false)).toBe(document.body);
+  });
+
+  it('la carte n’est pas dans le document (le ticket est supprimé, ou dans le tiroir « En pause » fermé) : l’élément qui a le focus', () => {
+    mount();
+
+    expect(panelOpener(openedFromCard('z', 'a'), false)).toBe(document.body);
+  });
+
+  it('une carte de même identifiant d’un autre Projet n’est pas la carte : l’élément qui a le focus', () => {
+    mount();
+
+    expect(panelOpener(openedFromCard('x', 'b'), false)).toBe(document.body);
+  });
+
+  it('les deux Projets ont une carte de même identifiant : celle du Projet de la carte qui a ouvert le panneau, quel que soit l’ordre du document', () => {
+    const { $ } = mount();
+    $('#b').insertAdjacentHTML('beforeend', '<li data-card-id="x" data-card-project="b"><p><a id="clone" data-card-link="x" href="#x">X</a></p></li>');
+    $('#a').insertAdjacentHTML('afterbegin', '<li data-card-id="x" data-card-project="c"><p><a id="avant" data-card-link="x" href="#x">X</a></p></li>'); // la première du document
+
+    expect(panelOpener(openedFromCard('x', 'b'), false)).toBe($('#clone'));
+    expect(panelOpener(openedFromCard('x', 'a'), false)).toBe($('#carte'));
+    expect(panelOpener(openedFromCard('x', 'c'), false)).toBe($('#avant'));
+  });
+
+  /*
+   * Le panneau resté ouvert : une autre carte, cliquée pendant qu'il l'est, remplace l'entrée d'historique sans le remonter. L'appel se refait avec l'origine déjà retenue (`previous`). La carte que l'état nomme la remplace aux
+   * mêmes conditions qu'à l'ouverture ; sinon c'est `previous` qui reste, et non l'élément qui a le focus (le panneau lui-même, le plus souvent, qui l'a pris à l'ouverture du ticket).
+   */
+  it('une autre carte remplace l’entrée du panneau resté ouvert, le corps de la page a le focus : son lien prend la place de l’origine d’avant', () => {
+    const { $ } = mount();
+
+    expect(panelOpener(openedFromCard('y', 'a'), false, $('#carte'))).toBe($('#autre'));
+  });
+
+  it('une autre carte remplace l’entrée du panneau resté ouvert, le contenu principal a le focus : de même', () => {
+    const { $, main } = mount();
+    focusContainer(main);
+
+    expect(panelOpener(openedFromCard('y', 'a'), false, $('#carte'))).toBe($('#autre'));
+  });
+
+  it('une autre carte remplace l’entrée du panneau resté ouvert, son lien a le focus (Chromium, Firefox, le clavier) : le même lien', () => {
+    const { $ } = mount();
+    $('#autre').focus();
+
+    expect(panelOpener(openedFromCard('y', 'a'), false, $('#carte'))).toBe($('#autre'));
+  });
+
+  it('aucune carte n’est écrite (un lien du panneau, la palette) : l’origine d’avant reste, non l’élément qui a le focus', () => {
+    const { $ } = mount();
+    $('#barre').focus();
+
+    expect(panelOpener(null, false, $('#carte'))).toBe($('#carte'));
+    expect(panelOpener({}, false, $('#carte'))).toBe($('#carte'));
+  });
+
+  it('le navigateur rouvre une entrée qui nomme une autre carte (POP) : l’origine d’avant reste', () => {
+    const { $ } = mount();
+
+    expect(panelOpener(openedFromCard('y', 'a'), true, $('#carte'))).toBe($('#carte'));
+  });
+
+  it('un autre élément a le focus (un lien de la barre latérale) : l’origine d’avant reste, la carte ne le lui prend pas', () => {
+    const { $ } = mount();
+    $('#barre').focus();
+
+    expect(panelOpener(openedFromCard('y', 'a'), false, $('#carte'))).toBe($('#carte'));
+  });
+
+  it('la carte nommée n’est plus dans le document, ou est d’un autre Projet : l’origine d’avant reste', () => {
+    const { $ } = mount();
+
+    expect(panelOpener(openedFromCard('z', 'a'), false, $('#carte'))).toBe($('#carte'));
+    expect(panelOpener(openedFromCard('y', 'b'), false, $('#carte'))).toBe($('#carte'));
+  });
+
+  it('le panneau n’avait aucune origine (`null`) : sans carte écrite, il n’en a toujours pas ; avec une carte, c’est elle', () => {
+    const { $ } = mount();
+
+    expect(panelOpener(null, false, null)).toBeNull();
+    expect(panelOpener(openedFromCard('y', 'a'), false, null)).toBe($('#autre'));
   });
 });

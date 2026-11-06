@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { vi } from 'vitest';
-import { createMemoryRouter, RouterProvider } from 'react-router';
+import { createMemoryRouter, type InitialEntry, RouterProvider } from 'react-router';
 import { epicOf } from '../../domain/epics';
 import type { Issue, IssueChronology, IssueDetail, IssueEpic, IssueRef, ProjectsResponse } from '../data/types';
 import { routes } from '../routes';
@@ -109,17 +110,21 @@ export function failRequests(fetchMock: ReturnType<typeof stubApi>, match: (url:
   return () => void fetchMock.mockImplementation(healthy);
 }
 
-/** Monte l'application entière (routes, thème, données) sur une URL. */
-export function renderApp(initialPath = '/') {
+/**
+ * Monte l'application entière (routes, thème, données) sur une URL, ou sur une entrée d'historique (`{ pathname, state }`) : comme un rechargement, qui retrouve l'état que
+ * le navigateur garde avec l'entrée (la navigation est alors un `POP`). `strict` : dans `StrictMode`, où le développement la monte (rendus et effets joués deux fois).
+ */
+export function renderApp(initialPath: InitialEntry = '/', { strict = false }: { strict?: boolean } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter(routes, { initialEntries: [initialPath] });
   const user = userEvent.setup();
-  const view = render(
+  const app = (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <RouterProvider router={router} />
       </ThemeProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const view = render(strict ? <StrictMode>{app}</StrictMode> : app);
   return { ...view, router, user, queryClient };
 }

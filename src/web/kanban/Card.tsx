@@ -7,6 +7,7 @@ import { statusLabel, typeMeta } from '../design/issue-palette';
 import { formatAge, formatDateTime } from '../lib/relativeTime';
 import { parsePath, paths } from '../paths';
 import { AbandonBadge, PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
+import { openedFromCard } from './boardFocus';
 import type { Lane } from './columns';
 import { epicName, epicShortName } from './epics';
 
@@ -24,6 +25,7 @@ const NAMED_BLOCKERS = 2;
  * Aucun glisser-déposer : le kanban est en lecture seule.
  * Elle porte son Projet (`data-card-project`) avec son identifiant (`data-card-id`) : les identifiants de tickets ne sont uniques que dans un Projet (deux copies ou deux clones d'un même
  * dépôt ont les mêmes), et c'est avec les deux qu'on la retrouve quand elle est remontée ailleurs (voir `movedCardLink`).
+ * Son lien écrit la carte (son identifiant et son Projet) dans l'entrée d'historique qu'il ouvre : le panneau du ticket y retrouve la carte d'où il vient, même quand le clic n'a pas donné le focus au lien (WebKit : voir `panelOpener`).
  */
 export function Card({
   issue,
@@ -70,6 +72,7 @@ export function Card({
         <Link
           to={{ pathname: paths.issue(projectId, issue.id), search }}
           replace={panelOpen}
+          state={openedFromCard(issue.id, projectId)}
           data-card-link={issue.id}
           aria-describedby={idId}
           className="block min-h-6 outline-none after:absolute after:inset-0 after:rounded-lg"

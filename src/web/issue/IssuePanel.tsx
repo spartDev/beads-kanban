@@ -1,10 +1,10 @@
 import { SearchX, X } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router';
+import { useLocation, useNavigationType, useParams } from 'react-router';
 import { ApiError } from '../data/client';
 import { ticketTitle } from '../data/helpers';
 import { useIssue } from '../data/hooks';
-import { focusCardOrZone } from '../kanban/boardFocus';
+import { focusCardOrZone, panelOpener } from '../kanban/boardFocus';
 import { focusElement, focusIsAdrift } from '../lib/focus';
 import { inertOutside } from '../lib/inert';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
@@ -34,7 +34,9 @@ const NARROW_SCREEN = '(max-width: 767.98px)';
  *
  * - Il prend le focus à l'ouverture et le rend à ce qui l'avait (la carte), pour que le clavier reprenne où il en était ; à défaut
  *   (adresse collée, champ de la palette qui l'a ouvert et qui est retiré depuis), au contenu principal, jamais au corps de la page
- *   (voir `restoreFocus`), et à la carte là où elle est maintenant quand un commit l'a changée de colonne entre-temps. Le corps du panneau change d'un coup d'état (l'avis d'erreur et son bouton « Réessayer » que le squelette remplace,
+ *   (voir `restoreFocus`), et à la carte là où elle est maintenant quand un commit l'a changée de colonne entre-temps. Ce qui l'avait est la carte
+ *   même quand le clic n'a pas donné le focus à son lien, ce que WebKit ne fait pas : le lien a écrit sa carte dans l'entrée d'historique (voir `panelOpener`). Une autre carte cliquée pendant que le panneau est ouvert en remplace
+ *   l'entrée sans le remonter : c'est elle, la dernière, qui reçoit le focus à la fermeture. Le corps du panneau change d'un coup d'état (l'avis d'erreur et son bouton « Réessayer » que le squelette remplace,
  *   le contenu qu'un 404 remplace) et ce qui y a le focus part avec lui : le panneau le prend avant, quelle que soit la cause du changement
  *   (un réessai, la fiche relue au retour sur l'onglet, le direct ; voir `keepFocusInPanel`). Après « Réessayer », il le donne au titre quand la
  *   fiche arrive, ce que le lecteur d'écran lit (voir `retry`).
@@ -102,9 +104,18 @@ export function IssuePanel() {
   }, [narrow]);
 
   // Le focus : pris à l'ouverture, à chaque ticket (celui qu'un lien du panneau avait est parti avec l'ancien contenu),
-  // et rendu à ce qui l'avait quand le panneau se ferme.
-  const [opener] = useState(() => document.activeElement);
-  useEffect(() => () => restoreFocus(opener), [opener]);
+  // et rendu à ce qui l'avait quand le panneau se ferme : la carte qui l'a ouvert, que son lien ait ou non reçu le focus du clic (voir `panelOpener`).
+  // Une autre carte cliquée pendant que le panneau est ouvert en remplace l'entrée sans le remonter : l'origine se refait au rendu de la nouvelle entrée, que le clic a laissé là où il a mis le focus (le
+  // panneau le prend ensuite, dans un effet), et la dernière carte la remplace. L'état est ajusté au rendu, avec l'entrée (`key`) pour dire pour laquelle : un rendu repris ne change rien.
+  const { state, key } = useLocation();
+  const navigationType = useNavigationType();
+  const [origin, setOrigin] = useState(() => ({ key, opener: panelOpener(state, navigationType === 'POP') }));
+  if (origin.key !== key) setOrigin({ key, opener: panelOpener(state, navigationType === 'POP', origin.opener) });
+  const opener = useRef(origin.opener);
+  useEffect(() => {
+    opener.current = origin.opener;
+  });
+  useEffect(() => () => restoreFocus(opener.current), []);
   useEffect(() => {
     retrying.current = false; // un réessai attendait la fiche d'un autre ticket : son issue n'est plus celle-ci
     panelRef.current?.focus({ preventScroll: true });
