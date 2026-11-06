@@ -1,5 +1,6 @@
 import type { Issue, IssueEpic } from '../data/types';
 import { collapseSpaces, isBlankTitle, isEpic, withoutInvisible } from '../data/helpers';
+import { BLANK_CHAR, INVISIBLE_CHAR, SELECTOR_CHAR } from '../lib/invisibleText';
 import { compareIssues } from './columns';
 
 /** Les tickets d'un Projet par identifiant. */
@@ -12,8 +13,30 @@ const MIN_HEAD = 3;
 const SEPARATOR = /\s*[:–—]\s+|\s+-\s+/;
 /** Les signes que ce séparateur lit (« : », « – », « — », « - »), seuls : ils ne forment pas un intitulé (`isUnnamed`). */
 const SEPARATOR_SIGNS = /[:–—-]/gu;
-/** Les blancs et les caractères sans largeur (`withoutInvisible`) au bord d'un texte : ils n'y lient rien, et n'y laissent qu'une pastille vide ou une ellipse seule. */
-const EDGE_BLANKS = /^[\s\p{Cf}]+|[\s\p{Cf}]+$/gu;
+/**
+ * Les blancs et les caractères qu'on ne voit pas (`withoutInvisible`) au bord d'un texte : ils n'y lient rien, et n'y laissent qu'une pastille vide ou une ellipse seule. La classe est celle de la règle des
+ * textes invisibles (`isInvisibleText`) : un remplisseur hangul (U+3164) s'y rogne comme une espace sans largeur, U+06DD, que la police dessine, y reste. Un sélecteur de variante derrière un caractère qu'on voit
+ * en fait partie (« ⚠ » suivi de U+FE0F) : il n'est pas rogné de la fin du titre.
+ *
+ * La série de la fin ne s'ancre qu'à son début (`(?<!…)`) : sans cela, `X+$` s'essayait à chaque position d'une longue série, et le temps croissait avec son carré (20 000 caractères sans largeur de suite :
+ * plusieurs secondes, déjà sur HEAD), quand une base modifiée à la main peut porter un tel titre.
+ */
+const EDGE_BLANKS = new RegExp(`^${INVISIBLE_CHAR}+|(?<!${INVISIBLE_CHAR})${INVISIBLE_CHAR}+$`, 'gu');
+const BLANK = new RegExp(BLANK_CHAR, 'u');
+/** La série de blancs et de sélecteurs de variante qui finit un texte, quand elle finit par un sélecteur. Elle ne s'ancre qu'à son début (`(?<!…)`), comme `EDGE_BLANKS` : le temps croît avec la longueur du texte, non avec son carré. */
+const TRAILING_RUN = new RegExp(`(?<!${BLANK_CHAR}|${SELECTOR_CHAR})(?:${BLANK_CHAR}|${SELECTOR_CHAR})*${SELECTOR_CHAR}$`, 'u');
+
+/**
+ * La tête sans les sélecteurs de variante qu'une espace sépare de ce qui précède, ni cette espace : « Alerte ⚠ », une espace et U+FE0F avant « : suite » n'ont pas à finir par une espace devant un sélecteur
+ * qu'on ne voit pas, comme le titre entier n'y finit pas (`EDGE_BLANKS`). Rien d'autre n'est rogné. HEAD ne rognait pas le bout d'une tête, et ce qu'il y laissait ne se retire pas : une marque de direction
+ * (U+200E, U+200F, U+061C, U+202A à U+202E, U+2066 à U+2069) règle, à travers l'espace, le sens des signes neutres qui la précèdent (le « ! » d'un mot hébreu change de côté sans elle), un liant ou l'étiquette
+ * d'un drapeau changent le dessin de ce qui les précède, une espace sans largeur ne change rien à ce qu'on voit mais la pastille de HEAD en garde la largeur : la tête n'en perd aucun (revue de bdesk-38k.70, B3).
+ */
+function withoutDetachedSelectors(head: string): string {
+  const run = TRAILING_RUN.exec(head);
+  const blank = run === null ? -1 : run[0].search(BLANK);
+  return run === null || blank < 0 ? head : head.slice(0, run.index + blank);
+}
 /** Découpe un texte en graphèmes : les caractères que l'œil lit comme un seul (un emoji de famille, un drapeau, une lettre et son accent écrits en deux morceaux). */
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
@@ -53,10 +76,12 @@ const isUnnamed = (title: string): boolean => isBlankTitle(title.replace(SEPARAT
  * (« beads-desktop V1 : suivi des tickets » donne « beads-desktop V1 »), sinon le titre, coupé à la fin d'un mot
  * et suivi d'une ellipse s'il dépasse `max` caractères.
  *
- * - Les caractères sans largeur n'en font pas partie : ceux des bords sont retirés, les autres ne comptent ni pour la limite ni pour la coupe, que l'écran ne voit pas.
+ * - Les caractères qu'on ne voit pas (sans largeur ou non : `isInvisibleText`) n'en font pas partie : ceux des bords sont retirés, les autres ne comptent ni pour la limite ni pour la coupe, que l'écran ne voit pas.
  * - La limite se mesure en forme composée (NFC) et la coupe tombe entre deux graphèmes, jamais dedans (`measure`, `visiblePrefix`). Le texte montré est celui du titre, tel qu'il est écrit. Rien
  *   de visible n'est coupé d'un titre qui n'est qu'un graphème plus long que la limite : il reste entier, sans ellipse, que des caractères sans largeur le suivent ou non.
  * - Un séparateur en tête du titre reste : le retirer changerait le sens (« – 5 °C »). Des blancs ou des caractères sans largeur devant lui n'y changent rien : la pastille est celle du titre visible.
+ * - La tête perd les sélecteurs de variante qu'une espace sépare de ce qui précède, avec cette espace, et rien d'autre (`withoutDetachedSelectors`). Pour tout titre où aucun caractère ne change de classe, la
+ *   pastille est celle de HEAD (`kanban/headParity.test.ts`).
  * - Un titre dont on ne tire pas de nom (`isUnnamed`) n'a pas de titre court : la chaîne vide. `epicShortName` y met l'identifiant.
  */
 export function shortTitle(title: string, max = 24): string {
@@ -64,8 +89,8 @@ export function shortTitle(title: string, max = 24): string {
   const clean = collapseSpaces(title).replace(EDGE_BLANKS, '');
   const head = clean.split(SEPARATOR)[0] ?? clean;
   // Un début trop mince (« V1 ») ne nomme rien : on garde le titre entier. Des caractères sans largeur n'y comptent pas : trois d'entre eux avant « : » passeraient
-  // le seuil et ne laisseraient qu'une pastille invisible.
-  const base = measure(head) >= MIN_HEAD ? head : clean;
+  // le seuil et ne laisseraient qu'une pastille invisible. La tête se mesure telle qu'elle est écrite, comme avant, et c'est ensuite qu'on en rogne le bout (`withoutDetachedSelectors`).
+  const base = measure(head) >= MIN_HEAD ? withoutDetachedSelectors(head) : clean;
   if (measure(base) <= max) return base;
   const cut = visiblePrefix(base, max - 1);
   // Un titre qui n'est qu'un graphème plus long que la limite (une lettre empilée de marques) reste entier, comme `visiblePrefix` le garde : rien de visible n'est coupé (ce qui suit la coupe n'est

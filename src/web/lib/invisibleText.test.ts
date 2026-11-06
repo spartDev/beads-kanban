@@ -16,6 +16,20 @@ describe('isInvisibleText', () => {
     expect(isInvisibleText(text)).toBe(false);
   });
 
+  // La règle est composée (blancs, puis caractères qu'on ne voit pas sans être des blancs) pour que les expressions qui rognent, mesurent et comparent les titres la prennent d'ici (bdesk-38k.70) : composée,
+  // elle doit dire ce que la règle d'une ligne disait. Chaque point de code est lu contre cette ligne, écrite ici à la main et non importée du code qu'elle éprouve.
+  it('dit invisibles les blancs d’Unicode, les caractères ignorables par défaut et le blanc braille, et aucun autre point de code', () => {
+    const LINE = /^[\p{White_Space}\p{Default_Ignorable_Code_Point}\u2800]*$/u;
+    const apart: string[] = [];
+    for (let code = 0; code <= 0x10ffff; code++) {
+      if (code >= 0xd800 && code <= 0xdfff) continue;
+      const char = String.fromCodePoint(code);
+      if (isInvisibleText(char) !== LINE.test(char)) apart.push(`U+${code.toString(16).toUpperCase().padStart(4, '0')}`);
+    }
+
+    expect(apart).toEqual([]);
+  });
+
   it('ne tient pour blanche que la cellule braille sans point (U+2800) : les 255 autres du bloc ont des points, et se voient', () => {
     for (let code = 0x2801; code <= 0x28ff; code++) expect(isInvisibleText(String.fromCodePoint(code)), `U+${code.toString(16)}`).toBe(false);
   });

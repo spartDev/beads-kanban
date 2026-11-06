@@ -41,6 +41,16 @@ describe('la pastille d’Epic lit le titre court de l’Epic', () => {
     ['un « é » écrit en deux caractères, que la coupe laisse passer : l’accent reste', 'A'.repeat(22) + 'e\u0301' + 'BBBB', 'A'.repeat(22) + 'e\u0301…'],
     ['un emoji de famille que la coupe laisse passer', 'A'.repeat(16) + '👨\u200d👩\u200d👧' + 'BBBB', 'A'.repeat(16) + '👨\u200d👩\u200d👧' + 'B…'],
     ['un titre qui n’est qu’un graphème plus long que la limite : rien n’est coupé, pas d’ellipse', 'x' + '\u0301'.repeat(40), 'x' + '\u0301'.repeat(40)],
+    // Ce que la police ne dessine pas se retire des bords de la pastille, ce qu'elle dessine y reste : la règle des textes invisibles, non la catégorie `Cf` (bdesk-38k.70).
+    ['un remplisseur hangul (U+3164) devant le nom', '\u3164Kanban', 'Kanban'],
+    ['une demi-chasse hangul (U+FFA0) derrière le nom', 'Kanban\uffa0', 'Kanban'],
+    ['des blancs braille (U+2800) devant un intitulé suivi d’un séparateur', '\u2800\u2800\u2800 : Refonte du shell', ': Refonte du shell'],
+    ['une marque arabe qui se dessine (U+06DD) devant le nom', '\u06ddKanban', '\u06ddKanban'],
+    ['un signe d’alerte en couleurs : son sélecteur de variante (U+FE0F) fait corps avec lui', 'Alerte ⚠\ufe0f', 'Alerte ⚠\ufe0f'],
+    // La tête d'un titre à séparateur : elle perd les sélecteurs qu'une espace sépare de ce qui précède, avec cette espace, et rien d'autre (bdesk-38k.70, revue finale : B3 et R2).
+    ['une espace et un sélecteur de variante (U+FE0F) qui finissent la tête : ni l’un ni l’autre n’est montré', 'Alerte ⚠ \ufe0f : suite du titre', 'Alerte ⚠'],
+    ['une espace et la marque droite-gauche (U+200F) derrière un mot hébreu : elle reste, le « ! » ne change pas de côté', 'שלום! \u200f : המשך', 'שלום! \u200f'],
+    ['« V1 », une espace et U+200B : la tête se mesure telle qu’elle est écrite, elle passe le seuil de trois', 'V1 \u200b : suite', 'V1 \u200b'],
   ])('pour %s', async (_kind, title, short) => {
     const pill = await pillOf(title);
 

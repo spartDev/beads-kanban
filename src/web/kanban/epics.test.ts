@@ -213,6 +213,107 @@ describe('shortTitle : un séparateur en tête reste dans la pastille', () => {
   });
 });
 
+// La pastille rogne et mesure ce qu'on ne voit pas selon la règle des textes invisibles (`isInvisibleText`, bdesk-38k.65), non selon la catégorie `Cf`, qui se trompe dans les deux sens : elle laissait
+// à la pastille d'une Epic « U+3164 Kanban » son remplisseur hangul, que la police ne dessine pas, et retirait U+06DD, que la police dessine (bdesk-38k.70). Chaque point de code est éprouvé contre
+// `isInvisibleText` dans `data/invisibleClass.test.ts` ; ici, les cas que l'on nomme.
+describe('shortTitle : ce qu’on ne voit pas, selon la règle des textes invisibles', () => {
+  it.each([
+    ['un remplisseur hangul (U+3164)', '\u3164'],
+    ['sa demi-chasse (U+FFA0)', '\uffa0'],
+    ['un blanc braille (U+2800)', '\u2800'],
+    ['un joint de graphèmes (U+034F)', '\u034f'],
+    ['une voyelle khmère inhérente (U+17B4)', '\u17b4'],
+    ['un saut de ligne de contrôle (U+0085)', '\u0085'],
+  ])('retire %s des bords du titre : devant « Kanban », derrière, en nombre, et mêlé à des blancs', (_kind, invisible) => {
+    expect(shortTitle(`${invisible}Kanban`)).toBe('Kanban');
+    expect(shortTitle(`Kanban${invisible}`)).toBe('Kanban');
+    expect(shortTitle(`${invisible.repeat(3)}Kanban${invisible.repeat(3)}`)).toBe('Kanban');
+    expect(shortTitle(` ${invisible} \u200b ${invisible}Kanban \u2060${invisible} `)).toBe('Kanban');
+  });
+
+  it('nomme l’Epic « U+3164 Kanban » comme « Kanban » : la pastille et son nom court', () => {
+    expect(epicShortName({ id: 'bdesk-e1', title: '\u3164Kanban' })).toBe('Kanban');
+    expect(epicShortName({ id: 'bdesk-e1', title: '\u3164Kanban : suivi des tickets' })).toBe('Kanban');
+    expect(epicShortName({ id: 'bdesk-e1', title: '\u2800\u3164 Kanban' })).toBe('Kanban');
+  });
+
+  it('ne garde pas pour nom une tête faite uniquement de tels caractères : le titre entier, moins ceux de son bord', () => {
+    expect(shortTitle('\u3164\u3164\u3164 : Refonte du shell')).toBe(': Refonte du shell');
+    expect(shortTitle('\u2800\u2800\u2800 - Refonte')).toBe('- Refonte');
+    expect(shortTitle('V1\u3164 : suivi des tickets')).toBe('V1\u3164 : suivi des tickets');
+  });
+
+  it('ne compte pas ces caractères pour de la place : ils ne passent ni la limite de la pastille ni son seuil', () => {
+    const fits = 'A'.repeat(20) + '\u3164'.repeat(10) + 'BBBB';
+    expect(shortTitle(fits)).toBe(fits);
+    expect(shortTitle(fits + 'C')).toBe('A'.repeat(20) + '\u3164'.repeat(10) + 'BBB…');
+  });
+
+  it('retire de même ceux qui précèdent l’ellipse : une coupe ne laisse pas un remplisseur devant « … »', () => {
+    expect(shortTitle('A'.repeat(23) + '\u3164' + 'B'.repeat(5))).toBe('A'.repeat(23) + '…');
+  });
+
+  // Ce que la catégorie `Cf` retirait, et que la police dessine : le signe nombre arabe, la marque de fin d'aya, l'abréviation syriaque, le début de nombre kaithi (`Prepended_Concatenation_Mark`).
+  describe.each([
+    ['la marque arabe U+06DD', '\u06dd', 1],
+    ['le signe nombre arabe U+0600', '\u0600', 1],
+    ['l’abréviation syriaque U+070F', '\u070f', 1],
+    ['le début de nombre kaithi U+110BD (hors du plan de base : deux unités de texte)', '\u{110bd}', 2],
+  ] as const)('%s se dessine', (_kind, drawn, units) => {
+    it('reste aux bords de la pastille : elle montre le titre tel qu’il est écrit', () => {
+      expect(shortTitle(`${drawn}Kanban`)).toBe(`${drawn}Kanban`);
+      expect(shortTitle(`Kanban${drawn}`)).toBe(`Kanban${drawn}`);
+      expect(shortTitle(` ${drawn} Kanban ${drawn} `)).toBe(`${drawn} Kanban ${drawn}`);
+    });
+
+    it('compte pour de la place, comme tout caractère qu’on voit', () => {
+      expect(shortTitle('A'.repeat(24 - units) + drawn)).toBe('A'.repeat(24 - units) + drawn);
+      expect(shortTitle('A'.repeat(25 - units) + drawn)).toBe('A'.repeat(23) + '…');
+    });
+
+    it('passe le seuil de la tête : trois d’entre eux nomment l’Epic, comme trois lettres', () => {
+      expect(shortTitle(`${drawn.repeat(3)} : Refonte du shell`)).toBe(drawn.repeat(3));
+    });
+  });
+
+  // « ⚠ » suivi de U+FE0F est le signe en couleurs, « ♻ » suivi de U+FE0F le recyclage des gitmojis : le sélecteur de variante change la façon de dessiner le caractère qui le précède. Il n'est invisible que
+  // seul, ou derrière un caractère invisible. Rogné du bord de la pastille, il ferait d'un titre ordinaire un autre signe (« Alerte ⚠ »), et il compte pour une unité, comme avant (bdesk-38k.70).
+  describe('un sélecteur de variante qui suit un caractère qu’on voit en fait partie', () => {
+    it.each([
+      ['un signe en couleurs, derrière le titre', 'Alerte ⚠\ufe0f'],
+      ['un signe en couleurs, devant le titre', '♻\ufe0f Refactor'],
+      ['un signe en couleurs, entre deux blancs', 'Docs ✏\ufe0f à jour'],
+      ['une touche (1, son sélecteur et le cadre combinant)', 'Touche 1\ufe0f\u20e3'],
+      ['un idéogramme et son sélecteur de variante étendu', '葛\u{e0100}'],
+      ['un signe et son sélecteur de texte (U+FE0E)', 'Alerte ⚠\ufe0e'],
+    ])('reste dans la pastille : %s', (_kind, title) => {
+      expect(shortTitle(title)).toBe(title);
+    });
+
+    it('compte pour une unité : le signe et son sélecteur en font deux', () => {
+      expect(shortTitle('A'.repeat(22) + '⚠\ufe0f')).toBe('A'.repeat(22) + '⚠\ufe0f');
+      expect(shortTitle('A'.repeat(23) + '⚠\ufe0f')).toBe('A'.repeat(23) + '…');
+    });
+
+    it.each([
+      ['un sélecteur mongol (U+180B)', '\u180b'],
+      ['un sélecteur de variante (U+FE0F)', '\ufe0f'],
+      ['un sélecteur de variante étendu (U+E0100)', '\u{e0100}'],
+    ])('rogne %s des bords quand il ne suit rien qu’on voie', (_kind, selector) => {
+      expect(shortTitle(`${selector}Kanban`)).toBe('Kanban');
+      expect(shortTitle(`Kanban\u200b${selector}`)).toBe('Kanban');
+      expect(shortTitle(`${selector}\u3164${selector}Kanban\u2800${selector}`)).toBe('Kanban');
+    });
+
+    it('n’est rogné que seul, ou derrière un caractère invisible', () => {
+      expect(shortTitle('\ufe0fKanban')).toBe('Kanban');
+      expect(shortTitle('Kanban\u200b\ufe0f')).toBe('Kanban');
+      expect(shortTitle('\u3164\ufe0fKanban')).toBe('Kanban');
+      expect(shortTitle('Alerte ⚠\ufe0f\ufe0f')).toBe('Alerte ⚠\ufe0f');
+    });
+  });
+});
+
 describe('epicChoices : le filtre Epic', () => {
   const issues = [
     at('closed-old', { type: 'epic', status: 'closed', updatedAt: '2026-08-01T09:00:00Z' }),
@@ -278,6 +379,51 @@ describe('epicLabels : de quoi reconnaître chaque Epic dans le filtre', () => {
       a: label,
       b: 'Refonte du shell (b)',
       c: 'Autre',
+    });
+  });
+
+  // Ni la catégorie `Cf` ni son absence ne disent ce qu'on voit : la règle des textes invisibles (`isInvisibleText`, bdesk-38k.65 et .70). Un remplisseur hangul, un blanc braille ou un joint de graphèmes
+  // ne se voient pas : « U+3164 Kanban » ne diffère de « Kanban » que par ce qu'on ne voit pas (le remplisseur ne laisse qu'une indentation) ; U+06DD se dessine, et « U+06DD Kanban » n'est pas « Kanban ».
+  it.each([
+    ['un remplisseur hangul (U+3164) en tête', '\u3164Kanban', '\u3164Kanban (a)'],
+    ['sa demi-chasse (U+FFA0) à la fin', 'Kanban\uffa0', 'Kanban\uffa0 (a)'],
+    ['un blanc braille (U+2800) au milieu d’un mot', 'Kan\u2800ban', 'Kan\u2800ban (a)'],
+    ['un joint de graphèmes (U+034F)', 'Kan\u034fban', 'Kan\u034fban (a)'],
+    ['une voyelle khmère inhérente (U+17B4)', 'Kanban\u17b4', 'Kanban\u17b4 (a)'],
+    ['un sélecteur de variante seul, en tête (U+FE0F)', '\ufe0fKanban', '\ufe0fKanban (a)'],
+  ])('distingue deux Epics qui ne diffèrent que par %s, que la catégorie `Cf` ne comptait pas : chacune porte son identifiant', (_kind, title, label) => {
+    expect(labels(epic('a', title), epic('b', 'Kanban'), epic('c', 'Autre'))).toEqual({ a: label, b: 'Kanban (b)', c: 'Autre' });
+  });
+
+  it.each([
+    ['la marque arabe U+06DD', 'Kan\u06ddban', 'Kanban'],
+    ['le signe nombre arabe U+0600, devant un nombre', '\u0600123', '123'],
+    ['l’abréviation syriaque U+070F', '\u070fKanban', 'Kanban'],
+    ['le début de nombre kaithi U+110BD', 'Kanban\u{110bd}', 'Kanban'],
+  ])('ne tient pas pour le même titre deux Epics que sépare %s : il se dessine, elles se lisent différemment', (_kind, title, plain) => {
+    expect(labels(epic('a', title), epic('b', plain))).toEqual({ a: title, b: plain });
+  });
+
+  // « Alerte ⚠ » et « Alerte ⚠ » suivi de U+FE0F se lisent différemment (le signe noir, le signe en couleurs) : le sélecteur de variante qui suit un caractère qu'on voit n'est pas invisible.
+  it('ne tient pas pour le même titre un signe et son signe en couleurs : le sélecteur de variante se voit derrière lui', () => {
+    expect(labels(epic('a', 'Alerte ⚠\ufe0f'), epic('b', 'Alerte ⚠'))).toEqual({ a: 'Alerte ⚠\ufe0f', b: 'Alerte ⚠' });
+  });
+
+  // « Alerte ⚠ », une espace et U+FE0F : le sélecteur ne suit pas le signe, il suit une espace, et le signe reste noir. Le libellé de l'option perdait cette espace en bout de titre, le sélecteur se collait au signe, et le
+  // filtre tenait l'Epic pour la même que « Alerte ⚠ » suivi de U+FE0F, qu'il montre en couleurs, quand les deux pastilles diffèrent (bdesk-38k.70, revue B1).
+  it.each([
+    ['une espace', ' ', '\ufe0f'],
+    ['une tabulation', '\u0009', '\ufe0f'],
+    ['un saut de ligne', '\u000a', '\ufe0f'],
+    ['une espace, et le sélecteur de texte (U+FE0E)', ' ', '\ufe0e'],
+  ])('ne tient pas pour le même titre « Alerte ⚠ », %s, un sélecteur de variante, et le signe suivi du sélecteur : l’espace du libellé reste', (_kind, blank, selector) => {
+    expect(labels(epic('a', `Alerte ⚠${blank}${selector}`), epic('b', `Alerte ⚠${selector}`))).toEqual({ a: `Alerte ⚠ ${selector}`, b: `Alerte ⚠${selector}` });
+  });
+
+  it('suit la règle pour l’option « Toutes les Epics » du filtre : un titre qui ne s’en distingue que par un caractère invisible porte son identifiant', () => {
+    expect(labels(epic('a', 'Toutes les Epics\u3164'), epic('b', 'Toutes les Epics\u06dd'))).toEqual({
+      a: 'Toutes les Epics\u3164 (a)',
+      b: 'Toutes les Epics\u06dd',
     });
   });
 
@@ -399,6 +545,72 @@ describe('epicName et epicShortName : le nom d’une Epic', () => {
   it('range les espaces du titre comme le titre court', () => {
     expect(epicName(epic('  Espaces   superflus  '))).toBe('Espaces superflus');
     expect(epicShortName(epic('  Espaces   superflus  '))).toBe('Espaces superflus');
+  });
+
+  // Le nom, l'infobulle et l'option du filtre disent le signe d'un titre « Alerte ⚠ », une espace, U+FE0F noir, comme la pastille le dit : l'espace ne tombe pas, le sélecteur ne se colle pas au signe (bdesk-38k.70, revue B1).
+  it('dit le signe noir pour un titre qui finit par « ⚠ », une espace et un sélecteur de variante, comme la pastille', () => {
+    expect(epicName(epic('Alerte ⚠ \ufe0f'))).toBe('Alerte ⚠ \ufe0f');
+    expect(epicName(epic('Alerte ⚠\ufe0f'))).toBe('Alerte ⚠\ufe0f');
+    expect(epicShortName(epic('Alerte ⚠ \ufe0f'))).toBe('Alerte ⚠');
+    expect(epicShortName(epic('Alerte ⚠\ufe0f'))).toBe('Alerte ⚠\ufe0f');
+  });
+
+  // B2 : le nom d'une Epic dont le titre finit par une lettre mongole et deux sélecteurs séparés par une espace garde cette espace (le deuxième sélecteur ne se colle pas à la lettre : Chromium y dessinerait une boîte
+  // pointillée numérotée), et la pastille, qui rogne l'espace et le sélecteur qui ne tiennent à rien, dit la lettre et son premier sélecteur.
+  it('garde l’espace devant un deuxième sélecteur de variante, et la pastille rogne ce qui ne tient à rien', () => {
+    expect(epicName(epic('A \u1824\u180b \u180c'))).toBe('A \u1824\u180b \u180c');
+    expect(epicShortName(epic('A \u1824\u180b \u180c'))).toBe('A \u1824\u180b');
+    expect(epicName(epic('A \u1824\u200d \u180b'))).toBe('A \u1824\u200d \u180b');
+    expect(epicShortName(epic('A \u1824\u200d \u180b'))).toBe('A \u1824');
+  });
+
+  // La fin de la tête d'un titre à séparateur est un bord de la pastille : « Alerte ⚠ », une espace, U+FE0F, puis « : suite » donnait une pastille qui finissait par une espace devant un sélecteur qu'on ne voit pas
+  // (bdesk-38k.70, remarque de la revue finale). Seuls les sélecteurs qu'une espace sépare de ce qui précède, et cette espace, en sont retirés : HEAD ne rognait pas le bout d'une tête, et tout ce qu'il y laissait
+  // reste (B3 : une marque de direction règle, à travers l'espace, le sens des signes neutres qui la précèdent).
+  it('rogne de la tête avant le séparateur les sélecteurs qu’une espace sépare de ce qui précède, avec cette espace : pas d’espace devant un sélecteur qu’on ne voit pas', () => {
+    expect(epicShortName(epic('Alerte ⚠ \ufe0f : suite du titre'))).toBe('Alerte ⚠');
+    expect(epicShortName(epic('Alerte ⚠ \ufe0f : suite du titre'))).toBe(epicShortName(epic('Alerte ⚠ \ufe0f')));
+    expect(epicShortName(epic('Alerte ⚠ \ufe0f\ufe0e : suite du titre'))).toBe('Alerte ⚠');
+    expect(epicShortName(epic('Alerte ⚠ \ufe0f \ufe0e - suite du titre'))).toBe('Alerte ⚠');
+    expect(epicShortName(epic('Alerte ⚠\ufe0f \ufe0e : suite du titre'))).toBe('Alerte ⚠\ufe0f');
+    expect(epicShortName(epic('Alerte ⚠\ufe0f : suite du titre'))).toBe('Alerte ⚠\ufe0f');
+  });
+
+  it('garde à la tête tout le reste, comme sur HEAD : les étiquettes d’un drapeau, un liant, une espace sans largeur, une espace devant eux', () => {
+    const scotland = '🏴\u{e0067}\u{e0062}\u{e0073}\u{e0063}\u{e0074}\u{e007f}';
+    expect(epicShortName(epic(`Epic ${scotland} : suite du titre`))).toBe(`Epic ${scotland}`);
+    expect(epicShortName(epic('Refonte\u200b : suite du titre'))).toBe('Refonte\u200b');
+    expect(epicShortName(epic('Refonte \u200b : suite du titre'))).toBe('Refonte \u200b');
+    expect(epicShortName(epic('Refonte \u200d : suite du titre'))).toBe('Refonte \u200d');
+    expect(epicShortName(epic('Refonte \u200b\ufe0f : suite du titre'))).toBe('Refonte \u200b\ufe0f');
+  });
+
+  // B3 : une marque de direction que sépare une espace du texte qui la précède donne leur sens aux signes neutres d'avant : le « ! » d'un mot hébreu, le « ؟ » d'un mot arabe. Sans elle le signe change de côté
+  // dans la pastille. Aucun caractère de contrôle de direction n'est rogné de la tête.
+  it.each([
+    ['U+200E, la marque gauche-droite', '\u200e'],
+    ['U+200F, la marque droite-gauche', '\u200f'],
+    ['U+061C, la marque arabe', '\u061c'],
+    ['U+202A, l’enchâssement gauche-droite', '\u202a'],
+    ['U+202B, l’enchâssement droite-gauche', '\u202b'],
+    ['U+202C, la fin d’enchâssement', '\u202c'],
+    ['U+202D, le forçage gauche-droite', '\u202d'],
+    ['U+202E, le forçage droite-gauche', '\u202e'],
+    ['U+2066, l’isolat gauche-droite', '\u2066'],
+    ['U+2067, l’isolat droite-gauche', '\u2067'],
+    ['U+2068, l’isolat de premier fort', '\u2068'],
+    ['U+2069, la fin d’isolat', '\u2069'],
+  ])('garde à la tête la marque de direction que sépare une espace : %s', (_kind, mark) => {
+    expect(epicShortName(epic(`שלום! ${mark} : המשך`))).toBe(`שלום! ${mark}`);
+    expect(epicShortName(epic(`مرحبا؟ ${mark} : تتمة`))).toBe(`مرحبا؟ ${mark}`);
+    expect(epicShortName(epic(`Alerte ⚠ \ufe0f ${mark} : suite du titre`))).toBe(`Alerte ⚠ \ufe0f ${mark}`);
+  });
+
+  // R2 : la tête se mesure telle qu'elle est écrite, avant qu'on en rogne le bout : « V1 », une espace et un caractère sans largeur passent le seuil de trois, comme sur HEAD.
+  it('mesure la tête avant d’en rogner le bout : « V1 » et une espace passent le seuil', () => {
+    expect(epicShortName(epic('V1 \u200b : suite'))).toBe('V1 \u200b');
+    expect(epicShortName(epic('V1 \ufe0f : suite'))).toBe('V1');
+    expect(epicShortName(epic('V1 : suite'))).toBe('V1 : suite');
   });
 
   it.each<readonly [string, string]>([
