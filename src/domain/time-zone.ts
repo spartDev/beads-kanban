@@ -38,13 +38,3 @@ export function canonicalTimeZone(name: unknown): string | undefined {
 export function isKnownTimeZone(name: unknown): name is string {
   return canonicalTimeZone(name) !== undefined;
 }
-
-/**
- * Vrai si les deux noms sont le même fuseau : `Asia/Kolkata` et `Asia/Calcutta` (Firefox rend l'un, Chromium et Node l'autre), `UTC` et `Etc/UTC`.
- * Un nom que ce moteur ne connaît pas n'est le même que lui-même.
- */
-export function sameTimeZone(a: string, b: string): boolean {
-  if (a === b) return true;
-  const canonical = canonicalTimeZone(a);
-  return canonical !== undefined && canonical === canonicalTimeZone(b);
-}

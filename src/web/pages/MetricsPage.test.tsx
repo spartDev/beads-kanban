@@ -524,16 +524,22 @@ describe('la page Métriques et le serveur comptent dans le même fuseau : celui
 
 /**
  * Relecture de bdesk-38k.48, bug 1 : Chromium connaît `America/Coyhaique` (tz 2025b), Node 22.13 non. Le serveur ne refuse plus (400) un fuseau qu'il
- * ne connaît pas : il compte dans le sien et le nomme dans `timeZone`. La page compare ce nom à celui qu'elle a demandé, le dit, et compte « aujourd'hui »
- * dans le fuseau de la réponse, pour que les plages qu'elle accepte soient celles que le serveur sert.
+ * ne connaît pas : il compte dans le sien, le nomme dans `timeZone` et dit qu'il n'a pas honoré celui qu'on lui demandait (`timeZoneHonoured`, bdesk-38k.71).
+ * La page lit ce drapeau, sans comparer de noms, le dit, et compte « aujourd'hui » dans le fuseau de la réponse, pour que les plages qu'elle accepte soient
+ * celles que le serveur sert.
  */
 describe('la page Métriques quand le serveur ne connaît pas le fuseau du navigateur', () => {
   // 23:30 UTC le 4 novembre : le 5 à 00:30 à Paris, encore le 4 à UTC.
   const LATE = new Date('2026-11-04T23:30:00.000Z');
-  /** Le serveur ne connaît pas le fuseau demandé : il compte dans le sien, UTC, et le dit. */
-  const serverInUtc = () => metricsFixture({ timeZone: 'UTC' });
+  /** Le serveur ne connaît pas le fuseau demandé : il compte dans le sien, UTC, et dit qu'il n'a pas honoré celui de la page. */
+  const serverInUtc = () => metricsFixture({ timeZone: 'UTC', timeZoneHonoured: false });
   const NOTICE = 'Le serveur ne connaît pas votre fuseau, Europe/Paris';
   const customTo = () => screen.getByLabelText('Au') as HTMLInputElement;
+  /** Une navigation de l'application, sans recharger la page : le cache des requêtes, lui, reste. */
+  const go = (router: { navigate: (to: string) => Promise<void> }, to: string) =>
+    act(async () => {
+      await router.navigate(to);
+    });
 
   withTimeZone('Europe/Paris');
 
@@ -544,7 +550,7 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
 
     // Une région de statut nommée par son titre (bdesk-38k.61) : un lecteur d'écran dit de quoi elle parle.
     const notice = await screen.findByRole('status', { name: NOTICE });
-    expect(plain(notice.textContent)).toContain('Les jours, les semaines et les heures de ces chiffres sont comptés en UTC, le fuseau du serveur.');
+    expect(plain(notice.textContent)).toContain('Les jours, les semaines et les heures des métriques sont comptés en UTC, le fuseau du serveur.');
     expect(screen.getByRole('heading', { level: 2, name: 'Indicateurs' })).toBeTruthy(); // les chiffres sont là : la page n'est pas en panne
   });
 
@@ -619,6 +625,204 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
     } finally {
       process.env.TZ = 'Europe/Paris';
     }
+  });
+
+  /**
+   * bdesk-38k.71 (R1) : l'avis disait où les jours sont comptés, et disparaissait pendant que la période suivante se calculait (la page garde alors les chiffres de
+   * la précédente, atténués : ils sont comptés dans le même fuseau du serveur, et passaient sans lui) pour revenir avec la réponse. Il suit la dernière réponse du
+   * serveur, tant que le fuseau du navigateur est le même.
+   */
+  it('garde l’avis pendant que la période suivante se calcule : les chiffres gardés à l’écran sont comptés dans le fuseau du serveur, ils ne passent pas sans lui', async () => {
+    vi.setSystemTime(LATE);
+    let release: (() => void) | undefined;
+    const fetchMock = api((url) =>
+      url.searchParams.get('range') === '7d'
+        ? new Promise<MetricsReply>((resolve) => (release = () => resolve(serverInUtc())))
+        : serverInUtc(),
+    );
+    const { user } = await loaded();
+    const notice = await screen.findByRole('status', { name: NOTICE });
+
+    await user.click(within(period()).getByRole('radio', { name: '7 jours' }));
+    await waitFor(() => expect(metricsRequests(fetchMock).at(-1)).toBe('/api/metrics?project=bdesk&range=7d&timeZone=Europe%2FParis'));
+    // Les chiffres des 30 jours sont gardés, atténués, en attendant ceux des 7 jours : l'avis les accompagne toujours.
+    expect(document.querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(screen.getByRole('status', { name: NOTICE })).toBe(notice);
+
+    await act(async () => release?.());
+    await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
+    expect(screen.getByRole('status', { name: NOTICE })).toBe(notice); // le même nœud : ni retiré ni remis, la page ne saute pas
+    expect(notice.isConnected).toBe(true);
+  });
+
+  it('ne retire l’avis à aucun moment d’une suite de changements de période : il reste le même nœud du début à la fin', async () => {
+    vi.setSystemTime(LATE);
+    const fetchMock = api(serverInUtc);
+    const { user } = await loaded();
+    const notice = await screen.findByRole('status', { name: NOTICE });
+    const removals: string[] = [];
+    const note = (records: MutationRecord[]) => {
+      for (const record of records) for (const node of record.removedNodes) if (node.contains(notice)) removals.push(node.nodeName);
+    };
+    const watch = new MutationObserver(note);
+    watch.observe(document.body, { childList: true, subtree: true });
+
+    try {
+      for (const [label, range] of [['7 jours', '7d'], ['90 jours', '90d']] as const) {
+        await user.click(within(period()).getByRole('radio', { name: label }));
+        await waitFor(() => expect(metricsRequests(fetchMock).at(-1)).toBe(`/api/metrics?project=bdesk&range=${range}&timeZone=Europe%2FParis`));
+        await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
+      }
+      await user.click(within(period()).getByRole('radio', { name: 'Personnalisée' }));
+      await waitFor(() => expect(metricsRequests(fetchMock).at(-1)).toContain('from='));
+      await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
+      note(watch.takeRecords());
+    } finally {
+      watch.disconnect();
+    }
+
+    expect(removals).toEqual([]);
+    expect(screen.getByRole('status', { name: NOTICE })).toBe(notice);
+  });
+
+  it('retire l’avis quand la réponse suivante honore le fuseau demandé : il suit la dernière réponse du serveur, pas la première', async () => {
+    vi.setSystemTime(LATE);
+    let serverKnowsTheZone = false;
+    api((url) => (serverKnowsTheZone ? inRequestedZone(url) : serverInUtc()));
+    const { user } = await loaded();
+    await screen.findByRole('status', { name: NOTICE });
+
+    serverKnowsTheZone = true; // le serveur a été mis à jour : un fuseau plus récent que son ICU lui est maintenant connu
+    await user.click(screen.getByRole('button', { name: 'Actualiser les métriques' }));
+
+    await waitFor(() => expect(screen.queryByRole('status', { name: NOTICE })).toBeNull());
+    await user.click(within(period()).getByRole('radio', { name: 'Personnalisée' }));
+    expect(customTo().max).toBe('2026-11-05'); // et « aujourd'hui » est de nouveau celui de Paris
+  });
+
+  it('garde l’avis quand la période suivante échoue : le fuseau du serveur n’a pas changé, et « Réessayer » rendra des chiffres qui en dépendent', async () => {
+    vi.setSystemTime(LATE);
+    let healthy = false;
+    api((url) => (url.searchParams.get('range') === '7d' && !healthy ? new Error('database is locked') : serverInUtc()));
+    const { user } = await loaded();
+    const notice = await screen.findByRole('status', { name: NOTICE });
+
+    await user.click(within(period()).getByRole('radio', { name: '7 jours' }));
+    expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy();
+    expect(screen.getByRole('status', { name: NOTICE })).toBe(notice);
+
+    healthy = true;
+    await user.click(page().getByRole('button', { name: /Réessayer/ }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Indicateurs' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: NOTICE })).toBe(notice);
+  });
+
+  /**
+   * bdesk-38k.71 (M4) : « ces chiffres » suppose des chiffres à l'écran. L'avis, lui, reste quand la période suivante échoue et sous le squelette d'une page qui s'ouvre :
+   * il parle des métriques, avec ou sans chiffres, et d'une seule phrase (un texte qui change dans une région de statut peut être relu par un lecteur d'écran).
+   */
+  it('parle des métriques, et non de « ces chiffres », qu’aucun chiffre ne soit à l’écran ou que d’autres reviennent : une période qui échoue', async () => {
+    vi.setSystemTime(LATE);
+    let healthy = false;
+    api((url) => (url.searchParams.get('range') === '7d' && !healthy ? new Error('database is locked') : serverInUtc()));
+    const { user } = await loaded();
+    const notice = await screen.findByRole('status', { name: NOTICE });
+    const sentence = 'Les jours, les semaines et les heures des métriques sont comptés en UTC, le fuseau du serveur.';
+    expect(plain(notice.textContent)).toContain(sentence);
+
+    await user.click(within(period()).getByRole('radio', { name: '7 jours' }));
+    expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy(); // aucun chiffre à l'écran
+
+    const alone = screen.getByRole('status', { name: NOTICE });
+    expect(alone).toBe(notice);
+    expect(plain(alone.textContent)).toContain(sentence);
+    expect(plain(alone.textContent)).not.toContain('ces chiffres');
+
+    healthy = true;
+    await user.click(page().getByRole('button', { name: /Réessayer/ }));
+    expect(await screen.findByRole('heading', { level: 2, name: 'Indicateurs' })).toBeTruthy();
+    expect(plain(screen.getByRole('status', { name: NOTICE }).textContent)).toContain(sentence); // la même phrase : le texte de la région de statut ne change pas
+  });
+
+  /**
+   * bdesk-38k.71 (M1) : la dernière réponse du serveur vit dans le cache des requêtes, pas dans la vue. De la page d'un Projet à la Vue globale, l'avis est là dès que la
+   * nouvelle page s'affiche, sous son squelette, au lieu de ne revenir qu'avec la réponse.
+   */
+  it('garde l’avis de la page d’un Projet à la Vue globale : il est là sous son squelette, et reste le même nœud quand les chiffres arrivent', async () => {
+    vi.setSystemTime(LATE);
+    let release: (() => void) | undefined;
+    const fetchMock = api((url) =>
+      url.searchParams.has('project') ? serverInUtc() : new Promise<MetricsReply>((resolve) => (release = () => resolve(serverInUtc()))),
+    );
+    const { router } = await loaded();
+    await screen.findByRole('status', { name: NOTICE });
+
+    await go(router, '/');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Vue globale' })).toBeTruthy();
+    await waitFor(() => expect(metricsRequests(fetchMock).at(-1)).toBe('/api/metrics?range=30d&timeZone=Europe%2FParis'));
+    // La Vue globale attend ses chiffres : l'avis est déjà là, et ne parle pas de « ces chiffres » faute d'en montrer.
+    expect(screen.queryByRole('heading', { level: 2, name: 'Indicateurs' })).toBeNull();
+    const notice = screen.getByRole('status', { name: NOTICE });
+    expect(plain(notice.textContent)).toContain('Les jours, les semaines et les heures des métriques sont comptés en UTC, le fuseau du serveur.');
+
+    await act(async () => release?.());
+    expect(await screen.findByRole('heading', { level: 2, name: 'Indicateurs' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: NOTICE })).toBe(notice); // le même nœud, et la même phrase
+    expect(plain(notice.textContent)).toContain('Les jours, les semaines et les heures des métriques sont comptés en UTC, le fuseau du serveur.');
+  });
+
+  it('garde l’avis au retour de la Vue globale à la page d’un Projet, dès le premier affichage', async () => {
+    vi.setSystemTime(LATE);
+    api(serverInUtc);
+    const { router } = await loaded();
+    await screen.findByRole('status', { name: NOTICE });
+    await go(router, '/');
+    await screen.findByRole('heading', { level: 2, name: 'Indicateurs' });
+    await screen.findByRole('status', { name: NOTICE });
+
+    await go(router, '/p/bdesk/metrics');
+
+    expect(screen.getByRole('status', { name: NOTICE })).toBeTruthy(); // dans le même rendu que la page : sans attendre la réponse
+  });
+
+  it('ne garde pas l’avis d’un navigateur qui a changé de fuseau en passant à la Vue globale : la dernière réponse est celle du fuseau demandé', async () => {
+    vi.setSystemTime(LATE);
+    let release: (() => void) | undefined;
+    api((url) =>
+      url.searchParams.get('timeZone') === 'Europe/Paris'
+        ? serverInUtc() // Paris : le serveur ne le connaît pas, il compte en UTC
+        : new Promise<MetricsReply>((resolve) => (release = () => resolve(inRequestedZone(url)))), // Tokyo : il le connaît, mais répond tard
+    );
+    const { router } = await loaded();
+    await screen.findByRole('status', { name: NOTICE });
+
+    try {
+      process.env.TZ = 'Asia/Tokyo'; // le navigateur change de fuseau pendant que la page est ouverte
+      await go(router, '/');
+      expect(await screen.findByRole('heading', { level: 1, name: 'Vue globale' })).toBeTruthy();
+      await waitFor(() => expect(release).toBeDefined());
+      // En attendant la réponse de Tokyo, la réponse en UTC, pour Paris, ne dit rien du fuseau de Tokyo.
+      expect(screen.queryByText(/Le serveur ne connaît pas votre fuseau/)).toBeNull();
+
+      await act(async () => release?.());
+      expect(await screen.findByRole('heading', { level: 2, name: 'Indicateurs' })).toBeTruthy();
+      expect(screen.queryByText(/Le serveur ne connaît pas votre fuseau/)).toBeNull();
+    } finally {
+      process.env.TZ = 'Europe/Paris';
+    }
+  });
+
+  // bdesk-38k.71 : la page ne compare plus de noms. Le serveur sait s'il a compté dans le fuseau demandé, quel que soit le nom qu'il lui donne.
+  it('lit le drapeau du serveur, pas les noms : un fuseau honoré sous un autre nom ne fait rien dire, et « aujourd’hui » reste celui du navigateur', async () => {
+    vi.setSystemTime(LATE);
+    // Un nom qui n'a rien à voir avec Paris, pour qu'aucune comparaison de noms ne puisse donner le même résultat : c'est le drapeau qui parle.
+    api(() => metricsFixture({ timeZone: 'Pacific/Honolulu', timeZoneHonoured: true }));
+    const { user } = await loaded();
+
+    expect(screen.getByTitle('Fuseau Pacific/Honolulu')).toBeTruthy(); // les chiffres de la réponse sont à l'écran, écrits dans son fuseau
+    expect(screen.queryByText(/Le serveur ne connaît pas votre fuseau/)).toBeNull();
+    await user.click(within(period()).getByRole('radio', { name: 'Personnalisée' }));
+    expect(customTo().max).toBe('2026-11-05'); // le fuseau demandé, honoré : le jour de Paris, pas celui de Honolulu (le 4)
   });
 
   describe('et le même fuseau sous un autre nom', () => {

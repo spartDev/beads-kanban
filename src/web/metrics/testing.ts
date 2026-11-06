@@ -248,6 +248,8 @@ export function metricsFixture(overrides: Partial<MetricsResponse> = {}): Metric
   return {
     generatedAt: AS_OF,
     timeZone: 'Europe/Paris',
+    // Honoré par défaut : le serveur a compté dans le fuseau que la page lui demandait, quel qu'il soit. Un test qui veut un serveur qui ne le connaît pas dit `timeZoneHonoured: false`.
+    timeZoneHonoured: true,
     projects: [
       { id: 'bdesk', name: 'beads-desktop' },
       { id: 'mpm', name: 'My-Prompt-Manager' },

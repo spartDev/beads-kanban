@@ -89,7 +89,8 @@ describe('la page et le serveur (en UTC) comptent « aujourd’hui » dans le m�
 
     expect(timeZone).toBe(zone);
     expect(res.statusCode).toBe(200);
-    expect(res.json<MetricsResponse>()).toMatchObject({ timeZone: zone, period: { to: today, from: addDays(today, -6) } });
+    // Le serveur compte dans le fuseau que la page lui donne, sous le même nom, et dit qu'il l'a honoré (bdesk-38k.71) : l'avis de la page se lit là.
+    expect(res.json<MetricsResponse>()).toMatchObject({ timeZone: zone, timeZoneHonoured: true, period: { to: today, from: addDays(today, -6) } });
   });
 
   it.each(cases)('%s à %s : la plage qui finit aujourd’hui, que la page accepte, est acceptée ; celle qui finit demain, qu’elle refuse, est refusée', async (zone, instant) => {

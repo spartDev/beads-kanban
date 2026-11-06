@@ -80,6 +80,25 @@ describe('service de métriques : le fuseau que la requête demande (bdesk-38k.4
     expect(response.period).toMatchObject({ from: '2026-10-29', to: '2026-11-04', days: 7 });
   });
 
+  // bdesk-38k.71 : le serveur sait s'il a compté dans le fuseau que la requête demandait, et le dit (`timeZoneHonoured`) : la page n'a plus à comparer deux noms.
+  it('dit qu’il a honoré le fuseau demandé : il a compté dedans, et le nomme', async () => {
+    const response = await serverInUtc(lateDelivery().service).compute({ ...week, timeZone: 'Europe/Paris' });
+
+    expect(response).toMatchObject({ timeZone: 'Europe/Paris', timeZoneHonoured: true });
+  });
+
+  it('l’honore aussi quand le fuseau demandé est celui du serveur : le drapeau dit ce qu’il a fait, pas si les deux fuseaux diffèrent', async () => {
+    const response = await serverInUtc(lateDelivery().service).compute({ ...week, timeZone: 'UTC' });
+
+    expect(response).toMatchObject({ timeZone: 'UTC', timeZoneHonoured: true });
+  });
+
+  it('dit qu’il ne l’a pas honoré quand la requête n’en demande pas : il compte dans le sien, que la réponse nomme', async () => {
+    const response = await serverInUtc(lateDelivery().service).compute(week);
+
+    expect(response).toMatchObject({ timeZone: 'UTC', timeZoneHonoured: false });
+  });
+
   it('accepte la plage qui finit aujourd’hui pour le navigateur, que le serveur refuserait dans son fuseau (« dans le futur »)', async () => {
     const metrics = serverInUtc(lateDelivery().service);
     const endsToday = { projects: [], period: { from: '2026-10-30', to: '2026-11-05' } };
@@ -149,7 +168,7 @@ describe('GET /api/metrics?timeZone=… (bdesk-38k.48)', () => {
     const res = await get('/api/metrics?range=7d&timeZone=Europe%2FParis');
 
     expect(res.statusCode).toBe(200);
-    expect(res.json<MetricsResponse>()).toMatchObject({ timeZone: 'Europe/Paris', period: { from: '2026-10-30', to: '2026-11-05' } });
+    expect(res.json<MetricsResponse>()).toMatchObject({ timeZone: 'Europe/Paris', timeZoneHonoured: true, period: { from: '2026-10-30', to: '2026-11-05' } });
   });
 
   it('accepte à 00:30 à Paris la plage de la page, qu’il refusait (400) quand il ne connaissait pas le fuseau du navigateur', async () => {
@@ -170,7 +189,16 @@ describe('GET /api/metrics?timeZone=… (bdesk-38k.48)', () => {
 
     const res = await get('/api/metrics?range=7d');
 
-    expect(res.json<MetricsResponse>()).toMatchObject({ timeZone: 'UTC', period: { to: '2026-11-04' } });
+    expect(res.json<MetricsResponse>()).toMatchObject({ timeZone: 'UTC', timeZoneHonoured: false, period: { to: '2026-11-04' } });
+  });
+
+  // Le serveur est en UTC : demander UTC est honoré, et ce n'est pas parce que les deux fuseaux se ressemblent qu'il dit autre chose.
+  it('honore UTC quand il est lui-même en UTC : le drapeau dit qu’il a compté dans le fuseau demandé', async () => {
+    const { get } = serve();
+
+    const res = await get('/api/metrics?range=7d&timeZone=UTC');
+
+    expect(res.json<MetricsResponse>()).toMatchObject({ timeZone: 'UTC', timeZoneHonoured: true });
   });
 
   // Relecture, bug 1 : Chromium connaît `America/Coyhaique` (tz 2025b) et Node 22.13 non (ICU 76.1, tz 2024b). Avec un 400, la page Métriques et la Vue
@@ -186,7 +214,7 @@ describe('GET /api/metrics?timeZone=… (bdesk-38k.48)', () => {
       const res = await get(`/api/metrics?range=7d&timeZone=${zone}`);
 
       expect(res.statusCode).toBe(200);
-      expect(res.json<MetricsResponse>()).toMatchObject({ timeZone: 'UTC', period: { from: '2026-10-29', to: '2026-11-04' } });
+      expect(res.json<MetricsResponse>()).toMatchObject({ timeZone: 'UTC', timeZoneHonoured: false, period: { from: '2026-10-29', to: '2026-11-04' } });
     });
 
     it('ne refuse pas non plus la plage du jour du serveur : la page, qui compte « aujourd’hui » dans le fuseau de la réponse, la demande ensuite', async () => {
@@ -217,13 +245,17 @@ describe('GET /api/metrics?timeZone=… (bdesk-38k.48)', () => {
       ['europe%2Fparis', 'Europe/Paris'],
       ['utc', 'UTC'],
       ['etc%2Futc', 'UTC'],
-    ])('timeZone=%s : « timeZone » vaut %s dans la réponse', async (zone, canonical) => {
+      // Les alias que les moteurs ne nomment pas tous de la même façon (Firefox envoie `Europe/Kyiv` et `Asia/Kolkata`, Node répond `Europe/Kiev` et `Asia/Calcutta`) :
+      // c'est le même fuseau, et le serveur l'a honoré. La page n'a pas à le deviner par les noms (bdesk-38k.71).
+      ['Europe%2FKyiv', 'Europe/Kiev'],
+      ['Asia%2FKolkata', 'Asia/Calcutta'],
+    ])('timeZone=%s : « timeZone » vaut %s dans la réponse, et le fuseau est honoré', async (zone, canonical) => {
       const { get } = serve();
 
       const res = await get(`/api/metrics?range=7d&timeZone=${zone}`);
 
       expect(res.statusCode).toBe(200);
-      expect(res.json<MetricsResponse>().timeZone).toBe(canonical);
+      expect(res.json<MetricsResponse>()).toMatchObject({ timeZone: canonical, timeZoneHonoured: true });
     });
 
     it('sert la même réponse, jours compris, à toutes les casses d’un fuseau', async () => {

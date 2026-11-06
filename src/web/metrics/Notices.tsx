@@ -18,13 +18,19 @@ export function AddressNotices({ notices }: { notices: readonly string[] }) {
 
 /**
  * Le serveur ne connaît pas le fuseau du navigateur (un fuseau plus récent que son ICU : Chromium sait `America/Coyhaique`, Node 22.13 non) : il a compté
- * dans le sien et l'a nommé dans sa réponse. Les chiffres sont justes dans ce fuseau ; la page dit lequel, au lieu d'en écrire les jours et les heures sans le
- * dire (bdesk-38k.48, relecture). Un avis, pas une panne : il n'a ni bouton ni couleur d'alerte. Une région de statut nommée par son titre, comme tout `Notice`.
+ * dans le sien, l'a nommé dans sa réponse et a dit qu'il n'honorait pas celui qu'on lui demandait (`timeZoneHonoured`). Les chiffres sont justes dans ce fuseau ; la page
+ * dit lequel, au lieu d'en écrire les jours et les heures sans le dire (bdesk-38k.48, relecture). Un avis, pas une panne : il n'a ni bouton ni couleur d'alerte. Une région
+ * de statut nommée par son titre, comme tout `Notice`.
+ *
+ * Il se montre tant que la dernière réponse du serveur le dit et que le fuseau du navigateur n'a pas changé (`MetricsView`), y compris pendant qu'une autre période
+ * se calcule, quand une période échoue et sous le squelette d'une page qui s'ouvre : retiré puis remis avec la réponse, il faisait sauter la page et laissait passer
+ * sans lui les chiffres gardés (bdesk-38k.71). Il n'a donc pas toujours de chiffres à côté de lui : il parle des métriques, et non de « ces chiffres », que la période
+ * suivante soit en attente, en échec ou à l'écran. Une seule phrase pour tous ces états : un texte qui change dans une région de statut peut être relu par un lecteur d'écran.
  */
 export function ZoneNotice({ asked, counted }: { asked: string; counted: string }) {
   return (
     <Notice icon={Info} title={`Le serveur ne connaît pas votre fuseau, ${asked}`}>
-      Les jours, les semaines et les heures de ces chiffres sont comptés en {counted}, le fuseau du serveur.
+      Les jours, les semaines et les heures des métriques sont comptés en {counted}, le fuseau du serveur.
     </Notice>
   );
 }

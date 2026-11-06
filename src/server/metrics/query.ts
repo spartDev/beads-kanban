@@ -26,7 +26,8 @@ const DEFAULT_PRESET: MetricsRangePreset = '30d';
  * - Un nom que le serveur connaît sort sous le nom que le moteur lui donne (`eUrOpE/pArIs` devient `Europe/Paris`, `utc` devient `UTC`) : un fuseau,
  *   un seul nom, pour la réponse comme pour les formateurs que le domaine garde par fuseau.
  * - Un nom qu'il ne connaît pas (un fuseau plus récent que l'ICU de Node : Chromium sait `America/Coyhaique`, Node 22.13 non) n'est pas une erreur : la
- *   requête n'a pas de fuseau, le service compte dans le sien et la réponse le nomme, ce que la page compare au sien. Refuser mettait la page hors service.
+ *   requête n'a pas de fuseau, le service compte dans le sien, la réponse le nomme et dit qu'elle n'a pas honoré celui qu'on lui demandait
+ *   (`timeZoneHonoured`), ce que la page dit à son tour. Refuser mettait la page hors service.
  * - Un fuseau vide, répété ou qui n'est pas un texte reste refusé (400) : la requête est mal faite.
  */
 export function parseMetricsQuery(query: Record<string, unknown>): MetricsQuery {

@@ -16,8 +16,9 @@ export interface MetricsQuery {
   /**
    * Le fuseau IANA qui découpe les jours de cette requête : celui du navigateur qui la pose (bdesk-38k.48), pour que « aujourd'hui » soit le
    * même jour pour la page et pour le serveur. Absent, celui du service (`MetricsServiceOptions.timeZone`) : la requête n'en demandait pas, ou
-   * demandait un fuseau que ce serveur ne connaît pas (`parseMetricsQuery` l'écarte), et la réponse nomme celui qui a servi. Sous le nom que le
-   * moteur lui donne (`canonicalTimeZone`), que `Intl` connaît : le domaine lève une `RangeError` sur un autre.
+   * demandait un fuseau que ce serveur ne connaît pas (`parseMetricsQuery` l'écarte), et la réponse nomme celui qui a servi et dit qu'elle n'a pas honoré
+   * le fuseau demandé (`MetricsResponse.timeZoneHonoured`, bdesk-38k.71). Sous le nom que le moteur lui donne (`canonicalTimeZone`), que `Intl` connaît :
+   * le domaine lève une `RangeError` sur un autre.
    */
   timeZone?: string;
 }
@@ -134,11 +135,12 @@ export function createMetricsService(
   }
 
   return {
-    async compute({ projects: ids, period, timeZone: zone = timeZone }, { signal } = {}) {
+    async compute({ projects: ids, period, timeZone: asked }, { signal } = {}) {
       if (signal?.aborted) throw new ReadAborted();
       const at = now();
       // Les jours se comptent dans le fuseau de la requête, puis dans celui du service : l'analyse d'un Projet, elle, n'en dépend pas (ce sont des
       // instants), et un fuseau de plus ne coûte ni une lecture ni une entrée du cache.
+      const zone = asked ?? timeZone;
       resolvePeriod(period, at.getTime(), zone); // une période invalide échoue avant de lancer le moindre processus dolt
 
       const { projects: known } = await projects.list();
@@ -175,6 +177,9 @@ export function createMetricsService(
       return {
         generatedAt: at.toISOString(),
         timeZone: zone,
+        // Honoré : la requête demandait un fuseau, `parseMetricsQuery` ne l'a gardé que s'il est reconnu, et c'est lui qui a servi. Le serveur sait ce qu'il a fait de la demande ; la page
+        // n'a pas à le deviner en comparant le nom qu'elle a envoyé à celui de la réponse (bdesk-38k.71).
+        timeZoneHonoured: asked !== undefined,
         projects: measured.map(({ id, name }) => ({ id, name })),
         unreadable,
         ...computeMetrics(measured, { period, now: at, timeZone: zone }),

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../data/client';
 import { createQueryClient, useProjects } from '../data/hooks';
 import { projectsResponse } from '../test/fixtures';
-import { metricsKey, metricsQuery, useMetrics, type MetricsRequest } from './api';
+import { lastZoneAnswer, metricsKey, metricsQuery, useMetrics, useZoneAnswer, type MetricsRequest } from './api';
 import { metricsFixture } from './testing';
 
 const json = (body: unknown, status = 200) =>
@@ -44,6 +44,121 @@ describe('metricsKey', () => {
     const period = { kind: 'preset', range: '7d' } as const;
 
     expect(metricsKey({ period, timeZone: 'Europe/Paris' })).not.toEqual(metricsKey({ period, timeZone: 'Asia/Tokyo' }));
+  });
+});
+
+/**
+ * bdesk-38k.71 : ce que le serveur a répondu, la dernière fois, au fuseau que la page lui demandait. Le cache des requêtes le sait déjà : chaque réponse de métriques dit
+ * dans quel fuseau elle a été comptée (`timeZone`) et si c'est celui qu'on demandait (`timeZoneHonoured`), quels que soient le Projet et la période. Il survit à la vue,
+ * donc à la navigation d'une page de métriques à l'autre.
+ */
+describe('lastZoneAnswer', () => {
+  const week: MetricsRequest['period'] = { kind: 'preset', range: '7d' };
+  const month: MetricsRequest['period'] = { kind: 'preset', range: '30d' };
+  const inUtc = metricsFixture({ timeZone: 'UTC', timeZoneHonoured: false });
+  const client = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  /** Une réponse déjà là, comme après une requête réussie ; `updatedAt` la date. */
+  const seed = (c: QueryClient, request: MetricsRequest, data: ReturnType<typeof metricsFixture>, updatedAt?: number) =>
+    c.setQueryData(metricsKey(request), data, updatedAt === undefined ? undefined : { updatedAt });
+
+  it('ne dit rien d’un cache sans réponse', () => {
+    expect(lastZoneAnswer(client(), 'Europe/Paris')).toBeUndefined();
+  });
+
+  it('rend le fuseau où le serveur a compté et dit s’il a honoré celui qu’on lui demandait', () => {
+    const c = client();
+    seed(c, { project: 'bdesk', period: week, timeZone: 'Europe/Paris' }, inUtc);
+
+    expect(lastZoneAnswer(c, 'Europe/Paris')).toEqual({ counted: 'UTC', honoured: false });
+  });
+
+  it('lit aussi la réponse d’un honoré : le fuseau demandé, tel que le serveur le nomme', () => {
+    const c = client();
+    seed(c, { period: week, timeZone: 'Europe/Paris' }, metricsFixture({ timeZone: 'Europe/Paris', timeZoneHonoured: true }));
+
+    expect(lastZoneAnswer(c, 'Europe/Paris')).toEqual({ counted: 'Europe/Paris', honoured: true });
+  });
+
+  it('lit la réponse d’un autre Projet, de la Vue globale ou d’une autre période : le serveur dit la même chose de son fuseau à tous', () => {
+    for (const request of [
+      { project: 'mpm', period: month, timeZone: 'Europe/Paris' },
+      { period: week, timeZone: 'Europe/Paris' },
+    ]) {
+      const c = client();
+      seed(c, request, inUtc);
+
+      expect(lastZoneAnswer(c, 'Europe/Paris')).toEqual({ counted: 'UTC', honoured: false });
+    }
+  });
+
+  it('ne lit pas la réponse à un autre fuseau demandé : celle d’un navigateur qui a changé de fuseau ne dit rien du nouveau', () => {
+    const c = client();
+    seed(c, { project: 'bdesk', period: week, timeZone: 'Europe/Paris' }, inUtc);
+
+    expect(lastZoneAnswer(c, 'Asia/Tokyo')).toBeUndefined();
+  });
+
+  it('prend la plus récente quand elles se contredisent : un serveur mis à jour entre-temps connaît le fuseau', () => {
+    const request = (period: MetricsRequest['period']): MetricsRequest => ({ project: 'bdesk', period, timeZone: 'Europe/Paris' });
+    const honoured = metricsFixture({ timeZone: 'Europe/Paris', timeZoneHonoured: true });
+    for (const [older, newer] of [
+      [inUtc, honoured],
+      [honoured, inUtc],
+    ] as const) {
+      const c = client();
+      seed(c, request(week), older, 1_000);
+      seed(c, request(month), newer, 2_000);
+      // Créées dans l'ordre inverse de leur date : c'est la date qui compte, pas l'ordre du cache.
+      const d = client();
+      seed(d, request(month), newer, 2_000);
+      seed(d, request(week), older, 1_000);
+
+      expect(lastZoneAnswer(c, 'Europe/Paris')?.honoured).toBe(newer.timeZoneHonoured);
+      expect(lastZoneAnswer(d, 'Europe/Paris')?.honoured).toBe(newer.timeZoneHonoured);
+    }
+  });
+
+  it('prend, à égalité de date, la dernière arrivée dans le cache (une horloge qui ne bouge pas)', () => {
+    const c = client();
+    seed(c, { project: 'bdesk', period: week, timeZone: 'Europe/Paris' }, inUtc, 1_000);
+    seed(c, { project: 'bdesk', period: month, timeZone: 'Europe/Paris' }, metricsFixture({ timeZone: 'Europe/Paris', timeZoneHonoured: true }), 1_000);
+
+    expect(lastZoneAnswer(c, 'Europe/Paris')).toEqual({ counted: 'Europe/Paris', honoured: true });
+  });
+
+  it('ne lit que des réponses : une requête sans données, en attente ou en échec, ne dit rien', () => {
+    const c = client();
+    const pending = (request: MetricsRequest) => c.getQueryCache().build(c, { queryKey: metricsKey(request) }); // créée, jamais aboutie
+    pending({ project: 'bdesk', period: week, timeZone: 'Europe/Paris' });
+    seed(c, { project: 'bdesk', period: month, timeZone: 'Europe/Paris' }, inUtc, 1_000);
+    pending({ project: 'mpm', period: week, timeZone: 'Europe/Paris' });
+
+    expect(lastZoneAnswer(c, 'Europe/Paris')).toEqual({ counted: 'UTC', honoured: false });
+  });
+
+  it('ne lit pas ce qui n’est pas une requête de métriques', () => {
+    const c = client();
+    c.setQueryData(['projects', 'Europe/Paris'], { projects: [] });
+    c.setQueryData(['metrics-autre', '*', '7d', 'Europe/Paris'], inUtc);
+
+    expect(lastZoneAnswer(c, 'Europe/Paris')).toBeUndefined();
+  });
+});
+
+describe('useZoneAnswer', () => {
+  it('rend la dernière réponse du cache, et la garde quand la vue qui la demandait n’est plus là', async () => {
+    const wrap = sharedWrapper();
+    vi.stubGlobal('fetch', vi.fn(async () => json(metricsFixture({ timeZone: 'UTC', timeZoneHonoured: false }))));
+    const first = renderHook(() => ({ metrics: useMetrics({ project: 'bdesk', period: { kind: 'preset', range: '7d' }, timeZone }), zone: useZoneAnswer(timeZone) }), { wrapper: wrap });
+    expect(first.result.current.zone).toBeUndefined(); // avant la première réponse, rien ne dit que le serveur ne connaît pas le fuseau
+    await waitFor(() => expect(first.result.current.metrics.isSuccess).toBe(true));
+    expect(first.result.current.zone).toEqual({ counted: 'UTC', honoured: false });
+    first.unmount();
+
+    // Une autre vue, sur le même cache, sans avoir rien demandé encore : elle sait déjà (de la page d'un Projet à la Vue globale).
+    const second = renderHook(() => useZoneAnswer(timeZone), { wrapper: wrap });
+
+    expect(second.result.current).toEqual({ counted: 'UTC', honoured: false });
   });
 });
 

@@ -1,4 +1,4 @@
-import { queryOptions, useQuery } from '@tanstack/react-query';
+import { queryOptions, type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MetricsResponse } from '../../shared/api';
 import { apiGet } from '../data/client';
 import { withProjectLabels, withProjectNames } from '../data/projectNames';
@@ -17,13 +17,49 @@ export interface MetricsRequest {
   /**
    * Le fuseau IANA dans lequel le serveur compte les jours : celui du navigateur (`browserTimeZone`), dans lequel la page choisit aussi
    * « aujourd'hui ». Une seule source pour les deux : les jours que la page accepte sont ceux que le serveur compte (bdesk-38k.48). S'il ne le
-   * connaît pas, il compte dans le sien et la réponse le nomme : la page le dit et compte alors « aujourd'hui » dans celui-là (`MetricsView`).
+   * connaît pas, il compte dans le sien, la réponse le nomme et dit qu'elle n'a pas honoré celui-ci (`timeZoneHonoured`) : la page le dit et compte
+   * alors « aujourd'hui » dans celui du serveur (`MetricsView`).
    */
   timeZone: string;
 }
 
 /** Clé de cache : le Projet (`*` pour la Vue globale), la période, puis le fuseau : les chiffres d'un fuseau ne servent pas à un autre. */
 export const metricsKey = ({ project, period, timeZone }: MetricsRequest) => ['metrics', project ?? '*', periodKey(period), timeZone] as const;
+
+/** Ce que le serveur a répondu, la dernière fois, au fuseau que la page lui demandait (voir `lastZoneAnswer`). */
+export interface ZoneAnswer {
+  /** Le fuseau dans lequel il a compté (`MetricsResponse.timeZone`). */
+  counted: string;
+  /** Il a compté dans le fuseau demandé (`MetricsResponse.timeZoneHonoured`) ; sinon il ne le connaît pas, et `counted` est le sien. */
+  honoured: boolean;
+}
+
+/**
+ * La dernière réponse du serveur au fuseau `timeZone` que la page lui demandait, lue dans le cache des requêtes : chaque réponse de métriques dit dans quel fuseau elle a
+ * été comptée et si c'est celui qu'on demandait, et le serveur le dit de la même façon à tous, quels que soient le Projet et la période. Celle d'un autre Projet, de la
+ * Vue globale ou de la période précédente vaut donc autant que celle qu'on attend. Le cache survit à la vue : de la page d'un Projet à la Vue globale, la page sait déjà.
+ * La plus récente l'emporte (un serveur mis à jour entre-temps connaît le fuseau) ; à égalité de date, la dernière arrivée dans le cache. Les réponses à un autre fuseau
+ * demandé ne comptent pas : le fuseau est le quatrième élément de la clé (`metricsKey`), et un navigateur qui a changé de fuseau n'hérite pas de la réponse du précédent.
+ */
+export function lastZoneAnswer(client: QueryClient, timeZone: string): ZoneAnswer | undefined {
+  let latest: { at: number; answer: ZoneAnswer } | undefined;
+  for (const query of client.getQueryCache().findAll({ queryKey: ['metrics'] })) {
+    const response = query.state.data as MetricsResponse | undefined;
+    if (response === undefined || query.queryKey[3] !== timeZone) continue;
+    if (latest === undefined || query.state.dataUpdatedAt >= latest.at) {
+      latest = { at: query.state.dataUpdatedAt, answer: { counted: response.timeZone, honoured: response.timeZoneHonoured } };
+    }
+  }
+  return latest?.answer;
+}
+
+/**
+ * `lastZoneAnswer` du cache de l'application. Lu sans abonnement : la vue qui s'en sert observe déjà sa propre requête, et c'est la réponse de celle-ci qui, la première,
+ * change ce que le cache sait de ce fuseau.
+ */
+export function useZoneAnswer(timeZone: string): ZoneAnswer | undefined {
+  return lastZoneAnswer(useQueryClient(), timeZone);
+}
 
 export function metricsQuery(request: MetricsRequest) {
   return queryOptions({

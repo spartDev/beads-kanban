@@ -1,7 +1,7 @@
 import { FolderSearch } from 'lucide-react';
-import { useCallback, useId, useMemo, useState } from 'react';
+import { useCallback, useId, useMemo } from 'react';
 import { useSearchParams } from 'react-router';
-import { isKnownTimeZone, sameTimeZone } from '../../domain/time-zone';
+import { isKnownTimeZone } from '../../domain/time-zone';
 import type { MetricsResponse } from '../../shared/api';
 import { useProjects } from '../data/hooks';
 import { cx } from '../lib/cx';
@@ -9,7 +9,7 @@ import { browserTimeZone } from '../lib/instant';
 import { useRetryFocus } from '../lib/useRetryFocus';
 import { paths } from '../paths';
 import { ErrorNotice, Notice } from '../ui/states';
-import { useMetrics } from './api';
+import { useMetrics, useZoneAnswer } from './api';
 import { ActivityPanel } from './ActivityMap';
 import { AgePanel } from './AgeChart';
 import { BalancePanel } from './BalanceChart';
@@ -56,12 +56,16 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
   // dépasser, et les jours que le serveur compte pour elle (`timeZone` de la requête, bdesk-38k.48). Un autre fuseau côté serveur ferait refuser
   // une plage valable, ou arrêter « 7 derniers jours » à la veille, entre minuit et l'heure de l'écart.
   const asked = browserTimeZone();
-  // Sauf si le serveur ne le connaît pas (un fuseau plus récent que son ICU) : il compte alors dans le sien et le nomme dans sa réponse. « Aujourd'hui »
-  // se compte dans ce fuseau-là, celui des jours que la page reçoit, pour que les plages qu'elle accepte soient celles que le serveur sert ; la page
-  // continue pourtant de demander le fuseau du navigateur, qu'un serveur à jour comptera. Avant la première réponse, rien ne dit que le serveur ne
-  // le connaît pas : on compte dans le fuseau demandé.
-  const [answered, setAnswered] = useState<{ asked: string; counted: string }>();
-  const counted = answered?.asked === asked && isKnownTimeZone(answered.counted) ? answered.counted : asked;
+  // Sauf si le serveur ne le connaît pas (un fuseau plus récent que son ICU) : il compte alors dans le sien, le nomme dans sa réponse et dit qu'il n'a pas honoré le fuseau demandé
+  // (`timeZoneHonoured`, bdesk-38k.71). « Aujourd'hui » se compte dans ce fuseau-là, celui des jours que la page reçoit, pour que les plages qu'elle accepte soient celles que le
+  // serveur sert ; la page continue pourtant de demander le fuseau du navigateur, qu'un serveur à jour comptera. Avant la première réponse, rien ne dit que le serveur ne le
+  // connaît pas : on compte dans le fuseau demandé. Honoré, c'est le même fuseau, quel que soit le nom que la réponse lui donne : la page ne compare pas de noms.
+  //
+  // C'est la dernière réponse du serveur à ce fuseau qui le dit, celle du cache des requêtes, et non celle des chiffres affichés : pendant qu'une période se calcule, ces
+  // chiffres sont ceux de la précédente (`isPlaceholderData`), comptés dans le même fuseau du serveur ; et le cache survit à la vue, d'une page de métriques à l'autre.
+  const lastAnswer = useZoneAnswer(asked);
+  const elsewhere = lastAnswer !== undefined && !lastAnswer.honoured ? lastAnswer : undefined;
+  const counted = elsewhere !== undefined && isKnownTimeZone(elsewhere.counted) ? elsewhere.counted : asked;
   const today = todayIn(counted);
   const { period, by, notices } = useMemo(() => parseMetricsParams(searchParams, kind, today), [searchParams, kind, today]);
 
@@ -69,10 +73,6 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
   const retry = useRetryFocus(query);
   const projects = useProjects();
   const data = query.data;
-  // La réponse qui vient d'arriver dit dans quel fuseau elle a été comptée. Celle qu'on garde le temps de la suivante (`isPlaceholderData`) peut venir
-  // d'un autre fuseau demandé : elle ne répond pas à celui-ci.
-  const fresh = data !== undefined && !query.isPlaceholderData ? data : undefined;
-  if (fresh !== undefined && (answered?.asked !== asked || answered.counted !== fresh.timeZone)) setAnswered({ asked, counted: fresh.timeZone });
   const ctx = useSeriesContext(data?.projects ?? [], projects.data?.projects);
 
   const changePeriod = useCallback((next: PeriodChoice) => setSearchParams((current) => withPeriod(current, next), { replace: true }), [setSearchParams]);
@@ -106,7 +106,9 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
         {query.isFetching && data ? 'Calcul des métriques en cours…' : ''}
       </p>
 
-      {fresh !== undefined && !sameTimeZone(fresh.timeZone, asked) ? <ZoneNotice asked={asked} counted={fresh.timeZone} /> : null}
+      {/* L'avis suit la dernière réponse du serveur, pas les chiffres affichés : pendant que la période suivante se calcule, les chiffres gardés sont encore ceux de la
+          précédente, comptés dans le même fuseau du serveur. Retiré puis remis avec la réponse, il faisait sauter la page (bdesk-38k.71). */}
+      {elsewhere !== undefined ? <ZoneNotice asked={asked} counted={elsewhere.counted} /> : null}
 
       {notices.length > 0 ? <AddressNotices notices={notices} /> : null}
 

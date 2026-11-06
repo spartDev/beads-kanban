@@ -276,7 +276,8 @@ export interface LiveChangeEvent {
  *   &from=YYYY-MM-DD&to=YYYY-MM-DD   ou une plage personnalisée, bornes incluses (jamais avec `range`)
  *   &timeZone=<IANA>   le fuseau dans lequel compter les jours (Europe/Paris) ; la page envoie celui de son navigateur. Absent : celui du serveur.
  *                      Un nom que le serveur ne connaît pas (un fuseau plus récent que son ICU) n'est pas une erreur : il compte dans le sien, et
- *                      `MetricsResponse.timeZone` nomme celui qui a servi. Vide ou répété : 400
+ *                      `MetricsResponse.timeZone` nomme celui qui a servi, tandis que `MetricsResponse.timeZoneHonoured` dit qu'il n'a pas
+ *                      compté dans celui qu'on lui demandait. Vide ou répété : 400
  *
  * Les durées sont des nombres de millisecondes : des Durées écoulées, sauf l'âge d'un Prêt, qui est un Âge calendaire (voir
  * CONTEXT.md). Les instants sont des chaînes ISO 8601 en UTC ;
@@ -713,9 +714,17 @@ export interface MetricsResponse extends MetricsReport {
   generatedAt: string;
   /**
    * Fuseau IANA des jours, des buckets et de la Carte d'activité : celui que la requête demande (`timeZone`) si le serveur le connaît, sous le nom que son
-   * moteur lui donne (`eUrOpE/pArIs` devient `Europe/Paris`) ; à défaut celui du serveur. La page le compare à ce qu'elle a demandé.
+   * moteur lui donne (`eUrOpE/pArIs` devient `Europe/Paris`) ; à défaut celui du serveur.
    */
   timeZone: string;
+  /**
+   * Vrai si le serveur a compté dans le fuseau que la requête demandait (`timeZone` de la requête), quel que soit le nom que `timeZone` lui donne : `Europe/Kyiv`
+   * demandé et `Europe/Kiev` rendu, c'est le même fuseau, et honoré. Faux s'il a compté dans le sien : la requête n'en demandait pas (un autre client que la page), ou
+   * demandait un fuseau qu'il ne connaît pas (plus récent que son ICU), et `timeZone` nomme alors celui du serveur. La page en tire son avis « Le serveur ne connaît pas
+   * votre fuseau » : le serveur sait ce qu'il a fait de la demande, et la page n'a pas à le deviner en comparant deux noms, que les moteurs ne donnent pas tous de la même
+   * façon à un fuseau (bdesk-38k.71).
+   */
+  timeZoneHonoured: boolean;
   /** Les Projets mesurés, dans l'ordre de `GET /api/projects`. */
   projects: MetricsProject[];
   /** Les Projets lisibles en moins : ils sont listés ici sans faire échouer le reste. */

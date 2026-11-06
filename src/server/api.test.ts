@@ -321,6 +321,7 @@ describe('API des métriques', () => {
     expect(body).toMatchObject({
       generatedAt: NOW.toISOString(),
       timeZone: 'Europe/Paris',
+      timeZoneHonoured: false, // la requête ne demande pas de fuseau : le serveur compte dans le sien (bdesk-38k.71)
       range: '30d',
       projects: [{ id: 'beads-desktop', name: 'beads-desktop' }],
       unreadable: [],
@@ -331,7 +332,7 @@ describe('API des métriques', () => {
     expect(Object.keys(body).sort()).toEqual(
       [
         'asOf', 'bucket', 'buckets', 'cfd', 'cycleTimeScatter', 'generatedAt', 'health', 'inProgress', 'period', 'previousAsOf', 'previousPeriod',
-        'projects', 'range', 'slices', 'tiles', 'timeZone', 'unreadable',
+        'projects', 'range', 'slices', 'tiles', 'timeZone', 'timeZoneHonoured', 'unreadable',
       ].sort(),
     );
     // Santé du flux (bdesk-38k.13) : un ajout au contrat, les clés précédentes sont inchangées.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canonicalTimeZone, FALLBACK_TIME_ZONE, isKnownTimeZone, sameTimeZone } from './time-zone';
+import { canonicalTimeZone, FALLBACK_TIME_ZONE, isKnownTimeZone } from './time-zone';
 
 describe('isKnownTimeZone', () => {
   it.each(['UTC', 'Europe/Paris', 'America/New_York', 'Asia/Kolkata', 'Etc/UTC', 'europe/paris'])('reconnaît %s', (name) => {
@@ -52,33 +52,6 @@ describe('canonicalTimeZone : un fuseau, un seul nom', () => {
 
   it.each([undefined, null, 0, 42, {}, ['UTC']])('ne rend rien pour ce qui n’est pas un texte : %j', (value) => {
     expect(canonicalTimeZone(value)).toBeUndefined();
-  });
-});
-
-describe('sameTimeZone : deux noms pour le même fuseau', () => {
-  it.each([
-    ['Europe/Paris', 'Europe/Paris'],
-    ['UTC', 'Etc/UTC'],
-    ['utc', 'UTC'],
-    ['Europe/Paris', 'europe/paris'],
-    ['Asia/Kolkata', 'Asia/Calcutta'], // l'alias que Firefox rend, et celui que Chromium et Node rendent
-  ])('%s et %s : oui', (a, b) => {
-    expect(sameTimeZone(a, b)).toBe(true);
-  });
-
-  it.each([
-    ['Europe/Paris', 'UTC'],
-    ['Europe/Paris', 'Europe/London'],
-    ['Asia/Tokyo', 'Asia/Seoul'],
-  ])('%s et %s : non', (a, b) => {
-    expect(sameTimeZone(a, b)).toBe(false);
-  });
-
-  it('un nom que le moteur ne connaît pas n’est le même que lui-même', () => {
-    expect(sameTimeZone('Mars/Phobos', 'Mars/Phobos')).toBe(true);
-    expect(sameTimeZone('Mars/Phobos', 'UTC')).toBe(false);
-    expect(sameTimeZone('UTC', 'Mars/Phobos')).toBe(false);
-    expect(sameTimeZone('Mars/Phobos', 'Mars/Deimos')).toBe(false);
   });
 });
 
