@@ -14,7 +14,8 @@ import { READ_ONLY_PREFIX } from './read-only';
  * d'une base beads vient d'un remote partagé : un collaborateur peut y commiter l'un ou l'autre, et la lecture ordinaire de l'app (`select id, title from issues
  * as of 'HEAD'`) rend alors le contenu d'un fichier de la machine, ou, par une vue sur `dolt_query_diff('select … into outfile …')`, crée un fichier à la
  * lecture (bdesk-38k.69, N1 de la relecture finale de .63). Ici sur de vraies bases Dolt, avec un fichier témoin inoffensif dans le dossier de la base (le
- * `secure_file_priv` de `dolt sql`), et par le service des Projets tel que l'app le construit, client par défaut compris :
+ * `secure_file_priv` de `dolt sql`, qui borne un Projet embedded ; derrière un `dolt sql-server` rien ne le borne : `sql-server.integration.test.ts`, bdesk-38k.74), et par
+ * le service des Projets tel que l'app le construit, client par défaut compris :
  *
  *   ok-beads                 les vues que bd crée lui-même (`ready_issues`, `blocked_issues`), des valeurs par défaut : rien à signaler
  *   view-issues-committed    `issues` est une vue commitée qui lit le témoin

@@ -853,5 +853,26 @@ describe.skipIf(process.platform === 'win32')('ordonnancement des lectures Dolt'
 
       expect(withOptions(plain, { signal: new AbortController().signal }).queryAll).toBeUndefined();
     });
+
+    // `withOptions` reconstruit la base : une méthode qu'elle ne reprend pas disparaît (le service des Projets la pose sur chaque lecture d'historique, qui lit les commits d'ancre
+    // d'une époque par `storedSqlAt` : bdesk-38k.74).
+    it('reprend `storedSqlAt` de la base qui l’a, avec les options, et n’en invente pas à celle qui ne l’a pas', async () => {
+      const asked: { commit: string; options: unknown }[] = [];
+      const checked: DoltDatabase = {
+        dir: '/projet',
+        query: async () => [],
+        storedSqlAt: async (commit, queryOptions) => {
+          asked.push({ commit, options: queryOptions });
+          return ['une raison'];
+        },
+      };
+      const signal = new AbortController().signal;
+
+      const scoped = withOptions(checked, { signal, lane: 'analysis' });
+
+      expect(await scoped.storedSqlAt?.('abc', { lane: 'light' })).toEqual(['une raison']);
+      expect(asked).toEqual([{ commit: 'abc', options: { signal, lane: 'light' } }]);
+      expect(withOptions({ dir: '/projet', query: async () => [] }, { signal }).storedSqlAt).toBeUndefined();
+    });
   });
 });

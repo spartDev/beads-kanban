@@ -75,12 +75,21 @@ const READ_ONLY_VERBS = new Set(['select', 'show', 'describe', 'desc', 'explain'
  */
 const FORBIDDEN_WORDS = new Set(['into', 'insert', 'update', 'delete', 'replace', 'call', 'load', 'load_file', 'dolt_query_diff', 'create', 'drop', 'alter', 'truncate', 'table']);
 /**
- * Les fonctions que le lecteur appelle (`reader.ts`, `history.ts`) : `hashof('HEAD')`, `database()`, `lag(…) over (…)`, et celles que les tests du vrai client appellent :
- * `count(*)`, `sleep(…)` (les lectures lentes qu'ils abandonnent). Tout autre appel est refusé, quel que soit son nom et que l'on écrive le mot nu ou l'identifiant entre
- * accents graves. N'y entrent jamais une fonction de table qui exécute du SQL ou touche des fichiers (`dolt_query_diff`, `load_file`…), ni une qui lit autre chose que le
- * dernier commit (`dolt_diff`…).
+ * Les fonctions de table que la vérification du SQL stocké (`stored-sql.ts`, bdesk-38k.74) emploie pour comparer des commits sans résoudre aucun nom de table : `dolt_log` (le premier
+ * commit d'une lignée), `dolt_schema_diff` et `dolt_diff_summary` (les tables qu'une racine a de plus que l'autre, et si leurs données changent), `dolt_diff_stat` (la sonde qui dit
+ * si un commit a une table). Une ligne de `dolt_nonlocal_tables` peut mener n'importe quel nom de table vers une autre table, mais pas ces fonctions : lire la table
+ * par son nom, que la base peut rediriger, ne dirait pas la vérité. Aucune n'exécute de SQL ni ne touche un fichier ; elles lisent d'autres racines que HEAD, ce que le garde ne juge pas (le filet des
+ * lectures, `testing/reads-at-head.ts`, juge ce que le lecteur de l'app en lit).
  */
-const FUNCTIONS = new Set(['database', 'hashof', 'lag', 'count', 'sleep']);
+const COMMIT_COMPARISON_FUNCTIONS = ['dolt_log', 'dolt_schema_diff', 'dolt_diff_summary', 'dolt_diff_stat'] as const;
+/**
+ * Les fonctions que le lecteur appelle (`reader.ts`, `history.ts`) : `hashof('HEAD')`, `database()`, `lag(…) over (…)`, et celles que les tests du vrai client appellent :
+ * `count(*)`, `sleep(…)` (les lectures lentes qu'ils abandonnent). `lower(…)` : la vérification du SQL stocké (`stored-sql.ts`, bdesk-38k.74 round 3, R1) compare
+ * `to_table_name` sans tenir compte de la casse. Tout autre appel est refusé, quel que soit son nom et que l'on écrive le mot nu ou l'identifiant entre accents graves.
+ * N'y entrent jamais une fonction de table qui exécute du SQL ou touche des fichiers (`dolt_query_diff`, `load_file`…), ni une qui lit autre chose que le dernier commit
+ * (`dolt_diff`…), hormis les quatre de `COMMIT_COMPARISON_FUNCTIONS`.
+ */
+const FUNCTIONS = new Set(['database', 'hashof', 'lag', 'count', 'sleep', 'lower', ...COMMIT_COMPARISON_FUNCTIONS]);
 /** Les mots qui précèdent une parenthèse sans être un appel : la structure d'une requête (`in (…)`, `as (…)`, `over (…)`, `and (…)`, `join (…)`…). Aucun n'est une fonction. */
 const STRUCTURE_WORDS = new Set([
   'select', 'from', 'where', 'having', 'and', 'or', 'not', 'xor', 'in', 'exists', 'any', 'some', 'all', 'distinct', 'as', 'on', 'using', 'join', 'union', 'intersect', 'except', 'case', 'when', 'then', 'else', 'between', 'by', 'over', 'partition',
@@ -206,7 +215,8 @@ function checkCalls(tokens: string[]): void {
     if (tokens[i + 1] !== '(' || !isName(token) || lists.has(i + 1)) return;
     const name = bareName(token);
     if (FUNCTIONS.has(name) || (!token.startsWith('`') && STRUCTURE_WORDS.has(name))) return;
-    throw new NotReadOnly("appel d'une fonction qui n'est pas en liste blanche (le lecteur n'appelle que database, hashof, lag, count et sleep)");
+    // bdesk-38k.74 round 3, R4 : la raison énumère `FUNCTIONS` elle-même (triée), pour ne jamais retarder sur la liste au fil des ajouts (elle en a neuf depuis bdesk-38k.74, round 2).
+    throw new NotReadOnly(`appel d'une fonction qui n'est pas en liste blanche (le lecteur n'appelle que ${[...FUNCTIONS].sort().join(', ')})`);
   });
 }
 

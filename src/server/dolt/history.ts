@@ -188,11 +188,18 @@ async function readDependencyAppearances(db: DoltDatabase, commits: Promise<Comm
  */
 async function dependencyColumns(db: DoltDatabase, source: string, era?: { revision: string; anchor: string }): Promise<string> {
   // Une époque est relue dans la base de révision de son ancre, un commit : ce qu'elle porte (une vue `dolt_history_dependencies` qui masquerait la table système, une
-  // colonne générée) s'exécuterait à la lecture, et l'assertion qui précède les lectures de l'état courant (`stored-sql.ts`) ne voit pas cette base. Le commit ne peut pas
-  // changer : ce qu'on y lit ici vaut pour la lecture qui suit.
-  const [shown = [], tables = []] = await queryAll(db, [`show columns from ${source}`, ...(era ? [revisionTablesSql(era.revision)] : [])]);
+  // colonne générée, un index fonctionnel) s'exécuterait à la lecture, et l'assertion qui précède les lectures de l'état courant (`stored-sql.ts`) ne voit pas cette base. Le commit ne
+  // peut pas changer : ce qu'on y lit ici vaut pour la lecture qui suit.
+  // La table `dolt_nonlocal_tables` de l'ancre mène ailleurs les noms que Dolt y résout, `dolt_history_dependencies` compris, et un index fonctionnel sur `dependencies` à cette
+  // époque (bdesk-38k.74, round 3, B-FI, caché de `show columns` comme de `show full tables`) : les deux se lisent comme pour HEAD, sans résoudre aucun nom, et avant que ce nom ne
+  // soit lu (`storedSqlAt`, qui lit le `CREATE TABLE` par `dolt_schema_diff`, jamais par `show create table` : ce dernier s'écrit avec `create` et `table`, que le garde de lecture
+  // seule refuse comme mots nus, où qu'ils s'écrivent, sans égard pour `show` devant).
+  const redirected = era ? ((await db.storedSqlAt?.(era.anchor)) ?? []) : [];
+  if (redirected.length > 0) throw new StoredSqlError(redirected, db.dir);
   // L'époque se dit par son commit (huit caractères), non par le nom de la base de révision, qui porte le hash entier.
-  const problems = storedSqlInSource(shown, tables, era ? `époque du commit ${era.anchor.slice(0, 8)}` : 'historique des dépendances');
+  const label = era ? `époque du commit ${era.anchor.slice(0, 8)}` : 'historique des dépendances';
+  const [shown = [], tables = []] = await queryAll(db, [`show columns from ${source}`, ...(era ? [revisionTablesSql(era.revision)] : [])]);
+  const problems = storedSqlInSource(shown, tables, label);
   if (problems.length > 0) throw new StoredSqlError(problems, db.dir);
   const existing = new Set(shown.map((row) => asText(row.Field)));
   const columns = ['commit_hash', 'issue_id', 'type', ...TARGET_COLUMNS].filter((column) => existing.has(column)).map(sqlIdent);

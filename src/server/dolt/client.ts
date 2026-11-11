@@ -18,10 +18,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isAbortError, ReadAborted } from '../abort';
 import { Flight } from '../flight';
-import { DoltNotFoundError, DoltQueryError } from './errors';
+import { DoltNotFoundError, DoltQueryError, DoltTextError } from './errors';
 import { assertReadOnly, READ_ONLY_PREFIX } from './read-only';
 
-export { DoltNotFoundError, DoltQueryError };
+export { DoltNotFoundError, DoltQueryError, DoltTextError };
 
 /**
  * Ligne de résultat de `dolt sql -r json` : les colonnes NULL sont absentes de l'objet. Le type des autres valeurs dépend de la façon dont dolt a lu
@@ -86,10 +86,16 @@ export interface DoltDatabase {
    * Plusieurs lectures dans UN processus `dolt` (et une seule transaction en lecture seule, donc un seul état de la base),
    * pour qui en enchaîne plusieurs : un processus coûte une centaine de millisecondes, bien plus que chaque requête.
    * Renvoie les lignes de chaque requête, dans l'ordre. Chacune passe le garde-fou lexical à son tour, avant
-   * que dolt ne soit lancé : une seule qui n'est pas une lecture simple fait refuser le groupe. Optionnel pour les bases
+   * que dolt ne soit lancé : une seule qui n'est pas une lecture simple fait refuser le groupe. Dolt s'arrête à la première
+   * instruction en échec : l'erreur garde alors les lignes de celles d'avant (`DoltQueryError.completed`, bdesk-38k.74). Optionnel pour les bases
    * factices ; utiliser `queryAll(db, …)`, qui se replie sur une lecture par requête.
    */
   queryAll?(sqls: readonly string[], options?: QueryOptions): Promise<Row[][]>;
+  /**
+   * Ce que la table `dolt_nonlocal_tables` d'un commit mène ailleurs, pour qui lit une base de révision (`<base>/<commit>`) : Dolt y résout les noms avec la table de ce commit-là
+   * (bdesk-38k.74, `stored-sql.ts`). Rend les raisons de refuser la lecture, aucune si la table du commit est vide ou absente. Seul le client qui vérifie le SQL stocké l'a.
+   */
+  storedSqlAt?(commit: string, options?: QueryOptions): Promise<string[]>;
 }
 
 export interface DoltClientOptions {
@@ -249,11 +255,12 @@ export function queryAll(db: DoltDatabase, sqls: readonly string[], options?: Qu
 
 /** La même base, dont les lectures reçoivent d'office `defaults` (le signal d'une requête HTTP, par exemple) ; chaque lecture peut les préciser. */
 export function withOptions(db: DoltDatabase, defaults: QueryOptions): DoltDatabase {
-  const { queryAll: grouped } = db;
+  const { queryAll: grouped, storedSqlAt: checkedAt } = db;
   return {
     dir: db.dir,
     query: (sql, options) => db.query(sql, { ...defaults, ...options }),
     ...(grouped ? { queryAll: (sqls: readonly string[], options?: QueryOptions) => grouped.call(db, sqls, { ...defaults, ...options }) } : {}),
+    ...(checkedAt ? { storedSqlAt: (commit: string, options?: QueryOptions) => checkedAt.call(db, commit, { ...defaults, ...options }) } : {}),
   };
 }
 
@@ -303,11 +310,11 @@ function run(
       { cwd: dir, env, timeout: timeoutMs, maxBuffer: maxOutputBytes, windowsHide: true },
       (error, stdout, stderr) => {
         if (signal.aborted) return reject(new ReadAborted()); // abandonnée en route : son résultat est jeté, ni délai ni échec à rapporter
-        if (error) return reject(toError(error, binary, dir, sqls.reduce(withoutQuery, stderr), timeoutMs, maxOutputBytes));
+        if (error) return reject(toError(error, binary, dir, sqls.reduce(withoutQuery, stderr), timeoutMs, maxOutputBytes, stdout));
         try {
           resolve(parseResults(stdout, sqls.length));
         } catch (err) {
-          reject(new DoltQueryError(`Sortie de dolt illisible : ${(err as Error).message}`, dir));
+          reject(new DoltTextError(`Sortie de dolt illisible : ${(err as Error).message}`, 'output', dir)); // le détail cite un fragment de la sortie de Dolt : `DoltTextError`
         }
       },
     );
@@ -365,6 +372,7 @@ function toError(
   stderr: string,
   timeoutMs: number,
   maxOutputBytes: number,
+  stdout: string,
 ): Error {
   if (error.code === 'ENOENT') {
     // ENOENT vient aussi d'un `cwd` absent : on ne le confond pas avec un binaire manquant.
@@ -377,8 +385,30 @@ function toError(
   if (error.killed) return new DoltQueryError(`Délai dépassé (${timeoutMs} ms) pour lire ${dir}`, dir);
   // Dolt écrit ses erreurs sur stderr ; stdout n'a que les documents JSON des instructions réussies (le `{}` de la
   // transaction en lecture seule, des lignes de résultat) : jamais un message.
-  const detail = firstLines(stderr) || describeFailure(error, binary);
-  return new DoltQueryError(detail, dir, LOCK_ERROR.test(detail));
+  const text = firstLines(stderr);
+  const detail = text || describeFailure(error, binary);
+  // Dolt s'est arrêté de lui-même (code de sortie) : sa sortie est entière, et dit quelles instructions ont abouti. Tué par un signal, elle a pu être coupée n'importe où.
+  const completed = typeof error.code === 'number' ? completedBefore(stdout) : undefined;
+  // Ce que Dolt a écrit sur sa sortie d'erreur est du texte de Dolt (`DoltTextError`) ; « dolt a échoué (code N) sans message d'erreur » est le nôtre.
+  if (text) return new DoltTextError(detail, 'stderr', dir, LOCK_ERROR.test(detail), completed);
+  return new DoltQueryError(detail, dir, LOCK_ERROR.test(detail), undefined, completed);
+}
+
+/** Au-delà de cette taille, la sortie d'un groupe qui a échoué n'est pas relue : ce qu'on y cherche (`DoltQueryError.completed`) tient en quelques lignes. */
+const COMPLETED_MAX_CHARS = 8 * 1024 * 1024;
+
+/**
+ * Les lignes de chaque instruction qui a abouti avant celle qui a échoué : `dolt sql` s'arrête à la première erreur d'un groupe, et sa sortie a déjà le document de chacune
+ * des instructions d'avant (le `{}` de la transaction en lecture seule, qu'on écarte, puis un document par instruction, comme pour `parseResults`), derrière un serveur comme sans lui.
+ * `undefined` si la sortie ne se lit pas, ou si elle est trop grosse pour qu'on la relise sur un chemin d'échec.
+ */
+function completedBefore(stdout: string): Row[][] | undefined {
+  if (stdout.length > COMPLETED_MAX_CHARS) return undefined;
+  try {
+    return jsonDocuments(stdout).map(rowsOf).slice(1);
+  } catch {
+    return undefined;
+  }
 }
 
 /**

@@ -466,6 +466,47 @@ describe('readTicketHistories', () => {
       expect(db.queries.filter((q) => /^select `commit_hash`/.test(q) && q.includes('`ma_base/c3`'))).toEqual([]);
     });
 
+    // B-NL (relecture finale de bdesk-38k.74) : la `dolt_nonlocal_tables` du commit d'ancre mène ailleurs les noms que Dolt résout dans sa base de révision, `dolt_history_dependencies`
+    // comprise. Le client qui vérifie la lit (`storedSqlAt`), sans résoudre aucun nom, avant que ce nom soit lu.
+    describe('la table dolt_nonlocal_tables du commit d’ancre', () => {
+      const withNonlocal = (found: string[]) => {
+        const asked: string[] = [];
+        const db = Object.assign(eraDb([columns(CURRENT_COLUMNS, '`ma_base/c3`'), viewsOf('`ma_base/c3`')]), {
+          storedSqlAt: (commit: string) => {
+            asked.push(commit);
+            return Promise.resolve(found);
+          },
+        });
+        return { db, asked };
+      };
+
+      it('refuse une époque dont l’ancre mène des noms ailleurs, avant de lire le moindre nom de sa base de révision', async () => {
+        const { db, asked } = withNonlocal(["« dolt_nonlocal_tables » n'est pas vide (époque du commit c3)"]);
+
+        const error = await readTicketHistories(db).catch((err: unknown) => err);
+
+        expect(error).toBeInstanceOf(StoredSqlError);
+        expect((error as Error).message).toContain("« dolt_nonlocal_tables » n'est pas vide (époque du commit c3)");
+        expect(asked).toEqual(['c3']);
+        expect(db.queries.filter((q) => q.includes('`ma_base/c3`'))).toEqual([]); // ni `show columns`, ni `show full tables`, ni la source
+      });
+
+      it('lit l’époque quand l’ancre ne mène rien ailleurs, et n’interroge que les commits d’ancre : jamais l’état courant', async () => {
+        const { db, asked } = withNonlocal([]);
+
+        await readTicketHistories(db);
+
+        expect(asked).toEqual(['c3']);
+        expect(db.queries.some((q) => q.includes('`ma_base/c3`'))).toBe(true);
+      });
+
+      it('se passe d’une base qui ne sait pas le faire (les bases factices, un client sans vérification)', async () => {
+        const db = eraDb([columns(CURRENT_COLUMNS, '`ma_base/c3`'), viewsOf('`ma_base/c3`')]);
+
+        await expect(readTicketHistories(db)).resolves.toBeDefined();
+      });
+    });
+
     it('refuse une colonne générée dans l’époque, virtuelle ou stockée, sans lire la source', async () => {
       const generated = { match: /^show columns from `ma_base\/c3`\.dolt_history_dependencies$/, rows: [{ Field: 'type', Extra: 'VIRTUAL GENERATED' }, { Field: 'commit_hash', Extra: '' }] };
       const db = eraDb([generated, viewsOf('`ma_base/c3`')]);
@@ -477,6 +518,23 @@ describe('readTicketHistories', () => {
       expect((error as Error).message).toContain('époque du commit c3');
       expect((error as Error).message).not.toContain('ma_base/');
       expect(db.queries.filter((q) => /^select `commit_hash`/.test(q) && q.includes('`ma_base/c3`'))).toEqual([]);
+    });
+
+    // bdesk-38k.74, round 3, B-FI : un index fonctionnel sur `dependencies`, à cette époque seulement (avant une migration, par exemple) — une colonne générée *cachée*, que ni
+    // `show columns` ni `show full tables` ne révèlent (voir `create-table.test.ts`). Seule la grammaire fermée lue dans `show create table <révision>.dependencies` la voit.
+    // bdesk-38k.74, round 3, B-FI : un index fonctionnel sur `dependencies`, à cette époque (avant une migration, par exemple), est une colonne générée *cachée* que ni `show columns`
+    // ni `show full tables` ne révèlent (voir `create-table.test.ts`). `storedSqlAt` (`stored-sql.ts`) le ferme par `dolt_schema_diff`, jamais par `show create table` (refusé par le
+    // garde de lecture seule : `create` et `table`, mots nus, où qu'ils s'écrivent — voir `dependencyColumns`) ; ce test épingle seulement que `dependencyColumns` relaie ce qu'il rend.
+    it('refuse ce que `storedSqlAt` rend pour l’ancre, avant de lire le moindre nom de sa base de révision (index fonctionnel, B-FI compris)', async () => {
+      const db = Object.assign(eraDb([columns(CURRENT_COLUMNS, '`ma_base/c3`'), viewsOf('`ma_base/c3`')]), {
+        storedSqlAt: () => Promise.resolve(['« dependencies » (époque du commit c3) : colonne générée, index fonctionnel, ou autre construction non admise']),
+      });
+
+      const error = await readTicketHistories(db).catch((err: unknown) => err);
+
+      expect(error).toBeInstanceOf(StoredSqlError);
+      expect((error as Error).message).toContain('« dependencies » (époque du commit c3) : colonne générée, index fonctionnel, ou autre construction non admise');
+      expect(db.queries.filter((q) => q.includes('`ma_base/c3`'))).toEqual([]); // ni `show columns`, ni `show full tables`, ni la source (comme pour B-NL)
     });
 
     it('refuse aussi une colonne générée du schéma courant, avant de lire l’historique', async () => {

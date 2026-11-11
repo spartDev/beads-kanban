@@ -8,9 +8,10 @@ import { buildServer } from '../server';
 import { buildLegacyDatabase, createDatabase, day, dolt, hasBinary, isolatedDoltEnv } from '../testing/dolt-fixture';
 import { type SqlServer, startSqlServer } from '../testing/dolt-server';
 import { scratchDir } from '../testing/scratch';
-import { createDoltClient } from './client';
+import { createDoltClient, DoltQueryError, queryAll } from './client';
 import { readTicketHistories } from './history';
 import { readDependencies, readIssueSummaries } from './reader';
+import { storedSqlEvidence } from './stored-sql';
 
 /**
  * Derrière un `dolt sql-server`, `dolt sql -r json` rend les entiers en chaînes (`"priority":"0"`), là où la lecture directe des fichiers
@@ -245,6 +246,44 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)(
       expect(error).toBeInstanceOf(ProjectUnreadableError);
       expect((error as ProjectUnreadableError).reason).toContain('« labels »');
       expect(existsSync(file)).toBe(false);
+    });
+
+    // Sans serveur, `dolt sql` borne les fichiers que Dolt lit ou écrit au dossier de la base (`@@secure_file_priv`). Derrière un `dolt sql-server`, dont la configuration que bd écrit
+    // ne pose pas la variable, elle est vide : une vue lit ou crée un fichier n'importe où (bdesk-38k.74 : ADR 0005, mesuré sur un serveur jetable lancé comme bd le fait). Le
+    // témoin est ici HORS du dossier de la base, et la vérification refuse la base dans les deux modes.
+    it('refuse de même la vue qui crée un fichier hors du dossier de la base : derrière un serveur, rien d’autre que la vérification ne le borne', async () => {
+      const outside = join(root, 'hors-base.txt');
+      expect(String((await client.open(database).query("show variables like 'secure_file_priv'"))[0]?.Value)).toBe(''); // le serveur ne borne rien (le moteur sans serveur : le dossier de la base)
+      dolt(env, database, 'sql', '-q', `drop view labels; create view labels as select 'x' as issue_id, diff_type as label from dolt_query_diff('select ''x'' as v into outfile ''${outside}''', 'select 1 as v')`);
+      dolt(env, database, 'sql', '-q', 'select * from labels'); // sans la vérification : le serveur crée le fichier, dans le dossier du Projet et non dans celui de la base
+      expect(existsSync(outside)).toBe(true);
+      rmSync(outside);
+
+      const projects = createProjectService({ roots: [root], projects: [], hiddenProjects: [] }, { rescanIntervalMs: 0 });
+      const error = await projects.issue('projet', 's-1').then(
+        () => undefined,
+        (err: unknown) => err,
+      );
+
+      expect(error).toBeInstanceOf(ProjectUnreadableError);
+      expect((error as ProjectUnreadableError).reason).toContain('« labels »');
+      expect(existsSync(outside)).toBe(false);
+    });
+
+    // Le dernier essai d'une lecture relève ce que son assertion a vu, dans le même groupe (bdesk-38k.74) : le CLI, connecté à un serveur, écrit sur sa sortie standard les documents
+    // des instructions qui ont abouti avant celle qui échoue, comme sans lui.
+    it('garde, derrière le serveur aussi, les lignes des relevés d’avant l’assertion qui échoue', async () => {
+      const raw = createDoltClient().open(database);
+
+      const base = dolt(env, database, 'sql', '-r', 'csv', '-q', "select commit_hash from dolt_log('HEAD') order by commit_order asc limit 1").trim().split('\n')[1] ?? '';
+
+      const error = await queryAll(raw, [...storedSqlEvidence('', base), 'select id from issues order by id']).catch((err: unknown) => err);
+
+      expect(error).toBeInstanceOf(DoltQueryError);
+      expect((error as DoltQueryError).message).toMatch(/subquery returned more than 1 row/);
+      expect((error as DoltQueryError).completed?.[0]).toEqual([{ view_name: 'labels' }]);
+      expect((error as DoltQueryError).completed?.[2]).toEqual([]); // aucun index fonctionnel (bdesk-38k.74, round 3, B-FI)
+      expect((error as DoltQueryError).completed).toHaveLength(3);
     });
   },
 );

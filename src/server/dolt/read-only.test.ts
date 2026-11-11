@@ -547,7 +547,6 @@ describe('assertReadOnly', () => {
       ['dolt_query_diff dans une jointure', "select * from issues join dolt_query_diff('select 1', 'select 1') d on 1 = 1"],
       // d'autres fonctions que Dolt connaît : refusées, tant qu'elles ne sont pas dans la liste blanche
       ['dolt_diff : lit le working set', "select * from dolt_diff('HEAD', 'WORKING', 'issues')"],
-      ['dolt_log() de table', 'select * from dolt_log()'],
       ['dolt_hashof_table', "select dolt_hashof_table('issues')"],
       ['dolt_hashof_db', 'select dolt_hashof_db()'],
       ['dolt_commit', "select dolt_commit('-am', 'x')"],
@@ -606,8 +605,30 @@ describe('assertReadOnly', () => {
       ['sleep', 'select sleep(1.5) as zzz'],
       ['lag … over (partition by … order by …)', 'select lag(status) over (partition by id order by seq desc) as previous from t'],
       ['lag, saut de ligne avant la parenthèse', 'select lag\n(status) over (partition by id order by seq desc) as previous from t'],
+      // Les quatre fonctions de table de la vérification du SQL stocké (bdesk-38k.74) : elles comparent des commits sans résoudre aucun nom de table, et n'exécutent ni ne lisent rien d'autre.
+      ['dolt_log, le premier commit', "select commit_hash from dolt_log('HEAD') order by commit_order asc limit 1"],
+      ['dolt_schema_diff', "select count(*) as c from dolt_schema_diff('abc', 'WORKING') s where s.to_table_name = 'dolt_nonlocal_tables'"],
+      ['dolt_diff_summary', "select 1 from dolt_diff_summary('abc', 'HEAD') d where d.to_table_name = 'dolt_nonlocal_tables' and d.data_change = 0"],
+      ['dolt_diff_stat', "select count(*) as c from dolt_diff_stat('abc', 'abc', 'dolt_nonlocal_tables')"],
+      ['dolt_diff_summary, en majuscules et entre accents graves', "select * from `DOLT_DIFF_SUMMARY`('abc', 'HEAD')"],
+      // `lower` : la comparaison de `to_table_name` sans tenir compte de la casse (bdesk-38k.74 round 3, R1).
+      ['lower', "select count(*) as c from dolt_schema_diff('abc', 'WORKING') s where lower(s.to_table_name) = 'dolt_nonlocal_tables'"],
     ])('laisse passer l’appel de la liste blanche : %s', (_label, sql) => {
       expect(() => assertReadOnly(sql)).not.toThrow();
+    });
+
+    // bdesk-38k.74 round 3, R4 : la raison du refus énumérait cinq fonctions, codées en dur, alors que la liste blanche en porte neuf (quatre ont été ajoutées depuis).
+    it('la raison du refus énumère toute la liste blanche actuelle, pas un texte figé (R4)', () => {
+      const error = (() => {
+        try {
+          assertReadOnly('select inconnue() as x');
+        } catch (err) {
+          return err as Error;
+        }
+      })();
+      for (const name of ['database', 'hashof', 'lag', 'count', 'sleep', 'lower', 'dolt_log', 'dolt_schema_diff', 'dolt_diff_summary', 'dolt_diff_stat']) {
+        expect(error?.message, name).toContain(name);
+      }
     });
 
     // La parenthèse après un mot de structure n'est pas un appel : `in (…)`, `as (…)`, `over (…)`, `and (…)`, `join (…)`… Aucune de ces requêtes n'appelle de fonction.

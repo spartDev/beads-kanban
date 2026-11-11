@@ -240,6 +240,60 @@ EOF`);
       expect((error as Error).message).not.toMatch(/confidentiel|\{\}/);
     });
 
+    // Dolt s'arrête à la première erreur d'un groupe, mais a déjà écrit sur stdout le document de chaque instruction qui a abouti (le `{}` de la transaction en lecture seule d'abord) :
+    // le client les garde, dans `completed`, pour qui a besoin de savoir ce que l'état de la base disait quand l'instruction a échoué (bdesk-38k.74).
+    describe('les lignes des instructions qui ont abouti avant celle qui échoue', () => {
+      const GROUP = ['select 1 as a', 'select 2 as b from t', 'select boom', "select 'jamais' as c"];
+      const group = (binary: string) => createDoltClient(options(binary)).open(tmpdir()).queryAll?.(GROUP).catch((e: unknown) => e);
+
+      it('sont gardées dans l’ordre, sans le document de la transaction, et le message reste la cause de dolt', async () => {
+        const fake = fakeDolt(
+          `printf '{}\\n\\n{"rows": [{"a": 1}]}\\n{"rows": []}\\n'\necho 'error on line 1 for query […]: the subquery returned more than 1 row' >&2\nexit 1`,
+        );
+
+        const error = await group(fake.binary);
+
+        expect(error).toBeInstanceOf(DoltQueryError);
+        expect((error as DoltQueryError).completed).toEqual([[{ a: 1 }], []]);
+        expect((error as Error).message).toBe('error on line 1 for query […]: the subquery returned more than 1 row');
+      });
+
+      it('sont vides quand la première instruction échoue', async () => {
+        const fake = fakeDolt(`printf '{}\\n\\n'\necho 'table not found: t' >&2\nexit 1`);
+
+        expect(((await group(fake.binary)) as DoltQueryError).completed).toEqual([]);
+      });
+
+      it('ne sont ni énumérables ni dans le message : ni le journal des erreurs ni une sérialisation ne les emportent (ce sont des lignes de la base)', async () => {
+        const fake = fakeDolt(`printf '{}\\n\\n{"rows": [{"titre": "confidentiel"}]}\\n'\necho 'boom' >&2\nexit 1`);
+
+        const error = (await group(fake.binary)) as DoltQueryError;
+
+        expect(error.completed).toEqual([[{ titre: 'confidentiel' }]]);
+        expect(Object.keys(error)).not.toContain('completed');
+        expect(JSON.stringify(error)).not.toContain('confidentiel');
+        expect(error.message).not.toContain('confidentiel');
+      });
+
+      it.each([
+        ['une sortie tronquée', `printf '{}\\n\\n{"rows": [{"a"'\necho 'boom' >&2\nexit 1`],
+        ['un processus tué par un signal', `echo '{}'; echo '{"rows": [{"a": 1}]}'; kill -9 $$`],
+        ['une sortie qui n’est pas du JSON', `echo 'pas du json'\necho 'boom' >&2\nexit 1`],
+      ])('ne sont pas gardées pour %s : on ne sait pas lesquelles ont abouti', async (_label, body) => {
+        const error = (await group(fakeDolt(body).binary)) as DoltQueryError;
+
+        expect(error).toBeInstanceOf(DoltQueryError);
+        expect(error.completed).toBeUndefined();
+      });
+
+      it('manquent à une erreur qui ne vient pas d’une instruction : le binaire introuvable', async () => {
+        const missing = await createDoltClient(options('/nonexistent/dolt')).open(tmpdir()).queryAll?.(GROUP).catch((e: unknown) => e);
+
+        expect(missing).toBeInstanceOf(DoltNotFoundError);
+        expect((missing as { completed?: unknown }).completed).toBeUndefined();
+      });
+    });
+
     it('garde la cause d’un échec, et non la requête que dolt répète avant elle', async () => {
       // Dolt écrit « error on line 1 for query <requête> : <cause> » : sur une requête de plusieurs lignes, la
       // cause vient après les lignes que l'on garde. Ce faux dolt répète la requête reçue, comme le vrai.
