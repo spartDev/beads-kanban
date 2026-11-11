@@ -31,6 +31,7 @@ import { ThroughputPanel } from './ThroughputChart';
 import { MetricTiles } from './Tiles';
 import { MetricsToolbar } from './Toolbar';
 import { TypeMixPanel } from './TypeMixChart';
+import { useKeptPlace } from './useKeptPlace';
 import { useSeriesContext } from './useSeriesContext';
 import './metrics.css';
 
@@ -46,6 +47,9 @@ const todayIn = (timeZone: string): string => dayInZone(new Date().toISOString()
  */
 const SHOW_BUSY_AFTER_MS = 300;
 
+/** Les chiffres qui arrivent après une attente sont exclus de l'ancrage du défilement jusqu'à leur première mesure (`useKeptPlace`). */
+const NO_SCROLL_ANCHORING = { overflowAnchor: 'none' } as const;
+
 /**
  * Les métriques de flux d'un Projet ou de la Vue globale : réglages (période, découpage), tuiles, graphiques, santé du flux
  * (cinq tuiles, puis cinq cartes d'analyse : bdesk-38k.13) et tableau du découpage. La période et le découpage vivent dans
@@ -56,7 +60,7 @@ const SHOW_BUSY_AFTER_MS = 300;
  * signale, et l'erreur n'a la parole que faute de chiffres. Les chiffres provisoires d'une période en attente de la
  * suivante ne sont pas atténués : à 60 % d'opacité, texte et graphiques sortaient de WCAG AA (4,5:1 et 3:1 ; axe, bdesk-38k.80). Ils sont marqués `aria-busy`, et ceux qui voient l'écran
  * ont une barre de progression d'accent juste avant eux, que le défilement épingle sous la barre du haut, et « Calcul en cours » dans la barre d'outils, passé un court délai
- * (`SHOW_BUSY_AFTER_MS`) ; ceux d'un autre Projet ou d'un autre fuseau ne sont pas gardés (`useMetrics`).
+ * (`SHOW_BUSY_AFTER_MS`) ; ceux d'un autre Projet ou d'un autre fuseau ne sont pas gardés (`useMetrics`), et le squelette qui remplace ces derniers garde leur hauteur (`useKeptPlace`, bdesk-38k.81).
  */
 export function MetricsView({ scope }: { scope: MetricsScope }) {
   const kind: Scope = scope.kind;
@@ -86,6 +90,10 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
   const retry = useRetryFocus(query);
   const projects = useProjects();
   const data = query.data;
+  // Quand le fuseau du navigateur change, le squelette remplace les chiffres de l'ancien (`useMetrics`) : il garde leur hauteur le temps de la réponse (bdesk-38k.81), pour que la page ne rétrécisse pas
+  // et que le défilement de qui lisait plus bas ne soit pas perdu ; et les chiffres qui arrivent ne laissent pas l'ancrage du défilement suivre leur première mise en page. La hauteur est mesurée sur
+  // l'enveloppe des chiffres, par Projet ou Vue globale : celle d'un autre Projet ne vaut pas pour celui-ci.
+  const place = useKeptPlace<HTMLDivElement>(!data && !query.isError, scope.kind === 'project' ? scope.project.id : '*');
   const ctx = useSeriesContext(data?.projects ?? [], projects.data?.projects);
 
   const changePeriod = useCallback((next: PeriodChoice) => setSearchParams((current) => withPeriod(current, next), { replace: true }), [setSearchParams]);
@@ -133,7 +141,7 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
         // Gardés pour une autre période, ils ne sont ni atténués ni voilés (bdesk-38k.80) : `aria-busy`, et une barre de progression d'accent juste avant eux (`.metrics-busy`, metrics.css), que le
         // défilement épingle sous la barre du haut : on la voit où que l'on lise. Elle est posée à côté des chiffres, dans le même parent, et non dedans : leur conteneur a un écart (`gap-6`) qu'un
         // enfant de plus, même de hauteur nulle, augmenterait de 24 px.
-        <div className="min-w-0">
+        <div ref={place.ref} style={place.settling ? NO_SCROLL_ANCHORING : undefined} className="min-w-0">
           {waiting ? <div aria-hidden="true" className="metrics-busy" /> : null}
           <div ref={keepFocusInZone} aria-busy={query.isPlaceholderData} className="flex min-w-0 flex-col gap-6">
             <Content data={data} by={by} ctx={ctx} projectHref={projectHref} />
@@ -142,7 +150,7 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
       ) : query.isError ? (
         <ErrorNotice error={query.error} title="Impossible de calculer les métriques" onRetry={retry} />
       ) : (
-        <MetricsSkeleton />
+        <MetricsSkeleton minHeight={place.height} />
       )}
     </div>
   );

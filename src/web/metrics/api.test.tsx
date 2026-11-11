@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../data/client';
 import { createQueryClient, useProjects } from '../data/hooks';
 import { projectsResponse } from '../test/fixtures';
-import { lastZoneAnswer, metricsKey, metricsQuery, useMetrics, useZoneAnswer, type MetricsRequest } from './api';
+import { FORGET_AFTER_MS, lastZoneAnswer, METRICS_GC_TIME_MS, metricsKey, metricsQuery, useMetrics, useZoneAnswer, type MetricsRequest } from './api';
 import { metricsFixture } from './testing';
 
 const json = (body: unknown, status = 200) =>
@@ -492,6 +492,58 @@ describe('useZoneAnswer', () => {
       view.rerender();
 
       expect(view.result.current).toEqual(answer);
+    });
+  });
+
+  // bdesk-38k.81 (2) : la retenue s'oublie au bout de `FORGET_AFTER_MS`, et le cache retire une requête de métriques `gcTime` après que plus aucune vue ne l'observe. Si le cache gardait la requête plus
+  // longtemps que la retenue, la retenue oubliée serait relue dans la requête, et l'ancien avis reviendrait : l'oubli n'aurait rien oublié. Les deux durées sont donc liées dans le code (`METRICS_GC_TIME_MS`,
+  // posé sur la requête et repris par l'oubli), et ce que le client de l'application veut par défaut pour ses autres requêtes ne les défait pas.
+  describe('la retenue n’oublie jamais avant le cache des requêtes de métriques', () => {
+    const FIVE_MINUTES = 5 * 60_000;
+    const week: MetricsRequest['period'] = { kind: 'preset', range: '7d' };
+    const request: MetricsRequest = { project: 'bdesk', period: week, timeZone };
+    /** Un client dont le `gcTime` par défaut est plus long que cinq minutes : un réglage global que quelqu'un aurait pu poser pour d'autres requêtes. */
+    const longLived = () => new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 15 * 60_000 } } });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('le délai d’oubli est au moins le gcTime de la requête de métriques : les deux se lisent dans le code', () => {
+      const { gcTime } = metricsQuery(request);
+
+      expect(gcTime).toBeTypeOf('number');
+      expect(FORGET_AFTER_MS).toBeGreaterThanOrEqual(gcTime as number);
+      expect(gcTime).toBe(METRICS_GC_TIME_MS); // la requête pose la valeur partagée, pas un nombre à part
+    });
+
+    it('la requête qu’une vue observe n’est gardée que ce temps-là, quel que soit le gcTime par défaut du client', async () => {
+      const client = longLived();
+      vi.stubGlobal('fetch', vi.fn(async () => json(metricsFixture())));
+      const wrap = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+      const view = renderHook(() => useMetrics(request), { wrapper: wrap });
+      await waitFor(() => expect(view.result.current.isSuccess).toBe(true));
+
+      const query = client.getQueryCache().find({ queryKey: metricsKey(request) });
+
+      expect(query?.gcTime).toBeLessThanOrEqual(FORGET_AFTER_MS);
+    });
+
+    it('ne ramène pas l’ancien avis du cache quand le client garde ses requêtes plus longtemps : la retenue partie, la requête l’est aussi', async () => {
+      // Avant tout rendu : les minuteries du ramasse-miettes sont posées au moment où une requête perd son dernier observateur.
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true });
+      const client = longLived();
+      vi.stubGlobal('fetch', vi.fn(async () => json(metricsFixture({ timeZone: 'UTC', timeZoneHonoured: false }))));
+      const wrap = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+      const page = renderHook(() => ({ metrics: useMetrics(request), zone: useZoneAnswer(timeZone) }), { wrapper: wrap });
+      await waitFor(() => expect(page.result.current.zone).toEqual({ counted: 'UTC', honoured: false }));
+      page.unmount(); // la page de métriques est quittée : plus aucune vue ne lit la retenue, ni n'observe la requête
+
+      act(() => void vi.advanceTimersByTime(FIVE_MINUTES + 1_000));
+      const back = renderHook(() => useZoneAnswer(timeZone), { wrapper: wrap }); // une page de métriques qui s'ouvre plus de cinq minutes après : comme à l'ouverture
+
+      expect(back.result.current).toBeUndefined(); // l'avis ne revient pas…
+      expect(client.getQueryCache().findAll({ queryKey: ['metrics'] })).toHaveLength(0); // … parce que la requête est partie avec la retenue
     });
   });
 

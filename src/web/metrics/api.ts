@@ -66,12 +66,21 @@ function retentionOf(client: QueryClient): Retention {
 }
 
 /**
- * Combien de temps la retenue survit à la dernière vue qui la lit : cinq minutes, le `gcTime` par défaut de TanStack Query. C'est la règle des requêtes (une requête reste tant qu'une vue
- * l'observe, puis cinq minutes) appliquée à ce que la page en a retiré : tant qu'une page de métriques est ouverte, l'avis tient même si sa requête échoue des heures (bdesk-38k.79) ; une page
+ * Combien de temps le cache garde une requête de métriques que plus aucune vue n'observe (`gcTime`) : cinq minutes, ce que TanStack Query donne par défaut. Posé sur la requête (`metricsQuery`) au lieu de
+ * lui être laissé : le `gcTime` par défaut du client de l'application, un réglage global que l'on pourrait changer pour d'autres requêtes, ne s'applique plus à celles-ci, et `FORGET_AFTER_MS` le reprend.
+ */
+export const METRICS_GC_TIME_MS = 5 * 60_000;
+
+/**
+ * Combien de temps la retenue survit à la dernière vue qui la lit : le `gcTime` des requêtes de métriques (`METRICS_GC_TIME_MS`). C'est la règle des requêtes (une requête reste tant qu'une vue
+ * l'observe, puis `gcTime`) appliquée à ce que la page en a retiré : tant qu'une page de métriques est ouverte, l'avis tient même si sa requête échoue des heures (bdesk-38k.79) ; une page
  * qu'on a quittée depuis plus longtemps ne sait plus rien du serveur, comme à l'ouverture. Le flux en direct, lui, ne suit ni la Vue globale ni les pages de métriques : il ne dirait rien d'un
  * redémarrage du serveur là où l'avis se lit, et lui faire suivre les métriques ferait sonder la base d'un Projet pour rien.
+ *
+ * Elle ne doit jamais être plus courte que le `gcTime` des requêtes (bdesk-38k.81) : tant que le cache garde une requête de métriques, `lastZoneAnswer` y relit ce que la retenue a oublié, et l'ancien avis
+ * revient d'une page quittée depuis plus longtemps que l'oubli (reproduit avec un `gcTime` de quinze minutes). Les deux durées sont donc une seule valeur, et `api.test.tsx` garde le lien.
  */
-const FORGET_AFTER_MS = 5 * 60_000;
+export const FORGET_AFTER_MS = METRICS_GC_TIME_MS;
 
 /** Une vue de plus lit la retenue de ce cache ; rend de quoi dire qu'elle ne la lit plus. */
 function startReading(client: QueryClient): () => void {
@@ -169,6 +178,8 @@ export function metricsQuery(request: MetricsRequest) {
     queryKey: metricsKey(request),
     queryFn: ({ signal }) => apiGet<MetricsResponse>(metricsPath(request), signal),
     staleTime: 15_000,
+    // Posé ici, pas laissé au défaut du client : c'est la durée que la retenue de l'avis de fuseau reprend (`FORGET_AFTER_MS`), qui ne doit pas être plus courte.
+    gcTime: METRICS_GC_TIME_MS,
     // À la demande, jamais d'elles-mêmes : le client de l'application relance sinon toute requête périmée quand on revient
     // sur l'onglet ou que le réseau revient, soit un calcul de plusieurs secondes dont les chiffres changent sous les yeux.
     refetchOnWindowFocus: false,
