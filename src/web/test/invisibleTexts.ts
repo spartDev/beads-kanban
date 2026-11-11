@@ -24,6 +24,9 @@ export const INVISIBLE_TEXTS = [
   ['fait d’un sélecteur de variante (U+FE0F)', '\ufe0f'],
   ['fait d’un sélecteur de variante étendu (U+E0100)', '\u{e0100}'],
   ['fait d’une espace de contrôle (U+0085)', '\u0085'],
+  // Les ancres d'annotation (bdesk-38k.77) : `Cf`, que `Default_Ignorable_Code_Point` exclut. Chromium n'en dessine aucun pixel, à aucune graisse, et la catégorie `Cf` les disait déjà invisibles.
+  ['fait d’une ancre d’annotation (U+FFF9)', '\ufff9'],
+  ['fait d’un séparateur et d’un terminateur d’annotation (U+FFFA, U+FFFB)', '\ufffa\ufffb'],
   // Ce que la catégorie `Cf` comptait déjà, et que la règle garde.
   ['fait d’un séparateur de voyelle mongol (U+180E)', '\u180e'],
   ['fait d’une marque de lettre arabe (U+061C)', '\u061c'],

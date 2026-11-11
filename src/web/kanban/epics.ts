@@ -44,23 +44,30 @@ const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
  * Ce qu'un texte occupe à l'écran, en unités de texte : sans ses caractères sans largeur (`withoutInvisible`), et en forme composée (NFC). Un « é » s'écrit en un caractère ou en deux (« e » puis son
  * accent, NFD : un copier-coller depuis macOS en donne) et l'écran n'en voit pas la différence : un titre en NFD se coupe où le même titre en NFC. Un emoji vaut toujours deux unités, comme avant.
  * Le texte, lui, n'est pas normalisé : la pastille montre les caractères du titre, dans la forme où il est écrit (comme le libellé du filtre Epic, qui ne change pas non plus d'une forme à l'autre).
- * La coupe mesure un graphème à la fois, les seuils le titre entier : même compte, sauf pour une marque que sépare de sa base un caractère de contrôle (elle ne se compose pas, et compte une unité de plus).
+ *
+ * `before` est le point de code qui précède `text` dans le titre, quand `text` n'en est pas le début. Un sélecteur de variante n'est retiré que si aucun caractère qu'on voit ne le précède (`withoutInvisible`), et la
+ * coupe mesure un graphème à la fois : un graphème qui s'ouvre sur un sélecteur, derrière un caractère de contrôle qu'on voit (la norme des graphèmes, UAX #29, règle GB4, l'en sépare), doit compter ce sélecteur
+ * comme le titre entier, où il lui est attaché (dernière revue de bdesk-38k.70, remarque 1). Ainsi la coupe, qui mesure un graphème à la fois, compte la même chose que les seuils, qui mesurent le titre entier. `before` ne compte pas dans la mesure :
+ * seul le sort du premier point de code de `text` en dépend.
  */
-const measure = (text: string): number => withoutInvisible(text).normalize('NFC').length;
+const measure = (text: string, before = ''): number => withoutInvisible(before + text).slice(withoutInvisible(before).length).normalize('NFC').length;
 
 /**
  * Le début de `text` qui compte au plus `count` unités visibles (`measure`) : les caractères sans largeur y passent sans occuper de place. La coupe tombe entre deux
  * graphèmes, jamais dedans : un graphème qui franchirait la limite reste tout entier de l'autre côté, au lieu de devenir un autre emoji ou de perdre son accent. Le premier est
- * gardé même plus long que `count` (une lettre empilée de marques) : sans lui, la pastille ne lirait que l'ellipse.
+ * gardé même plus long que `count` (une lettre empilée de marques) : sans lui, la pastille ne lirait que l'ellipse. Chaque graphème est mesuré dans son contexte, derrière le point de code qui le précède dans le titre
+ * (`measure`) : un sélecteur de variante qui ouvre un graphème, derrière un caractère de contrôle, compte pour ce qu'il compte dans le titre entier.
  */
 function visiblePrefix(text: string, count: number): string {
   let seen = 0;
   let end = 0;
+  let before = '';
   for (const { segment } of segmenter.segment(text)) {
-    const width = measure(segment);
+    const width = measure(segment, before);
     if (end > 0 && seen + width > count) break;
     seen += width;
     end += segment.length;
+    before = [...segment].pop() ?? before;
   }
   return text.slice(0, end);
 }
@@ -77,6 +84,9 @@ const isUnnamed = (title: string): boolean => isBlankTitle(title.replace(SEPARAT
  * et suivi d'une ellipse s'il dépasse `max` caractères.
  *
  * - Les caractères qu'on ne voit pas (sans largeur ou non : `isInvisibleText`) n'en font pas partie : ceux des bords sont retirés, les autres ne comptent ni pour la limite ni pour la coupe, que l'écran ne voit pas.
+ *   Un sélecteur de variante seul (qu'aucun caractère qu'on voit ne précède) est de ceux-là : pour tout ce qui suit le repli, le titre se lit comme s'il n'y était pas. En bout de titre il rogne donc aussi la marque de
+ *   direction qui le précède, comme HEAD rogne celle d'un titre qui finit par elle (un mot hébreu, « ! », une espace, U+200F, une espace et U+FE0F donnent le mot et son « ! », comme le titre sans le sélecteur ; dernière
+ *   revue de bdesk-38k.70, remarque 2).
  * - La limite se mesure en forme composée (NFC) et la coupe tombe entre deux graphèmes, jamais dedans (`measure`, `visiblePrefix`). Le texte montré est celui du titre, tel qu'il est écrit. Rien
  *   de visible n'est coupé d'un titre qui n'est qu'un graphème plus long que la limite : il reste entier, sans ellipse, que des caractères sans largeur le suivent ou non.
  * - Un séparateur en tête du titre reste : le retirer changerait le sens (« – 5 °C »). Des blancs ou des caractères sans largeur devant lui n'y changent rien : la pastille est celle du titre visible.

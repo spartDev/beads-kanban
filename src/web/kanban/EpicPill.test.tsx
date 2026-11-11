@@ -45,6 +45,7 @@ describe('la pastille d’Epic lit le titre court de l’Epic', () => {
     ['un remplisseur hangul (U+3164) devant le nom', '\u3164Kanban', 'Kanban'],
     ['une demi-chasse hangul (U+FFA0) derrière le nom', 'Kanban\uffa0', 'Kanban'],
     ['des blancs braille (U+2800) devant un intitulé suivi d’un séparateur', '\u2800\u2800\u2800 : Refonte du shell', ': Refonte du shell'],
+    ['une ancre d’annotation (U+FFF9) devant le nom : Chromium ne la dessine pas, la pastille n’a pas de retrait vide (bdesk-38k.77)', '\ufff9Kanban', 'Kanban'],
     ['une marque arabe qui se dessine (U+06DD) devant le nom', '\u06ddKanban', '\u06ddKanban'],
     ['un signe d’alerte en couleurs : son sélecteur de variante (U+FE0F) fait corps avec lui', 'Alerte ⚠\ufe0f', 'Alerte ⚠\ufe0f'],
     // La tête d'un titre à séparateur : elle perd les sélecteurs qu'une espace sépare de ce qui précède, avec cette espace, et rien d'autre (bdesk-38k.70, revue finale : B3 et R2).

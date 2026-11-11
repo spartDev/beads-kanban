@@ -40,6 +40,13 @@ describe('le filtre Epic lit les titres par la règle des textes invisibles', ()
     expect(optionLabels()).toEqual(['Toutes les Epics', '\u3164Kanban (bdesk-e1)', 'Kanban (bdesk-e2)']);
   });
 
+  // « U+FFF9 Kanban » et « Kanban » se lisent pareil à l'écran (Chromium ne dessine pas l'ancre d'annotation) : sans identifiant, deux options identiques ne se choisissent pas. La règle commune gardait ces trois
+  // caractères comme des signes qui se dessinent, comme elle gardait U+3164 avant bdesk-38k.70 (bdesk-38k.77).
+  it('porte l’identifiant de « U+FFF9 Kanban » et de « Kanban » : elles ne diffèrent que par une ancre d’annotation, que Chromium ne dessine pas', async () => {
+    await openBoard(['\ufff9Kanban', 'Kanban']);
+
+    expect(optionLabels()).toEqual(['Toutes les Epics', '\ufff9Kanban (bdesk-e1)', 'Kanban (bdesk-e2)']);
+  });
   it('porte l’identifiant d’une Epic qui ne diffère de l’autre que par un blanc braille (U+2800) ou un joint de graphèmes (U+034F)', async () => {
     await openBoard(['Kan\u2800ban', 'Kan\u034fban', 'Kanban']);
 
@@ -104,6 +111,13 @@ describe('la pastille d’Epic de la carte d’un Enfant lit le titre de l’Epi
     expect(screen.getByRole('link', { name: 'Epic : Kanban' })).toBe(pill);
   });
 
+  it('ne montre pas l’ancre d’annotation (U+FFF9) qui précède « Kanban » : Chromium n’en dessine rien, mais lui laissait un retrait de 7 px', async () => {
+    await openBoard(['\ufff9Kanban', 'Autre']);
+
+    const pill = pillOfChild();
+    expect(pill.textContent).toBe('Epic : Kanban');
+    expect(screen.getByRole('link', { name: 'Epic : Kanban' })).toBe(pill);
+  });
   it('garde U+06DD, qui se dessine, devant « Kanban »', async () => {
     await openBoard(['\u06ddKanban', 'Autre']);
 

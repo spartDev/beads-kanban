@@ -5,13 +5,17 @@ import type { Issue } from '../data/types';
  * `\s` ou un caractère de catégorie `Cf` ». C'est l'oracle de `kanban/headParity.test.ts` : pour tout titre où aucun caractère ne change de classe, la règle commune doit rendre exactement ce que rendait cette copie.
  *
  * Ne pas la mettre à jour avec le code : si elle ne dit plus ce que fait le code, c'est le code qui a changé, et le test qui l'éprouve le dit. Rien d'autre ne l'importe.
+ *
+ * Deux ajouts seulement, qui ne changent pas ce que HEAD fait (bdesk-38k.77) : `HEAD_BLANK_TEXT` est exportée (la règle de HEAD pour « un titre qui ne dit rien » n'est pas sa règle des caractères
+ * invisibles : la première ne comptait pas U+FFF9 à U+FFFB, la catégorie `Cf` de la seconde les comptait), et `headShortTitle` prend en option l'étape du repli et celle qui coupe la tête, que le test remplace pour lire un titre
+ * autrement que HEAD (un sélecteur de variante seul, une fois le titre replié). Sans ces paramètres, c'est HEAD, mot pour mot.
  */
 
 /** Ce que HEAD tenait pour invisible dans `withoutInvisible`, la série de blancs de `collapseSpaces` et les bords de la pastille : un blanc de `\s`, ou un caractère de catégorie `Cf`. */
 export const HEAD_INVISIBLE = /[\s\p{Cf}]/u;
 
 /** La règle des textes invisibles de HEAD (`isInvisibleText`, bdesk-38k.65), que bdesk-38k.70 ne change pas : elle sert `isBlankTitle`, donc `isUnnamed`. */
-const HEAD_BLANK_TEXT = /^[\p{White_Space}\p{Default_Ignorable_Code_Point}\u2800]*$/u;
+export const HEAD_BLANK_TEXT = /^[\p{White_Space}\p{Default_Ignorable_Code_Point}\u2800]*$/u;
 
 export const headWithoutInvisible = (text: string): string => text.replace(/\p{Cf}/gu, '');
 
@@ -56,11 +60,11 @@ function visiblePrefix(text: string, count: number): string {
 const isBlank = (title: string): boolean => HEAD_BLANK_TEXT.test(title);
 const isUnnamed = (title: string): boolean => isBlank(title.replace(SEPARATOR_SIGNS, ''));
 
-export function headShortTitle(title: string, max = 24): string {
+export function headShortTitle(title: string, max = 24, fold: (title: string) => string = headCollapseSpaces, trimHead: (head: string) => string = (head) => head): string {
   if (isUnnamed(title)) return '';
-  const clean = headCollapseSpaces(title).replace(EDGE_BLANKS, '');
+  const clean = fold(title).replace(EDGE_BLANKS, '');
   const head = clean.split(SEPARATOR)[0] ?? clean;
-  const base = measure(head) >= MIN_HEAD ? head : clean;
+  const base = measure(head) >= MIN_HEAD ? trimHead(head) : clean;
   if (measure(base) <= max) return base;
   const cut = visiblePrefix(base, max - 1);
   if (isBlank(base.slice(cut.length))) return base;

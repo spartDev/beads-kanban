@@ -112,6 +112,17 @@ describe('collapseSpaces : une seule espace entre deux textes, aucune autour', (
     expect(collapseSpaces(`${invisible} Refonte ${invisible}`)).toBe(`${invisible}Refonte${invisible}`);
   });
 
+  // Les ancres d'annotation se comportent comme tout caractère invisible qui n'est pas un blanc : deux espaces qu'elles séparent n'en font qu'une, et elles restent à leur place. La catégorie `Cf` les prenait déjà
+  // pour tels ; la règle commune, bâtie sur `Default_Ignorable_Code_Point`, les en avait sorties (bdesk-38k.77).
+  it.each([
+    ['l’ancre d’annotation (U+FFF9)', '\ufff9'],
+    ['le séparateur d’annotation (U+FFFA)', '\ufffa'],
+    ['le terminateur d’annotation (U+FFFB)', '\ufffb'],
+  ])('replie de même les espaces séparées par %s : une seule reste, et le caractère aussi', (_kind, anchor) => {
+    expect(collapseSpaces(`A ${anchor} B`)).toBe(`A ${anchor}B`);
+    expect(collapseSpaces(`A\t${anchor}\n ${anchor}\u00a0${anchor} B`)).toBe(`A ${anchor}${anchor}${anchor}B`);
+    expect(collapseSpaces(`${anchor} Refonte ${anchor}`)).toBe(`${anchor}Refonte${anchor}`);
+  });
   // Un sélecteur de variante, lui, n'est jamais d'une série de blancs, seul ou non : il coupe la série comme un caractère qu'on voit, et chaque blanc qui l'entoure se replie de son côté, comme sur HEAD (bdesk-38k.70,
   // revues B1, B2 et B4). Retirer l'espace qui le sépare de ce qui précède le collerait à un signe, à un autre sélecteur, à un liant ; en fondre deux autour de lui ne change rien de plus à l'écran qu'un écart
   // de moins, et en perdait une que HEAD gardait (B4 : l'espace derrière un liant).
@@ -292,6 +303,10 @@ describe('withoutInvisible : le texte sans les caractères qu’on ne voit pas',
     ['un blanc braille (U+2800)', '\u2800'],
     ['un joint de graphèmes (U+034F)', '\u034f'],
     ['une voyelle khmère inhérente (U+17B4)', '\u17b4'],
+    // Les ancres d'annotation : `Cf`, que `Default_Ignorable_Code_Point` exclut, et que Chromium ne dessine pas ; la catégorie `Cf` les retirait déjà (bdesk-38k.77).
+    ['une ancre d’annotation (U+FFF9)', '\ufff9'],
+    ['un séparateur d’annotation (U+FFFA)', '\ufffa'],
+    ['un terminateur d’annotation (U+FFFB)', '\ufffb'],
   ])('retire %s, au milieu comme aux bords', (_kind, invisible) => {
     expect(withoutInvisible(`Kan${invisible}ban`)).toBe('Kanban');
     expect(withoutInvisible(`${invisible}Kanban${invisible}`)).toBe('Kanban');
@@ -349,6 +364,19 @@ describe('ticketTitle : le titre d’un ticket là où son identifiant est dit �
     expect(ticketTitle({ title })).toBe(UNTITLED);
   });
 
+  // Un titre fait des seules ancres d'annotation ne se voit pas : Chromium n'en dessine rien, la carte aurait un lien sans nom (bdesk-38k.77).
+  it.each([
+    ['une ancre d’annotation (U+FFF9)', '\ufff9'],
+    ['les trois caractères d’annotation, mêlés de blancs', ' \ufff9 \ufffa\u2800\ufffb '],
+  ])('écrit « Sans titre » pour un titre fait de %s', (_kind, title) => {
+    expect(isBlankTitle(title)).toBe(true);
+    expect(ticketTitle({ title })).toBe(UNTITLED);
+  });
+
+  it('garde un titre qui porte une ancre d’annotation et du texte : elle ne se voit pas, le texte oui', () => {
+    expect(isBlankTitle('\ufff9Refonte')).toBe(false);
+    expect(visible(ticketTitle({ title: '\ufff9Refonte \ufffa du shell' }))).toBe('Refonte du shell');
+  });
   it('garde tel qu’écrit un titre fait de séparateurs seuls : « - » reste « - », et non « Sans titre »', () => {
     for (const title of [':', '–', '—', '-', '- - -']) expect(ticketTitle({ title }), title).toBe(title);
     expect(visible(ticketTitle({ title: '\u200b : \u200b' }))).toBe(':');

@@ -20,7 +20,7 @@ const SILENT = new RegExp(SILENT_CHAR, 'gu');
 
 /**
  * Le texte sans les caractères qu'on n'y voit pas, hors les blancs (une espace occupe sa place) : ce qu'on en lit à l'écran, pour compter ou comparer des titres. Ces caractères sont ceux de la règle des
- * textes invisibles (`isInvisibleText`, dans `lib/invisibleText`, d'où cette expression est prise) : les caractères sans largeur (U+200B, U+200D, U+2060, U+00AD, U+FEFF), mais aussi ceux que la police laisse
+ * textes invisibles (`isInvisibleText`, dans `lib/invisibleText`, d'où cette expression est prise) : les caractères sans largeur (U+200B, U+200D, U+2060, U+00AD, U+FEFF, les ancres d'annotation U+FFF9 à U+FFFB), mais aussi ceux que la police laisse
  * blancs sans qu'ils soient de catégorie `Cf` (le remplisseur hangul U+3164, le blanc braille U+2800), et non U+06DD et ses pareils, que la police dessine et que `Cf` retirait. Un sélecteur de variante qui
  * suit un caractère qu'on voit reste : il en change le dessin (« ⚠ » suivi de U+FE0F). Jamais pour écrire un titre : un liant sans chasse (U+200D) tient ensemble les emojis d'une famille, un antiliant
  * (U+200C) sépare les lettres d'un mot persan : les retirer du titre en changerait le sens.

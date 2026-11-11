@@ -4,10 +4,10 @@
 const BLANKS = String.raw`\p{White_Space}`;
 
 /**
- * Des caractères qu'on ne voit pas sans qu'ils soient des blancs : les caractères « ignorables par défaut » (`Default_Ignorable_Code_Point` : ceux qu'Unicode demande de ne pas dessiner) et le blanc
- * braille (U+2800).
+ * Des caractères qu'on ne voit pas sans qu'ils soient des blancs : les caractères « ignorables par défaut » (`Default_Ignorable_Code_Point` : ceux qu'Unicode demande de ne pas dessiner), le blanc
+ * braille (U+2800) et les ancres d'annotation (U+FFF9 à U+FFFB).
  */
-const SILENT = String.raw`\p{Default_Ignorable_Code_Point}\u2800`;
+const SILENT = String.raw`\p{Default_Ignorable_Code_Point}\u2800\ufff9-\ufffb`;
 
 const INVISIBLE = new RegExp(`^[${BLANKS}${SILENT}]*$`, 'u');
 
@@ -18,9 +18,17 @@ const INVISIBLE = new RegExp(`^[${BLANKS}${SILENT}]*$`, 'u');
  * La règle suit Unicode plutôt qu'une liste écrite ici. La catégorie `Cf` (format) ne convient pas. Elle tient pour invisibles des signes qui se dessinent : ceux que l'écriture arabe, syriaque ou kaithi
  * pose devant un nombre ou un mot (U+0600 à U+0605, U+06DD, U+070F, U+0890, U+0891, U+08E2, U+110BD, U+110CD). Et elle laisse voir des caractères que la police ne dessine pas : le remplisseur hangul U+3164
  * et sa demi-chasse U+FFA0, les voyelles khmères inhérentes U+17B4 et U+17B5, le joint de graphèmes U+034F, les sélecteurs de variante. `Default_Ignorable_Code_Point` est `Cf` moins ces signes (et moins les
- * ancres d'annotation U+FFF9 à U+FFFB et les contrôles hiéroglyphiques U+13430 à U+1343F), plus ces caractères hors `Cf` : Unicode la tient à jour, la liste n'est pas à tenir ici. Le blanc braille, une
- * cellule sans point, est un symbole pour Unicode, pas un caractère ignorable : il s'ajoute à la règle. Les autres caractères de contrôle (U+0000 à U+0008, U+000E à U+001F, U+007F à U+009F) n'en font pas
- * partie : Unicode ne les dit ni blancs ni ignorables.
+ * ancres d'annotation U+FFF9 à U+FFFB et les contrôles hiéroglyphiques U+13430 à U+1343F), plus ces caractères hors `Cf` : Unicode la tient à jour, la liste n'est pas à tenir ici.
+ *
+ * Deux ajouts, que ni les blancs ni les caractères ignorables ne couvrent, mesurés dans Chromium (bdesk-38k.65 et .77 : tous les points de code attribués, dessinés un à un). Le blanc braille (U+2800), une cellule sans point,
+ * est un symbole pour Unicode, pas un caractère ignorable ; c'est le caractère qu'on met pour un blanc. Les ancres d'annotation (U+FFF9 à U+FFFB) sont `Cf` sans être ignorables : Chromium n'en dessine aucun pixel, à aucune
+ * graisse, et leur donne une largeur (7 px dans une pastille d'Epic) qui n'est qu'un retrait vide. La catégorie `Cf` les retirait, comme la pastille d'avant bdesk-38k.70 ; la règle, bâtie sur `Default_Ignorable_Code_Point`,
+ * les gardait, et « U+FFF9 Kanban » se distinguait de « Kanban » dans le filtre sans que rien le dise.
+ *
+ * Chromium ne dessine rien non plus pour 61 autres points de code, qui restent hors de la règle : les caractères de contrôle (U+0000 à U+0008, U+000E à U+001F, U+007F, U+0081 à U+0084, U+0086 à U+009F), qu'Unicode ne dit
+ * ni blancs ni ignorables et que CSS Text demande de dessiner (U+0080, de la même catégorie, se dessine dans Chromium) ; U+F860 et U+F861, d'usage privé, que seule la police de cette machine laisse blancs ; l'objet de
+ * remplacement U+FFFC, un symbole sans largeur, donc sans retrait à corriger. Aucun n'était retiré avant bdesk-38k.70 : les garder ne change rien aux titres. `lib/invisibleText.test.ts` les écrit un à un ; si l'un d'eux
+ * gênait un jour, l'ajouter serait une ligne de plus.
  *
  * Seul ce qu'on ne voit pas compte : une ponctuation (« - », « : ») se voit, c'est ce que l'auteur a écrit. C'est aussi la règle des titres de ticket (`isBlankTitle`, dans `data/helpers.ts`, qui l'appelle) :
  * leur titre est de plus rangé sur une ligne (`ticketTitle`), et le nom d'une Epic dit son identifiant quand son titre n'est fait que de séparateurs (`epicName`). Le titre d'une page est le nom d'un dossier,

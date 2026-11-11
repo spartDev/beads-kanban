@@ -224,6 +224,10 @@ describe('shortTitle : ce qu’on ne voit pas, selon la règle des textes invisi
     ['un joint de graphèmes (U+034F)', '\u034f'],
     ['une voyelle khmère inhérente (U+17B4)', '\u17b4'],
     ['un saut de ligne de contrôle (U+0085)', '\u0085'],
+    // Les ancres d'annotation : `Cf`, que la pastille d'avant bdesk-38k.70 retirait des bords et que la règle commune gardait (bdesk-38k.77). Chromium n'en dessine aucun pixel, mais leur donne 7,19 px de large : un retrait vide.
+    ['l’ancre d’annotation (U+FFF9)', '\ufff9'],
+    ['le séparateur d’annotation (U+FFFA)', '\ufffa'],
+    ['le terminateur d’annotation (U+FFFB)', '\ufffb'],
   ])('retire %s des bords du titre : devant « Kanban », derrière, en nombre, et mêlé à des blancs', (_kind, invisible) => {
     expect(shortTitle(`${invisible}Kanban`)).toBe('Kanban');
     expect(shortTitle(`Kanban${invisible}`)).toBe('Kanban');
@@ -237,6 +241,26 @@ describe('shortTitle : ce qu’on ne voit pas, selon la règle des textes invisi
     expect(epicShortName({ id: 'bdesk-e1', title: '\u2800\u3164 Kanban' })).toBe('Kanban');
   });
 
+  // « U+FFF9 Kanban » : la pastille gardait 77,39 px au lieu de 70,20, le retrait vide d'un caractère que Chromium ne dessine pas (bdesk-38k.77).
+  it('nomme l’Epic « U+FFF9 Kanban » comme « Kanban » : la pastille n’a pas de retrait vide', () => {
+    expect(epicShortName({ id: 'bdesk-e1', title: '\ufff9Kanban' })).toBe('Kanban');
+    expect(epicShortName({ id: 'bdesk-e1', title: '\ufff9Kanban : suivi des tickets' })).toBe('Kanban');
+    expect(epicShortName({ id: 'bdesk-e1', title: 'Kanban\ufffb' })).toBe('Kanban');
+    expect(epicShortName({ id: 'bdesk-e1', title: '\ufff9 \ufffa Kanban \ufffb' })).toBe('Kanban');
+  });
+
+  it('lit comme une Epic sans titre un titre fait des seules ancres d’annotation, avec ou sans séparateurs : son identifiant la nomme', () => {
+    expect(epicShortName({ id: 'bdesk-e1', title: ' \ufff9 \ufffa\ufffb ' })).toBe('bdesk-e1');
+    expect(epicShortName({ id: 'bdesk-e1', title: '\ufff9 : \ufffb' })).toBe('bdesk-e1');
+    expect(shortTitle(' \ufff9 \ufffa\ufffb ')).toBe('');
+  });
+
+  it('ne compte pas les ancres d’annotation pour de la place : ni la limite de la pastille ni son seuil', () => {
+    const fits = 'A'.repeat(20) + '\ufff9\ufffa\ufffb'.repeat(4) + 'BBBB';
+    expect(shortTitle(fits)).toBe(fits);
+    expect(shortTitle(fits + 'C')).toBe('A'.repeat(20) + '\ufff9\ufffa\ufffb'.repeat(4) + 'BBB…');
+    expect(shortTitle('V1\ufff9\ufffa\ufffb : suite')).toBe('V1\ufff9\ufffa\ufffb : suite');
+  });
   it('ne garde pas pour nom une tête faite uniquement de tels caractères : le titre entier, moins ceux de son bord', () => {
     expect(shortTitle('\u3164\u3164\u3164 : Refonte du shell')).toBe(': Refonte du shell');
     expect(shortTitle('\u2800\u2800\u2800 - Refonte')).toBe('- Refonte');
@@ -314,6 +338,30 @@ describe('shortTitle : ce qu’on ne voit pas, selon la règle des textes invisi
   });
 });
 
+// Un sélecteur de variante derrière un caractère de contrôle visible (ni blanc, ni ignorable : U+0001, U+001B, U+007F, U+0090) fait corps avec lui, comme derrière tout caractère qu'on voit : la règle des textes invisibles l'y
+// rattache (`ATTACHED`, décidée sur le titre entier), et les mesures du titre entier le comptent pour une unité, comme HEAD. La coupe, elle, mesure un graphème à la fois, et la norme des graphèmes (UAX #29, règle GB4) sépare un
+// sélecteur du contrôle qui le précède : il arrivait seul, devant rien, et comptait pour zéro. La coupe tombait alors une unité plus tard que sur HEAD, ou gardait le sélecteur que HEAD retirait avec l'ellipse. Chaque graphème est
+// maintenant mesuré dans son contexte, le point de code qui le précède dans le titre (revue finale de bdesk-38k.70, R1 ; bdesk-38k.77).
+describe('shortTitle : la coupe mesure chaque graphème dans son contexte', () => {
+  it('coupe où HEAD coupait quand un sélecteur de variante suit un caractère de contrôle visible', () => {
+    expect(shortTitle('abcdefghij\u001b\ufe0fklmnopqrstuvwxyz0123456789')).toBe('abcdefghij\u001b\ufe0fklmnopqrstu…');
+    expect(shortTitle('a\u0001\ufe0fbc', 3)).toBe('a\u0001…');
+  });
+
+  it.each([
+    ['U+0001', '\u0001'],
+    ['l’échappement (U+001B)', '\u001b'],
+    ['le caractère d’effacement (U+007F)', '\u007f'],
+    ['un contrôle C1 (U+0090)', '\u0090'],
+  ])('compte pour une unité le sélecteur de variante qui suit %s : la pastille de HEAD, un sélecteur après lui comme avant', (_kind, control) => {
+    // Le contrôle et son sélecteur valent deux unités : « a », eux, puis « bc » dépassent trois ; ils tiennent dans cinq.
+    expect(shortTitle(`a${control}\ufe0fbc`, 3)).toBe(`a${control}…`);
+    expect(shortTitle(`a${control}\ufe0fbc`, 5)).toBe(`a${control}\ufe0fbc`);
+    expect(shortTitle(`a${control}\ufe0fbcd`, 5)).toBe(`a${control}\ufe0fb…`);
+    // Plus loin dans le titre, ce que la coupe mesure du titre entier est ce que l'ellipse annonce.
+    expect(shortTitle(`${'x'.repeat(10)}${control}\ufe0f${'y'.repeat(20)}`)).toBe(`${'x'.repeat(10)}${control}\ufe0f${'y'.repeat(11)}…`);
+  });
+});
 describe('epicChoices : le filtre Epic', () => {
   const issues = [
     at('closed-old', { type: 'epic', status: 'closed', updatedAt: '2026-08-01T09:00:00Z' }),
@@ -404,6 +452,19 @@ describe('epicLabels : de quoi reconnaître chaque Epic dans le filtre', () => {
     expect(labels(epic('a', title), epic('b', plain))).toEqual({ a: title, b: plain });
   });
 
+  // Les ancres d'annotation ne se voient pas : « U+FFF9 Kanban » ne diffère de « Kanban » que par ce qu'on ne voit pas, un retrait vide. Les deux options se lisent pareil à l'écran, et chacune porte son identifiant pour qu'on les
+  // distingue. La règle commune, qui gardait ces trois caractères comme des signes qui se dessinent, laissait deux options identiques sans identifiant (bdesk-38k.77) ; la catégorie `Cf`, elle, les distinguait déjà.
+  it.each([
+    ['l’ancre d’annotation (U+FFF9) en tête', '\ufff9Kanban', '\ufff9Kanban (a)'],
+    ['le séparateur d’annotation (U+FFFA) au milieu d’un mot', 'Kan\ufffaban', 'Kan\ufffaban (a)'],
+    ['le terminateur d’annotation (U+FFFB) à la fin', 'Kanban\ufffb', 'Kanban\ufffb (a)'],
+  ])('distingue deux Epics qui ne diffèrent que par %s : chacune porte son identifiant', (_kind, title, label) => {
+    expect(labels(epic('a', title), epic('b', 'Kanban'), epic('c', 'Autre'))).toEqual({ a: label, b: 'Kanban (b)', c: 'Autre' });
+  });
+
+  it('lit par son identifiant une Epic dont le titre n’est fait que des ancres d’annotation, même partagé : sans « (identifiant) » en plus', () => {
+    expect(labels(epic('a', '\ufff9\ufffb'), epic('b', ' \ufffa '), epic('c', 'Autre'))).toEqual({ a: 'a', b: 'b', c: 'Autre' });
+  });
   // « Alerte ⚠ » et « Alerte ⚠ » suivi de U+FE0F se lisent différemment (le signe noir, le signe en couleurs) : le sélecteur de variante qui suit un caractère qu'on voit n'est pas invisible.
   it('ne tient pas pour le même titre un signe et son signe en couleurs : le sélecteur de variante se voit derrière lui', () => {
     expect(labels(epic('a', 'Alerte ⚠\ufe0f'), epic('b', 'Alerte ⚠'))).toEqual({ a: 'Alerte ⚠\ufe0f', b: 'Alerte ⚠' });
