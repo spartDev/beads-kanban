@@ -76,7 +76,17 @@ export function ChartCard({
       <ChartTitleId value={titleId}>{children}</ChartTitleId>
       {data ? (
         <details className="group text-micro">
-          <summary className="inline-flex cursor-default list-none items-center gap-1 font-medium text-ink-2 hover:text-ink [&::-webkit-details-marker]:hidden">
+          {/*
+            Une ligne entière de 24 px de haut (WCAG 2.5.8, bdesk-38k.82) : `py-1` l'agrandit de 4 px au-dessus et
+            au-dessous, `-my-1` les reprend, et la carte ne bouge pas. Réduit à son texte (16 px), le résumé faisait
+            échouer `target-size` à 375 px : la barre du haut, collante, passe sur lui quand on défile, et axe lui
+            demande alors 24 px de côté que la barre ne recouvre pas. Plus étroit que le bouton du Projet de cette
+            barre, il n'en a nulle part ; sur toute la ligne, il en garde à côté du bouton, à chaque position du
+            défilement (dataSummary.test.tsx).
+            Toute la ligne déplie : le curseur le dit (`cursor-pointer`), et le contour de focus est celui de
+            l'application (styles.css : `summary` est dans la règle `:focus-visible`).
+          */}
+          <summary className="-my-1 flex cursor-pointer list-none items-center gap-1 py-1 font-medium text-ink-2 hover:text-ink [&::-webkit-details-marker]:hidden">
             <span aria-hidden="true" className="inline-block text-ink-3 transition-transform group-open:rotate-90">
               ›
             </span>

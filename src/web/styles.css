@@ -190,7 +190,8 @@
     background: var(--accent-soft);
   }
 
-  :where(a, button, input, [role='button'], [tabindex]):focus-visible {
+  /* Le résumé d'un `<details>` y est aussi : sans cela il prend l'anneau du navigateur, bleu, collé à son bord (bdesk-38k.82). */
+  :where(a, button, input, summary, [role='button'], [tabindex]):focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }

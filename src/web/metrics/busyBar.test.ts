@@ -116,4 +116,14 @@ describe('le trait du calcul en cours : mouvement réduit et couleurs forcées',
   it('prend une couleur du système en couleurs forcées : le trait y resterait invisible', () => {
     expect(styleOf('.metrics-busy::after', '@media (forced-colors: active)')['background']).toMatch(/^(Highlight|CanvasText)$/);
   });
+
+  // bdesk-38k.82 (relecture finale de bdesk-38k.80, m1) : le système remplace aussi la couleur de la piste, pâle (`--accent-soft`), par celle du panneau : elle y devenait invisible, et le segment
+  // seul, un trait qui court sous le sélecteur de période, ressemblait au soulignement d'un onglet actif. La piste prend GrayText, la couleur que le système donne aux éléments inactifs : un
+  // trait visible sous le segment, qui se lit comme une barre de progression.
+  it('donne à la piste la couleur GrayText en couleurs forcées : sans elle, le segment seul ressemblerait au soulignement d’un onglet actif', () => {
+    const forced = '@media (forced-colors: active)';
+    expect(styleOf('.metrics-busy::before', forced)['background']).toBe('GrayText');
+    // Et ce n'est pas celle du segment : la piste se distingue de ce qui y court.
+    expect(styleOf('.metrics-busy::before', forced)['background']).not.toBe(styleOf('.metrics-busy::after', forced)['background']);
+  });
 });

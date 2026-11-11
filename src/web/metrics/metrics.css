@@ -61,7 +61,8 @@
  *
  * Il atteint 3:1 sur le panneau dans les deux thèmes (metrics/palette.test.ts). Décoratif (`aria-hidden`) : un lecteur d'écran a `aria-busy` sur les chiffres et la zone d'annonce de la page.
  * Mouvement réduit : le segment ne court plus, c'est un trait fixe sur toute la largeur, que la barre d'outils explique par son texte. Couleurs forcées (Windows « contraste élevé ») : le
- * système remplace les couleurs de l'auteur, et le trait y était blanc sur blanc ; le segment prend la couleur de surbrillance du système, que l'utilisateur a choisie pour ressortir.
+ * système remplace les couleurs de l'auteur, et le trait y était blanc sur blanc ; le segment prend la couleur de surbrillance du système, que l'utilisateur a choisie pour ressortir, et la
+ * piste celle du texte inactif (`GrayText`) : sans piste visible, le segment seul ressemble au soulignement d'un onglet actif (bdesk-38k.82).
  */
 .metrics-busy {
   --metrics-busy-lift: 0.75rem;
@@ -124,6 +125,11 @@
 }
 
 @media (forced-colors: active) {
+  /* La piste prend la couleur des éléments inactifs : la pâle ne s'y voit plus (elle devient celle du panneau), et le segment seul ressemblerait au soulignement d'un onglet actif. */
+  .metrics-busy::before {
+    background: GrayText;
+  }
+
   .metrics-busy::after {
     background: Highlight;
   }
