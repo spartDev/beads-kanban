@@ -23,7 +23,7 @@ export function TopBar() {
           <button
             type="button"
             aria-label="Rechercher"
-            onClick={() => openPalette()}
+            onClick={(event) => openPalette('all', event.currentTarget)}
             className="grid size-8 place-items-center rounded-lg border border-line bg-well text-ink-2 transition-colors hover:text-ink"
           >
             <Search size={15} strokeWidth={2} aria-hidden="true" />
@@ -54,7 +54,7 @@ function MobileSwitcher() {
   return (
     <button
       type="button"
-      onClick={() => openPalette('projects')}
+      onClick={(event) => openPalette('projects', event.currentTarget)}
       className="-ml-1.5 flex h-8 min-w-0 items-center gap-2 rounded-lg px-1.5 text-ui font-semibold text-ink transition-colors hover:bg-hover md:hidden"
     >
       {project ? <ProjectTile project={project} size={20} /> : <BrandMark size={20} />}

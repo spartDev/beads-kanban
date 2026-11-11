@@ -4,6 +4,9 @@ import { useShortcuts, type ShortcutDefinition } from '../shortcuts/ShortcutsPro
 import { SECTIONS, useTabsProject } from './navigation';
 import { usePalette, useShortcutsHelp } from './OverlayProvider';
 
+/** D'où vient la touche : l'élément qui la reçoit, celui qui a le focus (le clavier le déplace lui-même, dans tous les moteurs). C'est l'origine de la surcouche qu'elle ouvre (voir `OverlayProvider`). */
+const sourceOf = (event: KeyboardEvent): Element | null => (event.target instanceof Element ? event.target : null);
+
 /**
  * Raccourcis de l'application : palette, aide, navigation « g puis… ».
  * Les raccourcis propres à une page (j/k/Entrée du kanban…) s'enregistrent avec `useShortcuts` dans la page.
@@ -21,14 +24,14 @@ export function useGlobalShortcuts(): void {
       label: 'Ouvrir la palette de commandes',
       group: 'Général',
       allowInInput: true,
-      run: togglePalette,
+      run: (event) => togglePalette(sourceOf(event)),
     },
     {
       id: 'help.shortcuts',
       keys: '?',
       label: 'Afficher les raccourcis clavier',
       group: 'Général',
-      run: help.show,
+      run: (event) => help.show(sourceOf(event)),
     },
     {
       id: 'nav.global',
@@ -42,7 +45,7 @@ export function useGlobalShortcuts(): void {
       keys: 'g p',
       label: 'Changer de Projet',
       group: 'Navigation',
-      run: () => openPalette('projects'),
+      run: (event) => openPalette('projects', sourceOf(event)),
     },
     ...SECTIONS.map(
       (section): ShortcutDefinition => ({

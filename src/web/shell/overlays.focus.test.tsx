@@ -587,13 +587,13 @@ describe('quand l’élément d’origine ne peut plus recevoir le focus : le pa
    */
   function Page({ withPanel, withOtherDialog, mainHidden }: { withPanel: boolean; withOtherDialog: boolean; mainHidden: boolean }) {
     const { show } = useShortcutsHelp();
-    useShortcut({ id: 'test.help', keys: '?', label: 'Aide', group: 'Test', run: show });
+    useShortcut({ id: 'test.help', keys: '?', label: 'Aide', group: 'Test', run: () => show() });
     const [origin, setOrigin] = useState<Origin>('ready');
     change = setOrigin;
     return (
       <main hidden={mainHidden}>
         {origin === 'gone' ? null : (
-          <button type="button" disabled={origin === 'disabled'} onClick={show}>
+          <button type="button" disabled={origin === 'disabled'} onClick={(event) => show(event.currentTarget)}>
             Ouvrir l’aide
           </button>
         )}

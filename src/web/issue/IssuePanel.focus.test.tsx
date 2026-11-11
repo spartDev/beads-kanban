@@ -643,7 +643,7 @@ describe.each(SCREENS)('un lien du panneau qui a le focus disparaît sans que le
 });
 
 describe.each(SCREENS)('le panneau d’un ticket rend le focus à un élément utile en se fermant : %s', (_screen, narrow) => {
-  /** Ouvre `OTHER_TITLE` par la palette ⌘K, depuis le kanban : le panneau retient pour origine le champ de la palette, qu'elle retire en se fermant. */
+  /** Ouvre `OTHER_TITLE` par la palette ⌘K, depuis le kanban : le panneau ne retient aucune origine (voir `panelOpener`), et le champ de la palette, qu'elle retire en se fermant, n'est plus dans la page. */
   async function openFromPalette(how: 'keyboard' | 'click') {
     screenIs(narrow);
     stubDefaultApi();
@@ -651,7 +651,7 @@ describe.each(SCREENS)('le panneau d’un ticket rend le focus à un élément u
     await screen.findByRole('region', { name: 'En cours' });
     await app.user.keyboard('{Control>}k{/Control}');
     const palette = await screen.findByRole('dialog', { name: 'Palette de commandes' });
-    const field = document.activeElement; // le champ de la palette : ce que le panneau retient pour origine
+    const field = document.activeElement; // le champ de la palette : ce que le panneau retenait pour origine avant bdesk-38k.76
     await app.user.keyboard('38k.7');
     const option = await within(palette).findByRole('option', { name: OTHER_TITLE });
 
@@ -661,7 +661,7 @@ describe.each(SCREENS)('le panneau d’un ticket rend le focus à un élément u
     const panel = await screen.findByRole('dialog', { name: OTHER_TITLE });
     expect(pathname(app.router)).toBe('/p/bdesk/t/bdesk-38k.7');
     expect(document.activeElement).toBe(panel);
-    expect(field?.isConnected).toBe(false); // la palette s'est retirée avec son champ : l'origine du panneau n'est plus dans la page
+    expect(field?.isConnected).toBe(false); // la palette s'est retirée avec son champ : il n'est plus dans la page, et le panneau n'en fait pas son origine
     return { ...app, panel };
   }
 

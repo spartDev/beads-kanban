@@ -41,7 +41,7 @@ export function Sidebar() {
 
       <button
         type="button"
-        onClick={() => openPalette()}
+        onClick={(event) => openPalette('all', event.currentTarget)}
         className="flex h-8 w-full items-center gap-2 rounded-lg border border-line bg-well px-2.5 text-ui text-ink-3 transition-colors hover:border-line-strong hover:text-ink-2"
       >
         <Search size={14} strokeWidth={2} aria-hidden="true" />
@@ -64,7 +64,7 @@ export function Sidebar() {
           <button
             type="button"
             aria-label="Afficher les raccourcis clavier"
-            onClick={help.show}
+            onClick={(event) => help.show(event.currentTarget)}
             className="grid size-7 place-items-center rounded-md text-ink-3 transition-colors hover:bg-hover hover:text-ink"
           >
             <Keyboard size={15} strokeWidth={1.8} aria-hidden="true" />

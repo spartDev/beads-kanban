@@ -16,7 +16,7 @@ import { clickLikeWebKit } from '../test/webkitClick';
  * a le focus, le panneau le retient pour origine, et à sa fermeture le focus allait au contenu principal, non à la carte. Le lien de la carte dit maintenant de quelle carte vient le panneau (l'entrée d'historique
  * qu'il ouvre le garde) : WebKit rend le focus à la carte comme les autres moteurs, au clavier comme à la souris, là où elle est si un commit l'a changée de colonne, dans son Projet. Une autre carte cliquée pendant que le panneau est
  * ouvert en devient l'origine, la dernière carte cliquée et non la première. Tout le reste est inchangé :
- * le focus qu'un utilisateur a mis ailleurs reste où il est, et ce que la carte n'a pas ouvert (la palette, la pastille d'Epic, une ligne de la page Epics, l'adresse collée, « Retour » et « Avancer ») garde l'origine qu'il avait.
+ * le focus qu'un utilisateur a mis ailleurs reste où il est, et ce que la carte n'a pas ouvert (la pastille d'Epic, une ligne de la page Epics, l'adresse collée, « Retour » et « Avancer ») garde l'origine qu'il avait. La palette n'en laisse aucune (bdesk-38k.76 : `IssuePanel.palette.test.tsx`).
  * Les clics de WebKit sont joués par `clickLikeWebKit` (le focus n'est pas donné à l'élément cliqué), ceux de Chromium et de Firefox par `user.click` (le lien cliqué prend le focus).
  */
 
@@ -388,9 +388,8 @@ describe.each(SCREENS)('le panneau ouvert à la souris dans WebKit depuis une ca
 
 /*
  * Ce que la souris ouvre d'autre ne passe pas par la carte, dans WebKit comme ailleurs : seul le lien d'une carte reste dans la page quand le panneau s'ouvre (le tableau est la route mère du panneau), et c'est lui, et lui
- * seul, qui dit de quelle carte vient le panneau. Un choix de la palette, la pastille d'Epic d'une carte (elle mène à la page Epics), une ligne de la page Epics, « Avancer » : l'origine du panneau est ce qui a le focus quand
- * il s'ouvre, comme avant. Ici, jsdom retire la palette à l'instant où elle se ferme, sans animation : son champ n'est plus là à la fermeture du panneau, et le contenu principal prend le focus. (Dans un navigateur, un panneau
- * monté après l'animation de sortie de la palette retient la carte d'où elle s'est ouverte, qu'elle vient de lui rendre le focus : c'est le comportement de 38k.23, qui n'a pas changé.)
+ * seul, qui dit de quelle carte vient le panneau. La pastille d'Epic d'une carte (elle mène à la page Epics), une ligne de la page Epics, « Avancer » : l'origine du panneau est ce qui a le focus quand il s'ouvre, comme avant.
+ * Un choix de la palette n'a aucune origine, quel que soit l'ordre où la palette se retire et où le panneau est rendu (bdesk-38k.76, `IssuePanel.palette.test.tsx`) : à la fermeture, le contenu principal a le focus.
  */
 describe.each(SCREENS)('ce que la souris ouvre d’autre qu’une carte ne rend le focus à aucune carte, dans WebKit : %s', (_screen, narrow) => {
   async function openBoard() {

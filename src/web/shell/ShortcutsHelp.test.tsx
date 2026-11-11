@@ -124,7 +124,7 @@ describe('l’aide rend Échap au registre des raccourcis dès qu’elle se ferm
     const { show } = useShortcutsHelp();
     useShortcut({ id: 'test.escape', keys: 'escape', label: 'Échap de la page', group: 'Test', allowInInput: true, run: onEscape });
     return (
-      <button type="button" onClick={show}>
+      <button type="button" onClick={(event) => show(event.currentTarget)}>
         Ouvrir l’aide
       </button>
     );

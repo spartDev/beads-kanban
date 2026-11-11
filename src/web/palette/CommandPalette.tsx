@@ -5,6 +5,7 @@ import { Globe, RefreshCw, Search, TriangleAlert } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { queryKeys } from '../data/hooks';
+import { openedFromPalette } from '../kanban/boardFocus';
 import { cx } from '../lib/cx';
 import { useOverlayContent, usePalette, type PaletteMode } from '../shell/OverlayProvider';
 import { dialogOverlay, dialogSurface } from '../ui/dialog';
@@ -74,10 +75,12 @@ function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode
   useActiveDescendant(root);
   useSelectionInView(root);
 
+  // Le choix écrit dans l'entrée d'historique qu'il ouvre qu'il en est l'auteur : le panneau d'un ticket n'a alors aucune origine à retenir, quel que soit l'ordre où la palette se retire et où le panneau est rendu
+  // (voir `panelOpener`).
   const go = useCallback(
     (to: string) => {
       onClose();
-      void navigate(to);
+      void navigate(to, { state: openedFromPalette });
     },
     [navigate, onClose],
   );

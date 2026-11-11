@@ -33,7 +33,7 @@ const NARROW_SCREEN = '(max-width: 767.98px)';
  * ou Échap le ferment (voir `useClosePanel`).
  *
  * - Il prend le focus à l'ouverture et le rend à ce qui l'avait (la carte), pour que le clavier reprenne où il en était ; à défaut
- *   (adresse collée, champ de la palette qui l'a ouvert et qui est retiré depuis), au contenu principal, jamais au corps de la page
+ *   (adresse collée, choix de la palette, qui n'est l'origine de rien : voir `panelOpener`), au contenu principal, jamais au corps de la page
  *   (voir `restoreFocus`), et à la carte là où elle est maintenant quand un commit l'a changée de colonne entre-temps. Ce qui l'avait est la carte
  *   même quand le clic n'a pas donné le focus à son lien, ce que WebKit ne fait pas : le lien a écrit sa carte dans l'entrée d'historique (voir `panelOpener`). Une autre carte cliquée pendant que le panneau est ouvert en remplace
  *   l'entrée sans le remonter : c'est elle, la dernière, qui reçoit le focus à la fermeture. Le corps du panneau change d'un coup d'état (l'avis d'erreur et son bouton « Réessayer » que le squelette remplace,
@@ -255,8 +255,8 @@ export function IssuePanel() {
 /**
  * Rend le focus à ce qui l'avait avant l'ouverture du panneau (la carte du tableau), sinon au contenu principal : jamais au corps de la page
  * (les règles de `focus.ts`, celles de la palette et de l'aide). Le tableau n'est pas remonté par l'ouverture du panneau (voir `KanbanRoute`) :
- * la carte est toujours là. Mais l'origine peut n'être rien (une adresse collée : le corps de la page) ou avoir disparu (le champ de la palette,
- * quand un choix de la palette a ouvert le panneau, est retiré avec elle). Si l'origine est le lien d'une carte qu'un commit a changée de colonne
+ * la carte est toujours là. Mais l'origine peut n'être rien (une adresse collée : le corps de la page ; un choix de la palette, qui n'en laisse aucune : voir `panelOpener`) ou avoir disparu (la page
+ * dont le lien a ouvert le panneau, retirée avec lui). Si l'origine est le lien d'une carte qu'un commit a changée de colonne
  * pendant que le panneau était ouvert, ce lien est retiré, et c'est la carte, là où elle est maintenant, qui reçoit le focus ; le contenu principal
  * quand elle n'est pas à l'écran (la colonne d'arrivée est cachée sur un écran étroit, le ticket est supprimé : voir `focusCardOrZone`). Si le focus est
  * allé ailleurs de lui-même (un lien de la barre latérale, une autre carte, une autre page), on n'y touche pas.

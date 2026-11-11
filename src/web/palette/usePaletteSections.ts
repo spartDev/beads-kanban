@@ -200,7 +200,7 @@ function usePaletteCommands(go: (to: string) => void, close: () => void) {
         icon: Keyboard,
         shortcut: '?',
         // L'aide prend la place de la palette : deux boîtes de dialogue ne s'empilent pas.
-        run: showHelp,
+        run: () => showHelp(),
       },
     ];
     return { navigation, actions };
