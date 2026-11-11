@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { contrastRatio, parseOklch, toSrgb, type Oklch } from '../test/color';
+import { contrastRatio, over, parseOklch, toSrgb, type Oklch } from '../test/color';
 import { OUTLINE_FILL_SHARE, outlineOf } from './palette';
 
 /**
@@ -12,7 +12,8 @@ import { OUTLINE_FILL_SHARE, outlineOf } from './palette';
  * - le texte d'une tendance (--good, --danger) atteint 4,5:1 sur les fonds des tuiles (WCAG 1.4.3) ;
  * - chaque forme pleine d'un graphique (bande du CFD, barre, point, pastille de légende) est cernée d'un trait mêlé à
  *   l'encre du thème, et ce contour atteint 3:1 sur le panneau (WCAG 1.4.11) ;
- * - les cinq colonnes du CFD se distinguent de leurs voisines.
+ * - les cinq colonnes du CFD se distinguent de leurs voisines ;
+ * - le segment d'accent du trait qui dit « calcul en cours » au-dessus des chiffres gardés (bdesk-38k.80), qui remplace leur atténuation, atteint lui aussi 3:1 sur le panneau (le reste du trait : busyBar.test.ts).
  */
 
 const TEXT_MIN = 4.5;
@@ -21,6 +22,8 @@ const GRAPHIC_MIN = 3;
 const read = (name: string) => readFileSync(join(import.meta.dirname, name), 'utf8');
 const stylesCss = read('../styles.css');
 const metricsCss = read('metrics.css');
+/** Le jeton de couleur du trait du calcul en cours : lu dans la règle de metrics.css, pas répété ici. */
+const busyBarToken = /\.metrics-busy::after\s*\{[^}]*?background:\s*var\(--([\w-]+)\)/.exec(metricsCss)?.[1];
 
 /** Contenu du bloc CSS qui s'ouvre par `opening`. */
 function blockOf(source: string, opening: string): string {
@@ -165,5 +168,13 @@ describe.each(THEMES)('thème $name', ({ tokens, numbers }) => {
       if (gap < 0.08) failures.push(`--${lower} / --${upper} : ${gap.toFixed(3)}`);
     }
     expect(failures).toEqual([]);
+  });
+
+  // Les chiffres gardés en attendant la période suivante ne sont plus atténués (un texte à 60 % d'opacité n'atteint plus 4,5:1) : ce trait est ce qui les dit provisoires, à l'écran.
+  it(`le trait du calcul en cours atteint ${GRAPHIC_MIN}:1 sur le panneau (WCAG 1.4.11) : il porte une information`, () => {
+    expect(busyBarToken, 'metrics.css donne un fond `var(--…)` au segment `.metrics-busy::after`').toBeTruthy();
+    // Posé sur le panneau avec l'opacité propre du jeton : `--line`, `--hover` ou `--press` sont translucides, et leur teinte seule, opaque, atteindrait 3:1 sans qu'on les voie.
+    const ratio = contrastRatio(over(token(tokens, busyBarToken as string), panel), panel);
+    expect(ratio, `--${busyBarToken} sur le panneau`).toBeGreaterThanOrEqual(GRAPHIC_MIN);
   });
 });

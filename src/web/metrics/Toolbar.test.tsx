@@ -551,4 +551,55 @@ describe('MetricsToolbar : actualiser', () => {
     setup({ fetching: true });
     expect(screen.getByRole('button', { name: 'Actualiser les métriques' }).querySelector('svg')?.getAttribute('class')).toContain('animate-spin');
   });
+
+  // bdesk-38k.80 : les chiffres gardés en attendant ceux de la période choisie ne sont plus atténués (leur contraste tombait sous WCAG AA) ; la barre dit, en texte, qu'ils sont provisoires.
+  it('dit que le calcul est en cours, à la place de l’heure de celui qu’il remplace, quand les chiffres affichés sont provisoires', () => {
+    setup({ computed: { at: '2026-11-02T19:00:15.242Z', timeZone: 'Europe/Paris' }, fetching: true, provisional: true });
+
+    const label = screen.getByText('Calcul en cours');
+    expect(label.getAttribute('title')).toBe('Fuseau Europe/Paris'); // le fuseau des chiffres affichés reste lisible
+    expect(screen.queryByText(/^Calculé à/)).toBeNull();
+    expect(label.closest('.sr-only')).toBeNull(); // un texte à l'écran : un tourniquet à l'arrêt (mouvement réduit) ne dit rien
+  });
+
+  it('redit l’heure du calcul dès que les chiffres ne sont plus provisoires', () => {
+    const { rerender } = setup({ computed: { at: '2026-11-02T19:00:15.242Z', timeZone: 'Europe/Paris' }, fetching: true, provisional: true });
+    rerender({ computed: { at: '2026-11-02T19:00:15.242Z', timeZone: 'Europe/Paris' }, fetching: false, provisional: false });
+
+    expect(screen.getByText('Calculé à 20:00')).toBeTruthy();
+    expect(screen.queryByText('Calcul en cours')).toBeNull();
+  });
+
+  // bdesk-38k.80 (relecture, B1) : « Calcul en cours… » (78,4 px) était plus large que « Calculé à 02:30 » (73,5 px). Remplacé tel quel, il faisait passer le groupe de droite à la ligne à quelques largeurs
+  // de fenêtre, et la page sautait de 44 px 300 ms après le clic. Un texte plus étroit (« Calcul en cours », 72,3 px) y change aussi quelque chose, dans l'autre sens : chacun des deux réserve donc la
+  // largeur de l'autre. jsdom ne mesure rien : le navigateur le fait (balayage de 320 à 1 600 px, dans la preuve de bdesk-38k.80) ; ici, le contrat : l'autre texte est écrit dans `data-reserve`, que le
+  // style pose derrière le texte, invisible et sans hauteur.
+  it('réserve la largeur de l’autre texte : la barre d’outils ne change pas de largeur quand « Calcul en cours » remplace l’heure du calcul, ni dans l’autre sens', () => {
+    const computed = { at: '2026-11-02T19:00:15.242Z', timeZone: 'Europe/Paris' };
+    const { rerender } = setup({ computed });
+    const status = screen.getByText('Calculé à 20:00');
+    expect(status.getAttribute('data-reserve')).toBe('Calcul en cours');
+
+    rerender({ computed, fetching: true, provisional: true });
+    expect(screen.getByText('Calcul en cours')).toBe(status); // le même nœud : le texte change sur place
+    expect(status.getAttribute('data-reserve')).toBe('Calculé à 20:00');
+
+    rerender({ computed, fetching: false, provisional: false });
+    expect(status.textContent).toBe('Calculé à 20:00');
+    expect(status.getAttribute('data-reserve')).toBe('Calcul en cours');
+  });
+
+  it('pose cette réserve derrière le texte, invisible et sans hauteur : le style lit `data-reserve`', () => {
+    setup({ computed: { at: '2026-11-02T19:00:15.242Z', timeZone: 'Europe/Paris' } });
+
+    const classes = screen.getByText('Calculé à 20:00').className.split(/\s+/);
+    for (const wanted of ['after:content-[attr(data-reserve)]', 'after:block', 'after:h-0', 'after:overflow-hidden', 'after:invisible']) expect(classes, wanted).toContain(wanted);
+  });
+
+  it('ne dit rien sans chiffres affichés : le squelette de la page dit déjà l’attente', () => {
+    setup({ fetching: true, provisional: true });
+
+    expect(screen.queryByText('Calcul en cours')).toBeNull();
+    expect(screen.queryByText(/^Calculé à/)).toBeNull();
+  });
 });

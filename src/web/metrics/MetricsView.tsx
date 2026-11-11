@@ -4,8 +4,8 @@ import { useSearchParams } from 'react-router';
 import { isKnownTimeZone } from '../../domain/time-zone';
 import type { MetricsResponse } from '../../shared/api';
 import { useProjects } from '../data/hooks';
-import { cx } from '../lib/cx';
 import { browserTimeZone } from '../lib/instant';
+import { useDelayed } from '../lib/useDelayed';
 import { useRetryFocus } from '../lib/useRetryFocus';
 import { keepFocusInZone } from '../lib/zoneFocus';
 import { paths } from '../paths';
@@ -41,6 +41,12 @@ export type MetricsScope = { kind: 'global' } | { kind: 'project'; project: { id
 const todayIn = (timeZone: string): string => dayInZone(new Date().toISOString(), timeZone);
 
 /**
+ * Au bout de combien de temps les chiffres gardés d'une période en attente de la suivante le disent à l'écran (la barre de progression et le texte de la barre d'outils) : une réponse plus
+ * rapide ne fait rien clignoter. Un lecteur d'écran n'attend pas : `aria-busy` et la zone d'annonce parlent aussitôt.
+ */
+const SHOW_BUSY_AFTER_MS = 300;
+
+/**
  * Les métriques de flux d'un Projet ou de la Vue globale : réglages (période, découpage), tuiles, graphiques, santé du flux
  * (cinq tuiles, puis cinq cartes d'analyse : bdesk-38k.13) et tableau du découpage. La période et le découpage vivent dans
  * l'adresse (`?range=`, `?from=&to=`, `?by=`) : un lien les partage.
@@ -48,7 +54,9 @@ const todayIn = (timeZone: string): string => dayInZone(new Date().toISOString()
  *
  * Un rafraîchissement qui échoue garde les chiffres à l'écran (TanStack Query conserve `data`) : le bandeau du shell le
  * signale, et l'erreur n'a la parole que faute de chiffres. Les chiffres provisoires d'une période en attente de la
- * suivante sont atténués ; ceux d'un autre Projet ou d'un autre fuseau ne sont pas gardés (`useMetrics`).
+ * suivante ne sont pas atténués : à 60 % d'opacité, texte et graphiques sortaient de WCAG AA (4,5:1 et 3:1 ; axe, bdesk-38k.80). Ils sont marqués `aria-busy`, et ceux qui voient l'écran
+ * ont une barre de progression d'accent juste avant eux, que le défilement épingle sous la barre du haut, et « Calcul en cours » dans la barre d'outils, passé un court délai
+ * (`SHOW_BUSY_AFTER_MS`) ; ceux d'un autre Projet ou d'un autre fuseau ne sont pas gardés (`useMetrics`).
  */
 export function MetricsView({ scope }: { scope: MetricsScope }) {
   const kind: Scope = scope.kind;
@@ -73,6 +81,8 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
   const { period, by, notices } = useMemo(() => parseMetricsParams(searchParams, kind, today), [searchParams, kind, today]);
 
   const query = useMetrics({ project: scope.kind === 'project' ? scope.project.id : undefined, period, timeZone: asked });
+  // Les chiffres gardés (`isPlaceholderData`) sont ceux de la période précédente : tant qu'ils le sont, et que l'attente se remarque, l'écran le dit.
+  const waiting = useDelayed(query.isPlaceholderData, SHOW_BUSY_AFTER_MS);
   const retry = useRetryFocus(query);
   const projects = useProjects();
   const data = query.data;
@@ -98,6 +108,7 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
         today={today}
         displayed={data ? { from: data.period.from, to: data.period.to } : undefined}
         computed={data ? { at: data.generatedAt, timeZone: data.timeZone } : undefined}
+        provisional={waiting}
         fetching={query.isFetching}
         onPeriodChange={changePeriod}
         onDimensionChange={changeDimension}
@@ -119,12 +130,14 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
         // Les chiffres partent, et le squelette les remplace, quand le fuseau du navigateur change (`useMetrics` ne garde pas ceux de l'ancien) ; le focus qu'ils tenaient (une puce de tendance,
         // un lien, un résumé) revient alors au contenu principal, au lieu de tomber sur le corps de la page (`keepFocusInZone`, comme pour l'avis d'erreur que le squelette remplace). Le
         // changement de fuseau n'est vu qu'à un rendu que rien dans les chiffres n'a demandé (un autre réglage de l'adresse, la liste des Projets relue au retour sur l'onglet).
-        <div
-          ref={keepFocusInZone}
-          aria-busy={query.isPlaceholderData}
-          className={cx('flex min-w-0 flex-col gap-6 transition-opacity', query.isPlaceholderData && 'opacity-60')}
-        >
-          <Content data={data} by={by} ctx={ctx} projectHref={projectHref} />
+        // Gardés pour une autre période, ils ne sont ni atténués ni voilés (bdesk-38k.80) : `aria-busy`, et une barre de progression d'accent juste avant eux (`.metrics-busy`, metrics.css), que le
+        // défilement épingle sous la barre du haut : on la voit où que l'on lise. Elle est posée à côté des chiffres, dans le même parent, et non dedans : leur conteneur a un écart (`gap-6`) qu'un
+        // enfant de plus, même de hauteur nulle, augmenterait de 24 px.
+        <div className="min-w-0">
+          {waiting ? <div aria-hidden="true" className="metrics-busy" /> : null}
+          <div ref={keepFocusInZone} aria-busy={query.isPlaceholderData} className="flex min-w-0 flex-col gap-6">
+            <Content data={data} by={by} ctx={ctx} projectHref={projectHref} />
+          </div>
         </div>
       ) : query.isError ? (
         <ErrorNotice error={query.error} title="Impossible de calculer les métriques" onRetry={retry} />

@@ -48,3 +48,83 @@
   --activity-3: oklch(0.56 0.12 258);
   --activity-4: oklch(0.72 0.14 258);
 }
+
+/*
+ * Le trait du calcul en cours (bdesk-38k.80). Les chiffres gardés en attendant ceux de la période choisie ne sont pas atténués : à 60 % d'opacité, le texte secondaire (`ink-3`)
+ * tombait de 5,7:1 à 2,5:1 en clair et à 2,8:1 en sombre, et les contours des graphiques sous 3:1 (axe : `color-contrast`). L'attente se dit à côté d'eux, jamais dessus : une piste
+ * d'accent pâle sur toute la largeur des chiffres, où court un segment d'accent (une barre de progression qui ne sait pas où elle en est, et non le soulignement d'un onglet actif).
+ *
+ * Collant (relecture de bdesk-38k.80, R1) : le défilement l'épingle sous la barre du haut, pour qu'on le voie en lisant les chiffres gardés, où que l'on soit dans la page. Son point d'ancrage
+ * est de hauteur nulle : le trait est dessiné par ses pseudo-éléments, hors de son encombrement. Il est posé à côté des chiffres, dans le même parent, et non dedans : leur conteneur a un écart
+ * (`gap-6`) qu'un enfant de plus, même de hauteur nulle, augmenterait de 24 px. Sa position d'épinglage est la hauteur de la barre du haut (TopBar : `h-12`, `md:h-11`, que busyBar.test.ts
+ * compare) plus le décalage du trait au-dessus de son point d'ancrage (`--metrics-busy-lift`) : épinglé, le trait est juste sous la barre.
+ *
+ * Il atteint 3:1 sur le panneau dans les deux thèmes (metrics/palette.test.ts). Décoratif (`aria-hidden`) : un lecteur d'écran a `aria-busy` sur les chiffres et la zone d'annonce de la page.
+ * Mouvement réduit : le segment ne court plus, c'est un trait fixe sur toute la largeur, que la barre d'outils explique par son texte. Couleurs forcées (Windows « contraste élevé ») : le
+ * système remplace les couleurs de l'auteur, et le trait y était blanc sur blanc ; le segment prend la couleur de surbrillance du système, que l'utilisateur a choisie pour ressortir.
+ */
+.metrics-busy {
+  --metrics-busy-lift: 0.75rem;
+  position: sticky;
+  top: calc(3rem + var(--metrics-busy-lift));
+  z-index: 10;
+  height: 0;
+  pointer-events: none;
+}
+
+@media (min-width: 48rem) {
+  .metrics-busy {
+    top: calc(2.75rem + var(--metrics-busy-lift));
+  }
+}
+
+.metrics-busy::before,
+.metrics-busy::after {
+  content: '';
+  position: absolute;
+  top: calc(var(--metrics-busy-lift) * -1);
+  height: 3px;
+  border-radius: 9999px;
+}
+
+/* La piste : décorative, pâle. */
+.metrics-busy::before {
+  inset-inline: 0;
+  background: var(--accent-soft);
+}
+
+/* Le segment : celui qui se lit (3:1 sur le panneau). Il court de la piste à la piste sans en sortir : la piste n'est pas rognée. */
+.metrics-busy::after {
+  left: 0;
+  width: 0;
+  background: var(--accent);
+  animation: metrics-busy 1.6s ease-in-out infinite;
+}
+
+@keyframes metrics-busy {
+  0% {
+    left: 0;
+    width: 0;
+  }
+  50% {
+    left: 15%;
+    width: 55%;
+  }
+  100% {
+    left: 100%;
+    width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .metrics-busy::after {
+    width: 100%;
+    animation: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .metrics-busy::after {
+    background: Highlight;
+  }
+}

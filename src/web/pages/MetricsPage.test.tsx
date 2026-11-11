@@ -275,7 +275,7 @@ describe('la page Métriques d’un Projet', () => {
     expect(screen.getByText(/Le découpage « status » n’existe pas/)).toBeTruthy();
   });
 
-  it('garde les chiffres précédents, atténués, en attendant ceux de la nouvelle période', async () => {
+  it('garde les chiffres précédents à l’écran en attendant ceux de la nouvelle période', async () => {
     let release: (() => void) | undefined;
     api((url) => {
       if (url.searchParams.get('range') === '7d') return new Promise<MetricsReply>((resolve) => (release = () => resolve(metricsFixture())));
@@ -293,6 +293,123 @@ describe('la page Métriques d’un Projet', () => {
 
     await act(async () => release?.());
     await waitFor(() => expect(document.querySelector('[aria-busy="true"]')).toBeNull());
+  });
+
+  /**
+   * bdesk-38k.80 : les chiffres gardés étaient atténués (`opacity-60`), et axe relevait `color-contrast` sur eux (29 nœuds à 1280 px, 133 à 375 px, en clair et en sombre).
+   * Un texte à 60 % d'opacité n'atteint plus 4,5:1, ni un graphique 3:1 (WCAG 1.4.3 et 1.4.11) : ni `ink-3` ni les contours des graphiques, que `design/contrast.test.ts` et
+   * `metrics/palette.test.ts` règlent au plus juste. Aucun voile, donc, sur eux ni sur ce qui les enveloppe : le chargement se dit autrement (le test suivant).
+   */
+  describe('pendant qu’une période se calcule', () => {
+    /** Les 7 jours sont retenus, les 30 jours répondent : les chiffres des 30 jours sont gardés tant qu'on n'a pas libéré la réponse. */
+    function holdSevenDays() {
+      const held = { release: () => undefined as void };
+      api((url) =>
+        url.searchParams.get('range') === '7d'
+          ? new Promise<MetricsReply>((resolve) => (held.release = () => resolve(metricsFixture())))
+          : metricsFixture({ range: '30d' }),
+      );
+      return held;
+    }
+    const keptFigures = () => document.querySelector<HTMLElement>('[aria-busy="true"]');
+    /** Ce qui voile un nœud : une classe d'opacité (avec ou sans variante : `md:opacity-50`, `hover:opacity-80`) ou une opacité écrite dans son style. */
+    const veilOf = (node: HTMLElement) => (/(?:^|\s)(?:[^\s:]+:)*opacity-/.test(node.getAttribute('class') ?? '') || node.style.opacity !== '' ? (node.getAttribute('class') ?? '') : null);
+
+    it('n’atténue pas les chiffres gardés : aucun voile d’opacité sur eux ni sur ce qui les enveloppe, ils gardent le contraste qu’ils ont au repos', async () => {
+      const held = holdSevenDays();
+      const { user } = await loaded();
+      expect(plain(page().getByRole('article', { name: 'Débit' }).textContent)).toContain('18');
+
+      await user.click(within(period()).getByRole('radio', { name: '7 jours' }));
+      await waitFor(() => expect(keptFigures()).not.toBeNull());
+
+      const kept = keptFigures() as HTMLElement;
+      expect(kept.contains(page().getByRole('article', { name: 'Débit' }))).toBe(true); // ce sont bien les chiffres de l'écran
+      const veils: string[] = [];
+      for (let node: HTMLElement | null = kept; node; node = node.parentElement) {
+        const veil = veilOf(node);
+        if (veil !== null) veils.push(`<${node.tagName.toLowerCase()} class="${veil}">`);
+      }
+      expect(veils).toEqual([]);
+
+      await act(async () => held.release());
+      await waitFor(() => expect(keptFigures()).toBeNull());
+    });
+
+    it('dit le chargement autrement : `aria-busy`, un trait d’accent au-dessus des chiffres gardés et « Calcul en cours » dans la barre d’outils, plus l’annonce du lecteur d’écran', async () => {
+      const held = holdSevenDays();
+      const { user } = await loaded();
+      expect(document.querySelector('.metrics-busy')).toBeNull();
+      expect(screen.getByText('Calculé à 20:00')).toBeTruthy();
+
+      await user.click(within(period()).getByRole('radio', { name: '7 jours' }));
+      await waitFor(() => expect(keptFigures()).not.toBeNull());
+      const kept = keptFigures() as HTMLElement;
+      // Le lecteur d'écran n'attend pas : la zone `aria-live` le dit aussitôt (c'est l'annonce de bdesk-38k.48, inchangée).
+      expect(document.querySelector('p[aria-live="polite"]')?.textContent).toBe('Calcul des métriques en cours…');
+
+      // Les autres, passé un court délai (le test suivant dit pourquoi).
+      const label = await screen.findByText('Calcul en cours');
+      expect(label.closest('.sr-only')).toBeNull(); // à l'écran, pas réservé aux lecteurs d'écran
+      expect(label.getAttribute('title')).toBe('Fuseau Europe/Paris'); // l'infobulle du fuseau reste celle de l'heure qu'il remplace
+      expect(screen.queryByText(/^Calculé à/)).toBeNull();
+      const bar = document.querySelector('.metrics-busy');
+      expect(bar).not.toBeNull();
+      expect(bar?.getAttribute('aria-hidden')).toBe('true'); // décoratif : l'annonce est celle de la zone `aria-live`, qu'il ne double pas
+      // Juste avant les chiffres, et pas dedans : enfant du conteneur à écart (`gap-6`), il y ajouterait un écart de plus et la page descendrait de 24 px quand il paraît.
+      expect(bar?.nextElementSibling).toBe(kept);
+      expect(kept.contains(bar)).toBe(false);
+
+      await act(async () => held.release());
+      await waitFor(() => expect(keptFigures()).toBeNull());
+      expect(document.querySelector('.metrics-busy')).toBeNull();
+      expect(screen.queryByText('Calcul en cours')).toBeNull();
+      expect(screen.getByText('Calculé à 20:00')).toBeTruthy();
+    });
+
+    it('ne les montre pas pour une réponse rapide : ni le trait ni le texte ne clignotent', async () => {
+      api(() => metricsFixture());
+      const { user } = await loaded();
+      // À chaque changement du DOM, ce qui est à l'écran à cet instant : les chiffres gardés (le chargement a eu lieu), le trait, le texte.
+      const seen = { busy: false, trait: false, text: false };
+      const note = () => {
+        seen.busy ||= keptFigures() !== null;
+        seen.trait ||= document.querySelector('.metrics-busy') !== null;
+        seen.text ||= document.body.textContent?.includes('Calcul en cours') === true;
+      };
+      const watch = new MutationObserver(note);
+      watch.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['aria-busy'] });
+
+      try {
+        await user.click(within(period()).getByRole('radio', { name: '7 jours' }));
+        await waitFor(() => expect(seen.busy).toBe(true)); // le test ne vaut que si les chiffres des 30 jours ont bien été gardés un instant
+        await waitFor(() => expect(keptFigures()).toBeNull());
+        await new Promise((resolve) => setTimeout(resolve, 400)); // le délai passé, rien ne vient plus
+        note();
+      } finally {
+        watch.disconnect();
+      }
+
+      expect(seen).toEqual({ busy: true, trait: false, text: false });
+      expect(screen.getByText('Calculé à 20:00')).toBeTruthy();
+    });
+
+    it('ne les montre pas quand « Actualiser » recalcule la même période : ses chiffres sont ceux que l’on a demandés, et le tourniquet dit l’attente', async () => {
+      let release: (() => void) | undefined;
+      let calls = 0;
+      api(() => (++calls === 2 ? new Promise<MetricsReply>((resolve) => (release = () => resolve(metricsFixture()))) : metricsFixture()));
+      const { user } = await loaded();
+
+      await user.click(screen.getByRole('button', { name: 'Actualiser les métriques' }));
+      await waitFor(() => expect(release).toBeDefined());
+      await new Promise((resolve) => setTimeout(resolve, 400)); // plus que le délai du trait et du texte
+
+      expect(keptFigures()).toBeNull(); // pas provisoires : le même cache, la même période
+      expect(document.querySelector('.metrics-busy')).toBeNull();
+      expect(screen.queryByText('Calcul en cours')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Actualiser les métriques' }).querySelector('svg')?.getAttribute('class')).toContain('animate-spin');
+      await act(async () => release?.());
+    });
   });
 
   it('recalcule à la demande avec « Actualiser »', async () => {
@@ -636,8 +753,8 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
 
   /**
    * bdesk-38k.71 (R1) : l'avis disait où les jours sont comptés, et disparaissait pendant que la période suivante se calculait (la page garde alors les chiffres de
-   * la précédente, atténués : ils sont comptés dans le même fuseau du serveur, et passaient sans lui) pour revenir avec la réponse. Il suit la dernière réponse du
-   * serveur, tant que le fuseau du navigateur est le même.
+   * la précédente, qui étaient atténués, ils ne le sont plus depuis bdesk-38k.80 : ils sont comptés dans le même fuseau du serveur, et passaient sans lui) pour revenir
+   * avec la réponse. Il suit la dernière réponse du serveur, tant que le fuseau du navigateur est le même.
    */
   it('garde l’avis pendant que la période suivante se calcule : les chiffres gardés à l’écran sont comptés dans le fuseau du serveur, ils ne passent pas sans lui', async () => {
     vi.setSystemTime(LATE);
@@ -652,7 +769,7 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
 
     await user.click(within(period()).getByRole('radio', { name: '7 jours' }));
     await waitFor(() => expect(metricsRequests(fetchMock).at(-1)).toBe('/api/metrics?project=bdesk&range=7d&timeZone=Europe%2FParis'));
-    // Les chiffres des 30 jours sont gardés, atténués, en attendant ceux des 7 jours : l'avis les accompagne toujours.
+    // Les chiffres des 30 jours sont gardés en attendant ceux des 7 jours : l'avis les accompagne toujours.
     expect(document.querySelector('[aria-busy="true"]')).not.toBeNull();
     expect(screen.getByRole('status', { name: NOTICE })).toBe(notice);
 

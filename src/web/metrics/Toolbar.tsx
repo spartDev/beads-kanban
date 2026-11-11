@@ -58,14 +58,42 @@ export interface MetricsToolbarProps {
   displayed?: { from: string; to: string };
   /** Quand et dans quel fuseau les chiffres affichés ont été calculés. */
   computed?: { at: string; timeZone: string };
+  /**
+   * Les chiffres affichés sont ceux de la période précédente, gardés en attendant ceux de la période choisie : la barre le dit, en texte, à la place de l'heure de leur calcul. Ils ne
+   * sont pas atténués (leur contraste tomberait sous WCAG AA, bdesk-38k.80), et le tourniquet de « Actualiser » s'arrête quand le mouvement est réduit : un texte reste.
+   */
+  provisional?: boolean;
   fetching: boolean;
   onPeriodChange: (period: PeriodChoice) => void;
   onDimensionChange: (by: Dimension) => void;
   onRefresh: () => void;
 }
 
+const BUSY_TEXT = 'Calcul en cours';
+
+/**
+ * Ce que la barre dit du calcul : l'heure du dernier (« Calculé à 20:00 », l'infobulle dit le fuseau), ou « Calcul en cours » tant que les chiffres affichés sont ceux de la période précédente.
+ * Chacun des deux réserve la largeur de l'autre (bdesk-38k.80, relecture B1). Remplacé tel quel, le texte changeait la largeur du groupe de droite, qui passe à la ligne à quelques largeurs de
+ * fenêtre : avec « Calcul en cours… » (78,4 px) à la place de « Calculé à 02:30 » (73,5 px), la page sautait de 44 px 300 ms après le clic, à 602 et à 862 px de fenêtre, puis remontait. Un texte
+ * plus étroit n'y changerait rien : un groupe qui ne tient pas sur la ligne d'un pixel tient quand le texte rétrécit, et la page saute dans l'autre sens. `data-reserve` porte donc l'autre texte, que
+ * le style écrit derrière celui-ci, invisible et sans hauteur : la largeur du groupe, la plus grande des deux, ne dépend plus de l'état. « Calcul en cours » (72,3 px, sans les points de suspension)
+ * est le plus étroit des deux : la largeur au repos reste celle d'avant, à toute largeur de fenêtre.
+ */
+function ComputedAt({ computed, provisional }: { computed: { at: string; timeZone: string }; provisional: boolean }) {
+  const computedAt = `Calculé à ${formatTime(computed.at, computed.timeZone)}`;
+  return (
+    <span
+      title={`Fuseau ${computed.timeZone}`}
+      data-reserve={provisional ? computedAt : BUSY_TEXT}
+      className="tnum after:invisible after:block after:h-0 after:overflow-hidden after:content-[attr(data-reserve)]"
+    >
+      {provisional ? BUSY_TEXT : computedAt}
+    </span>
+  );
+}
+
 /** Les réglages de la page : période, découpage, et le bouton qui recalcule (les métriques ne sont pas en direct). */
-export function MetricsToolbar({ scope, period, by, today, displayed, computed, fetching, onPeriodChange, onDimensionChange, onRefresh }: MetricsToolbarProps) {
+export function MetricsToolbar({ scope, period, by, today, displayed, computed, provisional, fetching, onPeriodChange, onDimensionChange, onRefresh }: MetricsToolbarProps) {
   const periodValue = period.kind === 'custom' ? 'custom' : period.range;
 
   const choosePeriod = (value: string) => {
@@ -91,11 +119,7 @@ export function MetricsToolbar({ scope, period, by, today, displayed, computed, 
           onChange={onDimensionChange}
         />
         <div className="ml-auto flex items-center gap-2 text-micro text-ink-3">
-          {computed ? (
-            <span title={`Fuseau ${computed.timeZone}`} className="tnum">
-              Calculé à {formatTime(computed.at, computed.timeZone)}
-            </span>
-          ) : null}
+          {computed ? <ComputedAt computed={computed} provisional={provisional === true} /> : null}
           <button
             type="button"
             onClick={onRefresh}
