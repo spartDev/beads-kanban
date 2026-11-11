@@ -5,6 +5,7 @@ import { Globe, RefreshCw, Search, TriangleAlert } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { queryKeys } from '../data/hooks';
+import { projectList } from '../data/projectNames';
 import { openedFromPalette } from '../kanban/boardFocus';
 import { cx } from '../lib/cx';
 import { useOverlayContent, usePalette, type PaletteMode } from '../shell/OverlayProvider';
@@ -156,7 +157,7 @@ function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode
       {failedProjects.length > 0 ? (
         <p role="alert" className="flex items-center gap-2 px-4 py-2 text-ink-2 wrap-anywhere">
           <TriangleAlert size={14} aria-hidden="true" className="shrink-0 text-danger" />
-          Tickets indisponibles : {failedProjects.map((project) => project.name).join(', ')}.
+          Tickets indisponibles : {projectList(failedProjects)}.
         </p>
       ) : null}
 

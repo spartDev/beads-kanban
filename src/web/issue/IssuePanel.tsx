@@ -4,6 +4,7 @@ import { useLocation, useNavigationType, useParams } from 'react-router';
 import { ApiError } from '../data/client';
 import { ticketTitle } from '../data/helpers';
 import { useIssue } from '../data/hooks';
+import { projectInSentence } from '../data/projectNames';
 import { focusCardOrZone, panelOpener } from '../kanban/boardFocus';
 import { focusElement, focusIsAdrift } from '../lib/focus';
 import { inertOutside } from '../lib/inert';
@@ -224,7 +225,7 @@ export function IssuePanel() {
           {gone ? (
             <Notice
               icon={SearchX}
-              title={`Aucun ticket « ${issueId} » dans ${project.name}`}
+              title={`Aucun ticket « ${issueId} » dans ${projectInSentence(project)}`}
               action={<Button onClick={close}>Retour {destination}</Button>}
             >
               <p>L’identifiant est peut-être celui d’un autre Projet : la palette (⌘K) peut chercher dans tous les Projets.</p>

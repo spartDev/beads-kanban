@@ -1,3 +1,4 @@
+import { projectInSentence } from '../data/projectNames';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { LazyMetricsView } from '../metrics/LazyMetricsView';
 import { Page } from './Page';
@@ -13,7 +14,7 @@ export function MetricsPage() {
   useDocumentTitle('Métriques', project.name);
 
   return (
-    <Page title="Métriques" description={`Le flux de livraison de ${project.name}, mesuré depuis l’historique Dolt, comparé à la période précédente.`} wide>
+    <Page title="Métriques" description={`Le flux de livraison de ${projectInSentence(project)}, mesuré depuis l’historique Dolt, comparé à la période précédente.`} wide>
       <LazyMetricsView scope={{ kind: 'project', project }} />
     </Page>
   );

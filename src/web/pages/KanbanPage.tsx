@@ -2,6 +2,7 @@ import { FolderSearch, Inbox } from 'lucide-react';
 import { Link } from 'react-router';
 import { ApiError } from '../data/client';
 import { useIssues } from '../data/hooks';
+import { projectInSentence } from '../data/projectNames';
 import { Board } from '../kanban/Board';
 import { BoardSkeleton } from '../kanban/BoardSkeleton';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
@@ -23,7 +24,7 @@ export function KanbanPage() {
   useDocumentTitle('Kanban', project.name);
 
   return (
-    <Page title="Kanban" description={`Les tickets de ${project.name}, en colonnes, en lecture seule.`} wide>
+    <Page title="Kanban" description={`Les tickets de ${projectInSentence(project)}, en colonnes, en lecture seule.`} wide>
       {issues.data ? (
         issues.data.length === 0 ? (
           <Notice icon={Inbox} title="Aucun ticket dans ce Projet">

@@ -52,7 +52,8 @@ describe('withProjectNames', () => {
 
     const [named] = withProjectNames([blank]);
 
-    expect(named).toEqual({ ...blank, name: UNTITLED });
+    // `unnamed` dit que « Sans titre » est un repli, non le nom du dossier (bdesk-38k.73) ; le reste du Projet est celui du serveur.
+    expect(named).toEqual({ ...blank, name: UNTITLED, unnamed: true });
     expect(blank.name).toBe('\u3164');
   });
 
@@ -74,7 +75,7 @@ describe('withProjectNames', () => {
   });
 
   it('nomme aussi les Projets de la réponse des métriques (identifiant et nom seulement)', () => {
-    expect(withProjectNames([{ id: 'x', name: '\u2800' }])).toEqual([{ id: 'x', name: UNTITLED }]);
+    expect(withProjectNames([{ id: 'x', name: '\u2800' }])).toEqual([{ id: 'x', name: UNTITLED, unnamed: true }]);
   });
 });
 
@@ -168,9 +169,9 @@ describe('useMetrics', () => {
     await waitFor(() => expect(result.current.data).toBeDefined());
     expect(result.current.data?.projects).toEqual([
       { id: 'bdesk', name: 'beads-desktop' },
-      { id: 'blanc', name: UNTITLED },
+      { id: 'blanc', name: UNTITLED, unnamed: true },
     ]);
-    expect(result.current.data?.unreadable).toEqual([{ id: 'vide', name: UNTITLED, reason: 'Base Dolt verrouillée' }]);
+    expect(result.current.data?.unreadable).toEqual([{ id: 'vide', name: UNTITLED, unnamed: true, reason: 'Base Dolt verrouillée' }]);
   });
 
   it('nomme aussi le libellé du Projet dans le découpage par Projet : le serveur y écrit le nom du dossier, et le tableau des métriques par Projet en fait le texte de son lien', async () => {
@@ -265,12 +266,12 @@ describe('useMetrics', () => {
     const shared = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 
     const { result, rerender } = renderHook(({ range }) => useMetrics({ period: { kind: 'preset', range }, timeZone }), { wrapper: shared, initialProps: { range: '7d' as '7d' | '30d' } });
-    await waitFor(() => expect(result.current.data?.projects).toEqual([{ id: 'blanc', name: UNTITLED }]));
+    await waitFor(() => expect(result.current.data?.projects).toEqual([{ id: 'blanc', name: UNTITLED, unnamed: true }]));
 
     rerender({ range: '30d' });
 
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(true));
-    expect(result.current.data?.projects).toEqual([{ id: 'blanc', name: UNTITLED }]);
+    expect(result.current.data?.projects).toEqual([{ id: 'blanc', name: UNTITLED, unnamed: true }]);
     release(json(first));
   });
 });

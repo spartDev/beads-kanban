@@ -1,6 +1,8 @@
 import { Info, TriangleAlert } from 'lucide-react';
 import { useId } from 'react';
 import type { MetricsUnreadableProject } from '../../shared/api';
+import { projectLabel } from '../data/projectNames';
+import type { Written } from '../data/types';
 import { Notice } from '../ui/states';
 
 /** Ce que l'adresse demandait et que la page ne sert pas : dit, au lieu d'afficher en silence d'autres chiffres. */
@@ -40,8 +42,11 @@ export function ZoneNotice({ asked, counted }: { asked: string; counted: string 
 /**
  * Les Projets dont la base n'a pas pu être lue : ils n'entrent pas dans les chiffres, et la page le dit. Les autres
  * Projets sont mesurés quand même ; un Projet illisible ne fait pas échouer la Vue globale. Une région de statut comme un avis (`Notice`), nommée de même par son titre.
+ *
+ * Une ligne par Projet, avec sa raison, sans pastille à côté : les Projets y sont nommés comme l'alerte de la palette nomme ceux dont les tickets sont indisponibles (`projectLabel`). Une liste de noms s'écrit comme avant ;
+ * dès qu'un Projet est sans nom, les noms qui se voient sont entre guillemets et celui-là est « Un Projet sans nom » : « Sans titre : verrou » deux fois ne dirait pas lequel est le dossier qui s'appelle vraiment ainsi.
  */
-export function UnreadableProjects({ projects }: { projects: readonly MetricsUnreadableProject[] }) {
+export function UnreadableProjects({ projects }: { projects: readonly Written<MetricsUnreadableProject>[] }) {
   const titleId = useId();
   return (
     <div role="status" aria-labelledby={titleId} className="flex gap-3 rounded-lg border border-dashed border-line-strong p-4">
@@ -53,7 +58,7 @@ export function UnreadableProjects({ projects }: { projects: readonly MetricsUnr
         <ul className="mt-1 flex flex-col gap-1 text-ink-2">
           {projects.map((project) => (
             <li key={project.id}>
-              <strong className="font-medium text-ink">{project.name}</strong> : {project.reason}
+              <strong className="font-medium text-ink">{projectLabel(project, projects)}</strong> : {project.reason}
             </li>
           ))}
         </ul>

@@ -1,8 +1,9 @@
 import { notifyManager, queryOptions, type Query, type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useSyncExternalStore } from 'react';
-import type { MetricsResponse } from '../../shared/api';
+import type { MetricsProject, MetricsResponse, MetricsUnreadableProject } from '../../shared/api';
 import { apiGet } from '../data/client';
 import { withProjectLabels, withProjectNames } from '../data/projectNames';
+import type { Written } from '../data/types';
 import { metricsPath, periodKey, type PeriodChoice } from './params';
 
 /**
@@ -175,16 +176,23 @@ export function metricsQuery(request: MetricsRequest) {
   });
 }
 
+/** `GET /api/metrics` tel que l'interface le lit : ses Projets, mesurés et illisibles, sous leur nom écrit (`namedMetrics`). */
+export type NamedMetricsResponse = Omit<MetricsResponse, 'projects' | 'unreadable'> & {
+  projects: Written<MetricsProject>[];
+  unreadable: Written<MetricsUnreadableProject>[];
+};
+
 /**
  * La réponse, son Projet partout où elle le nomme sous son nom écrit : « Sans titre » pour un dossier dont on ne verrait pas le nom (voir `data/projectNames`). Le serveur le nomme à trois
  * endroits : les Projets mesurés (`projects`), ceux qui ne se lisent pas (`unreadable`) et le libellé de chaque ligne du découpage par Projet (`slices.project`), que le tableau des métriques par
- * Projet écrit dans le lien de sa ligne. La même réponse quand aucun nom ne change.
+ * Projet écrit dans le lien de sa ligne. La même réponse quand aucun nom ne change. Les Projets mesurés et illisibles dont le nom a été remplacé portent `unnamed` (bdesk-38k.73) : la couleur du Projet
+ * dans les graphiques (`useSeriesContext`) ne se tire pas du mot « Sans titre ».
  */
-function namedMetrics(response: MetricsResponse): MetricsResponse {
+function namedMetrics(response: MetricsResponse): NamedMetricsResponse {
   const projects = withProjectNames(response.projects);
   const unreadable = withProjectNames(response.unreadable);
   const byProject = withProjectLabels(response.slices.project);
-  if (projects === response.projects && unreadable === response.unreadable && byProject === response.slices.project) return response;
+  if (projects === response.projects && unreadable === response.unreadable && byProject === response.slices.project) return response as NamedMetricsResponse;
   return { ...response, projects, unreadable, slices: byProject === response.slices.project ? response.slices : { ...response.slices, project: byProject } };
 }
 

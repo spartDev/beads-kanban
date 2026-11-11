@@ -63,7 +63,8 @@ export function chronologyQuery(projectId: string, issueId: string) {
 
 /**
  * Projets suivis (lisibles ou non) et dossiers ignorés. Le nom d'un Projet dont le dossier n'a pas de nom qu'on voie y est « Sans titre » (`namedProjects`) : aucun écran n'a à le réécrire, et
- * le fil d'Ariane, la barre latérale, l'onglet et le titre de sa page disent la même chose.
+ * le fil d'Ariane, la barre latérale, l'onglet et le titre de sa page disent la même chose. Le Projet porte alors `unnamed` (bdesk-38k.73) : « Sans titre » est un repli, dont la pastille, les phrases
+ * (`projectInSentence`, `projectList`) et la couleur ne tirent rien.
  */
 export function useProjects() {
   return useQuery({ ...projectsQuery(), select: namedProjects });

@@ -2,6 +2,7 @@ import { FolderSearch, SearchX } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router';
 import { ticketTitle } from '../data/helpers';
 import { useIssues } from '../data/hooks';
+import { projectInSentence } from '../data/projectNames';
 import type { Issue, Project } from '../data/types';
 import { typeMeta } from '../design/issue-palette';
 import { BackToEpics } from '../epics/BackToEpics';
@@ -34,7 +35,7 @@ function EpicsOverview({ project }: { project: Project }) {
   useDocumentTitle('Epics', project.name);
 
   return (
-    <Page title="Epics" description={`L’avancement de chaque Epic de ${project.name} : les Livraisons parmi ses Enfants.`}>
+    <Page title="Epics" description={`L’avancement de chaque Epic de ${projectInSentence(project)} : les Livraisons parmi ses Enfants.`}>
       {issues.data ? (
         <EpicList projectId={project.id} issues={issues.data} />
       ) : issues.isError ? (
@@ -100,7 +101,7 @@ function NoSuchEpic({ project, epicId }: { project: Project; epicId: string }) {
     <Page title="Epic introuvable" eyebrow={<BackToEpics projectId={project.id} />}>
       <Notice
         icon={SearchX}
-        title={`Aucune Epic « ${epicId} » dans ${project.name}`}
+        title={`Aucune Epic « ${epicId} » dans ${projectInSentence(project)}`}
         action={
           <Link to={paths.epics(project.id)} className="font-medium text-accent hover:underline">
             Voir les Epics du Projet
