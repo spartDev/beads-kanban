@@ -142,7 +142,14 @@ export function CfdPanel({ points }: { points: readonly MetricsCfdPoint[] }) {
       title="Flux cumulé"
       description="Tickets dans chaque colonne du kanban à la fin de chaque jour. L’épaisseur des bandes En cours et Bloqué est le travail en cours."
       actions={
-        <Button aria-pressed={hideDone} onClick={() => setHideDone((hidden) => !hidden)} className={cx('h-7 shrink-0 px-2.5 text-xs', hideDone && 'bg-press')}>
+        // Le bouton se range à droite de sa ligne, qu'il soit à côté du titre, où `justify-between` le mettait
+        // déjà, ou seul sur la sienne. À gauche, la barre du haut, collante, le recouvrait quand on défile avec le
+        // bouton du Projet, qui en cache presque toute la largeur (axe : `target-size`, « partiallyObscured »,
+        // bdesk-38k.83) : à 375 px, et dès que la description (large de 60ch au plus, `max-w-[60ch]` de
+        // ChartParts.tsx) et lui ne tiennent plus côte à côte. À droite, il ne passe que sous les petits boutons de
+        // recherche et de thème. Sans condition de largeur : où l'en-tête passe à la ligne dépend de la police et
+        // de l'espacement du texte, la place du bouton n'en dépend pas (cfdButton.test.tsx).
+        <Button aria-pressed={hideDone} onClick={() => setHideDone((hidden) => !hidden)} className={cx('shrink-0 px-2.5 text-xs ml-auto', hideDone && 'bg-press')}>
           Masquer Terminé
         </Button>
       }
