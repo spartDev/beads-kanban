@@ -6,6 +6,7 @@ import type { IgnoredFolder, Project as ApiProject } from '../../shared/api';
  * fait échouer `pnpm typecheck`. Seul `Project` est celui que l'interface lit, non celui que l'API envoie : voir plus bas.
  */
 export type {
+  DriftsResponse,
   IgnoredFolder,
   Issue,
   IssueAbandon,
@@ -19,6 +20,7 @@ export type {
   IssueDependency,
   IssueDependent,
   IssueDetail,
+  IssueDrift,
   IssueEpic,
   IssueOutcome,
   IssueRef,

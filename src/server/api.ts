@@ -3,6 +3,7 @@ import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from
 import { InvalidPeriodError } from '../domain/calendar';
 import type {
   ApiErrorBody,
+  DriftsResponse,
   IssueChronologyResponse,
   IssueResponse,
   IssuesResponse,
@@ -74,6 +75,11 @@ export async function registerApi(
   app.get<{ Params: { projectId: string } }>(
     '/api/projects/:projectId/issues',
     async (req): Promise<IssuesResponse> => ({ issues: await projects.issues(req.params.projectId, { signal: req.signal }) }),
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    '/api/projects/:projectId/drifts',
+    (req): Promise<DriftsResponse> => metrics.drifts(req.params.projectId, { signal: req.signal }),
   );
 
   app.get<{ Querystring: Record<string, unknown> }>(

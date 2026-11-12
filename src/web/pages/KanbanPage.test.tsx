@@ -1548,3 +1548,35 @@ describe('les états de la page', () => {
     expect(within(alert).getByRole('button', { name: /Réessayer/ })).toBeTruthy();
   });
 });
+
+describe('la Dérive', () => {
+  const DRIFTING = { id: 'bdesk-c1', cycleTime: 12 * DAY, reference: 8.65 * DAY, scope: 'type' as const };
+  const card = (id: string) => document.querySelector<HTMLElement>(`[data-card-id="${id}"]`) as HTMLElement;
+
+  it('marque la carte d’un ticket en cours qui dérive, avec son Cycle Time en cours et sa référence', async () => {
+    stubApi({ projects: projectsResponse, issues: { bdesk: TICKETS }, drifts: { bdesk: [DRIFTING] } });
+    await openBoard();
+
+    const badge = await within(card('bdesk-c1')).findByText('Dérive');
+    expect(badge.closest('[data-drift]')?.textContent?.replace(/\s/g, ' ')).toMatch(
+      /Dérive.*12 j de Cycle Time en cours, au-delà de 8,7 j, le P85 des Livraisons du même type/,
+    );
+    expect(within(card('bdesk-c2')).queryByText('Dérive')).toBeNull();
+  });
+
+  it('ne marque pas une carte qui n’est plus en travail, même si la réponse des Dérives est en retard sur la liste', async () => {
+    stubApi({ projects: projectsResponse, issues: { bdesk: TICKETS }, drifts: { bdesk: [{ ...DRIFTING, id: 'bdesk-a2' }] } });
+    await openBoard();
+    await waitFor(() => expect(within(card('bdesk-c1')).queryByText('Dérive')).toBeNull());
+
+    expect(within(card('bdesk-a2')).queryByText('Dérive')).toBeNull();
+  });
+
+  it('laisse le tableau intact quand les Dérives sont illisibles', async () => {
+    stubApi({ projects: projectsResponse, issues: { bdesk: TICKETS }, drifts: { bdesk: httpFailure(503, { message: 'Projet illisible' }) } });
+    await openBoard();
+
+    expect(titlesIn(column('En cours'))).toEqual(['Barre latérale', 'Revue automatique']);
+    expect(screen.queryByText('Dérive')).toBeNull();
+  });
+});

@@ -1,8 +1,9 @@
-import { Bot, Clock, Lock } from 'lucide-react';
+import { Bot, Clock, Lock, Timer } from 'lucide-react';
 import { Fragment, type ReactNode, useId } from 'react';
 import { Link, useLocation } from 'react-router';
 import { ticketTitle } from '../data/helpers';
-import type { Issue } from '../data/types';
+import type { Issue, IssueDrift } from '../data/types';
+import { driftSentence, shownDrift } from '../lib/drift';
 import { statusLabel, typeMeta } from '../design/issue-palette';
 import { formatAge, formatDateTime } from '../lib/relativeTime';
 import { parsePath, paths } from '../paths';
@@ -33,6 +34,7 @@ export function Card({
   projectId,
   epic,
   now,
+  drift,
 }: {
   issue: Issue;
   /** La colonne de la carte, ou `paused` dans le tiroir. */
@@ -41,6 +43,8 @@ export function Card({
   /** L'Epic de la carte, pour sa pastille. */
   epic: Issue | null;
   now: number;
+  /** La Dérive du ticket, si son Cycle Time en cours dépasse sa référence. */
+  drift?: IssueDrift | undefined;
 }) {
   const dated = lane === 'done' ? (issue.closedAt ?? issue.updatedAt) : issue.updatedAt;
   const age = formatAge(dated, now);
@@ -49,6 +53,7 @@ export function Card({
   const { pathname, search } = useLocation();
   const panelOpen = parsePath(pathname).section === 'issue';
   const idId = useId();
+  const drifting = shownDrift(issue.status, drift);
 
   return (
     <li
@@ -81,10 +86,11 @@ export function Card({
         </Link>
       </p>
 
-      {issue.status === 'hooked' || epic || issue.abandon ? (
+      {issue.status === 'hooked' || epic || issue.abandon || drifting ? (
         // Les pastilles passent à la ligne plutôt que de serrer l'identifiant, qui ne doit jamais se couper en deux.
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           {issue.abandon ? <AbandonBadge abandon={issue.abandon} /> : null}
+          {drifting ? <DriftBadge drift={drifting} /> : null}
           {issue.status === 'hooked' ? <AgentBadge /> : null}
           {epic ? <EpicPill projectId={projectId} epic={epic} /> : null}
         </div>
@@ -111,6 +117,25 @@ export function Card({
         </div>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * Ticket en Dérive : la pastille dit « Dérive », l'infobulle et les lecteurs d'écran disent de combien. La phrase n'est pas dans le nom du lien de la
+ * carte : elle suit le titre, dans la carte, comme les autres pastilles.
+ */
+function DriftBadge({ drift }: { drift: IssueDrift }) {
+  const sentence = driftSentence(drift);
+  return (
+    <span
+      data-drift
+      title={sentence}
+      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-danger-soft px-1.5 text-micro font-medium text-danger"
+    >
+      <Timer size={11} aria-hidden="true" />
+      Dérive
+      <span className="sr-only"> : {sentence}</span>
+    </span>
   );
 }
 

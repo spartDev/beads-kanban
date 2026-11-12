@@ -1,7 +1,7 @@
 import { QueryClient, queryOptions, useQuery } from '@tanstack/react-query';
 import { ApiError, apiGet } from './client';
 import { namedProjects } from './projectNames';
-import type { IssueChronologyResponse, IssueResponse, IssuesResponse, ProjectsResponse } from './types';
+import type { DriftsResponse, IssueChronologyResponse, IssueResponse, IssuesResponse, ProjectsResponse } from './types';
 
 export const queryKeys = {
   projects: ['projects'] as const,
@@ -10,6 +10,11 @@ export const queryKeys = {
   issue: (projectId: string, issueId: string) => ['projects', projectId, 'issues', issueId] as const,
   /** Rangée sous la fiche : la relire avec la liste des tickets du Projet relit aussi la chronologie. */
   chronology: (projectId: string, issueId: string) => ['projects', projectId, 'issues', issueId, 'chronology'] as const,
+  /**
+   * Rangées sous la liste des tickets du Projet : un commit, qui relit la liste, relit aussi les Dérives (`refreshProject`). Le dernier élément est
+   * un objet, que l'identifiant d'aucun ticket (`queryKeys.issue`) ne peut égaler.
+   */
+  drifts: (projectId: string) => ['projects', projectId, 'issues', { drifts: true }] as const,
 };
 
 /**
@@ -61,6 +66,14 @@ export function chronologyQuery(projectId: string, issueId: string) {
   });
 }
 
+export function driftsQuery(projectId: string) {
+  return queryOptions({
+    queryKey: queryKeys.drifts(projectId),
+    queryFn: ({ signal }) => apiGet<DriftsResponse>(`/api/projects/${encodeURIComponent(projectId)}/drifts`, signal),
+    staleTime: 15_000,
+  });
+}
+
 /**
  * Projets suivis (lisibles ou non) et dossiers ignorés. Le nom d'un Projet dont le dossier n'a pas de nom qu'on voie y est « Sans titre » (`namedProjects`) : aucun écran n'a à le réécrire, et
  * le fil d'Ariane, la barre latérale, l'onglet et le titre de sa page disent la même chose. Le Projet porte alors `unnamed` (bdesk-38k.73) : « Sans titre » est un repli, dont la pastille, les phrases
@@ -97,6 +110,18 @@ export function useChronology(projectId: string | undefined, issueId: string | u
     ...chronologyQuery(projectId ?? '', issueId ?? ''),
     enabled: Boolean(projectId && issueId),
     select: (data) => data.chronology,
+  });
+}
+
+/**
+ * Les Dérives d'un Projet, par ticket. Elles se tirent de l'historique du Projet, plus long à lire que ses tickets : une requête à part, que le tableau
+ * n'attend pas. Tant qu'elles manquent ou qu'elles sont illisibles, aucune carte n'est marquée. Inactif tant que le Projet manque.
+ */
+export function useDrifts(projectId: string | undefined) {
+  return useQuery({
+    ...driftsQuery(projectId ?? ''),
+    enabled: Boolean(projectId),
+    select: (data) => new Map(data.drifts.map((drift) => [drift.id, drift])),
   });
 }
 

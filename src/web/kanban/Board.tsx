@@ -1,6 +1,7 @@
 import { CirclePause, SearchX } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { epicOf } from '../../domain/epics';
+import { useDrifts } from '../data/hooks';
 import type { Issue, Project } from '../data/types';
 import { Button } from '../ui/Button';
 import { Notice } from '../ui/states';
@@ -40,6 +41,7 @@ export function Board({ project, issues }: { project: Project; issues: readonly 
   const [pausedOpen, setPausedOpen] = useState(false);
 
   const byId = useMemo(() => indexById(issues), [issues]);
+  const drifts = useDrifts(project.id).data;
   const choices = useMemo(() => epicChoices(issues), [issues]);
   const epicCount = choices.open.length + choices.closed.length;
   const hasEpics = epicCount > 0;
@@ -83,7 +85,7 @@ export function Board({ project, issues }: { project: Project; issues: readonly 
   const renderCard = (issue: Issue, lane: Lane) => {
     const own = epicOf(issue, byId);
     const pill = epic !== undefined && own?.id === epic.id ? null : own;
-    return <Card key={issue.id} issue={issue} lane={lane} projectId={project.id} epic={pill} now={now} />;
+    return <Card key={issue.id} issue={issue} lane={lane} projectId={project.id} epic={pill} now={now} drift={drifts?.get(issue.id)} />;
   };
 
   return (

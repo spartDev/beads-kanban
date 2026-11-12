@@ -241,6 +241,22 @@ export interface IssueChronologyResponse {
   chronology: IssueChronology;
 }
 
+/** Un ticket en Dérive : son Cycle Time en cours dépasse son Cycle Time de référence. Durées en ms. */
+export interface IssueDrift {
+  id: string;
+  cycleTime: number;
+  reference: number;
+  /** D'où vient la référence : les Livraisons du même type, ou, faute d'assez, de tout le Projet. */
+  scope: 'type' | 'project';
+}
+
+/** `GET /api/projects/:projectId/drifts` */
+export interface DriftsResponse {
+  /** L'instant où les Dérives ont été évaluées. */
+  generatedAt: string;
+  drifts: IssueDrift[];
+}
+
 /** Corps des réponses d'erreur (même forme que celles de Fastify). */
 export interface ApiErrorBody {
   statusCode: number;

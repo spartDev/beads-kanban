@@ -5,7 +5,7 @@ import { StrictMode } from 'react';
 import { vi } from 'vitest';
 import { createMemoryRouter, type InitialEntry, RouterProvider } from 'react-router';
 import { epicOf } from '../../domain/epics';
-import type { Issue, IssueChronology, IssueDetail, IssueEpic, IssueRef, ProjectsResponse } from '../data/types';
+import type { Issue, IssueChronology, IssueDetail, IssueDrift, IssueEpic, IssueRef, ProjectsResponse } from '../data/types';
 import { routes } from '../routes';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import { chronology as defaultChronology, issueDetail } from './fixtures';
@@ -30,6 +30,8 @@ interface ApiFixture {
   details?: Record<string, Reply<IssueDetail>>;
   /** Chronologie d'un ticket, par `projet/ticket` ; à défaut, celle d'un ticket resté ouvert depuis sa création. */
   chronologies?: Record<string, Reply<IssueChronology>>;
+  /** Dérives d'un Projet, par identifiant de Projet ; à défaut, aucune pour un Projet connu. */
+  drifts?: Record<string, Reply<IssueDrift[]>>;
 }
 
 const isFailure = (value: unknown): value is HttpFailure =>
@@ -61,10 +63,18 @@ function epicNamedBy(listed: Issue, list: Issue[]): IssueEpic | null {
 }
 
 /** Remplace fetch par un faux serveur d'API ; renvoie le mock pour inspecter les appels. */
-export function stubApi({ projects, issues = {}, details = {}, chronologies = {} }: ApiFixture) {
+export function stubApi({ projects, issues = {}, details = {}, chronologies = {}, drifts = {} }: ApiFixture) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const { pathname } = new URL(String(input), 'http://localhost');
     if (pathname === '/api/projects') return respond(projects);
+
+    const drifting = /^\/api\/projects\/([^/]+)\/drifts$/.exec(pathname);
+    if (drifting?.[1]) {
+      const id = decodeURIComponent(drifting[1]);
+      const scripted = drifts[id];
+      if (scripted) return respond(scripted, (data) => ({ generatedAt: new Date().toISOString(), drifts: data }));
+      return issues[id] ? json({ generatedAt: new Date().toISOString(), drifts: [] }) : notFound(`Projet inconnu : ${id}`);
+    }
 
     const match = /^\/api\/projects\/([^/]+)\/issues(?:\/([^/]+)(\/chronology)?)?$/.exec(pathname);
     const projectId = match?.[1] ? decodeURIComponent(match[1]) : undefined;

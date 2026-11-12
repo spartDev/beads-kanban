@@ -1677,3 +1677,40 @@ describe('la chronologie : un rafraîchissement qui renvoie 404', () => {
     expect(screen.queryByText(/Actualisation impossible/)).toBeNull();
   });
 });
+
+describe('la Dérive dans le Panneau', () => {
+  const drift = { id: 'bdesk-38k.6', cycleTime: 12 * DAY, reference: 8.65 * DAY, scope: 'project' as const };
+
+  it('dit, dans la Chronologie, que le ticket dérive : son Cycle Time en cours et la référence qu’il dépasse', async () => {
+    const working = chronology({
+      transitions: [
+        { status: 'open', at: '2026-10-01T09:00:00.000Z', duration: DAY },
+        { status: 'in_progress', at: '2026-10-02T09:00:00.000Z', duration: null },
+      ],
+    });
+    stubApi({
+      projects: projectsResponse,
+      issues: { bdesk: bdeskIssues, mpm: mpmIssues },
+      chronologies: { 'bdesk/bdesk-38k.6': working },
+      drifts: { bdesk: [drift] },
+    });
+    renderApp('/p/bdesk/t/bdesk-38k.6');
+
+    const chronologySection = within(await openPanel(/Shell UI façon Linear/)).getByRole('region', { name: 'Chronologie' });
+
+    expect(await within(chronologySection).findByText(/^Dérive/)).toBeTruthy();
+    expect(chronologySection.textContent?.replaceAll(NBSP, ' ')).toContain(
+      '12 j de Cycle Time en cours, au-delà de 8,7 j, le P85 des Livraisons du Projet',
+    );
+  });
+
+  it('n’en dit rien pour un ticket qui ne dérive pas', async () => {
+    stubDefaultApi();
+    renderApp('/p/bdesk/t/bdesk-38k.6');
+
+    const chronologySection = within(await openPanel(/Shell UI façon Linear/)).getByRole('region', { name: 'Chronologie' });
+    await within(chronologySection).findByRole('list', { name: 'Transitions' });
+
+    expect(within(chronologySection).queryByText(/^Dérive/)).toBeNull();
+  });
+});

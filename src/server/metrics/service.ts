@@ -1,8 +1,9 @@
 import { type PeriodSpec, resolvePeriod } from '../../domain/calendar';
 import type { TicketHistory } from '../../domain/flow';
+import { driftsOf } from '../../domain/drift';
 import { computeHealth } from '../../domain/health';
 import { analyzeProject, computeMetrics, type MetricsInput, type ProjectAnalysis } from '../../domain/metrics';
-import type { MetricsResponse, MetricsUnreadableProject, Project } from '../../shared/api';
+import type { DriftsResponse, MetricsResponse, MetricsUnreadableProject, Project } from '../../shared/api';
 import { ReadAborted } from '../abort';
 import { ANALYSIS_GRACE_MS, Flight } from '../flight';
 import { createHeadReader } from '../projects/head-reader';
@@ -32,6 +33,11 @@ export interface MetricsService {
    * aussitôt, celle de l'historique après le délai de grâce (un processus déjà lancé va au bout, son résultat est jeté).
    */
   compute(query: MetricsQuery, options?: ReadOptions): Promise<MetricsResponse>;
+  /**
+   * Les Dérives d'un Projet à l'instant présent, tirées de la même analyse que les métriques (même cache, par HEAD). Un Projet inconnu lève
+   * `ProjectNotFoundError`, un Projet illisible `ProjectUnreadableError`.
+   */
+  drifts(projectId: string, options?: ReadOptions): Promise<DriftsResponse>;
 }
 
 export interface MetricsServiceOptions {
@@ -135,6 +141,15 @@ export function createMetricsService(
   }
 
   return {
+    async drifts(projectId, { signal } = {}) {
+      if (signal?.aborted) throw new ReadAborted();
+      const analysis = await analysisOf(projectId, signal);
+      const at = now();
+      const drifts = [...driftsOf(analysis, at.getTime())]
+        .map(([id, drift]) => ({ id, ...drift }))
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      return { generatedAt: at.toISOString(), drifts };
+    },
     async compute({ projects: ids, period, timeZone: asked }, { signal } = {}) {
       if (signal?.aborted) throw new ReadAborted();
       const at = now();

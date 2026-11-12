@@ -1,10 +1,11 @@
 import { CircleAlert, RefreshCw } from 'lucide-react';
 import { Fragment, useId, type MouseEvent } from 'react';
 import { ApiError, describeError } from '../data/client';
-import { useChronology } from '../data/hooks';
+import { useChronology, useDrifts } from '../data/hooks';
 import type { IssueBlockage, IssueBlockagePhase, IssueBlockagePhaseKind, IssueChronology, IssueTransition } from '../data/types';
 import { statusLabel } from '../design/issue-palette';
 import { cx } from '../lib/cx';
+import { driftSentence, shownDrift } from '../lib/drift';
 import { browserTimeZone, formatInstant } from '../lib/instant';
 import { useNow } from '../lib/useNow';
 import { formatDuration, spokenDuration } from '../metrics/format';
@@ -42,7 +43,7 @@ export function Chronology({ projectId, issueId }: { projectId: string; issueId:
           (le bouton « Réessayer » que le squelette remplace). `contents` : elle ne dessine aucune boîte. */}
       <div key={query.data && !gone ? 'body' : query.isError ? 'unavailable' : 'loading'} ref={keepFocusInPanel} className="contents">
         {query.data && !gone ? (
-          <ChronologyBody projectId={projectId} chronology={query.data} />
+          <ChronologyBody projectId={projectId} issueId={issueId} chronology={query.data} />
         ) : query.isError ? (
           <Unavailable
             error={query.error}
@@ -112,7 +113,21 @@ function Unavailable({ error, onRetry }: { error: unknown; onRetry: (event: Mous
   );
 }
 
-function ChronologyBody({ projectId, chronology }: { projectId: string; chronology: IssueChronology }) {
+/**
+ * La Dérive du ticket, s'il en est en une : la même que sur sa carte, tirée des Dérives du Projet (une requête que le tableau a souvent déjà faite). Rien
+ * tant qu'elles manquent ou qu'elles sont illisibles : la Chronologie se suffit sans elles.
+ */
+function DriftNote({ projectId, issueId, status }: { projectId: string; issueId: string; status: string | undefined }) {
+  const drift = shownDrift(status ?? '', useDrifts(projectId).data?.get(issueId));
+  if (!drift) return null;
+  return (
+    <p className="text-ink-2">
+      <span className="font-medium text-danger">Dérive</span> : {driftSentence(drift)}.
+    </p>
+  );
+}
+
+function ChronologyBody({ projectId, issueId, chronology }: { projectId: string; issueId: string; chronology: IssueChronology }) {
   const now = useNow();
   const blockagesNote = useId();
   const { transitions, blockages } = chronology;
@@ -144,6 +159,7 @@ function ChronologyBody({ projectId, chronology }: { projectId: string; chronolo
 
       <div className="flex flex-col gap-0.5">
         <p className="text-ink-2">{outcomeSentence(chronology)}</p>
+        <DriftNote projectId={projectId} issueId={issueId} status={transitions.at(-1)?.status} />
         <p className="text-xs text-ink-3">Heures du fuseau {browserTimeZone()}</p>
       </div>
 

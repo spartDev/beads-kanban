@@ -68,6 +68,11 @@ function serviceWith(overrides: Partial<ProjectService> = {}): ProjectService {
   };
 }
 
+/** Une méthode de service que le test n'appelle pas. */
+const unused = async (): Promise<never> => {
+  throw new Error('non appelé par ce test');
+};
+
 const get = (projects: ProjectService, url: string) => buildServer({ config, projects }).inject({ method: 'GET', url });
 
 /**
@@ -293,6 +298,64 @@ describe('API de la chronologie d’un ticket', () => {
   });
 });
 
+describe('API des Dérives d’un Projet', () => {
+  const NOW = new Date('2026-10-23T18:00:00Z');
+  const DAY = 86_400_000;
+  const iso = (daysAgo: number) => new Date(NOW.getTime() - daysAgo * DAY);
+  /** Dix Livraisons démarrées il y a 30 jours, de Cycle Time 1 à 10 jours (P85 : 8,65 jours), et un ticket en cours depuis 12 jours. */
+  const histories: TicketHistory[] = [
+    ...Array.from({ length: 10 }, (_, i): TicketHistory => ({
+      id: `d${i + 1}`,
+      type: 'task',
+      statusSnapshots: [
+        { status: 'open', at: iso(31) },
+        { status: 'in_progress', at: iso(30) },
+        { status: 'closed', at: iso(30 - (i + 1)) },
+      ],
+      dependencies: [],
+    })),
+    {
+      id: 'w',
+      type: 'task',
+      statusSnapshots: [
+        { status: 'open', at: iso(13) },
+        { status: 'in_progress', at: iso(12) },
+      ],
+      dependencies: [],
+    },
+  ];
+  const issues = histories.map((h): Issue => ({ ...issue, id: h.id, type: 'task' }));
+  const getDrifts = (projects: ProjectService, url = '/api/projects/beads-desktop/drifts') =>
+    buildServer({ config, projects, metrics: createMetricsService(projects, { now: () => NOW, timeZone: 'Europe/Paris' }) }).inject({
+      method: 'GET',
+      url,
+    });
+
+  it('GET /api/projects/:projectId/drifts renvoie { drifts } : chaque ticket en cours au-delà de son Cycle Time de référence', async () => {
+    const res = await getDrifts(serviceWith({ histories: async () => histories, issues: async () => issues }));
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      generatedAt: NOW.toISOString(),
+      drifts: [{ id: 'w', cycleTime: 12 * DAY, reference: expect.closeTo(8.65 * DAY, 3), scope: 'type' }],
+    });
+  });
+
+  it('renvoie 404 en JSON pour un Projet inconnu', async () => {
+    const res = await getDrifts(
+      serviceWith({
+        head: async (projectId) => {
+          throw new ProjectNotFoundError(projectId);
+        },
+      }),
+      '/api/projects/nope/drifts',
+    );
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope' });
+  });
+});
+
 describe('API des métriques', () => {
   const NOW = new Date('2026-10-23T18:00:00Z'); // vendredi 23 octobre 2026, 20:00 à Paris
 
@@ -309,6 +372,7 @@ describe('API des métriques', () => {
         queries.push(query);
         return metricsOver(serviceWith()).compute(query);
       },
+      drifts: unused,
     };
   };
 
@@ -390,6 +454,7 @@ describe('API des métriques', () => {
       async compute() {
         throw new InvalidPeriodError('La plage est trop longue : 400 jours, au plus 366.');
       },
+      drifts: unused,
     };
 
     const res = await getMetrics('', serviceWith(), refusing);
@@ -581,6 +646,7 @@ describe('API : requêtes abandonnées par le client (bdesk-38k.20)', () => {
         received = options?.signal;
         return new Promise((_resolve, reject) => options?.signal?.addEventListener('abort', () => reject(new ReadAborted())));
       },
+      drifts: unused,
     };
     const app = buildServer({ config, projects: serviceWith(), metrics });
     const controller = new AbortController();
