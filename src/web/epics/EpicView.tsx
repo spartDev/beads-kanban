@@ -17,7 +17,17 @@ import { Tree } from './Tree';
 import { parseView, VIEW_PARAM, type EpicView } from './view';
 import { ViewSwitch } from './ViewSwitch';
 
-const LINK = 'font-medium text-accent hover:underline';
+/**
+ * Les liens du haut de la page, celui de `BackToEpics` compris, font 24 px de haut au moins (bdesk-38k.85). La barre du haut est collante : quand on défile, ses boutons recouvrent en partie un lien qui passe dessous (sur mobile le bouton du Projet,
+ * quel que soit son nom ; à 1280 px le fil d'Ariane, selon la longueur du nom), et `target-size` d'axe (WCAG 2.5.8) veut alors dans le lien 24 px sur 24 que rien ne recouvre : un lien de 20 px de haut, large de son texte, n'en a pas (à 375 px, 14
+ * positions de défilement d'un pixel en violation par lien, avec un nom de Projet long). La hauteur minimale fixe les 24 px, même quand l'espacement du texte (WCAG 1.4.12) rétrécit la ligne ; le rembourrage centre le texte, la marge négative reprend les
+ * 2 px de chaque côté : la page ne bouge pas. « Epics », seul sur sa ligne, la prend en entier, au bureau comme sur mobile : à la largeur de son texte il échoue encore pour certains noms de Projet (le fil d'Ariane de la barre le recouvre alors par le milieu), un plafond
+ * de largeur aussi (12 et 24 rem mesurés : chacun échoue pour un autre nom) ; le prix est que le vide à sa droite est cliquable, comme dans le résumé « Données du graphique » (ChartParts.tsx). Sur mobile, la phrase ci-dessous prend aussi la ligne, ses deux liens l'un sous l'autre : la zone
+ * libre que la barre laisse à côté du bouton du Projet (TopBar.tsx) tombe dans chacun. Sous 11 rem de large la barre n'a plus cette zone (TopBar.tsx) : la phrase écarte alors ses deux liens de 12 px, pour qu'axe ne les prenne plus pour voisins l'un de l'autre (zoom à 200 % d'une fenêtre
+ * de 320 px). Au bureau, les deux liens de la phrase restent étroits et côte à côte (les agrandir ajouterait un second vide cliquable) : pour certains noms et certaines largeurs, ils gardent quelques positions en violation (voir la preuve de bdesk-38k.85). Ce que le test lit :
+ * EpicView.targetSize.test.tsx.
+ */
+const LINK = '-my-0.5 min-h-[24px] py-0.5 font-medium text-accent hover:underline';
 
 /**
  * La page d'une Epic (`/p/<projet>/epics?epic=<id>`) : son avancement (les Livraisons parmi ses Enfants, en nombre), son Lead
@@ -85,7 +95,7 @@ export function EpicView({ project, epic, issues }: { project: Project; epic: Is
             <dd>{statusLabel(epic.status)}</dd>
           </div>
         </dl>
-        <p className="flex flex-wrap gap-x-4 gap-y-1">
+        <p className="flex flex-wrap gap-x-4 gap-y-1 max-md:flex-col max-[11rem]:gap-y-4">
           <Link to={paths.issue(project.id, epic.id)} className={LINK}>
             Ouvrir le ticket
           </Link>
