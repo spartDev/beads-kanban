@@ -55,7 +55,9 @@ function MobileSwitcher() {
     <button
       type="button"
       onClick={(event) => openPalette('projects', event.currentTarget)}
-      className="-ml-1.5 flex h-8 min-w-0 items-center gap-2 rounded-lg px-1.5 text-ui font-semibold text-ink transition-colors hover:bg-hover md:hidden"
+      // 24 px libres entre ce bouton et la recherche (WCAG 2.5.8 : la zone que `target-size` d'axe veut voir à côté de lui quand une cible passe sous la barre collante), moins le `gap-2` de la barre (0,5 rem) :
+      // 24 px en px, pas en rem. Le bouton remplit la place que la recherche lui laisse (`min-w-0`) : la marge se prend sur son nom, dès 11 rem de large (plus étroite, la barre n'a plus la place de la marge).
+      className="-ml-1.5 min-[11rem]:mr-[calc(24px-0.5rem)] flex h-8 min-w-0 items-center gap-2 rounded-lg px-1.5 text-ui font-semibold text-ink transition-colors hover:bg-hover md:hidden"
     >
       {project ? <ProjectTile project={project} size={20} /> : <BrandMark size={20} />}
       <span className="truncate">{label}</span>
