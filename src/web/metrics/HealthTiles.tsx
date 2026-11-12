@@ -5,6 +5,7 @@ import { SectionHeading } from './ChartParts';
 import type { Comparison } from './comparison';
 import { formatCount, formatDuration, formatPercent, formatSigned } from './format';
 import { HEALTH_GRID, HEALTH_SPANS } from './healthGrid';
+import { METRIC_HELP } from './metricHelp';
 import { DurationText, SpokenText } from './SpokenText';
 import { formatEfficiency, MEASURES, spokenEfficiency } from './trend';
 import { plural, Tile, Trend, Value } from './Tiles';
@@ -38,7 +39,7 @@ function Detail({ children }: { children: ReactNode }) {
 function BalanceTile({ tiles, comparison, className }: { tiles: Pick<MetricsTiles, 'arrivals' | 'throughput'>; comparison: Comparison; className: string }) {
   const balance = balanceOf(tiles);
   return (
-    <Tile title="Arrivées vs Débit" className={className}>
+    <Tile title="Arrivées vs Débit" help={METRIC_HELP.balance} className={className}>
       <Value caption="Arrivées moins Débit">{formatSigned(balance.net)}</Value>
       <Detail>
         <p className="tnum">
@@ -59,7 +60,7 @@ function BalanceTile({ tiles, comparison, className }: { tiles: Pick<MetricsTile
 function EfficiencyTile({ efficiency, comparison, className }: { efficiency: MetricsHealth['efficiency']; comparison: Comparison; className: string }) {
   const defined = efficiency.ratio !== null;
   return (
-    <Tile title="Efficacité du flux" sample={plural(efficiency.n, 'Livraison')} className={className}>
+    <Tile title="Efficacité du flux" help={METRIC_HELP.efficiency} sample={plural(efficiency.n, 'Livraison')} className={className}>
       <Value muted={!defined} caption={defined ? 'du Cycle Time hors Blocage' : 'Aucune Livraison démarrée sur la période.'}>
         <SpokenText written={formatEfficiency(efficiency.ratio)} spoken={spokenEfficiency(efficiency.ratio)} />
       </Value>
@@ -91,7 +92,7 @@ function ReopeningTile({ reopening, comparison, className }: { reopening: Metric
   const defined = reopening.rate !== null;
   const followed = reopening.closures > 1 ? 'suivies' : 'suivie'; // l'accord se fait avec les clôtures : « 0 sur 1 clôture suivie »
   return (
-    <Tile title="Taux de Réouverture" sample={plural(reopening.closures, 'clôture')} className={className}>
+    <Tile title="Taux de Réouverture" help={METRIC_HELP.reopening} sample={plural(reopening.closures, 'clôture')} className={className}>
       <Value
         muted={!defined}
         caption={defined ? `${formatCount(reopening.reopened)} sur ${plural(reopening.closures, 'clôture')} ${followed} d’une Réouverture` : 'Aucune clôture sur la période.'}
@@ -115,7 +116,7 @@ function causes({ duplicates, superseded }: { duplicates: number; superseded: nu
 function AbandonmentTile({ abandonment, comparison, className }: { abandonment: MetricsHealth['abandonment']; comparison: Comparison; className: string }) {
   const defined = abandonment.rate !== null;
   return (
-    <Tile title="Taux d’abandon" sample={plural(abandonment.closed, 'ticket fermé', 'tickets fermés')} className={className}>
+    <Tile title="Taux d’abandon" help={METRIC_HELP.abandonment} sample={plural(abandonment.closed, 'ticket fermé', 'tickets fermés')} className={className}>
       <Value
         muted={!defined}
         caption={defined ? `${formatCount(abandonment.abandoned)} sur ${plural(abandonment.closed, 'ticket fermé', 'tickets fermés')}` : 'Aucun ticket fermé sur la période.'}
@@ -136,7 +137,7 @@ function AbandonmentTile({ abandonment, comparison, className }: { abandonment: 
 function ReadyTile({ ready, comparison, className }: { ready: MetricsHealth['readyAges']; comparison: Comparison; className: string }) {
   const any = ready.tickets.length > 0;
   return (
-    <Tile title="Prêts qui stagnent" sample={plural(ready.tickets.length, 'Prêt')} className={className}>
+    <Tile title="Prêts qui stagnent" help={METRIC_HELP.ready} sample={plural(ready.tickets.length, 'Prêt')} className={className}>
       <Value muted={!any} caption={any ? `sur ${plural(ready.tickets.length, 'Prêt')}, depuis plus de ${formatDuration(ready.stagnantAfter)}` : 'Aucun ticket Prêt.'}>
         {formatCount(ready.stagnant)}
       </Value>

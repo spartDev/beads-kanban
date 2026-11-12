@@ -5,6 +5,7 @@ import { cx } from '../lib/cx';
 import { Tip } from '../ui/Tip';
 import { SectionHeading } from './ChartParts';
 import type { Comparison } from './comparison';
+import { METRIC_HELP } from './metricHelp';
 import { formatCount, formatDecimal, formatPercent, tidy } from './format';
 import { DurationText, SpokenText } from './SpokenText';
 import { describeTrend, MEASURES, type Measure, type TrendDirection, type TrendTone } from './trend';
@@ -30,6 +31,7 @@ export function MetricTiles({ tiles, comparison }: { tiles: MetricsTiles; compar
         <ThroughputTile tile={tiles.throughput} comparison={comparison} />
         <DurationTile
           title="Lead Time"
+          help={METRIC_HELP.leadTime}
           tile={tiles.leadTime}
           sample={plural(tiles.leadTime.n, 'Livraison')}
           empty="Aucune Livraison sur la période."
@@ -37,6 +39,7 @@ export function MetricTiles({ tiles, comparison }: { tiles: MetricsTiles; compar
         />
         <DurationTile
           title="Cycle Time"
+          help={METRIC_HELP.cycleTime}
           tile={tiles.cycleTime}
           sample={plural(tiles.cycleTime.n, 'Livraison')}
           empty="Aucune Livraison démarrée sur la période."
@@ -45,6 +48,7 @@ export function MetricTiles({ tiles, comparison }: { tiles: MetricsTiles; compar
         <FailureRateTile tile={tiles.failureRate} comparison={comparison} />
         <DurationTile
           title="Temps de rétablissement"
+          help={METRIC_HELP.recoveryTime}
           tile={tiles.recoveryTime}
           sample={plural(tiles.recoveryTime.n, 'bug critique', 'bugs critiques')}
           empty="Aucun bug critique (P0 ou P1) livré sur la période."
@@ -61,7 +65,21 @@ export function MetricTiles({ tiles, comparison }: { tiles: MetricsTiles; compar
 }
 
 /** Le cadre d'une tuile : son titre, la taille de l'échantillon, son contenu. Pointillé quand la valeur est indicative. */
-export function Tile({ title, sample, indicative = false, className, children }: { title: string; sample?: string; indicative?: boolean; className?: string; children: ReactNode }) {
+export function Tile({
+  title,
+  help,
+  sample,
+  indicative = false,
+  className,
+  children,
+}: {
+  title: string;
+  help?: string;
+  sample?: string;
+  indicative?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
   const titleId = useId();
   return (
     <article
@@ -70,9 +88,12 @@ export function Tile({ title, sample, indicative = false, className, children }:
       className={cx('flex min-w-0 flex-col gap-2 rounded-lg border p-3', indicative ? 'border-dashed border-line-strong bg-well' : 'border-line bg-panel', className)}
     >
       <header className="flex flex-wrap items-baseline justify-between gap-x-2">
-        <h3 id={titleId} className="min-w-0 text-ui font-medium text-ink-2">
-          {title}
-        </h3>
+        <span className="flex min-w-0 items-center gap-0.5">
+          <h3 id={titleId} className="min-w-0 text-ui font-medium text-ink-2">
+            {title}
+          </h3>
+          {help ? <MetricHelp title={title} help={help} /> : null}
+        </span>
         {sample ? (
           <span data-sample="" className="shrink-0 text-micro text-ink-3 tnum">
             {sample}
@@ -81,6 +102,21 @@ export function Tile({ title, sample, indicative = false, className, children }:
       </header>
       {children}
     </article>
+  );
+}
+
+/** L'icône info d'une tuile : au survol ou au focus clavier, une infobulle dit ce que mesure la tuile et à quoi elle sert. */
+function MetricHelp({ title, help }: { title: string; help: string }) {
+  return (
+    <Tip label={help} side="bottom">
+      <button
+        type="button"
+        aria-label={`À propos de ${title}`}
+        className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-ink-3 hover:text-ink-2"
+      >
+        <Info size={13} aria-hidden="true" />
+      </button>
+    </Tip>
   );
 }
 
@@ -138,7 +174,7 @@ export function Trend({ trend, measure, comparison, label, hasValue = true }: { 
 
 function ThroughputTile({ tile, comparison }: { tile: MetricsTiles['throughput']; comparison: Comparison }) {
   return (
-    <Tile title="Débit">
+    <Tile title="Débit" help={METRIC_HELP.throughput}>
       <Value caption="Livraisons sur la période">{formatCount(tile.total)}</Value>
       <Trend trend={tile.trend} measure={MEASURES.count} comparison={comparison} />
     </Tile>
@@ -149,11 +185,11 @@ function ThroughputTile({ tile, comparison }: { tile: MetricsTiles['throughput']
  * Lead Time, Cycle Time, Temps de rétablissement : la médiane en grand, le P85 dessous, chacun avec sa tendance. Quand la
  * période précédente n'a rien à comparer, une seule phrase le dit pour les deux.
  */
-function DurationTile({ title, tile, sample, empty, comparison }: { title: string; tile: MetricsDurationTile; sample: string; empty: string; comparison: Comparison }) {
+function DurationTile({ title, help, tile, sample, empty, comparison }: { title: string; help?: string; tile: MetricsDurationTile; sample: string; empty: string; comparison: Comparison }) {
   const defined = tile.n > 0 && tile.median !== null;
   const nothingBefore = tile.trend.median.previous === null && tile.trend.p85.previous === null;
   return (
-    <Tile title={title} sample={sample}>
+    <Tile title={title} help={help} sample={sample}>
       <div className="flex flex-col gap-1">
         <Value muted={!defined} caption={defined ? 'médiane' : empty}>
           <DurationText ms={tile.median} />
@@ -187,7 +223,7 @@ function FailureRateTile({ tile, comparison }: { tile: MetricsFailureRateTile; c
 
   if (!tile.significant) {
     return (
-      <Tile title="Taux d’échec" sample={sample} indicative>
+      <Tile title="Taux d’échec" help={METRIC_HELP.failureRate} sample={sample} indicative>
         <div className="flex flex-col gap-1">
           <p className="flex items-center gap-1.5 text-[15px] font-semibold leading-8 text-ink-2">
             <TriangleAlert size={15} aria-hidden="true" className="shrink-0 text-ink-3" />
@@ -202,7 +238,7 @@ function FailureRateTile({ tile, comparison }: { tile: MetricsFailureRateTile; c
 
   const defined = tile.rate !== null;
   return (
-    <Tile title="Taux d’échec" sample={sample}>
+    <Tile title="Taux d’échec" help={METRIC_HELP.failureRate} sample={sample}>
       <Value muted={!defined} caption={defined ? `${tile.failed} sur ${tile.deliveries} en échec` : 'Aucune Livraison sur la période.'}>
         {formatPercent(tile.rate, { precise: true })}
       </Value>
@@ -214,7 +250,7 @@ function FailureRateTile({ tile, comparison }: { tile: MetricsFailureRateTile; c
 
 function WipTile({ tile, comparison }: { tile: MetricsWipTile; comparison: Comparison }) {
   return (
-    <Tile title="WIP">
+    <Tile title="WIP" help={METRIC_HELP.wip}>
       <Value caption={comparison.running ? `en cours à ${comparison.asOfTime}` : 'en cours à la fin de la période'}>{formatCount(tile.current)}</Value>
       <div className="flex flex-col gap-1 border-t border-line pt-2">
         <p className="flex items-baseline gap-1.5">

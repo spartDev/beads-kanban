@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { MetricsResponse } from '../../shared/api';
 import { TooltipProvider } from '../ui/Tip';
@@ -356,5 +357,22 @@ describe('HealthTiles : la santé du flux', () => {
     renderTiles({ ...emptyMetricsFixture(), health: emptyHealthFixture() });
 
     expect(screen.getAllByRole('article')).toHaveLength(5);
+  });
+});
+
+describe('HealthTiles : ce que mesure chaque tuile', () => {
+  it('chacune des cinq tuiles a son icône info, et chaque explication lui est propre', async () => {
+    const explanations: string[] = [];
+
+    // Une page neuve par tuile : après un survol, Radix attend que le pointeur rejoigne l'infobulle ou s'en éloigne, ce que jsdom ne simule pas.
+    for (const name of ['Arrivées vs Débit', 'Efficacité du flux', 'Taux de Réouverture', 'Taux d’abandon', 'Prêts qui stagnent']) {
+      const { unmount } = renderTiles();
+      await userEvent.setup().hover(within(tile(name)).getByRole('button', { name: `À propos de ${name}` }));
+      explanations.push(plain((await screen.findByRole('tooltip')).textContent));
+      unmount();
+    }
+
+    expect(new Set(explanations).size).toBe(5);
+    expect(explanations[1]).toContain('Blocage'); // l'Efficacité du flux, c'est le Cycle Time hors Blocage
   });
 });
