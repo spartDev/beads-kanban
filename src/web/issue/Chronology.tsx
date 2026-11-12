@@ -290,7 +290,8 @@ function BlockageRow({ blockage, projectId, now }: { blockage: IssueBlockage; pr
         {' · '}
         <Duration ms={duration} />
       </p>
-      <p className="text-xs text-ink-3">
+      {/* Les tickets attendus s'écrivent par leur identifiant, qui peut n'avoir aucun endroit où passer à la ligne : il se coupe où il le faut au lieu de déborder du Blocage (bdesk-38k.90). */}
+      <p className="wrap-anywhere text-xs text-ink-3">
         {blockage.blockedBy.length > 0 ? (
           <>
             attend{' '}

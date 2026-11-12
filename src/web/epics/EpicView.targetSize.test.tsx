@@ -1,7 +1,7 @@
 import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { withAsyncTimeout } from '../test/asyncTimeout';
-import { classesOf, declared, lengthOf, names, rulesFor, selectorOf, type Rule } from '../test/compiledCss';
+import { classesOf, declared, lengthOf, ownRules, rulesFor, type Rule } from '../test/compiledCss';
 import { issue, projectsResponse } from '../test/fixtures';
 import { renderApp, stubApi } from '../test/render';
 
@@ -35,24 +35,6 @@ const UNREAD_BOX = ['margin', 'margin-top', 'margin-bottom', 'padding', 'padding
 /** Sur la phrase, l'écart se lit par `row-gap` : le raccourci `gap` aussi serait refusé (sur un lien, `gap` espace l'icône de son texte : il ne dit rien de la boîte). */
 const UNREAD_PHRASE = [...UNREAD_BOX, 'gap'];
 
-/**
- * Les règles de ces classes que ce test lit pour cet élément, dans l'ordre de la feuille (celui de la cascade) : celles qu'une classe de l'élément pose seule, pour l'une des propriétés lues. Les conditions qui les enveloppent
- * (`md:`, `max-md:`, `max-[11rem]:`) sont lues par `declared`, largeur de fenêtre par largeur de fenêtre. Une règle qui nomme une classe de l'élément autrement (sélecteur composé) et déclare une de ces propriétés, ou qui déclare une
- * des écritures qu'il ne sait pas lire, fait échouer le test ; une règle de pseudo-élément est écartée, elle ne dit rien de la boîte du lien.
- */
-function appliedTo(rules: readonly Rule[], element: Element, unreadable: readonly string[]): Rule[] {
-  const own = classesOf(element).map(selectorOf);
-  return rules.filter((rule) => {
-    if (!own.some((selector) => names(rule, selector)) || /(?<!\\)::/.test(rule.selector)) return false;
-    const unread = unreadable.find((property) => rule.declarations[property] !== undefined);
-    if (unread !== undefined) throw new Error(`Règle que ce test ne sait pas lire : « ${[...rule.within, rule.selector].join(' → ')} » déclare ${unread}, que ce test ne lit pas : il lit ${READ.join(', ')}`);
-    const read = READ.find((property) => rule.declarations[property] !== undefined);
-    if (read === undefined) return false;
-    if (!own.includes(rule.selector)) throw new Error(`Règle que ce test ne sait pas lire : « ${[...rule.within, rule.selector].join(' → ')} » déclare ${read} et nomme une classe de l'élément sans en être seule`);
-    return true;
-  });
-}
-
 /** Les règles de feuille de style d'un jeu de classes, compilées une fois par jeu : Tailwind met une centaine de millisecondes à le faire. */
 const sheets = new Map<string, Promise<Rule[]>>();
 const sheetOf = (element: Element) => {
@@ -65,7 +47,7 @@ const sheetOf = (element: Element) => {
 /** Ce que les classes d'un élément déclarent, à une largeur de fenêtre : une longueur en px (`0` : aucune déclaration), ou le texte de la valeur. */
 async function declarationsOf(element: Element, unreadable: readonly string[] = UNREAD_BOX) {
   const sheet = await sheetOf(element);
-  const own = appliedTo(sheet, element, unreadable);
+  const own = ownRules(sheet, element, READ, unreadable);
   const value = (property: string, viewport: number) => declared(own, [property], viewport);
   const length = (property: string, viewport: number) => lengthOf(sheet, value(property, viewport) ?? '0px', ROOT);
   return { value, length };

@@ -16,13 +16,29 @@ export const groupClass =
   'pb-1 [&_[cmdk-group-heading]]:px-4 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-ink-3';
 
 export const itemClass =
-  'group/item relative flex h-9 cursor-default select-none items-center gap-2.5 rounded-lg pl-4 pr-2.5 text-ui text-ink-2 outline-none data-[disabled=true]:opacity-55 data-[selected=true]:bg-press data-[selected=true]:text-ink';
+  'group/item relative flex min-h-9 cursor-default select-none items-center gap-2.5 rounded-lg pl-4 pr-2.5 text-ui text-ink-2 outline-none data-[disabled=true]:opacity-55 data-[selected=true]:bg-press data-[selected=true]:text-ink';
 
 /**
  * Texte en retrait d'une ligne : ink-3, sauf sur la ligne sélectionnée. Son voile `press` ferait passer ink-3
  * sous 4.5:1 (surtout en sombre) : le texte y prend ink-2.
  */
 const dim = 'text-ink-3 group-data-[selected=true]/item:text-ink-2';
+
+/**
+ * L'identifiant d'un ticket, sur sa ligne : écrit en entier, coupé là où il le faut (`wrap-anywhere`) quand il dépasse 40 % de la ligne (bdesk-38k.90). Celui d'un ticket fait jusqu'à 255 caractères (le préfixe est le nom du dossier du Projet) : tronqué par une ellipse, il n'était
+ * entier qu'en `title`, que ni le clavier ni le doigt n'atteignent. Il n'a plus de `title` : il est tout dans la ligne, et le nom accessible de la ligne le dit une fois. Un identifiant qui tient sur une ligne la laisse à ses 36 px : sa marge verticale (16 + 12 px) n'y change rien.
+ *
+ * La hauteur d'une ligne ne dépend ni de la sélection, ni du survol, ni de la dernière touche. Elle ne doit jamais changer entre un appui et son clic : une ligne qui s'ouvrait à la sélection pour y montrer l'identifiant entier (essayé dans bdesk-38k.90) grandissait et se refermait sous un pointeur ou un doigt immobile, et le
+ * clic ou le toucher tombait sur une autre ligne, ou sur aucune. Rien de ce qui change à la sélection ne touche donc à la taille : `shrink-0` garde à l'identifiant la largeur que son plafond lui donne, quelle que soit la place que prennent ses voisins (l'icône « Entrée » n'apparaît que
+ * sur la ligne sélectionnée), et `min-h-9` de `itemClass` (et non `h-9`) laisse la ligne grandir avec lui.
+ *
+ * Combien de caractères tiennent sur une ligne : 40 % de la ligne, à 7,17 px le caractère (`font-mono text-xs`), soit 33 caractères dès 664 px de large (la boîte de dialogue y atteint son plafond de 640 px) mais 17 à 375 px
+ * (14 à 320 px, 19 à 414 px, 23 à 480 px). Au-delà, la ligne passe à 44 px (deux lignes de texte), puis 16 px de plus par ligne : un identifiant de 255 caractères fait 140 px à 1280 px et 252 px à 375 px.
+ * Limite connue : un identifiant à tirets se coupe de préférence aux tirets, ce qui laisse des fins de ligne vides et hausse la ligne (332 px pour 255 caractères à 375 px) : elle ne tient plus dans la liste
+ * d'une fenêtre de 360 px de haut (287 px) au-delà de 205 caractères à tirets, et sa fin n'est alors atteinte qu'en faisant défiler la liste. `break-all` la ferait tenir, mais couperait les mots au milieu et le code
+ * qui distingue le ticket (« …-a1b2c3 » en « …-a » et « 1b2c3 ») : essayé et écarté ; un plafond de 50 % ou 60 % rognerait le titre de 31 ou 63 px à 375 px.
+ */
+const ID_CLASS = 'my-1.5 max-w-[40%] shrink-0 font-mono text-xs wrap-anywhere';
 
 /** Perle d'accent : marque la ligne sélectionnée, comme l'onglet actif sur mobile. */
 export function Bead() {
@@ -107,7 +123,8 @@ function EpicRow({
     >
       <Bead />
       <TypeGlyph type="epic" />
-      <span className={cx('max-w-[40%] shrink-0 truncate font-mono text-xs', dim)}>{issue.id}</span>
+      {/* En entier, coupé là où il le faut : voir ID_CLASS (bdesk-38k.90). */}
+      <span className={cx(ID_CLASS, dim)}>{issue.id}</span>
       <span className={cx('min-w-0 flex-1 truncate', issue.closedAt && dim)}>{ticketTitle(issue)}</span>
       {showProject ? <span className={cx('max-w-[30%] shrink-0 truncate text-xs', dim)}>{project.name}</span> : null}
       <EnterHint />
@@ -124,7 +141,8 @@ function IssueRow({ issue, project, go }: { issue: Issue; project: Project; go: 
     >
       <Bead />
       <TypeGlyph type={issue.type} />
-      <span className={cx('max-w-[40%] shrink-0 truncate font-mono text-xs', dim)}>{issue.id}</span>
+      {/* En entier, coupé là où il le faut : voir ID_CLASS (bdesk-38k.90). */}
+      <span className={cx(ID_CLASS, dim)}>{issue.id}</span>
       <span className={cx('min-w-0 flex-1 truncate', issue.closedAt && dim)}>{ticketTitle(issue)}</span>
       {issue.status !== 'open' ? (
         <span className={cx('hidden max-w-[25%] shrink-0 truncate text-xs sm:inline', dim)}>{statusLabel(issue.status)}</span>

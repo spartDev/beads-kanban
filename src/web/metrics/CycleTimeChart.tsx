@@ -142,7 +142,8 @@ export function CycleTimePlot({ points, span, dimension, ctx, timeZone, median, 
       </svg>
       {active && point ? (
         <ChartTooltip pointer={active} bounds={{ width, height }}>
-          <p className="font-mono text-[11px] text-ink-2">{point.id}</p>
+          {/* L'infobulle fait 15 rem au plus : l'identifiant, qui peut n'avoir aucun endroit où passer à la ligne, s'y coupe où il le faut (bdesk-38k.90). */}
+          <p className="wrap-anywhere font-mono text-[11px] text-ink-2">{point.id}</p>
           <p className="line-clamp-3 font-medium">{ticketTitle(point)}</p>
           <p className="flex flex-wrap items-center gap-x-2 text-ink-2">
             <TypeBadge type={point.type} />
@@ -273,7 +274,9 @@ function CycleTimeTable({
         <tr key={`${point.project}/${point.id}`}>
           <th scope="row" className="px-3 py-1 text-left font-normal">
             <Link to={paths.issue(point.project, point.id)} className="flex flex-col text-accent hover:underline">
-              <span className="font-mono">{point.id}</span>
+              {/* Plafonné à 40 caractères, coupé là où il dépasse : une cellule prend la largeur de son contenu, et la région de données défilait de plus de 1 000 px pour un identifiant de 152 caractères. Coupé par `break-word` et non
+                  `anywhere` : celui-ci réduit la plus petite largeur de la colonne, et un identifiant court passerait à la ligne (bdesk-38k.90). */}
+              <span className="max-w-[40ch] wrap-break-word font-mono">{point.id}</span>
               <span className="max-w-[28ch] truncate text-ink-2">{ticketTitle(point)}</span>
             </Link>
           </th>

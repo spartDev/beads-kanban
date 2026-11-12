@@ -5,8 +5,9 @@ import { compile } from 'tailwindcss';
 /**
  * Ce que les classes d'un élément déclarent dans la feuille de style de l'application, lu règle par règle. jsdom ne met rien en page et ne mesure rien : la seule trace de ce que le navigateur fera d'une classe est la règle que Tailwind écrit
  * pour elle dans `styles.css`, la vraie, compilée ici et non recopiée dans un test (comme busyBar.test.ts lit `metrics.css`). Les tests de taille de cible (WCAG 2.5.8) s'en servent : le résumé « Données du graphique » (dataSummary.test.tsx,
- * bdesk-38k.82), le bouton « Masquer Terminé » (cfdButton.test.tsx, bdesk-38k.83) et le bouton du Projet de la barre du haut (TopBar.targetSize.test.tsx, bdesk-38k.84). Chacun dit en tête ce qu'il lit de ces règles et ce qu'il n'en voit pas ;
- * ce que Chromium en fait (la hauteur mesurée, ce qu'axe dit à chaque position du défilement) se mesure dans un vrai navigateur : voir leurs preuves.
+ * bdesk-38k.82), le bouton « Masquer Terminé » (cfdButton.test.tsx, bdesk-38k.83), le bouton du Projet de la barre du haut (TopBar.targetSize.test.tsx, bdesk-38k.84) et les liens du haut de la page d'une Epic (EpicView.targetSize.test.tsx, bdesk-38k.85),
+ * comme la mise en page des identifiants de ticket longs (idLayout.ts, bdesk-38k.90). Chacun dit en tête ce qu'il lit de ces règles et ce qu'il n'en voit pas ; ce que Chromium en fait (la hauteur mesurée, ce qu'axe dit à chaque position du défilement)
+ * se mesure dans un vrai navigateur : voir leurs preuves. Ce qu'ils lisent de la même façon est ici : les règles qu'une classe de l'élément pose seule (`ownRules`) et le facteur de rétrécissement d'une boîte flex (`flexShrinkOf`).
  *
  * Ce module ne devine pas, mais il ne refuse que ce qu'on lui fait lire. `lengthOf` échoue sur une unité autre que `px` et `rem`, une fonction autre que `calc`, `min` et `max`, un nombre sans unité (sauf une hauteur de ligne, que l'appelant compte en
  * tailles de police), une variable CSS sans valeur ni valeur de repli (le repli peut être un autre `var()`), ou déclarée plusieurs fois ou sous condition (hors le repli que la couche `properties` de Tailwind donne à ses `--tw-*`) ; `declared`
@@ -17,7 +18,7 @@ import { compile } from 'tailwindcss';
  * avec `inherits: false`, qui ne se lisent que sur l'élément qui les pose : le `leading-*` de `details` ne donne pas sa `--tw-leading` au `text-xs` du résumé, qui prend son repli.
  *
  * Tailwind lit aussi les fichiers de `src/web`, ce module comme les tests : un mot qui y est le nom d'une classe en ferait naître la règle dans la feuille de style de production. Ce qu'un test doit nommer sans la faire naître s'écrit en morceaux
- * ou en camelCase (`FLEX_SHRINK` dans TopBar.targetSize.test.tsx, `PLACE` dans cfdButton.test.tsx).
+ * ou en camelCase (`FLEX_SHRINK` ci-dessous, `PLACE` dans cfdButton.test.tsx).
  */
 
 const web = join(import.meta.dirname, '..');
@@ -152,6 +153,26 @@ export function seenBy(rules: readonly Rule[], element: Element, elements: reado
   });
 }
 
+/**
+ * Les règles qu'une classe de l'élément pose seule, parmi `rules`, pour l'une des propriétés que le test lit (`read`), dans l'ordre de la feuille (celui de la cascade) : de quoi les passer à `declared`. Ce que le test ne sait pas lire le fait échouer, au
+ * lieu de passer en silence : une règle qui nomme une classe de l'élément sans en être seule (`.classe[attribut]`, `header .classe`, `.classe:hover`) et déclare une propriété lue, ou qui déclare l'une de celles qu'il dit ne pas lire (`unread` : un
+ * raccourci, une écriture logique qu'il n'ouvre pas). Une règle de pseudo-élément (`targetsPseudoElement`) est écartée : elle ne dit rien de la boîte de l'élément. Les conditions qui enveloppent une règle, `declared` les lit, une largeur de fenêtre à la fois.
+ */
+export function ownRules(rules: readonly Rule[], element: Element, read: readonly string[], unread: readonly string[] = []): Rule[] {
+  const own = classesOf(element).map(selectorOf);
+  const ownNaming = naming(own);
+  const where = (rule: Rule) => [...rule.within, rule.selector].join(' → ');
+  return rules.filter((rule) => {
+    if (!ownNaming(rule) || targetsPseudoElement(rule)) return false;
+    const refused = unread.find((property) => rule.declarations[property] !== undefined);
+    if (refused !== undefined) throw new Error(`Règle que ce test ne sait pas lire : « ${where(rule)} » déclare ${refused}, que ce test ne lit pas : il lit ${read.join(', ')}`);
+    const property = read.find((name) => rule.declarations[name] !== undefined);
+    if (property === undefined) return false;
+    if (!own.includes(rule.selector)) throw new Error(`Règle que ce test ne sait pas lire : « ${where(rule)} » déclare ${property} et nomme une classe de l'élément sans en être seule`);
+    return true;
+  });
+}
+
 /** Les valeurs d'une déclaration, séparées par des espaces hors des parenthèses (`calc(1px + 2px) 0` : deux valeurs). */
 export function wordsOf(value: string): string[] {
   const words: string[] = [];
@@ -190,6 +211,45 @@ export function declared(rules: readonly Rule[], properties: readonly string[], 
     }
   }
   return value;
+}
+
+/**
+ * La propriété du rétrécissement d'un élément flex, écrite en morceaux : Tailwind lit aussi ce module et les tests, et la propriété écrite d'un bloc, même dans un commentaire, y ferait naître la classe de même nom dans la feuille de style de
+ * l'application.
+ */
+export const FLEX_SHRINK = ['flex', 'sh' + 'rink'].join('-');
+
+/**
+ * Le facteur de rétrécissement d'une boîte flex à cette largeur de fenêtre (1, la valeur initiale, tant que rien ne le change), lu dans `flex` et dans sa propriété seule : le dernier des deux déclarés l'emporte. `rules` : celles que `ownRules`
+ * rend pour l'élément ; `sheet` : la feuille qu'il voit (`seenBy`), où se résolvent les `var(--…)`. `flex: none` (`0 0 auto`) et un facteur nul empêchent l'élément de rétrécir. Une valeur qu'il ne sait pas lire (`inherit`, `unset`, `revert`, un
+ * facteur qui n'est pas un nombre, une variable sans valeur) fait échouer le test plutôt que de passer pour un facteur de 1.
+ */
+export function flexShrinkOf(sheet: readonly Rule[], rules: readonly Rule[], viewport: number): number {
+  const unreadable = (value: string) => new Error(`Valeur de flex que ce test ne sait pas lire : ${value}`);
+  const isNumber = (token: string) => /^\d*\.?\d+$/.test(token);
+  let rate = 1;
+  let important = false;
+  for (const rule of rules) {
+    const touched = Object.entries(rule.declarations).filter(([property]) => property === 'flex' || property === FLEX_SHRINK);
+    if (touched.length === 0 || !rule.within.every((condition) => holds(condition, viewport))) continue;
+    for (const [property, raw] of touched) {
+      const declaration = withoutImportant(raw);
+      if (important && !declaration.important) continue;
+      important = declaration.important;
+      const value = resolved(sheet, declaration.value).trim();
+      if (value === 'initial' || (property === 'flex' && value === 'auto')) rate = 1;
+      else if (property === FLEX_SHRINK) {
+        if (!isNumber(value)) throw unreadable(value);
+        rate = Number(value);
+      } else if (value === 'none') rate = 0;
+      else {
+        if (/^(inherit|unset|revert|revert-layer)$/i.test(value)) throw unreadable(value);
+        const numbers = value.split(/\s+/).filter(isNumber);
+        rate = numbers.length >= 2 ? Number(numbers[1]) : 1;
+      }
+    }
+  }
+  return rate;
 }
 
 /**

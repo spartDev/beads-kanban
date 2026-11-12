@@ -22,7 +22,8 @@ function EpicItem({ projectId, epic, progress }: { projectId: string; epic: Issu
       <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
         <TypeGlyph type="epic" className="self-center" />
         <span className="sr-only">Epic</span>
-        <span className="shrink-0 font-mono text-xs text-ink-3">{epic.id}</span>
+        {/* Entier tant que la ligne le porte, coupé où il le faut au-delà, plafonné à sa largeur : voir Relations.tsx (bdesk-38k.90). */}
+        <span className="max-w-full shrink-0 wrap-anywhere font-mono text-xs text-ink-3">{epic.id}</span>
         <span className="min-w-0 flex-1 basis-40 wrap-anywhere font-medium text-ink">{ticketTitle(epic)}</span>
         {epic.status === 'closed' ? <span className="shrink-0 text-xs text-ink-3">fermée</span> : null}
       </span>

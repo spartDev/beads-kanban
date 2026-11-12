@@ -95,7 +95,9 @@ function Breadcrumb() {
                     Kanban
                   </Link>
                   <Separator />
-                  <span aria-current="page" className="truncate font-mono text-xs font-medium text-ink">
+                  {/* Tronqué quand la place manque : le texte entier est en infobulle (la souris) et dans son nom accessible. Ce n'est pas un arrêt de tabulation (le nom de la page, `aria-current`), et le panneau du ticket, qui a le focus et recouvre la
+                      droite de la barre, écrit l'identifiant en entier dans son en-tête (bdesk-38k.90). */}
+                  <span aria-current="page" title={issueId} className="truncate font-mono text-xs font-medium text-ink">
                     {issueId}
                   </span>
                 </>

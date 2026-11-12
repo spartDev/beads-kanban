@@ -278,8 +278,9 @@ describe('la page Epic : les Enfants par colonne', () => {
       .flatMap((region) => within(region).getAllByRole('link'))
       .map((link) => (link.querySelector('.font-mono') as HTMLElement).style.minWidth);
 
-    // `bdesk-r0`, `bdesk-d1`… : huit caractères ; `bdesk-b`, `bdesk-r`… n'en ont que sept et prennent la largeur des autres.
-    expect(new Set(widths)).toEqual(new Set(['8ch']));
+    // `bdesk-r0`, `bdesk-d1`… : huit caractères ; `bdesk-b`, `bdesk-r`… n'en ont que sept et prennent la largeur des autres. Cette largeur est plafonnée à celle de la ligne : un identifiant de 152 caractères ferait 152ch, que rien ne
+    // pourrait plus rétrécir, et la page défilerait d'un côté (bdesk-38k.90 ; pages/longIdentifiers.layout.test.tsx lit ce plafond).
+    expect(new Set(widths)).toEqual(new Set(['min(8ch, 100%)']));
     expect(widths.length).toBeGreaterThan(10);
   });
 

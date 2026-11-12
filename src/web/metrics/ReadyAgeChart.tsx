@@ -152,7 +152,8 @@ function ReadyTable({ ages, ctx, showProject, timeZone, moment }: { ages: Metric
         <tr key={`${ticket.project}/${ticket.id}`}>
           <th scope="row" className="px-3 py-1 text-left font-normal">
             <Link to={paths.issue(ticket.project, ticket.id)} className="flex flex-col text-accent hover:underline">
-              <span className="font-mono">{ticket.id}</span>
+              {/* Plafonné et coupé comme dans le tableau du Cycle Time (CycleTimeChart.tsx) : bdesk-38k.90. */}
+              <span className="max-w-[40ch] wrap-break-word font-mono">{ticket.id}</span>
               <span className="max-w-[28ch] truncate text-ink-2">{ticketTitle(ticket)}</span>
             </Link>
           </th>

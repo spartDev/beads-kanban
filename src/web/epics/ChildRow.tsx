@@ -32,7 +32,10 @@ function holdingBack(issue: Issue): string | null {
  * Une Epic imbriquée, elle, mène à sa propre page, et dit son avancement (`nested`). `showColumn` : la colonne du ticket est
  * écrite sur la ligne, là où l'arborescence ne les groupe pas. `idChars` : la largeur de l'identifiant, en caractères (celle du
  * plus long de la liste) : les titres d'une colonne commencent alors au même endroit ; dès que l'écran est étroit, la ligne passe
- * à la ligne et cette largeur n'y change rien.
+ * à la ligne et cette largeur n'y change rien. Elle est plafonnée à la largeur de la ligne (`min(…ch, 100%)`) : un identifiant de 152 caractères
+ * ferait 152ch, que la largeur minimale impose avant toute largeur maximale, et la page défilerait d'un côté. Un identifiant plus long que la
+ * ligne se coupe où il le faut ; ce qui retient le ticket (« Attend … ») en cite aussi, et se coupe de même, sans que le groupe de droite
+ * dépasse la ligne (bdesk-38k.90).
  *
  * À droite, ce qui varie d'une ligne à l'autre (ce qui retient le ticket, l'assigné) vient d'abord, et ce qui a une largeur
  * fixe (colonne, priorité, âge de clôture) en dernier : ces cases s'alignent d'une ligne à l'autre sur les écrans larges.
@@ -64,20 +67,20 @@ export function ChildRow({
     >
       <TypeGlyph type={issue.type} className="self-center" />
       <span className="sr-only">{typeMeta(issue.type).label}</span>
-      <span className="shrink-0 font-mono text-xs text-ink-3" style={idChars === undefined ? undefined : { minWidth: `${idChars}ch` }}>
+      <span className="max-w-full shrink-0 wrap-anywhere font-mono text-xs text-ink-3" style={idChars === undefined ? undefined : { minWidth: `min(${idChars}ch, 100%)` }}>
         {issue.id}
       </span>
       {/* Le titre passe à la ligne, sous l'identifiant, quand la place manque : jamais rogné. */}
       <span className="min-w-0 flex-1 basis-40 wrap-anywhere text-ink">{ticketTitle(issue)}</span>
       {issue.abandon ? <AbandonBadge abandon={issue.abandon} className="self-center" /> : null}
-      <span className="flex shrink-0 flex-wrap items-baseline gap-x-2 text-xs text-ink-3">
+      <span className="flex max-w-full shrink-0 flex-wrap items-baseline gap-x-2 text-xs text-ink-3">
         {nested ? (
           <span className="tnum">
             {nested.total === 0 ? 'Aucun Enfant' : `${nested.delivered} sur ${nested.total}`}
             {nested.total === 0 ? null : <span className="sr-only"> Livraisons</span>}
           </span>
         ) : null}
-        {reason ? <span>{reason}</span> : null}
+        {reason ? <span className="wrap-anywhere">{reason}</span> : null}
         {issue.assignee ? <span className="wrap-anywhere">{issue.assignee}</span> : null}
         {showColumn && !isEpic ? <span className="sm:w-14">{columnLabel(issue)}</span> : null}
         {isEpic ? null : <PriorityBadge priority={issue.priority} className="text-xs sm:w-8" />}

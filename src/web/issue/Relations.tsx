@@ -40,7 +40,9 @@ function Group({ group, projectId, held }: { group: RelationGroup; projectId: st
                 className="-mx-1.5 flex min-w-0 flex-wrap items-baseline gap-x-2 rounded-md px-1.5 py-1 transition-colors hover:bg-hover"
               >
                 <TypeGlyph type={ref.type} className="self-center" />
-                <span className="shrink-0 font-mono text-xs text-ink-3">{id}</span>{' '}
+                {/* L'identifiant reste entier tant que la ligne le porte (`shrink-0`) ; plus long qu'elle, il se coupe où il le faut, plafonné à sa largeur (`max-w-full`, `wrap-anywhere`) : celui d'un ticket fait jusqu'à 255 caractères (le préfixe est le
+                    nom du dossier du Projet) et peut n'avoir ni espace ni tiret où passer à la ligne : sans cela il poussait le panneau à défiler d'un côté (bdesk-38k.90). */}
+                <span className="max-w-full shrink-0 wrap-anywhere font-mono text-xs text-ink-3">{id}</span>{' '}
                 {/* Le titre passe à la ligne, sous l'identifiant, quand la place manque : jamais rogné. */}
                 <span className="min-w-0 flex-1 basis-40 wrap-anywhere text-ink">{ticketTitle(ref)}</span>{' '}
                 <span className="shrink-0 text-xs text-ink-3">{statusLabel(ref.status)}</span>

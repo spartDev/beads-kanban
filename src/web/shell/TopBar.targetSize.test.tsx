@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Project } from '../data/types';
 import { withAsyncTimeout } from '../test/asyncTimeout';
-import { classesOf, declared, holds, lengthOf, names, resolved, rulesFor, seenBy, selectorOf, withoutImportant, wordsOf, type Rule } from '../test/compiledCss';
+import { classesOf, declared, FLEX_SHRINK, flexShrinkOf, lengthOf, names, rulesFor, seenBy, selectorOf, wordsOf } from '../test/compiledCss';
 import { bdeskIssues } from '../test/fixtures';
 import { renderApp, stubApi } from '../test/render';
 
@@ -54,12 +54,6 @@ const ROOM = 176;
 const NAME = 'my-prompt-manager-app';
 const project: Project = { id: 'bdesk', name: NAME, path: `/dev/${NAME}`, prefix: 'bdesk', mode: 'embedded', status: 'ok' };
 
-/**
- * La propriété du rétrécissement d'un élément flex, écrite en morceaux : Tailwind lit aussi les fichiers de tests, et la propriété écrite d'un bloc, même dans un commentaire, y ferait naître la classe de même nom dans la
- * feuille de style de l'application.
- */
-const FLEX_SHRINK = ['flex', 'sh' + 'rink'].join('-');
-
 /** Les déclarations qui posent la largeur minimale du bouton : `min-width` et son écriture logique, celle de l'axe du texte (à l'horizontale). */
 const MIN_WIDTH = ['min-width', 'min-inline-size'];
 
@@ -71,39 +65,6 @@ const MAX_HEIGHT = ['max-height', 'max-block-size'];
 /** Les déclarations qui posent la marge à droite : `margin-right`, `margin-inline-end` et les raccourcis `margin` et `margin-inline`, dont elle est la deuxième valeur, ou la seule. */
 const MARGIN_RIGHT = ['margin', 'margin-inline', 'margin-right', 'margin-inline-end'];
 const rightOf = (property: string, value: string) => (property === 'margin' || property === 'margin-inline' ? (wordsOf(value)[1] ?? wordsOf(value)[0] ?? value) : value);
-
-/**
- * Le facteur de rétrécissement d'une boîte flex à cette largeur de fenêtre (1, la valeur initiale, tant que rien ne le change), lu dans `flex` et dans sa propriété seule : le dernier des deux déclarés l'emporte. `flex: none`
- * (`0 0 auto`) et un facteur nul empêchent le bouton de rétrécir ; un nom long le ferait alors déborder, la recherche et le thème avec lui, hors de la fenêtre. Les `var(--…)` sont résolus ; une valeur qu'il ne sait pas lire
- * fait échouer le test plutôt que de passer pour un facteur de 1.
- */
-function shrinkOf(sheet: readonly Rule[], rules: readonly Rule[], viewport: number): number {
-  const unreadable = (value: string) => new Error(`Valeur de flex que ce test ne sait pas lire : ${value}`);
-  const isNumber = (token: string) => /^\d*\.?\d+$/.test(token);
-  let rate = 1;
-  let important = false;
-  for (const rule of rules) {
-    const touched = Object.entries(rule.declarations).filter(([property]) => property === 'flex' || property === FLEX_SHRINK);
-    if (touched.length === 0 || !rule.within.every((condition) => holds(condition, viewport))) continue;
-    for (const [property, raw] of touched) {
-      const declaration = withoutImportant(raw);
-      if (important && !declaration.important) continue;
-      important = declaration.important;
-      const value = resolved(sheet, declaration.value).trim();
-      if (value === 'initial' || (property === 'flex' && value === 'auto')) rate = 1;
-      else if (property === FLEX_SHRINK) {
-        if (!isNumber(value)) throw unreadable(value);
-        rate = Number(value);
-      } else if (value === 'none') rate = 0;
-      else {
-        if (/^(inherit|unset|revert|revert-layer)$/i.test(value)) throw unreadable(value);
-        const numbers = value.split(/\s+/).filter(isNumber);
-        rate = numbers.length >= 2 ? Number(numbers[1]) : 1;
-      }
-    }
-  }
-  return rate;
-}
 
 /** Les propriétés que ce test lit : une règle qui en déclare une doit être lue en entier, ou le test échoue. */
 const READ = [...MARGIN_RIGHT, 'column-gap', 'gap', ...MIN_WIDTH, ...HEIGHT, ...MIN_HEIGHT, ...MAX_HEIGHT, 'display', 'flex', FLEX_SHRINK, 'overflow', 'text-overflow', 'white-space'];
@@ -192,7 +153,7 @@ describe('la barre du haut, sur mobile : la zone libre à côté du bouton du Pr
     for (const viewport of [120, 160, ROOM, 320, 375, 767]) {
       const minWidth = declared(bar.switcher, MIN_WIDTH, viewport);
       expect(minWidth === undefined || minWidth === 'auto' ? 'auto' : lengthOf(bar.sheet.switcher, minWidth, 16), `largeur minimale du bouton à ${viewport} px : « auto » l'empêche de rétrécir sous son nom`).toBe(0);
-      expect(shrinkOf(bar.sheet.switcher, bar.switcher, viewport), `facteur de rétrécissement du bouton à ${viewport} px : nul, il ne rétrécit plus et déborde sur la recherche`).toBeGreaterThan(0);
+      expect(flexShrinkOf(bar.sheet.switcher, bar.switcher, viewport), `facteur de rétrécissement du bouton à ${viewport} px : nul, il ne rétrécit plus et déborde sur la recherche`).toBeGreaterThan(0);
     }
     expect(Object.fromEntries(['overflow', 'text-overflow', 'white-space'].map((property) => [property, declared(bar.label, [property], 375)]))).toEqual({
       overflow: 'hidden',
