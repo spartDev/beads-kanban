@@ -15,6 +15,24 @@ import { createProjectService, type ProjectService } from './projects/service';
 export const HOST = '127.0.0.1';
 export const DEFAULT_PORT = 5179;
 
+/**
+ * Longueur maximale d'un paramètre d'adresse (`:projectId`, `:issueId`). Fastify en refuse plus de 100 par défaut (`maxParamLength`), et ce qu'il compte est le texte décodé, en unités UTF-16,
+ * non l'adresse écrite : 255 caractères non ASCII en font plus de 1 500 une fois encodés, et passent. Au-delà, le routeur ne trouve pas la route : 414 (`FST_ERR_MAX_PARAM_LENGTH`) quand l'API
+ * est seule (`pnpm dev`), 404 quand l'interface est servie (`pnpm start`), la route `/*` des fichiers prenant alors l'adresse. Un Projet dont le dossier avait plus de 100 caractères était donc
+ * listé, mais ni son kanban, ni ses tickets, ni ses Epics, ni son flux en direct ne se chargeaient ; un ticket dont l'identifiant dépasse 100 caractères (le préfixe des tickets est celui de la
+ * base, que rien ne borne à 100) ne s'ouvrait pas non plus (bdesk-38k.88).
+ *
+ * 512 couvre tout ce que l'application met dans ces paramètres :
+ * - l'identifiant d'un Projet est le slug du nom de son dossier (`slugify` : des lettres ASCII, des chiffres et des tirets, jamais plus de caractères que le nom, soit 255 au plus : la limite d'un
+ *   nom de fichier, en octets sous Linux, en unités UTF-16 sous macOS et Windows), suivi de `-2`, `-3`… quand un autre dossier a le même slug ;
+ * - celui d'un ticket tient dans `varchar(255)` : 255 caractères d'au plus deux unités UTF-16 chacun (une paire de substitution), soit 510.
+ * Ce qui est plus long n'est ni l'un ni l'autre : le routeur le refuse comme avant. Ce plafond n'est pas une protection : les identifiants ne servent qu'à chercher parmi les Projets découverts
+ * et leurs tickets, jamais à composer un chemin ni une requête sans échappement, et les contrôles de `onRequest` (en-tête Host, origine) s'appliquent à ces adresses comme aux autres (avant, celles
+ * de plus de 100 caractères n'atteignaient pas la route de l'API : le routeur y répondait lui-même, ou la route des fichiers les prenait). Il n'a d'effet que sur les paramètres de route : la requête
+ * (`?project=` des métriques) et le chemin d'un fichier (`/*`) n'en dépendent pas. `param-length.test.ts` et `projects/long-names.integration.test.ts` en fixent les bornes.
+ */
+export const MAX_PARAM_LENGTH = 512;
+
 export interface ServerOptions {
   config: Config;
   /** Dossier de l'interface compilée ; absent en développement (Vite la sert). */
@@ -61,7 +79,8 @@ export function buildServer({
   logger = false,
   live = {},
 }: ServerOptions): FastifyInstance {
-  const app = Fastify({ logger });
+  // `routerOptions` : le `maxParamLength` de premier niveau est obsolète (avertissement FSTDEP022 au démarrage) ; c'est la place que Fastify donne aux réglages du routeur.
+  const app = Fastify({ logger, routerOptions: { maxParamLength: MAX_PARAM_LENGTH } });
   const metricsService = metrics ?? createMetricsService(projects, { warn: (message) => app.log.warn(message) });
 
   // Protection contre le DNS rebinding : une page web hostile peut faire pointer son propre nom de domaine sur

@@ -31,6 +31,20 @@ describe('parsePath', () => {
     });
   });
 
+  // Aucune limite de longueur côté interface (bdesk-38k.88) : l'adresse que `paths` écrit est lue à l'identique par `parsePath`, pour un Projet au nom de dossier de 255 caractères et des tickets de
+  // 255 caractères, ASCII ou non (« é » : 6 caractères une fois encodé, un émoji : 12).
+  it.each([
+    ['ASCII', `${'q'.repeat(240)}-38k.7`],
+    ['accentué', `é${'à'.repeat(253)}ü`],
+    ['émoji', '😀'.repeat(255)],
+  ])('relit à l’identique un Projet et un ticket de 255 caractères (%s)', (_kind, issueId) => {
+    const projectId = `${'dossier-au-nom-tres-long-'.repeat(11)}x`.slice(0, 255);
+
+    expect(parsePath(paths.issue(projectId, issueId))).toEqual({ projectId, section: 'issue', issueId });
+    expect(parsePath(paths.kanban(projectId))).toEqual({ projectId, section: 'kanban' });
+    expect(parsePath(paths.metrics(projectId))).toEqual({ projectId, section: 'metrics' });
+  });
+
   it('décode les segments et ignore les adresses inconnues', () => {
     expect(parsePath('/p/a%20b/epics')).toEqual({ projectId: 'a b', section: 'epics' });
     expect(parsePath('/p/%E0%A4%A/kanban')).toEqual({ projectId: '%E0%A4%A', section: 'kanban' });
