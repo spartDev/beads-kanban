@@ -11,12 +11,12 @@ import { metricsFixture } from './testing';
  *
  * Ce qui le range à droite de sa ligne, seul comme à côté du titre, c'est sa marge gauche `auto` : elle prend l'espace libre de la ligne avant `justify-content` (CSS Flexbox, §8.1). Où l'en-tête passe à la ligne dépend de la police
  * (de repli, avant le chargement de celle de l'application), de l'espacement du texte (WCAG 1.4.12) et de la taille du texte : la marge n'a donc aucune condition de largeur, et ce test vérifie que rien ne la défait : elle est la seule
- * chose qui décide de la place du bouton dans sa ligne (ni autre marge horizontale, ni largeur, croissance ou ordre, ni style en ligne), dans les deux états du bouton ; et le bouton est l'enfant direct d'un en-tête flex qui passe à la ligne.
+ * chose qui décide de la place du bouton dans sa ligne (ni autre marge horizontale, ni largeur, physique ou logique, ni croissance ou ordre, ni style en ligne), dans les deux états du bouton ; et le bouton est l'enfant direct d'un en-tête flex qui passe à la ligne.
  *
  * jsdom ne mesure rien. Ce test lit donc ce que Tailwind écrit pour les classes de l'élément, dans la feuille de style de l'application (la vraie, `styles.css` : test/compiledCss.ts, que partagent les tests de taille de cible),
  * et il n'en lit que la couche `utilities`, celle des classes : il ne fait correspondre aucune classe à un sélecteur, donc aucun caractère spécial (`!`, `[`, `:`, `/`, `#`…) n'est à échapper pour qu'une classe soit vue (bdesk-38k.83, revue 2).
  * Une couche écrite dans cette couche y paraît comme une condition de la règle, que `declarationsOf` met devant elle : les égalités la refusent (bdesk-38k.86, revue). Ce que Chromium en fait (axe à chaque position du défilement, la page qui ne bouge pas à 1280 px) se mesure en vrai navigateur : voir la preuve de bdesk-38k.83. Ce test ne voit pas une règle écrite à la main pour le bouton dans
- * styles.css ou metrics.css, ni une règle d'ancêtre qui vise `button`.
+ * styles.css ou metrics.css, ni une règle d'ancêtre qui vise `button`, ni une largeur maximale (elle rétrécit le bouton sans le déplacer de son bord).
  */
 
 /** Les règles que Tailwind écrit pour ces classes : la couche `utilities` de la feuille compilée pour elles seules, une couche écrite dans celle-ci comprise (c'est une condition de la règle). */
@@ -36,10 +36,10 @@ function declarationsOf(rules: readonly Rule[], properties: readonly string[]): 
 const HORIZONTAL_MARGINS = ['margin', 'margin-inline', 'margin-inline-start', 'margin-inline-end', 'margin-left', 'margin-right'];
 
 /**
- * Ce qui décide, avec ses marges, de la place et de la largeur d'une boîte dans sa ligne flex : sa largeur, sa croissance, sa base et son ordre. Écrites en camelCase, comme React les écrit : Tailwind lit aussi les fichiers
- * de test, et l'une d'elles, en kebab-case, est le nom d'une classe qu'il ajouterait à la feuille de l'application.
+ * Ce qui décide, avec ses marges, de la place et de la largeur d'une boîte dans sa ligne flex : sa largeur, physique ou logique (celle de l'axe du texte, à l'horizontale), sa croissance, sa base et son ordre. Écrites en camelCase, comme React
+ * les écrit : Tailwind lit aussi les fichiers de test, et l'une d'elles, en kebab-case, est le nom d'une classe qu'il ajouterait à la feuille de l'application.
  */
-const PLACE = ['width', 'minWidth', 'flex', 'flexGrow', 'flexBasis', 'order'].map((name) => name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`));
+const PLACE = ['width', 'minWidth', 'inlineSize', 'minInlineSize', 'flex', 'flexGrow', 'flexBasis', 'order'].map((name) => name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`));
 
 /** Le bouton « Masquer Terminé » de la vraie `CfdPanel`, tel qu'on le voit d'abord, puis une fois pressé (`aria-pressed`) : `check` le voit dans ses deux états. */
 async function inBothStates(check: (button: HTMLElement) => void | Promise<void>) {

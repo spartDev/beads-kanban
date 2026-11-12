@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Project } from '../data/types';
 import { withAsyncTimeout } from '../test/asyncTimeout';
-import { classesOf, declared, holds, lengthOf, names, resolved, rulesFor, selectorOf, withoutImportant, wordsOf, type Rule } from '../test/compiledCss';
+import { classesOf, declared, holds, lengthOf, names, resolved, rulesFor, seenBy, selectorOf, withoutImportant, wordsOf, type Rule } from '../test/compiledCss';
 import { bdeskIssues } from '../test/fixtures';
 import { renderApp, stubApi } from '../test/render';
 
@@ -20,9 +20,17 @@ import { renderApp, stubApi } from '../test/render';
  *
  * Ce que ce test ne voit pas, et qu'il ne prétend donc pas garantir : il ne lit que les règles dont le sélecteur est une classe de l'élément, seule, et les conditions `@media` de largeur. Toute autre règle qui déclare une des
  * propriétés qu'il lit (un bloc `@supports` ou de conteneur, une couche dans une couche, un sélecteur qui nomme une classe de l'élément sans être elle seule) et toute variable déclarée plusieurs fois ou sous condition le font échouer, au lieu de passer
- * en silence ; mais les règles de `styles.css` écrites par nom d'élément (`header > button`), la position ou la largeur du bouton, et le voisin de droite lui échappent. Deux autres angles morts, du même ordre : un `style={…}` en
- * ligne sur le bouton, que ses classes ne montrent pas et qui passerait avant elles (cfdButton.test.tsx, lui, vérifie qu'il n'y en a pas) ; et la structure du DOM : le test lit l'écart (`gap`) de `closest('header')` et suppose que
- * le bouton en est un enfant direct, sans rien vérifier de cette hypothèse (un élément posé entre la barre et le bouton prendrait cet écart à sa place).
+ * en silence ; à une exception près, pour les variables : les `--tw-*` que la couche `properties` de Tailwind redit, pour les navigateurs qui ne les enregistrent pas, à `initial` ou à la valeur initiale de leur `@property`, chaque fois qu'un
+ * utilitaire de la feuille en pose une (celui de `leading-*`, par exemple : `variableOf`, test/compiledCss.ts). C'est la couche la plus basse de la feuille : l'utilitaire l'emporte, et sans lui la variable n'a pas de valeur ici. `--spacing`, elle,
+ * n'a pas cette exception. Chaque élément lit ses variables dans ce qu'il voit (`seenBy`) : lui et ses ancêtres, jamais ses descendants ; et la `--tw-*` d'un ancêtre, que Tailwind déclare `inherits: false`, n'est pas la sienne (le `leading-*` de
+ * la barre ne donne rien à la marge du bouton). Une règle de pseudo-élément n'est celle de personne (le `leading-*` d'une variante `before:` n'est pas celui du bouton) ; une règle qui n'est pas la classe seule (un état, une structure) fait refuser la
+ * variable qu'elle pose. Une `--spacing` posée sur le bouton ne change donc pas l'écart de la barre, que la barre lit seule : le test la tue sur la barre et sur ses ancêtres, et sur le bouton quand sa marge la lit.
+ * Le bouton lui-même doit aussi faire 24 px de haut au moins (bdesk-38k.87) : la zone libre ne fait pas sa cible. Sa classe de hauteur (`h-8`) lit `--spacing`, et une `--spacing` plus petite, posée sur le bouton, sur la barre ou sur un ancêtre,
+ * le rétrécit (de 32 à 16 px, mesuré en navigateur) sans toucher à l'écart de la barre, que ce test garde ailleurs. Il lit `height`, `min-height` et `max-height`, physiques ou logiques ; quand ni la première ni la deuxième ne fixent la hauteur, elle est celle
+ * du contenu, qu'il ne mesure pas : il échoue au lieu de la croire assez grande.
+ * Les règles de `styles.css` écrites par nom d'élément (`header > button`), la position ou la largeur du bouton, et le voisin de droite échappent au test. Deux autres angles morts, du même ordre : un `style={…}` en ligne sur le bouton, que ses
+ * classes ne montrent pas et qui passerait avant elles (cfdButton.test.tsx, lui, vérifie qu'il n'y en a pas) ; et la structure du DOM : le test lit l'écart (`gap`) de `closest('header')` et suppose que le bouton en est un enfant direct, sans
+ * rien vérifier de cette hypothèse (un élément posé entre la barre et le bouton prendrait cet écart à sa place).
  */
 
 withAsyncTimeout(5_000);
@@ -51,6 +59,14 @@ const project: Project = { id: 'bdesk', name: NAME, path: `/dev/${NAME}`, prefix
  * feuille de style de l'application.
  */
 const FLEX_SHRINK = ['flex', 'sh' + 'rink'].join('-');
+
+/** Les déclarations qui posent la largeur minimale du bouton : `min-width` et son écriture logique, celle de l'axe du texte (à l'horizontale). */
+const MIN_WIDTH = ['min-width', 'min-inline-size'];
+
+/** Les déclarations qui posent la hauteur du bouton, sa hauteur minimale et sa hauteur maximale : l'écriture physique et l'écriture logique (le bloc est la verticale : le texte est à l'horizontale). */
+const HEIGHT = ['height', 'block-size'];
+const MIN_HEIGHT = ['min-height', 'min-block-size'];
+const MAX_HEIGHT = ['max-height', 'max-block-size'];
 
 /** Les déclarations qui posent la marge à droite : `margin-right`, `margin-inline-end` et les raccourcis `margin` et `margin-inline`, dont elle est la deuxième valeur, ou la seule. */
 const MARGIN_RIGHT = ['margin', 'margin-inline', 'margin-right', 'margin-inline-end'];
@@ -90,11 +106,12 @@ function shrinkOf(sheet: readonly Rule[], rules: readonly Rule[], viewport: numb
 }
 
 /** Les propriétés que ce test lit : une règle qui en déclare une doit être lue en entier, ou le test échoue. */
-const READ = [...MARGIN_RIGHT, 'column-gap', 'gap', 'min-width', 'display', 'flex', FLEX_SHRINK, 'overflow', 'text-overflow', 'white-space'];
+const READ = [...MARGIN_RIGHT, 'column-gap', 'gap', ...MIN_WIDTH, ...HEIGHT, ...MIN_HEIGHT, ...MAX_HEIGHT, 'display', 'flex', FLEX_SHRINK, 'overflow', 'text-overflow', 'white-space'];
 
 /**
- * La vraie barre du haut, dans la vraie application, avec le Projet de la page : ce que ses classes déclarent (la barre, le bouton du Projet, son nom). La feuille compilée porte aussi les classes de tous leurs ancêtres : une variable
- * qu'ils redéclarent y paraît, et fait échouer la lecture des longueurs (`lengthOf`). Une règle qui déclare une propriété lue et nomme une classe de l'élément autrement que seule (`header .classe`, `.classe:where(*)`) fait échouer le test.
+ * La vraie barre du haut, dans la vraie application, avec le Projet de la page : ce que ses classes déclarent (la barre, le bouton du Projet, son nom). La feuille compilée porte aussi les classes de tous leurs ancêtres, et chaque longueur se
+ * lit dans ce que l'élément voit (`seenBy`, test/compiledCss.ts) : lui et ses ancêtres, jamais son nom ni un autre élément. Une variable qu'ils redéclarent y paraît, et fait échouer la lecture (`lengthOf`) ; une `--tw-*` n'y paraît que si l'élément
+ * la pose lui-même. Une règle qui déclare une propriété lue et nomme une classe de l'élément autrement que seule (`header .classe`, `.classe:where(*)`) fait échouer le test.
  */
 async function topBar() {
   stubApi({ projects: { projects: [project], ignored: [] }, issues: { bdesk: bdeskIssues } });
@@ -106,7 +123,8 @@ async function topBar() {
 
   const chain: Element[] = [];
   for (let element: Element | null = switcher; element; element = element.parentElement) chain.push(element);
-  const all = await rulesFor([label, ...chain].flatMap(classesOf));
+  const elements = [label, ...chain];
+  const all = await rulesFor(elements.flatMap(classesOf));
   const declaredBy = (element: Element) => {
     const own = classesOf(element).map(selectorOf);
     return all.filter((rule) => {
@@ -118,11 +136,26 @@ async function topBar() {
       return false;
     });
   };
-  return { all, header: declaredBy(header), switcher: declaredBy(switcher), label: declaredBy(label) };
+  return { header: declaredBy(header), switcher: declaredBy(switcher), label: declaredBy(label), sheet: { header: seenBy(all, header, elements), switcher: seenBy(all, switcher, elements) } };
 }
 
 /** La marge à droite du bouton, en px, à cette largeur de fenêtre et à cette taille de police racine : `0` quand aucune règle n'en pose. */
-const rightMargin = (bar: Awaited<ReturnType<typeof topBar>>, viewport: number, root: number) => lengthOf(bar.all, declared(bar.switcher, MARGIN_RIGHT, viewport, rightOf) ?? '0px', root);
+const rightMargin = (bar: Awaited<ReturnType<typeof topBar>>, viewport: number, root: number) => lengthOf(bar.sheet.switcher, declared(bar.switcher, MARGIN_RIGHT, viewport, rightOf) ?? '0px', root);
+
+/**
+ * La hauteur du bouton, en px, à cette largeur de fenêtre et à cette taille de police racine : celle que ses classes lui donnent (`height`), entre sa hauteur minimale et sa hauteur maximale. Ni `height` ni `min-height` (ou `auto`) : la hauteur est celle du
+ * contenu, que ce test ne mesure pas, et il échoue au lieu de la deviner. Une longueur qu'il ne sait pas lire (`100%`, `fit-content`) le fait échouer de même.
+ */
+function heightOf(bar: Awaited<ReturnType<typeof topBar>>, viewport: number, root: number): number {
+  const read = (properties: readonly string[]) => {
+    const value = declared(bar.switcher, properties, viewport);
+    return value === undefined || value === 'auto' || value === 'none' ? undefined : lengthOf(bar.sheet.switcher, value, root);
+  };
+  const height = read(HEIGHT);
+  const min = read(MIN_HEIGHT);
+  if (height === undefined && min === undefined) throw new Error('Hauteur du bouton que ce test ne sait pas lire : ni `height` ni `min-height` ne la fixent, elle est celle de son contenu');
+  return Math.max(min ?? 0, Math.min(height ?? 0, read(MAX_HEIGHT) ?? Infinity));
+}
 
 describe('la barre du haut, sur mobile : la zone libre à côté du bouton du Projet', () => {
   // Le bouton du Projet remplit sa ligne quand le nom est long : ce qui sépare alors son bord droit du bouton de la recherche est l'écart de la barre (`gap`) et la marge à droite du bouton. Plus court, le nom laisse plus.
@@ -130,7 +163,7 @@ describe('la barre du haut, sur mobile : la zone libre à côté du bouton du Pr
     const bar = await topBar();
 
     for (const root of ROOTS) {
-      const gap = lengthOf(bar.all, declared(bar.header, ['column-gap', 'gap'], viewport) ?? '0px', root);
+      const gap = lengthOf(bar.sheet.header, declared(bar.header, ['column-gap', 'gap'], viewport) ?? '0px', root);
       const margin = rightMargin(bar, viewport, root);
 
       expect(
@@ -157,9 +190,9 @@ describe('la barre du haut, sur mobile : la zone libre à côté du bouton du Pr
     const bar = await topBar();
 
     for (const viewport of [120, 160, ROOM, 320, 375, 767]) {
-      const minWidth = declared(bar.switcher, ['min-width'], viewport);
-      expect(minWidth === undefined || minWidth === 'auto' ? 'auto' : lengthOf(bar.all, minWidth, 16), `largeur minimale du bouton à ${viewport} px : « auto » l'empêche de rétrécir sous son nom`).toBe(0);
-      expect(shrinkOf(bar.all, bar.switcher, viewport), `facteur de rétrécissement du bouton à ${viewport} px : nul, il ne rétrécit plus et déborde sur la recherche`).toBeGreaterThan(0);
+      const minWidth = declared(bar.switcher, MIN_WIDTH, viewport);
+      expect(minWidth === undefined || minWidth === 'auto' ? 'auto' : lengthOf(bar.sheet.switcher, minWidth, 16), `largeur minimale du bouton à ${viewport} px : « auto » l'empêche de rétrécir sous son nom`).toBe(0);
+      expect(shrinkOf(bar.sheet.switcher, bar.switcher, viewport), `facteur de rétrécissement du bouton à ${viewport} px : nul, il ne rétrécit plus et déborde sur la recherche`).toBeGreaterThan(0);
     }
     expect(Object.fromEntries(['overflow', 'text-overflow', 'white-space'].map((property) => [property, declared(bar.label, [property], 375)]))).toEqual({
       overflow: 'hidden',
@@ -174,5 +207,21 @@ describe('la barre du haut, sur mobile : la zone libre à côté du bouton du Pr
 
     expect(declared(bar.switcher, ['display'], 767)).toBe('flex');
     expect(declared(bar.switcher, ['display'], 768)).toBe('none');
+  });
+});
+
+describe('le bouton du Projet, sur mobile : sa cible', () => {
+  // La zone libre à côté du bouton n'est pas sa cible : lui-même fait 24 px de haut au moins (`h-8` : 32 px). Sa hauteur lit `--spacing` (en `rem`) : une surcharge qui la réduit, sur le bouton, sur la barre ou sur un ancêtre, passe sous 24 px sans toucher
+  // à l'écart de la barre.
+  it('fait 24 px de haut au moins, à toute largeur de fenêtre et à toute taille de texte', async () => {
+    const bar = await topBar();
+
+    for (const viewport of [120, 160, ROOM, 188, 320, 375, 767]) {
+      for (const root of ROOTS) {
+        const height = heightOf(bar, viewport, root);
+
+        expect(height + TOLERANCE, `police racine de ${root} px : le bouton du Projet fait ${height} px de haut à ${viewport} px de large, il en faut ${TARGET}`).toBeGreaterThanOrEqual(TARGET);
+      }
+    }
   });
 });

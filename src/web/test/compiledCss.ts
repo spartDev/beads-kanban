@@ -8,9 +8,13 @@ import { compile } from 'tailwindcss';
  * bdesk-38k.82), le bouton « Masquer Terminé » (cfdButton.test.tsx, bdesk-38k.83) et le bouton du Projet de la barre du haut (TopBar.targetSize.test.tsx, bdesk-38k.84). Chacun dit en tête ce qu'il lit de ces règles et ce qu'il n'en voit pas ;
  * ce que Chromium en fait (la hauteur mesurée, ce qu'axe dit à chaque position du défilement) se mesure dans un vrai navigateur : voir leurs preuves.
  *
- * Ce module ne devine pas, mais il ne refuse que ce qu'on lui fait lire. `lengthOf` échoue sur une unité autre que `px` et `rem`, une fonction autre que `calc`, `min` et `max`, une variable CSS sans valeur ni valeur de repli, ou déclarée
- * plusieurs fois ou sous condition (hors le repli que la couche `properties` de Tailwind donne à ses `--tw-*`) ; `declared` échoue sur une condition autre qu'une largeur de fenêtre (une couche dans une couche en est une). Les règles
- * qu'un test ne lit pas passent sans bruit : chaque test dit, dans son en-tête, lesquelles il refuse et ce qui lui échappe.
+ * Ce module ne devine pas, mais il ne refuse que ce qu'on lui fait lire. `lengthOf` échoue sur une unité autre que `px` et `rem`, une fonction autre que `calc`, `min` et `max`, un nombre sans unité (sauf une hauteur de ligne, que l'appelant compte en
+ * tailles de police), une variable CSS sans valeur ni valeur de repli (le repli peut être un autre `var()`), ou déclarée plusieurs fois ou sous condition (hors le repli que la couche `properties` de Tailwind donne à ses `--tw-*`) ; `declared`
+ * échoue sur une condition autre qu'une largeur de fenêtre (une couche dans une couche en est une). Les règles qu'un test ne lit pas passent sans bruit : chaque test dit, dans son en-tête, lesquelles il refuse et ce qui lui échappe.
+ *
+ * Une variable CSS se lit dans la feuille de style qu'on donne à `lengthOf` et à `resolved` : il faut donc donner à chaque élément celle qu'il voit (`seenBy`), et non la feuille compilée pour les classes de plusieurs éléments à la fois, où
+ * la variable que pose l'un servirait à l'autre. Une variable se lit sur l'élément et sur ses ancêtres (`details` pour son résumé), jamais sur un descendant ni sur un cousin ; sauf les `--tw-*` de Tailwind, enregistrées en `@property`
+ * avec `inherits: false`, qui ne se lisent que sur l'élément qui les pose : le `leading-*` de `details` ne donne pas sa `--tw-leading` au `text-xs` du résumé, qui prend son repli.
  *
  * Tailwind lit aussi les fichiers de `src/web`, ce module comme les tests : un mot qui y est le nom d'une classe en ferait naître la règle dans la feuille de style de production. Ce qu'un test doit nommer sans la faire naître s'écrit en morceaux
  * ou en camelCase (`FLEX_SHRINK` dans TopBar.targetSize.test.tsx, `PLACE` dans cfdButton.test.tsx).
@@ -81,14 +85,72 @@ export function holds(condition: string, viewport: number): boolean {
   return match[1] === '<' ? viewport < limit : viewport >= limit;
 }
 
-/** Le sélecteur de la classe tel que Tailwind l'écrit : tout ce qui n'est ni lettre, ni chiffre, ni tiret y est échappé (`md:hidden` : `.md\:hidden`). */
-export const selectorOf = (name: string) => `.${name.replace(/[^\w-]/g, '\\$&')}`;
+/**
+ * Le sélecteur de la classe tel que Tailwind l'écrit (`CSS.escape`) : tout ce qui n'est ni lettre, ni chiffre, ni `-`, ni `_`, ni un caractère hors ASCII y est échappé (`md:hidden` : `.md\:hidden`), et un chiffre en tête, derrière un `-`
+ * s'il y en a un, s'écrit en hexadécimal : la variante `2xl` devient `.\32 xl\:`, suivie du reste du nom. Une classe cherchée sous un autre nom que celui de sa règle n'est lue par personne, et sans bruit.
+ */
+export const selectorOf = (name: string) =>
+  `.${name.replace(/[^\w\u0080-\uFFFF-]/g, '\\$&').replace(/^(-?)(\d)/, (_, dash: string, digit: string) => `${dash}\\${digit.charCodeAt(0).toString(16)} `)}`;
 /** Les classes d'un élément, dans l'ordre où il les porte. */
 export const classesOf = (element: Element) => (element.getAttribute('class') ?? '').split(/\s+/).filter(Boolean);
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Le sélecteur de la règle nomme-t-il l'une de ces classes (`selectors`, tels que `selectorOf` les écrit) : seule, ou dans un sélecteur composé (`header .classe`, `.classe:hover`), mais pas comme début d'une autre classe (`.classe-plus-longue`). */
+const naming = (selectors: readonly string[]) => {
+  const pattern = new RegExp(selectors.map((selector) => `(?<!\\\\)${escapeRegExp(selector)}(?![\\w\\\\-])`).join('|'));
+  return (rule: Rule) => selectors.length > 0 && pattern.test(rule.selector);
+};
 /** Le sélecteur de cette règle nomme-t-il cette classe (`selector`, tel que `selectorOf` l'écrit) : seule, ou dans un sélecteur composé (`header .classe`, `.classe:hover`), mais pas comme début d'une autre classe (`.classe-plus-longue`). */
-export const names = (rule: Rule, selector: string) => new RegExp(`(?<!\\\\)${escapeRegExp(selector)}(?![\\w\\\\-])`).test(rule.selector);
+export const names = (rule: Rule, selector: string) => naming([selector])(rule);
+
+/** Les sélecteurs d'une liste (`a, b`), séparés par les virgules qui ne sont ni échappées ni dans des parenthèses ou des crochets (`:where(a, b)`). */
+function selectorList(selector: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let from = 0;
+  for (let at = 0; at < selector.length; at++) {
+    const char = selector[at];
+    if (char === '\\') at++;
+    else if (char === '(' || char === '[') depth++;
+    else if (char === ')' || char === ']') depth--;
+    else if (char === ',' && depth === 0) {
+      parts.push(selector.slice(from, at));
+      from = at + 1;
+    }
+  }
+  return [...parts, selector.slice(from)];
+}
+
+/**
+ * La règle ne vise-t-elle que des pseudo-éléments ? Tailwind écrit `::before`, `::after`, `::marker`, `::placeholder`… pour les variantes `before:`, `after:`, `marker:`, `placeholder:`, et, à l'ancienne, `:before`, `:after`, `:first-line` ou `:first-letter`
+ * pour une variante arbitraire. Ses déclarations ne s'appliquent jamais à l'élément, ni sa boîte ni ses variables : la `--tw-leading` qu'une variante `before:` pose est celle de `::before`. Un deux-points échappé (`\:`, celui d'un nom de classe) n'en
+ * est pas un ; une liste de sélecteurs dont l'un vise l'élément (une variante arbitraire à virgule) s'applique à lui.
+ */
+export const targetsPseudoElement = (rule: Rule) => selectorList(rule.selector).every((part) => /(?<!\\)(?:::|:(?:before|after|first-line|first-letter)(?![\w-]))/i.test(part));
+
+/**
+ * Les règles qu'un élément voit pour lire ses variables, parmi `rules`, compilées pour les classes de tous les `elements` (lui compris) : celles qu'aucune de ces classes ne nomme (le thème, `:root`, la base), les siennes, et celles de ses
+ * ancêtres (`details` pour son résumé), réduites à leurs variables qui s'héritent. Un descendant ou un cousin ne donne rien à personne. Une variable qui s'hérite, comme `--spacing` ou celle qu'une propriété arbitraire pose sur l'élément, vient de lui ou d'un ancêtre ;
+ * une `--tw-*` ne s'hérite pas : Tailwind enregistre chacune de celles qu'un utilitaire pose en `@property` avec `inherits: false`, et ne les redit sur `*` que pour les navigateurs qui n'enregistrent pas (couche `properties`). Elle ne vient que de
+ * l'élément lui-même. Une règle de pseudo-élément n'est celle de personne, ni de l'élément ni d'un ancêtre : ses variables sont celles du pseudo-élément (`targetsPseudoElement`). Une règle dont le sélecteur n'est pas la classe seule (un état, une structure :
+ * `open:`, `first:`, les enfants, les descendants) ne s'applique pas toujours à l'élément : ses variables sont refusées, comme celles d'une règle sous `@media`. Une variable que l'élément voit déclarée plusieurs fois (le thème et lui, ou un ancêtre) fait
+ * échouer `lengthOf`, comme avant : le test ne sait pas laquelle l'emporte. `elements` doit citer tous ceux dont les classes ont servi à compiler `rules` : les règles d'un élément oublié passeraient pour celles du thème, que tout le monde voit.
+ */
+export function seenBy(rules: readonly Rule[], element: Element, elements: readonly Element[]): Rule[] {
+  const selectorsOf = (list: readonly Element[]) => list.flatMap(classesOf).map(selectorOf);
+  const own = selectorsOf([element]);
+  const above = selectorsOf(elements.filter((other) => other !== element && other.contains(element)));
+  const [ownNaming, aboveNaming, involved] = [naming(own), naming(above), naming(selectorsOf(elements))];
+  // Une règle qui n'est pas la classe seule reçoit une condition de plus : `variableOf` refuse les variables d'une règle conditionnelle.
+  const conditioned = (rule: Rule, selectors: readonly string[]): Rule => (selectors.includes(rule.selector) ? rule : { ...rule, within: [...rule.within, `sélecteur ${rule.selector}`] });
+  return rules.flatMap((rule) => {
+    if (!involved(rule)) return [rule];
+    if (targetsPseudoElement(rule)) return [];
+    if (ownNaming(rule)) return [conditioned(rule, own)];
+    if (!aboveNaming(rule)) return [];
+    return [{ ...conditioned(rule, above), declarations: Object.fromEntries(Object.entries(rule.declarations).filter(([property]) => !property.startsWith('--tw-'))) }];
+  });
+}
 
 /** Les valeurs d'une déclaration, séparées par des espaces hors des parenthèses (`calc(1px + 2px) 0` : deux valeurs). */
 export function wordsOf(value: string): string[] {
@@ -131,7 +193,7 @@ export function declared(rules: readonly Rule[], properties: readonly string[], 
 }
 
 /**
- * La valeur d'une variable CSS, lue dans les règles de la feuille de style compilée (`--spacing`, ou une propriété personnalisée que l'une des classes pose) ; à défaut, sa valeur de repli. Sans l'une ni l'autre, le test échoue : il
+ * La valeur d'une variable CSS, lue dans les règles de la feuille de style qu'on donne (celle que `seenBy` rend pour l'élément : `--spacing`, ou une propriété personnalisée que l'une de ses classes pose) ; à défaut, sa valeur de repli. Sans l'une ni l'autre, le test échoue : il
  * ne devine pas. Une variable déclarée plusieurs fois (`--spacing` surchargée sur l'élément ou sur un ancêtre) ou sous condition prend, selon l'élément et la largeur, des valeurs que ce test ne sait pas suivre : il échoue.
  * Seule exception : la couche `properties` de Tailwind, qui redit chaque `--tw-*` qu'un utilitaire pose (à `initial`, ou à la valeur initiale de son `@property`) pour les navigateurs qui ne l'enregistrent pas. C'est la couche la plus basse :
  * l'utilitaire qui pose la variable l'emporte toujours, et sans lui elle n'a pas de valeur ici. Elle ne compte pas parmi les déclarations ; aucune autre variable n'a cette exception.
@@ -144,12 +206,36 @@ function variableOf(sheet: readonly Rule[], name: string, fallback?: string): st
   return value;
 }
 
-/** Une valeur dont les `var(--…)` sont remplacés par ce qu'ils valent, de proche en proche. Un `var()` qu'elle ne sait pas résoudre fait échouer le test. */
+/** L'index de la parenthèse fermante qui répond à celle de `text[open]` ; `-1` si le texte s'arrête avant. */
+function closing(text: string, open: number): number {
+  let depth = 0;
+  for (let at = open; at < text.length; at++) {
+    if (text[at] === '(') depth++;
+    else if (text[at] === ')' && --depth === 0) return at;
+  }
+  return -1;
+}
+
+/**
+ * Une valeur dont les `var(--…)` sont remplacés par ce qu'ils valent, de proche en proche : la variable, ou à défaut son repli, qui peut contenir d'autres `var()` (`var(--tw-leading, var(--text-xs--line-height))`) et n'est lu que s'il
+ * sert. Un `var()` qu'elle ne sait pas résoudre fait échouer le test.
+ */
 export function resolved(sheet: readonly Rule[], value: string, depth = 0): string {
   if (depth > 8) throw new Error(`Variables CSS qui se renvoient l'une à l'autre : ${value}`);
-  const text = value.replace(/var\(\s*(--[\w-]+)\s*(?:,([^()]*))?\)/gi, (_, name: string, fallback?: string) => resolved(sheet, variableOf(sheet, name, fallback), depth + 1));
-  if (/var\(/i.test(text)) throw new Error(`Variable CSS que ce test ne sait pas résoudre : ${value}`);
-  return text;
+  let text = '';
+  let from = 0;
+  for (const call of value.matchAll(/var\(/gi)) {
+    // Dans le repli d'un `var()` déjà traité : il se résout avec ce repli, s'il sert.
+    if (call.index < from) continue;
+    const close = closing(value, call.index + 3);
+    const args = close < 0 ? '' : value.slice(call.index + 4, close);
+    const comma = args.indexOf(',');
+    const name = (comma < 0 ? args : args.slice(0, comma)).trim();
+    if (!/^--[\w-]+$/.test(name)) throw new Error(`Variable CSS que ce test ne sait pas résoudre : ${value}`);
+    text += value.slice(from, call.index) + resolved(sheet, variableOf(sheet, name, comma < 0 ? undefined : args.slice(comma + 1)), depth + 1);
+    from = close + 1;
+  }
+  return text + value.slice(from);
 }
 
 /** Un nombre, ou une longueur (en px, la police racine connue) : `calc()` ne mélange pas les deux. */
@@ -165,15 +251,16 @@ interface Quantity {
  */
 function quantityOf(sheet: readonly Rule[], value: string, root: number): Quantity {
   const unreadable = (detail = '') => new Error(`Longueur que ce test ne sait pas lire${detail ? ` (${detail})` : ''} : ${value}`);
-  // Les jetons : toute la valeur y passe, et ce qui ne ressemble à aucun d'eux (l'unité d'`1em`, d'`1vw`, de `16Q`, le `%`) est refusé.
+  // Les variables d'abord, remplacées par leur valeur comme le fait le navigateur ; puis les jetons : toute la valeur y passe, et ce qui ne ressemble à aucun d'eux (l'unité d'`1em`, d'`1vw`, de `16Q`, le `%`) est refusé.
+  const text = resolved(sheet, value);
   const tokens: string[] = [];
-  const pattern = /\s*(var\(--[\w-]+(?:\s*,[^()]*)?\)|[a-z]+\(|\d*\.?\d+(?:px|rem)?|[()+\-*/,])/iy;
+  const pattern = /\s*([a-z]+\(|\d*\.?\d+(?:px|rem)?|[()+\-*/,])/iy;
   let end = 0;
-  for (let match = pattern.exec(value); match; match = pattern.exec(value)) {
+  for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
     tokens.push(match[1] as string);
     end = pattern.lastIndex;
   }
-  const rest = value.slice(end).trim();
+  const rest = text.slice(end).trim();
   if (rest) throw unreadable(`unité inconnue : « ${rest.split(/[\s)]/)[0]} », seuls px et rem sont connus`);
 
   let at = 0;
@@ -195,8 +282,6 @@ function quantityOf(sheet: readonly Rule[], value: string, root: number): Quanti
       eat(')');
       return inner;
     }
-    const variable = /^var\((--[\w-]+)(?:\s*,\s*(.+))?\)$/i.exec(token);
-    if (variable) return quantityOf(sheet, resolved(sheet, variableOf(sheet, variable[1] as string, variable[2])), root);
     const call = /^(calc|max|min)\($/i.exec(token);
     if (call) {
       const args = [sum()];
@@ -249,9 +334,13 @@ function quantityOf(sheet: readonly Rule[], value: string, root: number): Quanti
   return result;
 }
 
-/** Une longueur en px : `0`, le seul nombre sans unité que CSS accepte pour une longueur, ou une quantité qui en est une, la police racine valant `root` px. */
-export function lengthOf(sheet: readonly Rule[], value: string, root: number): number {
+/**
+ * Une longueur en px : `0`, le seul nombre sans unité que CSS accepte pour une longueur, ou une quantité qui en est une, la police racine valant `root` px. Un autre nombre sans unité n'en est pas une, sauf pour une hauteur de ligne (`text-xs` :
+ * `calc(1 / 0.75)`), que la police de l'élément multiplie : l'appelant qui lit une hauteur de ligne passe `fontSize`, sa taille en px, que l'on ne calcule que si la valeur est un nombre.
+ */
+export function lengthOf(sheet: readonly Rule[], value: string, root: number, fontSize?: () => number): number {
   const quantity = quantityOf(sheet, value, root);
-  if (!quantity.length && quantity.value !== 0) throw new Error(`Longueur que ce test ne sait pas lire (un nombre sans unité) : ${value}`);
-  return quantity.value;
+  if (quantity.length || quantity.value === 0) return quantity.value;
+  if (!fontSize) throw new Error(`Longueur que ce test ne sait pas lire (un nombre sans unité) : ${value}`);
+  return quantity.value * fontSize();
 }
