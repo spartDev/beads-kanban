@@ -283,3 +283,43 @@ describe('MetricTiles : ce que lit un lecteur d’écran', () => {
     }
   });
 });
+
+describe('MetricTiles : ce que mesure chaque tuile', () => {
+  it('Lead Time : survoler son icône info explique la métrique et à quoi elle sert', async () => {
+    renderTiles();
+    const user = userEvent.setup();
+
+    await user.hover(within(tile('Lead Time')).getByRole('button', { name: 'À propos de Lead Time' }));
+
+    const tooltip = plain((await screen.findByRole('tooltip')).textContent);
+    expect(tooltip).toContain('création');
+    expect(tooltip).toContain('clôture');
+  });
+
+  it('chacune des six tuiles a son icône info, et chaque explication lui est propre', async () => {
+    const explanations: string[] = [];
+
+    // Une page neuve par tuile : après un survol, Radix attend que le pointeur rejoigne l'infobulle ou s'en éloigne, ce que jsdom ne simule pas.
+    for (const name of ['Débit', 'Lead Time', 'Cycle Time', 'Taux d’échec', 'Temps de rétablissement', 'WIP']) {
+      const { unmount } = renderTiles();
+      await userEvent.setup().hover(within(tile(name)).getByRole('button', { name: `À propos de ${name}` }));
+      explanations.push(plain((await screen.findByRole('tooltip')).textContent));
+      unmount();
+    }
+
+    expect(new Set(explanations).size).toBe(6);
+    expect(explanations[2]).toContain('Lead Time'); // le Cycle Time se lit par rapport au Lead Time
+  });
+
+  it('l’explication s’ouvre aussi au clavier, et le bouton la donne comme description aux lecteurs d’écran', async () => {
+    renderTiles();
+    const user = userEvent.setup();
+    const button = within(tile('Cycle Time')).getByRole('button', { name: 'À propos de Cycle Time' });
+
+    while (document.activeElement !== button) await user.tab();
+
+    const tooltip = await screen.findByRole('tooltip');
+    expect(plain(tooltip.textContent)).toContain('travail');
+    expect(button.getAttribute('aria-describedby')).toBe(tooltip.id);
+  });
+});
