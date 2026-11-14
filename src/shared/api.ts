@@ -241,6 +241,40 @@ export interface IssueChronologyResponse {
   chronology: IssueChronology;
 }
 
+/** Le ticket qu'un Signal désigne. */
+export interface SignalTicket {
+  id: string;
+  title: string;
+  type: string;
+  priority: number;
+}
+
+/**
+ * Un Signal : une situation en cours qui mérite d'être regardée maintenant (voir CONTEXT.md). Durées en ms, instants en ISO. `project` est l'identifiant
+ * du Projet.
+ */
+export type ApiSignal =
+  /** Dérive : le Cycle Time en cours dépasse le Cycle Time de référence, celui des Livraisons du même type ou, faute d'assez, du Projet. */
+  | { kind: 'drift'; project: string; ticket: SignalTicket; cycleTime: number; reference: number; scope: 'type' | 'project' }
+  /** Blocage long : la phase en cours de travail d'un Blocage, depuis `since`. */
+  | { kind: 'longBlockage'; project: string; ticket: SignalTicket; since: string; duration: number }
+  /** Prêt qui stagne : Prêt depuis `since`, d'un Âge calendaire `age`. */
+  | { kind: 'stagnantReady'; project: string; ticket: SignalTicket; since: string; age: number }
+  /** WIP inhabituel : `wip` dépasse `threshold`, le P85 du WIP quotidien des 90 derniers jours. */
+  | { kind: 'unusualWip'; project: string; wip: number; threshold: number };
+
+/** `GET /api/signals` : les Signaux des Projets demandés (`project`, répétable), ou de tous (Vue globale). */
+export interface SignalsResponse {
+  generatedAt: string;
+  /** Le fuseau qui a compté l'Âge calendaire des Prêts ; `timeZoneHonoured` : c'est celui que la requête demandait. */
+  timeZone: string;
+  timeZoneHonoured: boolean;
+  projects: Array<{ id: string; name: string }>;
+  unreadable: MetricsUnreadableProject[];
+  /** Groupés par sorte (Dérive, Blocage long, Prêt qui stagne, WIP inhabituel), le plus en excès d'abord. */
+  signals: ApiSignal[];
+}
+
 /** Corps des réponses d'erreur (même forme que celles de Fastify). */
 export interface ApiErrorBody {
   statusCode: number;
@@ -569,6 +603,28 @@ export interface MetricsReopening {
   trend: MetricsTrend;
 }
 
+/** Un ticket en Retravail sur la période, avec ce qui l'y met : chaque cause comptée ou nommée. */
+export interface MetricsReworkTicket {
+  id: string;
+  title: string;
+  type: string;
+  priority: number;
+  project: string;
+  /** Réouvertures de la période : Transitions d'un statut fermé vers un statut non fermé. */
+  reopenings: number;
+  /** Prises rendues de la période : Transitions d'un statut de travail vers ouvert. */
+  returns: number;
+  /** Les Bugs d'origine de cette Livraison créés sur la période, dans l'ordre de leur création. */
+  originBugs: string[];
+  /** L'instant du dernier de ces événements. */
+  lastAt: string;
+}
+
+/** Le Retravail de la période : les tickets qui reviennent, du plus d'événements au moins, puis du plus récent au plus ancien. */
+export interface MetricsRework {
+  tickets: MetricsReworkTicket[];
+}
+
 /** Taux d'abandon : la part des Abandons parmi les tickets fermés de la période. */
 export interface MetricsAbandonment {
   /** Tickets fermés de la période : Livraisons et Abandons, datés de leur dernière clôture. */
@@ -653,9 +709,49 @@ export interface MetricsActivity {
   total: number;
 }
 
+/**
+ * Une semaine de la Tendance longue, du lundi au dimanche du fuseau de la réponse. La semaine en cours n'est comptée que jusqu'à
+ * `asOf` : elle n'est pas finie (`partial`), et la lire comme une semaine pleine ferait croire à un recul.
+ */
+export interface MetricsLongTrendWeek {
+  /** Le lundi. */
+  from: string;
+  /** Le dimanche. */
+  to: string;
+  /** Minuit local du lundi. */
+  start: string;
+  /** Minuit local qui suit le dimanche (exclu). */
+  end: string;
+  /** La semaine en cours, comptée jusqu'à `asOf`. */
+  partial: boolean;
+  /** Livraisons de la semaine. */
+  throughput: number;
+  /** P85 du Lead Time des Livraisons de la semaine ; null sans Livraison. */
+  leadTimeP85: number | null;
+  /** Au moins `MetricsLongTrend.minDeliveries` Livraisons : en dessous, le centile est montré, mais ne dit pas grand-chose. */
+  reliable: boolean;
+  /** Clôtures de la semaine : les Transitions vers fermé. */
+  closures: number;
+  /** Parmi elles, celles qu'une Réouverture suit, même plus tard. */
+  reopened: number;
+  /** `reopened / closures` ; null sans clôture. */
+  reopeningRate: number | null;
+}
+
+/**
+ * Tendance longue : les 12 semaines qui finissent par la semaine en cours, sans lissage. Indépendante de la période choisie :
+ * elle dit si le flux s'améliore.
+ */
+export interface MetricsLongTrend {
+  weeks: MetricsLongTrendWeek[];
+  /** Le seuil de `reliable` : 4 Livraisons. */
+  minDeliveries: number;
+}
+
 export interface MetricsHealth {
   efficiency: MetricsFlowEfficiency;
   reopening: MetricsReopening;
+  rework: MetricsRework;
   abandonment: MetricsAbandonment;
   leadTimeBreakdown: MetricsLeadTimeBreakdown;
   readyAges: MetricsReadyAges;
@@ -731,4 +827,6 @@ export interface MetricsResponse extends MetricsReport {
   unreadable: MetricsUnreadableProject[];
   /** Santé du flux (bdesk-38k.13) : calculée par `computeHealth`, à côté de `computeMetrics`, sur la même période. */
   health: MetricsHealth;
+  /** Tendance longue (bdesk-l77.4) : calculée par `longTrendOf`, sur les 12 dernières semaines, quelle que soit la période. */
+  longTrend: MetricsLongTrend;
 }

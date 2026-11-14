@@ -1,8 +1,10 @@
 import { type PeriodSpec, resolvePeriod } from '../../domain/calendar';
 import type { TicketHistory } from '../../domain/flow';
 import { computeHealth } from '../../domain/health';
+import { longTrendOf } from '../../domain/longTrend';
 import { analyzeProject, computeMetrics, type MetricsInput, type ProjectAnalysis } from '../../domain/metrics';
-import type { MetricsResponse, MetricsUnreadableProject, Project } from '../../shared/api';
+import { type Signal, signalsOf } from '../../domain/signals';
+import type { ApiSignal, MetricsResponse, SignalsResponse, MetricsUnreadableProject, Project } from '../../shared/api';
 import { ReadAborted } from '../abort';
 import { ANALYSIS_GRACE_MS, Flight } from '../flight';
 import { createHeadReader } from '../projects/head-reader';
@@ -32,6 +34,18 @@ export interface MetricsService {
    * aussitôt, celle de l'historique après le délai de grâce (un processus déjà lancé va au bout, son résultat est jeté).
    */
   compute(query: MetricsQuery, options?: ReadOptions): Promise<MetricsResponse>;
+  /**
+   * Les Signaux des Projets demandés à l'instant présent, tirés de la même analyse que les métriques (même cache, par HEAD). Mêmes règles que
+   * `compute` pour un Projet inconnu (`ProjectNotFoundError`), illisible ou disparu (listé dans la réponse) et pour un demandeur qui part.
+   */
+  signals(query: SignalsQuery, options?: ReadOptions): Promise<SignalsResponse>;
+}
+
+export interface SignalsQuery {
+  /** Identifiants des Projets ; vide pour la Vue globale. */
+  projects: string[];
+  /** Le fuseau de l'Âge calendaire des Prêts, comme `MetricsQuery.timeZone`. */
+  timeZone?: string;
 }
 
 export interface MetricsServiceOptions {
@@ -134,7 +148,59 @@ export function createMetricsService(
     return entry.analysis.join(signal);
   }
 
+  /**
+   * Les analyses des Projets demandés (tous pour une liste vide), dans l'ordre de la liste des Projets, et ceux qu'on n'a pas pu lire. Un Projet que la
+   * liste ne connaît pas lève `ProjectNotFoundError` ; un Projet illisible, ou qui disparaît entre la liste et sa lecture, est rangé dans `unreadable`.
+   */
+  async function measure(ids: string[], signal: AbortSignal | undefined) {
+    const { projects: known } = await projects.list();
+    for (const id of [...cache.keys(), ...historyReads.keys()]) {
+      if (!known.some((project) => project.id === id)) {
+        cache.delete(id);
+        historyReads.delete(id);
+      }
+    }
+    for (const id of ids) if (!known.some((project) => project.id === id)) throw new ProjectNotFoundError(id);
+    const selected = ids.length === 0 ? known : known.filter((project) => ids.includes(project.id));
+
+    const unreadable: MetricsUnreadableProject[] = [];
+    const measured: MetricsInput[] = [];
+    await Promise.all(
+      selected.map(async (project) => {
+        if (project.status !== 'ok') return void unreadable.push(unreadableProject(project, project.reason));
+        try {
+          measured.push({ id: project.id, name: project.name, analysis: await analysisOf(project.id, signal) });
+        } catch (err) {
+          // La liste le connaissait il y a un instant : s'il n'est plus là à la lecture, il a disparu entre-temps (dossier
+          // supprimé, déplacé, masqué). Ce n'est pas un identifiant inconnu (404), mais un Projet qu'on ne peut plus lire.
+          if (err instanceof ProjectNotFoundError) return void unreadable.push(unreadableProject(project, VANISHED));
+          if (!(err instanceof ProjectUnreadableError)) throw err;
+          unreadable.push(unreadableProject(project, err.reason));
+        }
+      }),
+    );
+    // Les lectures aboutissent dans le désordre : on remet les Projets dans l'ordre de la liste.
+    const byList = (a: { id: string }, b: { id: string }) => position(known, a.id) - position(known, b.id);
+    measured.sort(byList);
+    unreadable.sort(byList);
+    return { measured, unreadable };
+  }
+
   return {
+    async signals({ projects: ids, timeZone: asked }, { signal } = {}) {
+      if (signal?.aborted) throw new ReadAborted();
+      const at = now();
+      const zone = asked ?? timeZone;
+      const { measured, unreadable } = await measure(ids, signal);
+      return {
+        generatedAt: at.toISOString(),
+        timeZone: zone,
+        timeZoneHonoured: asked !== undefined,
+        projects: measured.map(({ id, name }) => ({ id, name })),
+        unreadable,
+        signals: signalsOf(measured, { now: at.getTime(), timeZone: zone }).map(toApiSignal),
+      };
+    },
     async compute({ projects: ids, period, timeZone: asked }, { signal } = {}) {
       if (signal?.aborted) throw new ReadAborted();
       const at = now();
@@ -143,36 +209,7 @@ export function createMetricsService(
       const zone = asked ?? timeZone;
       resolvePeriod(period, at.getTime(), zone); // une période invalide échoue avant de lancer le moindre processus dolt
 
-      const { projects: known } = await projects.list();
-      for (const id of [...cache.keys(), ...historyReads.keys()]) {
-        if (!known.some((project) => project.id === id)) {
-          cache.delete(id);
-          historyReads.delete(id);
-        }
-      }
-      for (const id of ids) if (!known.some((project) => project.id === id)) throw new ProjectNotFoundError(id);
-      const selected = ids.length === 0 ? known : known.filter((project) => ids.includes(project.id));
-
-      const unreadable: MetricsUnreadableProject[] = [];
-      const measured: MetricsInput[] = [];
-      await Promise.all(
-        selected.map(async (project) => {
-          if (project.status !== 'ok') return void unreadable.push(unreadableProject(project, project.reason));
-          try {
-            measured.push({ id: project.id, name: project.name, analysis: await analysisOf(project.id, signal) });
-          } catch (err) {
-            // La liste le connaissait il y a un instant : s'il n'est plus là à la lecture, il a disparu entre-temps (dossier
-            // supprimé, déplacé, masqué). Ce n'est pas un identifiant inconnu (404), mais un Projet qu'on ne peut plus lire.
-            if (err instanceof ProjectNotFoundError) return void unreadable.push(unreadableProject(project, VANISHED));
-            if (!(err instanceof ProjectUnreadableError)) throw err;
-            unreadable.push(unreadableProject(project, err.reason));
-          }
-        }),
-      );
-      // Les lectures aboutissent dans le désordre : on remet les Projets dans l'ordre de la liste.
-      const byList = (a: { id: string }, b: { id: string }) => position(known, a.id) - position(known, b.id);
-      measured.sort(byList);
-      unreadable.sort(byList);
+      const { measured, unreadable } = await measure(ids, signal);
 
       return {
         generatedAt: at.toISOString(),
@@ -184,6 +221,7 @@ export function createMetricsService(
         unreadable,
         ...computeMetrics(measured, { period, now: at, timeZone: zone }),
         health: computeHealth(measured, { period, now: at, timeZone: zone }),
+        longTrend: longTrendOf(measured, { now: at, timeZone: zone }),
       };
     },
   };
@@ -201,3 +239,14 @@ const unreadableProject = (project: Project, reason: string | undefined): Metric
 
 /** Le fuseau local d'après le moteur. Typé `string`, il vaut `undefined` quand le moteur ne sait pas le nommer : d'où le type ici. */
 const localTimeZone = (): string | undefined => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/** Un Signal du domaine tel que l'API l'envoie : ses instants en ISO. */
+function toApiSignal(signal: Signal): ApiSignal {
+  switch (signal.kind) {
+    case 'longBlockage':
+    case 'stagnantReady':
+      return { ...signal, since: new Date(signal.since).toISOString() };
+    default:
+      return signal;
+  }
+}

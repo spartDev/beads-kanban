@@ -96,7 +96,7 @@ describe('navigation', () => {
     const tabs = await screen.findByRole('navigation', { name: 'Onglets' });
     await waitFor(() => expect(within(tabs).getByRole('link', { name: 'Kanban' }).getAttribute('href')).toBe('/p/mpm/kanban'));
     expect(within(tabs).getByRole('link', { name: 'Vue globale' }).getAttribute('aria-current')).toBe('page');
-    expect(within(tabs).getAllByRole('link')).toHaveLength(4);
+    expect(within(tabs).getAllByRole('link')).toHaveLength(5); // Vue globale, Kanban, À regarder, Epics, Métriques
   });
 });
 

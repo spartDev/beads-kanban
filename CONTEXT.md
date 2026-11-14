@@ -152,6 +152,34 @@ _Avoid_: historique (c'est sa source : l'historique Dolt du Projet)
 **Phase d'un Blocage**:
 Partie d'un Blocage où le ticket reste dans la même situation : _avant le premier démarrage_ (en Backlog : l'Attente de dépendance), _en cours de travail_ (le temps bloqué, seule phase comptée dans le Cycle Time) ou _autre attente_ (tout le reste : revenu à ouvert ou rouvert après un premier démarrage, ou dans un autre statut non fermé, le différé par exemple, même avant tout démarrage). Deux phases voisines de même sorte n'en font qu'une.
 
+**Cycle Time de référence**:
+Le 85ᵉ centile du Cycle Time des Livraisons des 90 derniers jours du même Projet et du même type qu'un ticket ; sous 10 Livraisons, celles de tous les types du Projet ; sous 10 encore, il n'y en a pas, et on ne prétend pas savoir ce qui est normal.
+
+**Dérive**:
+Un ticket en statut de travail dont le Cycle Time en cours dépasse son Cycle Time de référence. Un ticket revenu à ouvert ne dérive plus : il est redevenu Prêt ou Backlog. Sans Cycle Time de référence, aucun ticket ne dérive.
+_Avoid_: ticket en retard, SLA
+
+**Blocage long**:
+Un Blocage dont la phase en cours de travail dure depuis plus de 3 jours de Durée écoulée (3 jours pile ne suffisent pas). Elle court depuis que le ticket est à la fois en statut de travail et en Blocage, sans interruption : passer d'en cours à rattaché à un agent ne la recommence pas.
+
+**WIP inhabituel**:
+Un WIP d'un Projet au-dessus du 85ᵉ centile de son WIP quotidien des 90 derniers jours : le WIP relevé toutes les 24 heures, à la même heure que maintenant, les jours où le Projet existait. Sous 14 relevés, on ne sait pas ce qui est habituel.
+
+**Signal**:
+Une situation en cours qui mérite d'être regardée maintenant : Dérive, Prêt qui stagne, Blocage long ou WIP inhabituel. Un Signal existe tant que sa condition est vraie dans le Dernier commit ; on ne peut pas l'écarter. Le Retravail n'en est pas un : c'est un constat après coup.
+_Avoid_: alerte, notification
+
+**Prise rendue**:
+Une Transition d'un statut de travail (en cours, rattaché à un agent, bloqué) vers ouvert, sans clôture entre les deux.
+_Avoid_: abandon de prise (se confond avec l'Abandon), régression
+
+**Retravail**:
+Un ticket qui, sur une période, a subi au moins une Réouverture, une Prise rendue, ou dont une Livraison a reçu un Bug d'origine créé sur cette période. Chaque cause se nomme : c'est la liste des tickets qui reviennent, là où le Taux de Réouverture et le Taux d'échec n'en donnent que la proportion.
+_Avoid_: rework, régression
+
+**Tendance longue**:
+Débit, Lead Time au 85ᵉ centile et Taux de Réouverture semaine par semaine sur les 12 dernières semaines du Fuseau de l'utilisateur, sans lissage. Une semaine de moins de 4 Livraisons ne suffit pas à un centile digne de foi.
+
 ## Relationships
 
 - Un **Projet** contient zéro ou plusieurs tickets
@@ -163,4 +191,7 @@ Partie d'un Blocage où le ticket reste dans la même situation : _avant le prem
 - La **Vue globale** agrège tous les **Projets** suivis ; le kanban reste centré sur un **Projet**
 - Le kanban, le **Panneau de ticket**, les métriques et la **Chronologie** d'un **Projet** lisent le même **Dernier commit**
 - Un **Blocage** se découpe en **phases** : seule celle en cours de travail compte dans le **Cycle Time** ; celle d'avant le premier démarrage est l'**Attente de dépendance**
+- Une **Dérive** compare le **Cycle Time** en cours d'un ticket à son **Cycle Time de référence**
+- Les **Signaux** sont la **Dérive**, le **Prêt qui stagne**, le **Blocage long** et le **WIP inhabituel** ; le **Retravail** n'en est pas un
+- Le **Retravail** naît d'une **Réouverture**, d'une **Prise rendue** ou d'un **Bug d'origine**
 - Le **Panneau de ticket** montre la **Chronologie** du ticket : ses **Transitions**, ses **Blocages** et leurs phases, avec les durées des métriques

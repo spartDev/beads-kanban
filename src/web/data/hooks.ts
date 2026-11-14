@@ -1,7 +1,8 @@
 import { QueryClient, queryOptions, useQuery } from '@tanstack/react-query';
 import { ApiError, apiGet } from './client';
+import { browserTimeZone } from '../lib/instant';
 import { namedProjects } from './projectNames';
-import type { IssueChronologyResponse, IssueResponse, IssuesResponse, ProjectsResponse } from './types';
+import type { ApiSignal, IssueChronologyResponse, IssueResponse, IssuesResponse, ProjectsResponse, SignalsResponse } from './types';
 
 export const queryKeys = {
   projects: ['projects'] as const,
@@ -10,6 +11,15 @@ export const queryKeys = {
   issue: (projectId: string, issueId: string) => ['projects', projectId, 'issues', issueId] as const,
   /** Rangée sous la fiche : la relire avec la liste des tickets du Projet relit aussi la chronologie. */
   chronology: (projectId: string, issueId: string) => ['projects', projectId, 'issues', issueId, 'chronology'] as const,
+  /**
+   * Les Signaux d'un Projet, rangés sous la liste de ses tickets : un commit, qui relit la liste, les relit aussi (`refreshProject`). Le dernier élément
+   * est un objet, que l'identifiant d'aucun ticket (`queryKeys.issue`) ne peut égaler. Ceux de la Vue globale (sans Projet) ont leur propre clé : comme
+   * les métriques, ils ne sont pas relus en direct.
+   */
+  signals: (projectId: string | undefined, timeZone: string) =>
+    projectId === undefined
+      ? (['signals', timeZone] as const)
+      : (['projects', projectId, 'issues', { signals: true, timeZone }] as const),
 };
 
 /**
@@ -61,6 +71,16 @@ export function chronologyQuery(projectId: string, issueId: string) {
   });
 }
 
+/** Les Signaux d'un Projet, ou de tous (Vue globale) sans `projectId`, comptés dans le fuseau `timeZone` (l'Âge calendaire des Prêts). */
+export function signalsQuery(projectId: string | undefined, timeZone: string) {
+  const params = new URLSearchParams([...(projectId === undefined ? [] : [['project', projectId]]), ['timeZone', timeZone]]);
+  return queryOptions({
+    queryKey: queryKeys.signals(projectId, timeZone),
+    queryFn: ({ signal }) => apiGet<SignalsResponse>(`/api/signals?${params.toString()}`, signal),
+    staleTime: 15_000,
+  });
+}
+
 /**
  * Projets suivis (lisibles ou non) et dossiers ignorés. Le nom d'un Projet dont le dossier n'a pas de nom qu'on voie y est « Sans titre » (`namedProjects`) : aucun écran n'a à le réécrire, et
  * le fil d'Ariane, la barre latérale, l'onglet et le titre de sa page disent la même chose. Le Projet porte alors `unnamed` (bdesk-38k.73) : « Sans titre » est un repli, dont la pastille, les phrases
@@ -97,6 +117,37 @@ export function useChronology(projectId: string | undefined, issueId: string | u
     ...chronologyQuery(projectId ?? '', issueId ?? ''),
     enabled: Boolean(projectId && issueId),
     select: (data) => data.chronology,
+  });
+}
+
+/** Les Signaux d'un Projet, ou de la Vue globale sans `projectId`, dans le fuseau du navigateur. */
+export function useSignals(projectId?: string) {
+  return useQuery(signalsQuery(projectId, browserTimeZone()));
+}
+
+/** Ce qu'un ticket a de Signaux : sa Dérive et son Blocage long, que sa carte et son Panneau montrent. */
+export interface TicketSignals {
+  drift?: Extract<ApiSignal, { kind: 'drift' }>;
+  longBlockage?: Extract<ApiSignal, { kind: 'longBlockage' }>;
+}
+
+/**
+ * Les Signaux des tickets d'un Projet, par ticket. Ils se tirent de l'historique du Projet, plus long à lire que ses tickets : une requête à part, que le
+ * tableau n'attend pas. Tant qu'ils manquent ou qu'ils sont illisibles, aucune carte n'est marquée. Inactif tant que le Projet manque.
+ */
+export function useTicketSignals(projectId: string | undefined) {
+  return useQuery({
+    ...signalsQuery(projectId ?? '', browserTimeZone()),
+    enabled: Boolean(projectId),
+    select: (data) => {
+      const byTicket = new Map<string, TicketSignals>();
+      for (const signal of data.signals) {
+        if (signal.kind !== 'drift' && signal.kind !== 'longBlockage') continue;
+        const known = byTicket.get(signal.ticket.id) ?? {};
+        byTicket.set(signal.ticket.id, signal.kind === 'drift' ? { ...known, drift: signal } : { ...known, longBlockage: signal });
+      }
+      return byTicket;
+    },
   });
 }
 

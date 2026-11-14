@@ -32,6 +32,11 @@ export interface FailureAnalysis {
    * Un ticket qui n'est pas une Livraison n'y figure pas.
    */
   originBugs: Map<TicketId, TicketId[]>;
+  /**
+   * Les mêmes Bugs d'origine, avec la date qui compte pour chacun : la création du bug qui a constaté le défaut (lui, ou le bug en Abandon dont il a
+   * hérité le lien ; la plus ancienne s'il y en a plusieurs). C'est elle qui dit sur quelle période une Livraison a été mise en échec (le Retravail).
+   */
+  originBugsFound: Map<TicketId, Array<{ bug: TicketId; at: Date }>>;
   /** Une entrée par ticket de type bug, hors Abandon : un bug en Abandon transmet ses liens à celui qui le remplace. */
   bugs: Map<TicketId, BugAttribution>;
   coverage: FailureCoverage;
@@ -61,8 +66,12 @@ const ORIGIN_LINK = 'discovered-from';
  */
 export function analyzeFailures(tickets: TicketHistory[], flows: Map<TicketId, TicketFlow>): FailureAnalysis {
   const originBugs = new Map<TicketId, TicketId[]>();
+  const originBugsFound = new Map<TicketId, Array<{ bug: TicketId; at: Date }>>();
   for (const [id, flow] of flows) {
-    if (flow.outcome.kind === 'delivered') originBugs.set(id, []);
+    if (flow.outcome.kind === 'delivered') {
+      originBugs.set(id, []);
+      originBugsFound.set(id, []);
+    }
   }
 
   // Origines possibles : tickets hors Epic connus à la fois de `tickets` et de `flows`. `linked` et `failedDeliveries`
@@ -74,20 +83,29 @@ export function analyzeFailures(tickets: TicketHistory[], flows: Map<TicketId, T
   for (const bug of tickets.filter((t) => t.type === 'bug' && !isAbandoned(flows.get(t.id)))) {
     const origins = new Set<TicketId>();
     const failedDeliveries = new Set<TicketId>();
+    const foundAt = new Map<TicketId, Date>();
     // Les liens du bug, puis ceux des bugs en Abandon qu'il remplace, chacun daté de la création de son porteur.
     for (const source of [bug, ...(replaced.get(bug.id) ?? [])]) {
       const createdAt = flows.get(source.id)?.transitions[0]?.at;
       for (const { target } of activeLinks(source, bug.id)) {
         if (!possibleOrigins.has(target)) continue;
         origins.add(target);
-        if (createdAt && isDeliveredBy(flows.get(target), byId.get(target), createdAt)) failedDeliveries.add(target);
+        if (createdAt && isDeliveredBy(flows.get(target), byId.get(target), createdAt)) {
+          failedDeliveries.add(target);
+          const known = foundAt.get(target);
+          if (!known || createdAt < known) foundAt.set(target, createdAt);
+        }
       }
     }
     bugs.set(bug.id, { linked: origins.size > 0, failedDeliveries: [...failedDeliveries] });
-    for (const delivery of failedDeliveries) originBugs.get(delivery)?.push(bug.id);
+    for (const delivery of failedDeliveries) {
+      originBugs.get(delivery)?.push(bug.id);
+      const at = foundAt.get(delivery);
+      if (at) originBugsFound.get(delivery)?.push({ bug: bug.id, at });
+    }
   }
 
-  return { originBugs, bugs, coverage: coverageOf(bugs) };
+  return { originBugs, originBugsFound, bugs, coverage: coverageOf(bugs) };
 }
 
 /**

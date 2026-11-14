@@ -58,6 +58,8 @@ export interface TrackedTicket {
   cycleTime: number | null;
   /** Livraison ayant au moins un Bug d'origine. */
   failed: boolean;
+  /** Ses Bugs d'origine, chacun avec la date qui compte (`FailureAnalysis.originBugsFound`) ; vide si elle n'en a pas ou n'est pas une Livraison. */
+  originBugs: Array<{ id: string; at: number }>;
   /** Premier passage en statut de travail. */
   startedAt: number | null;
   /** Date de l'Abandon (dernière clôture) ; null si le ticket n'en est pas un. */
@@ -146,6 +148,7 @@ export function analyzeProject(tickets: MetricsTicket[]): ProjectAnalysis {
         leadTime: deliveredAt === null ? null : flow.leadTime,
         cycleTime: deliveredAt === null ? null : flow.cycleTime,
         failed: (failures.originBugs.get(ticket.id)?.length ?? 0) > 0,
+        originBugs: (failures.originBugsFound.get(ticket.id) ?? []).map(({ bug, at }) => ({ id: bug, at: at.getTime() })),
         startedAt: steps.find((step) => isWork(step.status))?.at ?? null,
         abandonedAt: flow.outcome.kind === 'abandoned' ? flow.outcome.at.getTime() : null,
         abandonCause: flow.outcome.kind === 'abandoned' ? flow.outcome.cause : null,

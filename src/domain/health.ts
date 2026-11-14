@@ -10,6 +10,7 @@ import type {
 } from '../shared/api';
 import { calendarElapsed, resolvePeriod } from './calendar';
 import { lruMemo } from './lru';
+import { reworkIn } from './rework';
 import { durationStats, type MetricsInput, type MetricsOptions, type TrackedTicket, trend } from './metrics';
 import { MAX_ZONE_FORMATTERS } from './time-zone';
 
@@ -56,6 +57,7 @@ export function computeHealth(projects: MetricsInput[], { period, now, timeZone 
   return {
     efficiency: efficiencyOf(entries, elapsed, compared),
     reopening: reopeningOf(entries, elapsed, compared),
+    rework: reworkIn(entries, elapsed),
     abandonment: abandonmentOf(entries, elapsed, compared),
     leadTimeBreakdown: leadTimeBreakdownOf(entries, elapsed),
     readyAges: readyAgesOf(entries, resolved.asOf, resolved.previousAsOf, timeZone),
@@ -110,7 +112,7 @@ function efficiencyOf(entries: Entry[], elapsed: Window, compared: Window): Metr
  * Les clôtures de la fenêtre (Transitions vers fermé) et, parmi elles, celles que suit une Réouverture. Les Transitions d'un
  * ticket se suivent sans répéter un statut : après une clôture, la Transition suivante, s'il y en a une, est une Réouverture.
  */
-function closuresIn(entries: Entry[], window: Window): { closures: number; reopened: number } {
+export function closuresIn(entries: ReadonlyArray<Pick<Entry, 'ticket'>>, window: Window): { closures: number; reopened: number } {
   let [closures, reopened] = [0, 0];
   for (const { ticket } of entries) {
     const { steps } = ticket.timeline;

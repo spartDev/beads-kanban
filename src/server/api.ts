@@ -8,11 +8,12 @@ import type {
   IssuesResponse,
   MetricsResponse,
   ProjectsResponse,
+  SignalsResponse,
 } from '../shared/api';
 import { isAbortError } from './abort';
 import { type ChronologyService, createChronologyService } from './chronology/service';
 import { attempt, clip, identify, loggable, shown, statusOf, UNEXPECTED } from './errorLog';
-import { InvalidMetricsQueryError, parseMetricsQuery } from './metrics/query';
+import { InvalidMetricsQueryError, parseMetricsQuery, parseSignalsQuery } from './metrics/query';
 import type { MetricsService } from './metrics/service';
 import {
   IssueNotFoundError,
@@ -22,7 +23,7 @@ import {
 } from './projects/service';
 
 /**
- * Routes `/api/projects…` et `/api/metrics` ; les erreurs des services deviennent des réponses JSON (400, 404, 503). Chaque lecture
+ * Routes `/api/projects…`, `/api/metrics` et `/api/signals` ; les erreurs des services deviennent des réponses JSON (400, 404, 503). Chaque lecture
  * reçoit le signal de sa requête (`req.signal`, abandonné quand le client ferme la connexion avant la réponse, par exemple quand
  * l'interface annule un `fetch`) : les lectures Dolt qu'il attendait seules sont retirées de la file ; celles dont le processus est
  * lancé vont au bout, sans être tuées, et leur résultat est jeté (ADR 0003).
@@ -74,6 +75,11 @@ export async function registerApi(
   app.get<{ Params: { projectId: string } }>(
     '/api/projects/:projectId/issues',
     async (req): Promise<IssuesResponse> => ({ issues: await projects.issues(req.params.projectId, { signal: req.signal }) }),
+  );
+
+  app.get<{ Querystring: Record<string, unknown> }>(
+    '/api/signals',
+    (req): Promise<SignalsResponse> => metrics.signals(parseSignalsQuery(req.query), { signal: req.signal }),
   );
 
   app.get<{ Querystring: Record<string, unknown> }>(

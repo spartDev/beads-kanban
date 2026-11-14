@@ -5,6 +5,8 @@
  */
 import { beforeAll, vi } from 'vitest';
 import type {
+  MetricsLongTrend,
+  MetricsLongTrendWeek,
   MetricsBucket,
   MetricsCfdPoint,
   MetricsCycleTimePoint,
@@ -19,6 +21,7 @@ import type {
   MetricsTrend,
 } from '../../shared/api';
 import { withAsyncTimeout } from '../test/asyncTimeout';
+import { addDays } from './scales';
 import { httpFailure, stubApi, type HttpFailure } from '../test/render';
 
 export { httpFailure };
@@ -183,7 +186,7 @@ const sumOf = (cells: number[][]) => cells.flat().reduce((total, count) => total
 
 /**
  * La santé du flux de la Vue globale sur 7 jours : 15 Livraisons démarrées (31 j de Cycle Time dont 2,5 j de Blocage), 21
- * clôtures dont 2 suivies d'une Réouverture, 20 tickets fermés dont 2 Abandons, 6 Livraisons qui ont attendu une
+ * clôtures dont 2 suivies d'une Réouverture (deux tickets en Retravail), 20 tickets fermés dont 2 Abandons, 6 Livraisons qui ont attendu une
  * dépendance, 5 Prêts dont 3 stagnent, 100 Transitions.
  */
 export function healthFixture(overrides: Partial<MetricsHealth> = {}): MetricsHealth {
@@ -192,6 +195,12 @@ export function healthFixture(overrides: Partial<MetricsHealth> = {}): MetricsHe
   return {
     efficiency: { n: 15, cycleTime: 31 * DAY, blockedTime: 2.5 * DAY, ratio, blockedDeliveries: 3, trend: trendOf(ratio, 0.97) },
     reopening: { closures: 21, reopened: 2, rate: 2 / 21, trend: trendOf(2 / 21, 0.04) },
+    rework: {
+      tickets: [
+        { id: 'bdesk-r1', title: 'Palette ⌘K', type: 'feature', priority: 1, project: 'bdesk', reopenings: 2, returns: 0, originBugs: ['bdesk-b9'], lastAt: '2026-10-22T14:00:00.000Z' },
+        { id: 'mpm-r2', title: 'Import des prompts', type: 'task', priority: 2, project: 'mpm', reopenings: 0, returns: 1, originBugs: [], lastAt: '2026-10-21T09:00:00.000Z' },
+      ],
+    },
     abandonment: { closed: 20, abandoned: 2, duplicates: 1, superseded: 1, rate: 0.1, trend: trendOf(0.1, 0.05) },
     leadTimeBreakdown: {
       deliveries: 18,
@@ -215,12 +224,41 @@ export function emptyHealthFixture(overrides: Partial<MetricsHealth> = {}): Metr
   return {
     efficiency: { n: 0, cycleTime: 0, blockedTime: 0, ratio: null, blockedDeliveries: 0, trend: noTrend },
     reopening: { closures: 0, reopened: 0, rate: null, trend: noTrend },
+    rework: { tickets: [] },
     abandonment: { closed: 0, abandoned: 0, duplicates: 0, superseded: 0, rate: null, trend: noTrend },
     leadTimeBreakdown: { deliveries: 0, total: 0, dependencyWait: 0, readyWait: 0, work: 0, blocked: 0, otherWait: 0, waited: 0, waits: { median: null, p85: null, n: 0 } },
     readyAges: { stagnantAfter: 14 * DAY, tickets: [], stagnant: 0, trend: trendOf(0, 0) },
     activity: { cells: Array.from({ length: 7 }, () => new Array<number>(24).fill(0)), total: 0 },
     ...overrides,
   };
+}
+
+/** Minuit à Paris de ce jour : 22:00Z la veille en heure d'été, 23:00Z en heure d'hiver (depuis le 25 octobre 2026). */
+const parisMidnight = (day: string) => `${addDays(day, -1)}T${day > '2026-10-25' ? '23' : '22'}:00:00.000Z`;
+
+/**
+ * La Tendance longue des fixtures : les 12 semaines qui finissent par celle du 2 novembre 2026 (en cours, à `AS_OF`). `deliveries[i]` est le Débit de la
+ * semaine i ; son Lead Time au P85 vaut i + 1 jours, fiable à partir de 4 Livraisons ; ses clôtures sont ses Livraisons, et une sur quatre est rouverte.
+ */
+export function longTrendFixture(deliveries: readonly number[] = [5, 6, 4, 0, 3, 7, 5, 8, 6, 4, 5, 1]): MetricsLongTrend {
+  const weeks = deliveries.map((throughput, index): MetricsLongTrendWeek => {
+    const from = addDays('2026-08-17', 7 * index);
+    const reopened = Math.floor(throughput / 4);
+    return {
+      from,
+      to: addDays(from, 6),
+      start: parisMidnight(from),
+      end: parisMidnight(addDays(from, 7)),
+      partial: index === deliveries.length - 1,
+      throughput,
+      leadTimeP85: throughput === 0 ? null : (index + 1) * DAY,
+      reliable: throughput >= 4,
+      closures: throughput,
+      reopened,
+      reopeningRate: throughput === 0 ? null : reopened / throughput,
+    };
+  });
+  return { weeks, minDeliveries: 4 };
 }
 
 /**
@@ -297,6 +335,7 @@ export function metricsFixture(overrides: Partial<MetricsResponse> = {}): Metric
       ],
     },
     health: healthFixture(),
+    longTrend: longTrendFixture(),
     ...overrides,
   };
 }
@@ -321,6 +360,7 @@ export function emptyMetricsFixture(overrides: Partial<MetricsResponse> = {}): M
     inProgress: [],
     slices: { type: [], priority: [], project: [slice('bdesk', 'beads-desktop', { throughput: 0, arrivals: 0, wip: 0, failureRate: null, leadTime: { median: null, p85: null, n: 0 }, cycleTime: { median: null, p85: null, n: 0 }, coverage: { bugs: 0, linked: 0, ratio: null } })] },
     health: emptyHealthFixture(),
+    longTrend: longTrendFixture(new Array<number>(12).fill(0)),
     ...overrides,
   });
 }

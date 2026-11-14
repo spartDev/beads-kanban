@@ -21,10 +21,12 @@ import { describeComparison } from './comparison';
 import { CycleTimePanel } from './CycleTimeChart';
 import { dayInZone } from './format';
 import { HealthTiles } from './HealthTiles';
+import { LongTrendPanel } from './LongTrendPanel';
 import { MetricsSkeleton } from './MetricsSkeleton';
 import { AddressNotices, UnreadableProjects, ZoneNotice } from './Notices';
 import { parseMetricsParams, withDimension, withPeriod, type Dimension, type PeriodChoice, type Scope } from './params';
 import { ReadyAgePanel } from './ReadyAgeChart';
+import { ReworkPanel } from './ReworkPanel';
 import { SliceTable } from './SliceTable';
 import { describeSlices } from './slices';
 import { ThroughputPanel } from './ThroughputChart';
@@ -184,6 +186,8 @@ function Content({ data, by, ctx, projectHref }: { data: MetricsResponse; by: Di
         <>
           <MetricTiles tiles={data.tiles} comparison={comparison} />
 
+          <LongTrendPanel trend={data.longTrend} />
+
           <section aria-labelledby={chartsId} className="flex min-w-0 flex-col gap-3">
             <SectionHeading id={chartsId}>Graphiques</SectionHeading>
             <div className="grid min-w-0 gap-3 @min-[56rem]:grid-cols-2">
@@ -239,6 +243,9 @@ function Content({ data, by, ctx, projectHref }: { data: MetricsResponse; by: Di
                   timeZone={data.timeZone}
                   moment={comparison.running ? `à ${comparison.asOfTime}` : 'à la fin de la période'}
                 />
+              </div>
+              <div className="min-w-0 @min-[56rem]:col-span-2">
+                <ReworkPanel rework={data.health.rework} ctx={ctx} showProject={showProject} />
               </div>
             </div>
           </section>

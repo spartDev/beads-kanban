@@ -55,6 +55,10 @@ function services() {
       calls.push('metrics');
       throw new ProjectNotFoundError('nope');
     },
+    signals: async () => {
+      calls.push('signals');
+      throw new ProjectNotFoundError('nope');
+    },
   };
   return { calls, projects, metrics };
 }

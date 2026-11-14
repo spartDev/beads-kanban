@@ -56,9 +56,9 @@ describe('la page Métriques d’un Projet au flux vide', () => {
 
     const charts = emptyCharts();
 
-    // Les neuf graphiques, quand le Projet n'a rien livré ni rien en cours.
+    // Les onze graphiques, quand le Projet n'a rien livré ni rien en cours (le Retravail, bdesk-l77.3, est le dixième ; la Tendance longue, bdesk-l77.4, le onzième).
     expect(charts.map(({ title }) => title).sort()).toEqual(
-      ['Arrivées et Débit cumulés', 'Carte d’activité', 'Cycle Time', 'Débit', 'Décomposition du Lead Time', 'Flux cumulé', 'Prêts qui stagnent', 'Répartition par type', 'Âge des tickets en cours'].sort(),
+      ['Arrivées et Débit cumulés', 'Carte d’activité', 'Cycle Time', 'Débit', 'Décomposition du Lead Time', 'Flux cumulé', 'Prêts qui stagnent', 'Répartition par type', 'Retravail', 'Tendance longue', 'Âge des tickets en cours'].sort(),
     );
     for (const { status, title } of charts) expect(screen.getAllByRole('status', { name: title }), title).toContain(status);
     expect(screen.queryAllByRole('status', { name: '' })).toEqual([]);
@@ -66,7 +66,7 @@ describe('la page Métriques d’un Projet au flux vide', () => {
 });
 
 describe('la page Métriques d’un Projet au flux vide, quand le serveur ne connaît pas le fuseau du navigateur', () => {
-  it('ajoute aux neuf graphiques une dixième région de statut, l’avis de fuseau, nommée du fuseau fixé du navigateur et non de celui de la machine', async () => {
+  it('ajoute aux onze graphiques une douzième région de statut, l’avis de fuseau, nommée du fuseau fixé du navigateur et non de celui de la machine', async () => {
     // Le serveur compte en UTC faute de connaître le fuseau demandé, et le dit (`timeZoneHonoured`, bdesk-38k.71) : la page ajoute son avis.
     stubMetricsApi({ projects: projectsResponse, issues: { bdesk: bdeskIssues, mpm: mpmIssues } }, () => emptyMetricsFixture({ timeZone: 'UTC', timeZoneHonoured: false }));
     renderApp('/p/bdesk/metrics');
@@ -76,7 +76,7 @@ describe('la page Métriques d’un Projet au flux vide, quand le serveur ne con
     const notice = await screen.findByRole('status', { name: 'Le serveur ne connaît pas votre fuseau, Europe/Paris' });
 
     const charts = emptyCharts();
-    expect(charts).toHaveLength(10);
+    expect(charts).toHaveLength(12);
     expect(charts.filter(({ title }) => title === '(hors d’une carte)').map(({ status }) => status)).toEqual([notice]);
     expect(screen.queryAllByRole('status', { name: '' })).toEqual([]);
   });

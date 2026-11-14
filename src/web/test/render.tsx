@@ -5,7 +5,7 @@ import { StrictMode } from 'react';
 import { vi } from 'vitest';
 import { createMemoryRouter, type InitialEntry, RouterProvider } from 'react-router';
 import { epicOf } from '../../domain/epics';
-import type { Issue, IssueChronology, IssueDetail, IssueEpic, IssueRef, ProjectsResponse } from '../data/types';
+import type { ApiSignal, Issue, IssueChronology, IssueDetail, IssueEpic, IssueRef, ProjectsResponse } from '../data/types';
 import { routes } from '../routes';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import { chronology as defaultChronology, issueDetail } from './fixtures';
@@ -30,6 +30,11 @@ interface ApiFixture {
   details?: Record<string, Reply<IssueDetail>>;
   /** Chronologie d'un ticket, par `projet/ticket` ; à défaut, celle d'un ticket resté ouvert depuis sa création. */
   chronologies?: Record<string, Reply<IssueChronology>>;
+  /**
+   * Signaux d'un Projet, par identifiant de Projet ; à défaut, aucun pour un Projet lisible. La Vue globale (`/api/signals` sans `project`) réunit ceux
+   * des Projets lisibles ; un Projet dont les Signaux sont une erreur y est listé illisible.
+   */
+  signals?: Record<string, Reply<ApiSignal[]>>;
 }
 
 const isFailure = (value: unknown): value is HttpFailure =>
@@ -61,11 +66,12 @@ function epicNamedBy(listed: Issue, list: Issue[]): IssueEpic | null {
 }
 
 /** Remplace fetch par un faux serveur d'API ; renvoie le mock pour inspecter les appels. */
-export function stubApi({ projects, issues = {}, details = {}, chronologies = {} }: ApiFixture) {
+export function stubApi({ projects, issues = {}, details = {}, chronologies = {}, signals = {} }: ApiFixture) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const { pathname } = new URL(String(input), 'http://localhost');
     if (pathname === '/api/projects') return respond(projects);
 
+    if (pathname === '/api/signals') return signalsReply(new URL(String(input), 'http://localhost').searchParams);
     const match = /^\/api\/projects\/([^/]+)\/issues(?:\/([^/]+)(\/chronology)?)?$/.exec(pathname);
     const projectId = match?.[1] ? decodeURIComponent(match[1]) : undefined;
     const issueId = match?.[2] ? decodeURIComponent(match[2]) : undefined;
@@ -95,6 +101,36 @@ export function stubApi({ projects, issues = {}, details = {}, chronologies = {}
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
+
+  /**
+   * `/api/signals` : les Signaux des Projets demandés, ou de tous, comme le serveur. Un Projet dont les Signaux sont une réponse d'erreur (`httpFailure`) y est
+   * listé illisible, avec le message de cette réponse ; une `Error` fait échouer toute la requête (500), comme un serveur en panne.
+   */
+  function signalsReply(params: URLSearchParams): Response {
+    if (projects instanceof Error || isFailure(projects)) return respond(projects);
+    const asked = params.getAll('project');
+    const unknown = asked.find((id) => !projects.projects.some((project) => project.id === id));
+    if (unknown !== undefined) return notFound(`Projet inconnu : ${unknown}`);
+    const selected = projects.projects.filter((project) => asked.length === 0 || asked.includes(project.id));
+    const crash = selected.map((project) => signals[project.id]).find((reply) => reply instanceof Error);
+    if (crash) return respond(crash);
+    const measured = selected.filter((project) => project.status === 'ok' && !isFailure(signals[project.id]));
+    const unreadable = selected
+      .filter((project) => !measured.includes(project))
+      .map(({ id, name, reason }) => {
+        const failure = signals[id];
+        const message = isFailure(failure) ? (failure.body as { message?: string }).message : undefined;
+        return { id, name, reason: message ?? reason ?? 'Projet illisible.' };
+      });
+    return json({
+      generatedAt: new Date().toISOString(),
+      timeZone: params.get('timeZone') ?? 'UTC',
+      timeZoneHonoured: params.has('timeZone'),
+      projects: measured.map(({ id, name }) => ({ id, name })),
+      unreadable,
+      signals: measured.flatMap((project) => (signals[project.id] as ApiSignal[] | undefined) ?? []),
+    });
+  }
 }
 
 /**

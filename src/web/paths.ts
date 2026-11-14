@@ -2,7 +2,7 @@
 
 const enc = encodeURIComponent;
 
-export const PROJECT_SECTIONS = ['kanban', 'epics', 'metrics'] as const;
+export const PROJECT_SECTIONS = ['kanban', 'signals', 'epics', 'metrics'] as const;
 export type ProjectSection = (typeof PROJECT_SECTIONS)[number];
 
 export const paths = {
@@ -15,6 +15,8 @@ export const paths = {
   epics: (projectId: string, epicId?: string) =>
     `/p/${enc(projectId)}/epics${epicId ? `?epic=${enc(epicId)}` : ''}`,
   metrics: (projectId: string) => `/p/${enc(projectId)}/metrics`,
+  /** Les Signaux d'un Projet ; sans Projet, ceux de la Vue globale. */
+  signals: (projectId?: string) => (projectId === undefined ? '/signals' : `/p/${enc(projectId)}/signals`),
   issue: (projectId: string, issueId: string) => `/p/${enc(projectId)}/t/${enc(issueId)}`,
 } as const;
 
@@ -42,7 +44,7 @@ export function parsePath(pathname: string): RouteInfo {
   const [root, projectId, section, issueId] = pathname.split('/').filter(Boolean).map(decode);
   if (root !== 'p' || !projectId) return {};
   if (section === 't' && issueId) return { projectId, section: 'issue', issueId };
-  if (section === 'kanban' || section === 'epics' || section === 'metrics') {
+  if (section === 'kanban' || section === 'signals' || section === 'epics' || section === 'metrics') {
     return { projectId, section };
   }
   return { projectId };

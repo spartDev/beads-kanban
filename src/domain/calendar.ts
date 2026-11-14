@@ -184,6 +184,19 @@ export function bucketsOf(period: Period, unit: MetricsBucketUnit, timeZone: str
   return buckets;
 }
 
+/**
+ * Les `count` semaines entières (du lundi au dimanche) qui finissent par la semaine en cours à `now`, de la plus ancienne à la plus
+ * récente. Leurs bornes sont des minuits du fuseau : une semaine qui traverse un changement d'heure dure 7 jours plus ou moins une heure.
+ */
+export function weeksUntil(now: number, count: number, timeZone: string): Period[] {
+  const today = dayOf(now, timeZone);
+  const monday = addDays(today, -weekdayIndex(today));
+  return Array.from({ length: count }, (_, i) => {
+    const from = addDays(monday, 7 * (i + 1 - count));
+    return periodOf(from, addDays(from, 6), timeZone);
+  });
+}
+
 function periodOf(from: CivilDay, to: CivilDay, timeZone: string): Period {
   return {
     from,

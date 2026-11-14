@@ -68,6 +68,11 @@ function serviceWith(overrides: Partial<ProjectService> = {}): ProjectService {
   };
 }
 
+/** Une méthode de service que le test n'appelle pas. */
+const unused = async (): Promise<never> => {
+  throw new Error('non appelé par ce test');
+};
+
 const get = (projects: ProjectService, url: string) => buildServer({ config, projects }).inject({ method: 'GET', url });
 
 /**
@@ -293,6 +298,82 @@ describe('API de la chronologie d’un ticket', () => {
   });
 });
 
+describe('API des Signaux', () => {
+  const NOW = new Date('2026-10-23T18:00:00Z');
+  const DAY = 86_400_000;
+  const ago = (days: number) => new Date(NOW.getTime() - days * DAY);
+  const snapshots = (...statuses: [string, number][]) => statuses.map(([status, days]) => ({ status, at: ago(days) }));
+  /** Dix Livraisons de Cycle Time 1 à 10 jours (P85 : 8,65 jours), un ticket en cours depuis 12 jours, un autre bloqué depuis 4 jours. */
+  const histories: TicketHistory[] = [
+    ...Array.from({ length: 10 }, (_, i): TicketHistory => ({
+      id: `d${i + 1}`,
+      type: 'task',
+      statusSnapshots: snapshots(['open', 31], ['in_progress', 30], ['closed', 30 - (i + 1)]),
+      dependencies: [],
+    })),
+    { id: 'w', type: 'task', statusSnapshots: snapshots(['open', 13], ['in_progress', 12]), dependencies: [] },
+    { id: 'b', type: 'task', statusSnapshots: snapshots(['open', 5], ['blocked', 4]), dependencies: [] },
+  ];
+  const issues = histories.map((h): Issue => ({ ...issue, id: h.id, title: `Titre de ${h.id}`, type: 'task', priority: 2 }));
+  const getSignals = (projects: ProjectService, query = '') =>
+    buildServer({ config, projects, metrics: createMetricsService(projects, { now: () => NOW, timeZone: 'Europe/Paris' }) }).inject({
+      method: 'GET',
+      url: `/api/signals${query}`,
+    });
+
+  it('GET /api/signals sert les Signaux de la Vue globale, dates en ISO, avec le fuseau qui a compté les jours', async () => {
+    const res = await getSignals(serviceWith({ histories: async () => histories, issues: async () => issues }), '?timeZone=Europe/Paris');
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      generatedAt: NOW.toISOString(),
+      timeZone: 'Europe/Paris',
+      timeZoneHonoured: true,
+      projects: [{ id: 'beads-desktop', name: 'beads-desktop' }],
+      unreadable: [],
+      signals: [
+        {
+          kind: 'drift',
+          project: 'beads-desktop',
+          ticket: { id: 'w', title: 'Titre de w', type: 'task', priority: 2 },
+          cycleTime: 12 * DAY,
+          reference: expect.closeTo(8.65 * DAY, 3),
+          scope: 'type',
+        },
+        {
+          kind: 'longBlockage',
+          project: 'beads-desktop',
+          ticket: { id: 'b', title: 'Titre de b', type: 'task', priority: 2 },
+          since: ago(4).toISOString(),
+          duration: 4 * DAY,
+        },
+      ],
+    });
+  });
+
+  it('liste un Projet illisible dans la réponse, sans faire échouer le reste', async () => {
+    const res = await getSignals(
+      serviceWith({
+        histories: async () => {
+          throw new ProjectUnreadableError('beads-desktop', 'database is locked');
+        },
+      }),
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ projects: [], unreadable: [{ id: 'beads-desktop', reason: 'database is locked' }], signals: [] });
+  });
+
+  it('renvoie 404 en JSON pour un Projet inconnu, 400 pour un paramètre inconnu', async () => {
+    const unknown = await getSignals(serviceWith(), '?project=nope');
+    const typo = await getSignals(serviceWith(), '?projet=beads-desktop');
+
+    expect(unknown.statusCode).toBe(404);
+    expect(unknown.json()).toEqual({ statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope' });
+    expect(typo.statusCode).toBe(400);
+  });
+});
+
 describe('API des métriques', () => {
   const NOW = new Date('2026-10-23T18:00:00Z'); // vendredi 23 octobre 2026, 20:00 à Paris
 
@@ -309,6 +390,7 @@ describe('API des métriques', () => {
         queries.push(query);
         return metricsOver(serviceWith()).compute(query);
       },
+      signals: unused,
     };
   };
 
@@ -331,12 +413,25 @@ describe('API des métriques', () => {
     expect(body.cfd).toHaveLength(30);
     expect(Object.keys(body).sort()).toEqual(
       [
-        'asOf', 'bucket', 'buckets', 'cfd', 'cycleTimeScatter', 'generatedAt', 'health', 'inProgress', 'period', 'previousAsOf', 'previousPeriod',
+        'asOf', 'bucket', 'buckets', 'cfd', 'cycleTimeScatter', 'generatedAt', 'health', 'inProgress', 'longTrend', 'period', 'previousAsOf', 'previousPeriod',
         'projects', 'range', 'slices', 'tiles', 'timeZone', 'timeZoneHonoured', 'unreadable',
       ].sort(),
     );
     // Santé du flux (bdesk-38k.13) : un ajout au contrat, les clés précédentes sont inchangées.
-    expect(Object.keys(body.health).sort()).toEqual(['abandonment', 'activity', 'efficiency', 'leadTimeBreakdown', 'readyAges', 'reopening']);
+    expect(Object.keys(body.health).sort()).toEqual(['abandonment', 'activity', 'efficiency', 'leadTimeBreakdown', 'readyAges', 'reopening', 'rework']);
+    // Retravail (bdesk-l77.3) : un ajout aussi, la liste des tickets qui reviennent.
+    expect(body.health.rework).toEqual({ tickets: [] });
+    // Tendance longue (bdesk-l77.4) : les 12 semaines qui finissent par la semaine en cours, quelle que soit la période.
+    expect(body.longTrend.minDeliveries).toBe(4);
+    expect(body.longTrend.weeks.map((week) => week.from)).toHaveLength(12);
+    expect(body.longTrend.weeks.at(-1)).toMatchObject({ from: '2026-10-19', to: '2026-10-25', partial: true });
+  });
+
+  it('GET /api/metrics donne la même Tendance longue quelle que soit la période choisie', async () => {
+    const week = (await getMetrics('?range=7d')).json<MetricsResponse>().longTrend;
+    const quarter = (await getMetrics('?range=90d')).json<MetricsResponse>().longTrend;
+
+    expect(week).toEqual(quarter);
   });
 
   it('transmet les Projets (paramètre répété) et la période au service', async () => {
@@ -390,6 +485,7 @@ describe('API des métriques', () => {
       async compute() {
         throw new InvalidPeriodError('La plage est trop longue : 400 jours, au plus 366.');
       },
+      signals: unused,
     };
 
     const res = await getMetrics('', serviceWith(), refusing);
@@ -581,6 +677,7 @@ describe('API : requêtes abandonnées par le client (bdesk-38k.20)', () => {
         received = options?.signal;
         return new Promise((_resolve, reject) => options?.signal?.addEventListener('abort', () => reject(new ReadAborted())));
       },
+      signals: unused,
     };
     const app = buildServer({ config, projects: serviceWith(), metrics });
     const controller = new AbortController();

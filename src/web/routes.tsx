@@ -6,6 +6,7 @@ import { GlobalPage } from './pages/GlobalPage';
 import { KanbanRoute } from './pages/KanbanRoute';
 import { MetricsPage } from './pages/MetricsPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { ProjectSignalsPage, GlobalSignalsPage } from './pages/SignalsPage';
 import { ProjectGate } from './pages/ProjectGate';
 import { RouteError } from './pages/RouteError';
 import { paths } from './paths';
@@ -34,6 +35,7 @@ export const routes: RouteObject[] = [
         errorElement: <RouteError />,
         children: [
           { index: true, element: <GlobalPage /> },
+          { path: 'signals', element: <GlobalSignalsPage /> },
           {
             path: 'p/:projectId',
             element: <ProjectGate />,
@@ -45,6 +47,7 @@ export const routes: RouteObject[] = [
                 // `element: null` : le tableau est celui de la route mère, il n'y a rien à ajouter sur `/kanban` (sans lui, React Router avertit).
                 children: [{ path: 'kanban', element: null }, { path: 't/:issueId', element: <IssuePanel /> }],
               },
+              { path: 'signals', element: <ProjectSignalsPage /> },
               { path: 'epics', element: <EpicsPage /> },
               { path: 'metrics', element: <MetricsPage /> },
             ],
