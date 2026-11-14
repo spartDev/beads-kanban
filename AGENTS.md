@@ -125,3 +125,8 @@ bd prime                # Refresh Beads context
 
 **Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md for details and anti-patterns.
 <!-- END BEADS CODEX SETUP -->
+
+## Sous-agents
+
+- Copie isolée : `scripts/sandbox.sh <commit> <dir>` puis `source <dir>/env.sh` (`bd` hors du PATH) ; gates : `scripts/gates.sh [dir]`.
+- Le hook `.claude/hooks/guard-bash.sh` refuse `find` sur `/`, `~`, `/Users/<nom>`, `pkill`, `pgrep -f` et `rm -rf` sur `/` ou `~` : tuez par PID noté.
