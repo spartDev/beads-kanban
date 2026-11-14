@@ -5,6 +5,8 @@
  */
 import { beforeAll, vi } from 'vitest';
 import type {
+  MetricsLongTrend,
+  MetricsLongTrendWeek,
   MetricsBucket,
   MetricsCfdPoint,
   MetricsCycleTimePoint,
@@ -19,6 +21,7 @@ import type {
   MetricsTrend,
 } from '../../shared/api';
 import { withAsyncTimeout } from '../test/asyncTimeout';
+import { addDays } from './scales';
 import { httpFailure, stubApi, type HttpFailure } from '../test/render';
 
 export { httpFailure };
@@ -230,6 +233,34 @@ export function emptyHealthFixture(overrides: Partial<MetricsHealth> = {}): Metr
   };
 }
 
+/** Minuit à Paris de ce jour : 22:00Z la veille en heure d'été, 23:00Z en heure d'hiver (depuis le 25 octobre 2026). */
+const parisMidnight = (day: string) => `${addDays(day, -1)}T${day > '2026-10-25' ? '23' : '22'}:00:00.000Z`;
+
+/**
+ * La Tendance longue des fixtures : les 12 semaines qui finissent par celle du 2 novembre 2026 (en cours, à `AS_OF`). `deliveries[i]` est le Débit de la
+ * semaine i ; son Lead Time au P85 vaut i + 1 jours, fiable à partir de 4 Livraisons ; ses clôtures sont ses Livraisons, et une sur quatre est rouverte.
+ */
+export function longTrendFixture(deliveries: readonly number[] = [5, 6, 4, 0, 3, 7, 5, 8, 6, 4, 5, 1]): MetricsLongTrend {
+  const weeks = deliveries.map((throughput, index): MetricsLongTrendWeek => {
+    const from = addDays('2026-08-17', 7 * index);
+    const reopened = Math.floor(throughput / 4);
+    return {
+      from,
+      to: addDays(from, 6),
+      start: parisMidnight(from),
+      end: parisMidnight(addDays(from, 7)),
+      partial: index === deliveries.length - 1,
+      throughput,
+      leadTimeP85: throughput === 0 ? null : (index + 1) * DAY,
+      reliable: throughput >= 4,
+      closures: throughput,
+      reopened,
+      reopeningRate: throughput === 0 ? null : reopened / throughput,
+    };
+  });
+  return { weeks, minDeliveries: 4 };
+}
+
 /**
  * La réponse d'une Vue globale dont les Projets mesurés sont `projects` (bdesk-38k.65, revue). Le serveur la compose ainsi (`slicesOf`, `domain/metrics.ts`) : le découpage par Projet a une ligne par
  * Projet mesuré, et son libellé est le nom du Projet, écrit une deuxième fois à côté de `projects`. Les chiffres sont ceux de la première ligne de `metricsFixture`, pour chacune : seuls les noms
@@ -304,6 +335,7 @@ export function metricsFixture(overrides: Partial<MetricsResponse> = {}): Metric
       ],
     },
     health: healthFixture(),
+    longTrend: longTrendFixture(),
     ...overrides,
   };
 }
@@ -328,6 +360,7 @@ export function emptyMetricsFixture(overrides: Partial<MetricsResponse> = {}): M
     inProgress: [],
     slices: { type: [], priority: [], project: [slice('bdesk', 'beads-desktop', { throughput: 0, arrivals: 0, wip: 0, failureRate: null, leadTime: { median: null, p85: null, n: 0 }, cycleTime: { median: null, p85: null, n: 0 }, coverage: { bugs: 0, linked: 0, ratio: null } })] },
     health: emptyHealthFixture(),
+    longTrend: longTrendFixture(new Array<number>(12).fill(0)),
     ...overrides,
   });
 }

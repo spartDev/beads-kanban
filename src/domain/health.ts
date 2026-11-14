@@ -112,7 +112,7 @@ function efficiencyOf(entries: Entry[], elapsed: Window, compared: Window): Metr
  * Les clôtures de la fenêtre (Transitions vers fermé) et, parmi elles, celles que suit une Réouverture. Les Transitions d'un
  * ticket se suivent sans répéter un statut : après une clôture, la Transition suivante, s'il y en a une, est une Réouverture.
  */
-function closuresIn(entries: Entry[], window: Window): { closures: number; reopened: number } {
+export function closuresIn(entries: ReadonlyArray<Pick<Entry, 'ticket'>>, window: Window): { closures: number; reopened: number } {
   let [closures, reopened] = [0, 0];
   for (const { ticket } of entries) {
     const { steps } = ticket.timeline;

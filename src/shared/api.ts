@@ -709,6 +709,45 @@ export interface MetricsActivity {
   total: number;
 }
 
+/**
+ * Une semaine de la Tendance longue, du lundi au dimanche du fuseau de la réponse. La semaine en cours n'est comptée que jusqu'à
+ * `asOf` : elle n'est pas finie (`partial`), et la lire comme une semaine pleine ferait croire à un recul.
+ */
+export interface MetricsLongTrendWeek {
+  /** Le lundi. */
+  from: string;
+  /** Le dimanche. */
+  to: string;
+  /** Minuit local du lundi. */
+  start: string;
+  /** Minuit local qui suit le dimanche (exclu). */
+  end: string;
+  /** La semaine en cours, comptée jusqu'à `asOf`. */
+  partial: boolean;
+  /** Livraisons de la semaine. */
+  throughput: number;
+  /** P85 du Lead Time des Livraisons de la semaine ; null sans Livraison. */
+  leadTimeP85: number | null;
+  /** Au moins `MetricsLongTrend.minDeliveries` Livraisons : en dessous, le centile est montré, mais ne dit pas grand-chose. */
+  reliable: boolean;
+  /** Clôtures de la semaine : les Transitions vers fermé. */
+  closures: number;
+  /** Parmi elles, celles qu'une Réouverture suit, même plus tard. */
+  reopened: number;
+  /** `reopened / closures` ; null sans clôture. */
+  reopeningRate: number | null;
+}
+
+/**
+ * Tendance longue : les 12 semaines qui finissent par la semaine en cours, sans lissage. Indépendante de la période choisie :
+ * elle dit si le flux s'améliore.
+ */
+export interface MetricsLongTrend {
+  weeks: MetricsLongTrendWeek[];
+  /** Le seuil de `reliable` : 4 Livraisons. */
+  minDeliveries: number;
+}
+
 export interface MetricsHealth {
   efficiency: MetricsFlowEfficiency;
   reopening: MetricsReopening;
@@ -788,4 +827,6 @@ export interface MetricsResponse extends MetricsReport {
   unreadable: MetricsUnreadableProject[];
   /** Santé du flux (bdesk-38k.13) : calculée par `computeHealth`, à côté de `computeMetrics`, sur la même période. */
   health: MetricsHealth;
+  /** Tendance longue (bdesk-l77.4) : calculée par `longTrendOf`, sur les 12 dernières semaines, quelle que soit la période. */
+  longTrend: MetricsLongTrend;
 }

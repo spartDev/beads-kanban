@@ -69,7 +69,7 @@ describe('la page Métriques d’un Projet', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Métriques' })).toBeTruthy();
     // Six indicateurs, puis cinq tuiles de santé du flux.
     expect(screen.getAllByRole('article')).toHaveLength(11);
-    for (const chart of ['Flux cumulé', 'Débit', 'Cycle Time', 'Âge des tickets en cours']) {
+    for (const chart of ['Tendance longue', 'Flux cumulé', 'Débit', 'Cycle Time', 'Âge des tickets en cours']) {
       expect(screen.getByRole('region', { name: chart })).toBeTruthy();
     }
     expect(screen.getByRole('heading', { level: 2, name: 'Santé du flux' })).toBeTruthy();

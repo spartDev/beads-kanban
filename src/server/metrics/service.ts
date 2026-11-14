@@ -1,6 +1,7 @@
 import { type PeriodSpec, resolvePeriod } from '../../domain/calendar';
 import type { TicketHistory } from '../../domain/flow';
 import { computeHealth } from '../../domain/health';
+import { longTrendOf } from '../../domain/longTrend';
 import { analyzeProject, computeMetrics, type MetricsInput, type ProjectAnalysis } from '../../domain/metrics';
 import { type Signal, signalsOf } from '../../domain/signals';
 import type { ApiSignal, MetricsResponse, SignalsResponse, MetricsUnreadableProject, Project } from '../../shared/api';
@@ -220,6 +221,7 @@ export function createMetricsService(
         unreadable,
         ...computeMetrics(measured, { period, now: at, timeZone: zone }),
         health: computeHealth(measured, { period, now: at, timeZone: zone }),
+        longTrend: longTrendOf(measured, { now: at, timeZone: zone }),
       };
     },
   };

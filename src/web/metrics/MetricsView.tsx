@@ -21,6 +21,7 @@ import { describeComparison } from './comparison';
 import { CycleTimePanel } from './CycleTimeChart';
 import { dayInZone } from './format';
 import { HealthTiles } from './HealthTiles';
+import { LongTrendPanel } from './LongTrendPanel';
 import { MetricsSkeleton } from './MetricsSkeleton';
 import { AddressNotices, UnreadableProjects, ZoneNotice } from './Notices';
 import { parseMetricsParams, withDimension, withPeriod, type Dimension, type PeriodChoice, type Scope } from './params';
@@ -184,6 +185,8 @@ function Content({ data, by, ctx, projectHref }: { data: MetricsResponse; by: Di
       ) : (
         <>
           <MetricTiles tiles={data.tiles} comparison={comparison} />
+
+          <LongTrendPanel trend={data.longTrend} />
 
           <section aria-labelledby={chartsId} className="flex min-w-0 flex-col gap-3">
             <SectionHeading id={chartsId}>Graphiques</SectionHeading>

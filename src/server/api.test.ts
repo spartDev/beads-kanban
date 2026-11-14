@@ -413,7 +413,7 @@ describe('API des métriques', () => {
     expect(body.cfd).toHaveLength(30);
     expect(Object.keys(body).sort()).toEqual(
       [
-        'asOf', 'bucket', 'buckets', 'cfd', 'cycleTimeScatter', 'generatedAt', 'health', 'inProgress', 'period', 'previousAsOf', 'previousPeriod',
+        'asOf', 'bucket', 'buckets', 'cfd', 'cycleTimeScatter', 'generatedAt', 'health', 'inProgress', 'longTrend', 'period', 'previousAsOf', 'previousPeriod',
         'projects', 'range', 'slices', 'tiles', 'timeZone', 'timeZoneHonoured', 'unreadable',
       ].sort(),
     );
@@ -421,6 +421,17 @@ describe('API des métriques', () => {
     expect(Object.keys(body.health).sort()).toEqual(['abandonment', 'activity', 'efficiency', 'leadTimeBreakdown', 'readyAges', 'reopening', 'rework']);
     // Retravail (bdesk-l77.3) : un ajout aussi, la liste des tickets qui reviennent.
     expect(body.health.rework).toEqual({ tickets: [] });
+    // Tendance longue (bdesk-l77.4) : les 12 semaines qui finissent par la semaine en cours, quelle que soit la période.
+    expect(body.longTrend.minDeliveries).toBe(4);
+    expect(body.longTrend.weeks.map((week) => week.from)).toHaveLength(12);
+    expect(body.longTrend.weeks.at(-1)).toMatchObject({ from: '2026-10-19', to: '2026-10-25', partial: true });
+  });
+
+  it('GET /api/metrics donne la même Tendance longue quelle que soit la période choisie', async () => {
+    const week = (await getMetrics('?range=7d')).json<MetricsResponse>().longTrend;
+    const quarter = (await getMetrics('?range=90d')).json<MetricsResponse>().longTrend;
+
+    expect(week).toEqual(quarter);
   });
 
   it('transmet les Projets (paramètre répété) et la période au service', async () => {
