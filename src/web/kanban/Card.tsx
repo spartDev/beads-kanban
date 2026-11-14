@@ -1,9 +1,10 @@
-import { Bot, Clock, Lock, Timer } from 'lucide-react';
+import { Bot, Clock, Hourglass, Lock, Timer } from 'lucide-react';
 import { Fragment, type ReactNode, useId } from 'react';
 import { Link, useLocation } from 'react-router';
 import { ticketTitle } from '../data/helpers';
-import type { Issue, IssueDrift } from '../data/types';
-import { driftSentence, shownDrift } from '../lib/drift';
+import type { TicketSignals } from '../data/hooks';
+import type { ApiSignal, Issue } from '../data/types';
+import { shownSignals, signalSentence } from '../lib/signals';
 import { statusLabel, typeMeta } from '../design/issue-palette';
 import { formatAge, formatDateTime } from '../lib/relativeTime';
 import { parsePath, paths } from '../paths';
@@ -34,7 +35,7 @@ export function Card({
   projectId,
   epic,
   now,
-  drift,
+  signals,
 }: {
   issue: Issue;
   /** La colonne de la carte, ou `paused` dans le tiroir. */
@@ -43,8 +44,8 @@ export function Card({
   /** L'Epic de la carte, pour sa pastille. */
   epic: Issue | null;
   now: number;
-  /** La Dérive du ticket, si son Cycle Time en cours dépasse sa référence. */
-  drift?: IssueDrift | undefined;
+  /** Les Signaux du ticket : sa Dérive, son Blocage long. */
+  signals?: TicketSignals | undefined;
 }) {
   const dated = lane === 'done' ? (issue.closedAt ?? issue.updatedAt) : issue.updatedAt;
   const age = formatAge(dated, now);
@@ -53,7 +54,7 @@ export function Card({
   const { pathname, search } = useLocation();
   const panelOpen = parsePath(pathname).section === 'issue';
   const idId = useId();
-  const drifting = shownDrift(issue.status, drift);
+  const { drift, longBlockage } = shownSignals(issue.status, signals);
 
   return (
     <li
@@ -86,11 +87,12 @@ export function Card({
         </Link>
       </p>
 
-      {issue.status === 'hooked' || epic || issue.abandon || drifting ? (
+      {issue.status === 'hooked' || epic || issue.abandon || drift || longBlockage ? (
         // Les pastilles passent à la ligne plutôt que de serrer l'identifiant, qui ne doit jamais se couper en deux.
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           {issue.abandon ? <AbandonBadge abandon={issue.abandon} /> : null}
-          {drifting ? <DriftBadge drift={drifting} /> : null}
+          {drift ? <SignalBadge signal={drift} label="Dérive" icon={Timer} /> : null}
+          {longBlockage ? <SignalBadge signal={longBlockage} label="Blocage long" icon={Hourglass} /> : null}
           {issue.status === 'hooked' ? <AgentBadge /> : null}
           {epic ? <EpicPill projectId={projectId} epic={epic} /> : null}
         </div>
@@ -121,19 +123,19 @@ export function Card({
 }
 
 /**
- * Ticket en Dérive : la pastille dit « Dérive », l'infobulle et les lecteurs d'écran disent de combien. La phrase n'est pas dans le nom du lien de la
- * carte : elle suit le titre, dans la carte, comme les autres pastilles.
+ * Un Signal du ticket (Dérive, Blocage long) : la pastille dit sa sorte, l'infobulle et les lecteurs d'écran disent de combien il dépasse la normale. La
+ * phrase n'est pas dans le nom du lien de la carte : elle suit le titre, dans la carte, comme les autres pastilles.
  */
-function DriftBadge({ drift }: { drift: IssueDrift }) {
-  const sentence = driftSentence(drift);
+function SignalBadge({ signal, label, icon: Icon }: { signal: ApiSignal; label: string; icon: typeof Timer }) {
+  const sentence = signalSentence(signal);
   return (
     <span
-      data-drift
+      data-signal={signal.kind}
       title={sentence}
       className="inline-flex shrink-0 items-center gap-1 rounded-full bg-danger-soft px-1.5 text-micro font-medium text-danger"
     >
-      <Timer size={11} aria-hidden="true" />
-      Dérive
+      <Icon size={11} aria-hidden="true" />
+      {label}
       <span className="sr-only"> : {sentence}</span>
     </span>
   );

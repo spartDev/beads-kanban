@@ -1,4 +1,4 @@
-import { Keyboard, LayoutGrid, RefreshCw, Search, TriangleAlert } from 'lucide-react';
+import { Eye, Keyboard, LayoutGrid, RefreshCw, Search, TriangleAlert } from 'lucide-react';
 import { Link, NavLink } from 'react-router';
 import { useProjects } from '../data/hooks';
 import type { Project } from '../data/types';
@@ -54,6 +54,10 @@ export function Sidebar() {
           <LayoutGrid size={16} strokeWidth={1.8} aria-hidden="true" className="shrink-0 text-ink-3 group-aria-[current=page]/row:text-accent" />
           Vue globale
           <RowHint keys="g v" />
+        </NavLink>
+        <NavLink to={paths.signals()} end className={rowClass}>
+          <Eye size={16} strokeWidth={1.8} aria-hidden="true" className="shrink-0 text-ink-3 group-aria-[current=page]/row:text-accent" />
+          À regarder
         </NavLink>
         <ProjectList />
       </nav>

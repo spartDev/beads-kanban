@@ -160,10 +160,10 @@ Un ticket en statut de travail dont le Cycle Time en cours dépasse son Cycle Ti
 _Avoid_: ticket en retard, SLA
 
 **Blocage long**:
-Un Blocage dont la phase en cours de travail dure depuis plus de 3 jours de Durée écoulée.
+Un Blocage dont la phase en cours de travail dure depuis plus de 3 jours de Durée écoulée (3 jours pile ne suffisent pas). Elle court depuis que le ticket est à la fois en statut de travail et en Blocage, sans interruption : passer d'en cours à rattaché à un agent ne la recommence pas.
 
 **WIP inhabituel**:
-Un WIP d'un Projet au-dessus du 85ᵉ centile de son WIP quotidien des 90 derniers jours.
+Un WIP d'un Projet au-dessus du 85ᵉ centile de son WIP quotidien des 90 derniers jours : le WIP relevé toutes les 24 heures, à la même heure que maintenant, les jours où le Projet existait. Sous 14 relevés, on ne sait pas ce qui est habituel.
 
 **Signal**:
 Une situation en cours qui mérite d'être regardée maintenant : Dérive, Prêt qui stagne, Blocage long ou WIP inhabituel. Un Signal existe tant que sa condition est vraie dans le Dernier commit ; on ne peut pas l'écarter. Le Retravail n'en est pas un : c'est un constat après coup.

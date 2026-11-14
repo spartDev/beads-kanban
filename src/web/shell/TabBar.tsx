@@ -5,7 +5,7 @@ import { paths, sectionPath } from '../paths';
 import { SECTIONS, useRouteInfo, useTabsProject } from './navigation';
 
 /**
- * Barre d'onglets du mobile : la barre latérale repliée. Vue globale, puis les trois onglets du
+ * Barre d'onglets du mobile : la barre latérale repliée. Vue globale, puis les onglets du
  * Projet courant (ou, depuis la Vue globale, du dernier Projet visité).
  */
 export function TabBar() {
@@ -18,7 +18,7 @@ export function TabBar() {
       aria-label="Onglets"
       className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-canvas/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
     >
-      <ul className="grid grid-cols-4">
+      <ul className="grid grid-cols-5">
         <li>
           <Tab to={paths.global()} icon={LayoutGrid} label="Vue globale" current={pathname === '/'} />
         </li>

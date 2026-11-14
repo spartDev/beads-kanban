@@ -241,20 +241,38 @@ export interface IssueChronologyResponse {
   chronology: IssueChronology;
 }
 
-/** Un ticket en Dérive : son Cycle Time en cours dépasse son Cycle Time de référence. Durées en ms. */
-export interface IssueDrift {
+/** Le ticket qu'un Signal désigne. */
+export interface SignalTicket {
   id: string;
-  cycleTime: number;
-  reference: number;
-  /** D'où vient la référence : les Livraisons du même type, ou, faute d'assez, de tout le Projet. */
-  scope: 'type' | 'project';
+  title: string;
+  type: string;
+  priority: number;
 }
 
-/** `GET /api/projects/:projectId/drifts` */
-export interface DriftsResponse {
-  /** L'instant où les Dérives ont été évaluées. */
+/**
+ * Un Signal : une situation en cours qui mérite d'être regardée maintenant (voir CONTEXT.md). Durées en ms, instants en ISO. `project` est l'identifiant
+ * du Projet.
+ */
+export type ApiSignal =
+  /** Dérive : le Cycle Time en cours dépasse le Cycle Time de référence, celui des Livraisons du même type ou, faute d'assez, du Projet. */
+  | { kind: 'drift'; project: string; ticket: SignalTicket; cycleTime: number; reference: number; scope: 'type' | 'project' }
+  /** Blocage long : la phase en cours de travail d'un Blocage, depuis `since`. */
+  | { kind: 'longBlockage'; project: string; ticket: SignalTicket; since: string; duration: number }
+  /** Prêt qui stagne : Prêt depuis `since`, d'un Âge calendaire `age`. */
+  | { kind: 'stagnantReady'; project: string; ticket: SignalTicket; since: string; age: number }
+  /** WIP inhabituel : `wip` dépasse `threshold`, le P85 du WIP quotidien des 90 derniers jours. */
+  | { kind: 'unusualWip'; project: string; wip: number; threshold: number };
+
+/** `GET /api/signals` : les Signaux des Projets demandés (`project`, répétable), ou de tous (Vue globale). */
+export interface SignalsResponse {
   generatedAt: string;
-  drifts: IssueDrift[];
+  /** Le fuseau qui a compté l'Âge calendaire des Prêts ; `timeZoneHonoured` : c'est celui que la requête demandait. */
+  timeZone: string;
+  timeZoneHonoured: boolean;
+  projects: Array<{ id: string; name: string }>;
+  unreadable: MetricsUnreadableProject[];
+  /** Groupés par sorte (Dérive, Blocage long, Prêt qui stagne, WIP inhabituel), le plus en excès d'abord. */
+  signals: ApiSignal[];
 }
 
 /** Corps des réponses d'erreur (même forme que celles de Fastify). */

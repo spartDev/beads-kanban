@@ -55,8 +55,8 @@ function services() {
       calls.push('metrics');
       throw new ProjectNotFoundError('nope');
     },
-    drifts: async () => {
-      calls.push('drifts');
+    signals: async () => {
+      calls.push('signals');
       throw new ProjectNotFoundError('nope');
     },
   };

@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { queryKeys } from '../data/hooks';
-import type { Issue } from '../data/types';
+import type { ApiSignal, Issue } from '../data/types';
 import { withAsyncTimeout } from '../test/asyncTimeout';
 import { issue, projectsResponse } from '../test/fixtures';
 import { httpFailure, renderApp, stubApi } from '../test/render';
@@ -1549,31 +1549,51 @@ describe('les états de la page', () => {
   });
 });
 
-describe('la Dérive', () => {
-  const DRIFTING = { id: 'bdesk-c1', cycleTime: 12 * DAY, reference: 8.65 * DAY, scope: 'type' as const };
+describe('les Signaux sur les cartes', () => {
+  const ticketOf = (id: string) => ({ id, title: `Titre de ${id}`, type: 'task', priority: 2 });
+  const drift = (id: string): ApiSignal => ({ kind: 'drift', project: 'bdesk', ticket: ticketOf(id), cycleTime: 12 * DAY, reference: 8.65 * DAY, scope: 'type' });
+  const longBlockage = (id: string): ApiSignal => ({
+    kind: 'longBlockage',
+    project: 'bdesk',
+    ticket: ticketOf(id),
+    since: ago(4),
+    duration: 4 * DAY,
+  });
   const card = (id: string) => document.querySelector<HTMLElement>(`[data-card-id="${id}"]`) as HTMLElement;
+  const stubSignals = (signals: ApiSignal[] | ReturnType<typeof httpFailure>) =>
+    stubApi({ projects: projectsResponse, issues: { bdesk: TICKETS }, signals: { bdesk: signals } });
 
-  it('marque la carte d’un ticket en cours qui dérive, avec son Cycle Time en cours et sa référence', async () => {
-    stubApi({ projects: projectsResponse, issues: { bdesk: TICKETS }, drifts: { bdesk: [DRIFTING] } });
+  it('marque la carte d’un ticket en Dérive, avec son Cycle Time en cours et sa référence', async () => {
+    stubSignals([drift('bdesk-c1')]);
     await openBoard();
 
     const badge = await within(card('bdesk-c1')).findByText('Dérive');
-    expect(badge.closest('[data-drift]')?.textContent?.replace(/\s/g, ' ')).toMatch(
+    expect(badge.closest('[data-signal]')?.textContent?.replace(/\s/g, ' ')).toMatch(
       /Dérive.*12 j de Cycle Time en cours, au-delà de 8,7 j, le P85 des Livraisons du même type/,
     );
     expect(within(card('bdesk-c2')).queryByText('Dérive')).toBeNull();
   });
 
-  it('ne marque pas une carte qui n’est plus en travail, même si la réponse des Dérives est en retard sur la liste', async () => {
-    stubApi({ projects: projectsResponse, issues: { bdesk: TICKETS }, drifts: { bdesk: [{ ...DRIFTING, id: 'bdesk-a2' }] } });
+  it('marque la carte d’un ticket en Blocage long, avec depuis combien de temps', async () => {
+    stubSignals([longBlockage('bdesk-d2')]);
     await openBoard();
-    await waitFor(() => expect(within(card('bdesk-c1')).queryByText('Dérive')).toBeNull());
 
-    expect(within(card('bdesk-a2')).queryByText('Dérive')).toBeNull();
+    const badge = await within(card('bdesk-d2')).findByText('Blocage long');
+    expect(badge.closest('[data-signal]')?.textContent?.replace(/\s/g, ' ')).toMatch(/Blocage long.*bloqué en cours de travail depuis 4 j/);
   });
 
-  it('laisse le tableau intact quand les Dérives sont illisibles', async () => {
-    stubApi({ projects: projectsResponse, issues: { bdesk: TICKETS }, drifts: { bdesk: httpFailure(503, { message: 'Projet illisible' }) } });
+  it('ne marque pas une carte qui n’est plus en travail, même si la réponse des Signaux est en retard sur la liste', async () => {
+    const fetchMock = stubSignals([drift('bdesk-a2'), longBlockage('bdesk-a1')]);
+    await openBoard();
+    await waitFor(() => expect(fetchMock.mock.calls.map(([input]) => String(input)).some((url) => url.startsWith('/api/signals'))).toBe(true));
+    await act(async () => {});
+
+    expect(within(card('bdesk-a2')).queryByText('Dérive')).toBeNull();
+    expect(within(card('bdesk-a1')).queryByText('Blocage long')).toBeNull();
+  });
+
+  it('laisse le tableau intact quand les Signaux sont illisibles', async () => {
+    stubSignals(httpFailure(503, { message: 'Projet illisible' }));
     await openBoard();
 
     expect(titlesIn(column('En cours'))).toEqual(['Barre latérale', 'Revue automatique']);

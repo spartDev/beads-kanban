@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { queryKeys } from '../data/hooks';
+import type { ApiSignal } from '../data/types';
 import { withAsyncTimeout } from '../test/asyncTimeout';
 import { bdeskIssues, chronology, issue, issueDetail, mpmIssues, projectsResponse } from '../test/fixtures';
 import { failRequests, httpFailure, renderApp, stubApi } from '../test/render';
@@ -1679,7 +1680,14 @@ describe('la chronologie : un rafraîchissement qui renvoie 404', () => {
 });
 
 describe('la Dérive dans le Panneau', () => {
-  const drift = { id: 'bdesk-38k.6', cycleTime: 12 * DAY, reference: 8.65 * DAY, scope: 'project' as const };
+  const drift: ApiSignal = {
+    kind: 'drift',
+    project: 'bdesk',
+    ticket: { id: 'bdesk-38k.6', title: 'Shell UI', type: 'feature', priority: 1 },
+    cycleTime: 12 * DAY,
+    reference: 8.65 * DAY,
+    scope: 'project',
+  };
 
   it('dit, dans la Chronologie, que le ticket dérive : son Cycle Time en cours et la référence qu’il dépasse', async () => {
     const working = chronology({
@@ -1692,7 +1700,7 @@ describe('la Dérive dans le Panneau', () => {
       projects: projectsResponse,
       issues: { bdesk: bdeskIssues, mpm: mpmIssues },
       chronologies: { 'bdesk/bdesk-38k.6': working },
-      drifts: { bdesk: [drift] },
+      signals: { bdesk: [drift] },
     });
     renderApp('/p/bdesk/t/bdesk-38k.6');
 

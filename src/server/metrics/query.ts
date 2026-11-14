@@ -1,7 +1,7 @@
 import type { PeriodSpec } from '../../domain/calendar';
 import { canonicalTimeZone } from '../../domain/time-zone';
 import type { MetricsRangePreset } from '../../shared/api';
-import type { MetricsQuery } from './service';
+import type { MetricsQuery, SignalsQuery } from './service';
 
 /** La requête n'a pas la forme attendue : l'API répond 400 avec ce message. */
 export class InvalidMetricsQueryError extends Error {
@@ -51,6 +51,23 @@ export function parseMetricsQuery(query: Record<string, unknown>): MetricsQuery 
   const timeZone = canonicalTimeZone(requestedZone);
 
   return { projects: [...new Set(projects)], period: periodOf(range, from, to), ...(timeZone === undefined ? {} : { timeZone }) };
+}
+
+const SIGNALS_PARAMETERS = ['project', 'timeZone'];
+
+/** Lit les paramètres de `GET /api/signals` : `project` (répétable ; aucun pour la Vue globale) et `timeZone`, comme `parseMetricsQuery`. */
+export function parseSignalsQuery(query: Record<string, unknown>): SignalsQuery {
+  for (const name of Object.keys(query)) {
+    if (!SIGNALS_PARAMETERS.includes(name)) {
+      throw new InvalidMetricsQueryError(`Paramètre inconnu : « ${name} » (attendus : ${SIGNALS_PARAMETERS.join(', ')}).`);
+    }
+  }
+  const projects = values(query, 'project');
+  if (projects.some((id) => id.trim() === '')) throw new InvalidMetricsQueryError('« project » ne peut pas être vide.');
+  const requestedZone = single(query, 'timeZone');
+  if (requestedZone === '') throw new InvalidMetricsQueryError('« timeZone » ne peut pas être vide.');
+  const timeZone = canonicalTimeZone(requestedZone);
+  return { projects: [...new Set(projects)], ...(timeZone === undefined ? {} : { timeZone }) };
 }
 
 function periodOf(range: string | undefined, from: string | undefined, to: string | undefined): PeriodSpec {

@@ -1,11 +1,11 @@
 import { CircleAlert, RefreshCw } from 'lucide-react';
 import { Fragment, useId, type MouseEvent } from 'react';
 import { ApiError, describeError } from '../data/client';
-import { useChronology, useDrifts } from '../data/hooks';
+import { useChronology, useTicketSignals } from '../data/hooks';
 import type { IssueBlockage, IssueBlockagePhase, IssueBlockagePhaseKind, IssueChronology, IssueTransition } from '../data/types';
 import { statusLabel } from '../design/issue-palette';
 import { cx } from '../lib/cx';
-import { driftSentence, shownDrift } from '../lib/drift';
+import { shownSignals, signalSentence } from '../lib/signals';
 import { browserTimeZone, formatInstant } from '../lib/instant';
 import { useNow } from '../lib/useNow';
 import { formatDuration, spokenDuration } from '../metrics/format';
@@ -114,16 +114,24 @@ function Unavailable({ error, onRetry }: { error: unknown; onRetry: (event: Mous
 }
 
 /**
- * La Dérive du ticket, s'il en est en une : la même que sur sa carte, tirée des Dérives du Projet (une requête que le tableau a souvent déjà faite). Rien
- * tant qu'elles manquent ou qu'elles sont illisibles : la Chronologie se suffit sans elles.
+ * Les Signaux du ticket (Dérive, Blocage long) : les mêmes que sur sa carte, tirés des Signaux du Projet (une requête que le tableau a souvent déjà faite).
+ * Rien tant qu'ils manquent ou qu'ils sont illisibles : la Chronologie se suffit sans eux.
  */
-function DriftNote({ projectId, issueId, status }: { projectId: string; issueId: string; status: string | undefined }) {
-  const drift = shownDrift(status ?? '', useDrifts(projectId).data?.get(issueId));
-  if (!drift) return null;
+function SignalNotes({ projectId, issueId, status }: { projectId: string; issueId: string; status: string | undefined }) {
+  const { drift, longBlockage } = shownSignals(status ?? '', useTicketSignals(projectId).data?.get(issueId));
   return (
-    <p className="text-ink-2">
-      <span className="font-medium text-danger">Dérive</span> : {driftSentence(drift)}.
-    </p>
+    <>
+      {drift ? (
+        <p className="text-ink-2">
+          <span className="font-medium text-danger">Dérive</span> : {signalSentence(drift)}.
+        </p>
+      ) : null}
+      {longBlockage ? (
+        <p className="text-ink-2">
+          <span className="font-medium text-danger">Blocage long</span> : {signalSentence(longBlockage)}.
+        </p>
+      ) : null}
+    </>
   );
 }
 
@@ -159,7 +167,7 @@ function ChronologyBody({ projectId, issueId, chronology }: { projectId: string;
 
       <div className="flex flex-col gap-0.5">
         <p className="text-ink-2">{outcomeSentence(chronology)}</p>
-        <DriftNote projectId={projectId} issueId={issueId} status={transitions.at(-1)?.status} />
+        <SignalNotes projectId={projectId} issueId={issueId} status={transitions.at(-1)?.status} />
         <p className="text-xs text-ink-3">Heures du fuseau {browserTimeZone()}</p>
       </div>
 

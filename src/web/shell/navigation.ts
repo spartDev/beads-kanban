@@ -1,4 +1,4 @@
-import { ChartNoAxesColumn, Columns3, Layers, type LucideIcon } from 'lucide-react';
+import { ChartNoAxesColumn, Columns3, Eye, Layers, type LucideIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { useLocation } from 'react-router';
 import { useProjects } from '../data/hooks';
@@ -18,6 +18,7 @@ export interface SectionDefinition {
 /** Les onglets d'un Projet, dans l'ordre d'affichage. */
 export const SECTIONS: readonly SectionDefinition[] = [
   { id: 'kanban', label: 'Kanban', icon: Columns3, shortcut: 'g k' },
+  { id: 'signals', label: 'À regarder', icon: Eye, shortcut: 'g a' },
   { id: 'epics', label: 'Epics', icon: Layers, shortcut: 'g e' },
   { id: 'metrics', label: 'Métriques', icon: ChartNoAxesColumn, shortcut: 'g m' },
 ];
