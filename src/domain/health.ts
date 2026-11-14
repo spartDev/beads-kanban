@@ -10,6 +10,7 @@ import type {
 } from '../shared/api';
 import { calendarElapsed, resolvePeriod } from './calendar';
 import { lruMemo } from './lru';
+import { reworkIn } from './rework';
 import { durationStats, type MetricsInput, type MetricsOptions, type TrackedTicket, trend } from './metrics';
 import { MAX_ZONE_FORMATTERS } from './time-zone';
 
@@ -56,6 +57,7 @@ export function computeHealth(projects: MetricsInput[], { period, now, timeZone 
   return {
     efficiency: efficiencyOf(entries, elapsed, compared),
     reopening: reopeningOf(entries, elapsed, compared),
+    rework: reworkIn(entries, elapsed),
     abandonment: abandonmentOf(entries, elapsed, compared),
     leadTimeBreakdown: leadTimeBreakdownOf(entries, elapsed),
     readyAges: readyAgesOf(entries, resolved.asOf, resolved.previousAsOf, timeZone),

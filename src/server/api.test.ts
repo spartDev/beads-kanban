@@ -418,7 +418,9 @@ describe('API des métriques', () => {
       ].sort(),
     );
     // Santé du flux (bdesk-38k.13) : un ajout au contrat, les clés précédentes sont inchangées.
-    expect(Object.keys(body.health).sort()).toEqual(['abandonment', 'activity', 'efficiency', 'leadTimeBreakdown', 'readyAges', 'reopening']);
+    expect(Object.keys(body.health).sort()).toEqual(['abandonment', 'activity', 'efficiency', 'leadTimeBreakdown', 'readyAges', 'reopening', 'rework']);
+    // Retravail (bdesk-l77.3) : un ajout aussi, la liste des tickets qui reviennent.
+    expect(body.health.rework).toEqual({ tickets: [] });
   });
 
   it('transmet les Projets (paramètre répété) et la période au service', async () => {

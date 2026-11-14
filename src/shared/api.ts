@@ -603,6 +603,28 @@ export interface MetricsReopening {
   trend: MetricsTrend;
 }
 
+/** Un ticket en Retravail sur la période, avec ce qui l'y met : chaque cause comptée ou nommée. */
+export interface MetricsReworkTicket {
+  id: string;
+  title: string;
+  type: string;
+  priority: number;
+  project: string;
+  /** Réouvertures de la période : Transitions d'un statut fermé vers un statut non fermé. */
+  reopenings: number;
+  /** Prises rendues de la période : Transitions d'un statut de travail vers ouvert. */
+  returns: number;
+  /** Les Bugs d'origine de cette Livraison créés sur la période, dans l'ordre de leur création. */
+  originBugs: string[];
+  /** L'instant du dernier de ces événements. */
+  lastAt: string;
+}
+
+/** Le Retravail de la période : les tickets qui reviennent, du plus d'événements au moins, puis du plus récent au plus ancien. */
+export interface MetricsRework {
+  tickets: MetricsReworkTicket[];
+}
+
 /** Taux d'abandon : la part des Abandons parmi les tickets fermés de la période. */
 export interface MetricsAbandonment {
   /** Tickets fermés de la période : Livraisons et Abandons, datés de leur dernière clôture. */
@@ -690,6 +712,7 @@ export interface MetricsActivity {
 export interface MetricsHealth {
   efficiency: MetricsFlowEfficiency;
   reopening: MetricsReopening;
+  rework: MetricsRework;
   abandonment: MetricsAbandonment;
   leadTimeBreakdown: MetricsLeadTimeBreakdown;
   readyAges: MetricsReadyAges;

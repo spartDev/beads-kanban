@@ -74,7 +74,7 @@ describe('la page Métriques d’un Projet', () => {
     }
     expect(screen.getByRole('heading', { level: 2, name: 'Santé du flux' })).toBeTruthy();
     expect(screen.getByRole('heading', { level: 2, name: 'Analyse du flux' })).toBeTruthy();
-    for (const chart of ['Arrivées et Débit cumulés', 'Décomposition du Lead Time', 'Répartition par type', 'Carte d’activité', 'Prêts qui stagnent']) {
+    for (const chart of ['Arrivées et Débit cumulés', 'Décomposition du Lead Time', 'Répartition par type', 'Carte d’activité', 'Prêts qui stagnent', 'Retravail']) {
       expect(screen.getByRole('region', { name: chart })).toBeTruthy();
     }
     expect(screen.getByRole('heading', { level: 2, name: 'Découpage par type' })).toBeTruthy();

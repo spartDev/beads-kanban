@@ -25,6 +25,7 @@ import { MetricsSkeleton } from './MetricsSkeleton';
 import { AddressNotices, UnreadableProjects, ZoneNotice } from './Notices';
 import { parseMetricsParams, withDimension, withPeriod, type Dimension, type PeriodChoice, type Scope } from './params';
 import { ReadyAgePanel } from './ReadyAgeChart';
+import { ReworkPanel } from './ReworkPanel';
 import { SliceTable } from './SliceTable';
 import { describeSlices } from './slices';
 import { ThroughputPanel } from './ThroughputChart';
@@ -239,6 +240,9 @@ function Content({ data, by, ctx, projectHref }: { data: MetricsResponse; by: Di
                   timeZone={data.timeZone}
                   moment={comparison.running ? `à ${comparison.asOfTime}` : 'à la fin de la période'}
                 />
+              </div>
+              <div className="min-w-0 @min-[56rem]:col-span-2">
+                <ReworkPanel rework={data.health.rework} ctx={ctx} showProject={showProject} />
               </div>
             </div>
           </section>

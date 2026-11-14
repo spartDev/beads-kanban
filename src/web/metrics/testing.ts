@@ -183,7 +183,7 @@ const sumOf = (cells: number[][]) => cells.flat().reduce((total, count) => total
 
 /**
  * La santé du flux de la Vue globale sur 7 jours : 15 Livraisons démarrées (31 j de Cycle Time dont 2,5 j de Blocage), 21
- * clôtures dont 2 suivies d'une Réouverture, 20 tickets fermés dont 2 Abandons, 6 Livraisons qui ont attendu une
+ * clôtures dont 2 suivies d'une Réouverture (deux tickets en Retravail), 20 tickets fermés dont 2 Abandons, 6 Livraisons qui ont attendu une
  * dépendance, 5 Prêts dont 3 stagnent, 100 Transitions.
  */
 export function healthFixture(overrides: Partial<MetricsHealth> = {}): MetricsHealth {
@@ -192,6 +192,12 @@ export function healthFixture(overrides: Partial<MetricsHealth> = {}): MetricsHe
   return {
     efficiency: { n: 15, cycleTime: 31 * DAY, blockedTime: 2.5 * DAY, ratio, blockedDeliveries: 3, trend: trendOf(ratio, 0.97) },
     reopening: { closures: 21, reopened: 2, rate: 2 / 21, trend: trendOf(2 / 21, 0.04) },
+    rework: {
+      tickets: [
+        { id: 'bdesk-r1', title: 'Palette ⌘K', type: 'feature', priority: 1, project: 'bdesk', reopenings: 2, returns: 0, originBugs: ['bdesk-b9'], lastAt: '2026-10-22T14:00:00.000Z' },
+        { id: 'mpm-r2', title: 'Import des prompts', type: 'task', priority: 2, project: 'mpm', reopenings: 0, returns: 1, originBugs: [], lastAt: '2026-10-21T09:00:00.000Z' },
+      ],
+    },
     abandonment: { closed: 20, abandoned: 2, duplicates: 1, superseded: 1, rate: 0.1, trend: trendOf(0.1, 0.05) },
     leadTimeBreakdown: {
       deliveries: 18,
@@ -215,6 +221,7 @@ export function emptyHealthFixture(overrides: Partial<MetricsHealth> = {}): Metr
   return {
     efficiency: { n: 0, cycleTime: 0, blockedTime: 0, ratio: null, blockedDeliveries: 0, trend: noTrend },
     reopening: { closures: 0, reopened: 0, rate: null, trend: noTrend },
+    rework: { tickets: [] },
     abandonment: { closed: 0, abandoned: 0, duplicates: 0, superseded: 0, rate: null, trend: noTrend },
     leadTimeBreakdown: { deliveries: 0, total: 0, dependencyWait: 0, readyWait: 0, work: 0, blocked: 0, otherWait: 0, waited: 0, waits: { median: null, p85: null, n: 0 } },
     readyAges: { stagnantAfter: 14 * DAY, tickets: [], stagnant: 0, trend: trendOf(0, 0) },
