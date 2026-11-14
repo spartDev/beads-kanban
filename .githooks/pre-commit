@@ -1,0 +1,16 @@
+#!/bin/sh
+# Garde-fou local, volontairement léger : typecheck + lint (le build et les tests tournent en CI, voir .github/workflows/ci.yml).
+# Activé par `pnpm install` (script `prepare` de package.json : git config core.hooksPath .githooks).
+# Pour passer outre une fois : git commit --no-verify
+set -e
+
+# beads installe ses propres hooks dans .beads/hooks, et core.hooksPath y pointait avant celui-ci. Git n'active qu'UN dossier de hooks : sans ce relais,
+# le pre-commit de beads ne tournerait plus. Les quatre autres hooks de beads (post-checkout, post-merge, pre-push, prepare-commit-msg) sont relayés
+# de la même façon par les fichiers du même nom de ce dossier. Le hook de beads cherche `bd` lui-même et ne fait rien quand il manque.
+beads_hook="$(dirname "$0")/../.beads/hooks/pre-commit"
+if [ -x "$beads_hook" ]; then
+  "$beads_hook" "$@"
+fi
+
+pnpm -s typecheck
+pnpm -s lint

@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Lecture seule : la CI ne publie rien et n'écrit ni dans le dépôt ni dans les PR.
+permissions:
+  contents: read
+
+# Un nouveau push sur une branche annule son passage en cours ; main, lui, va toujours au bout (un verdict par commit).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  verify:
+    name: Typecheck, lint, build, tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Version de dolt épinglée = celle de `dolt version` sur la machine de développement. L'archive est la release officielle
+      # (https://github.com/dolthub/dolt/releases), celle que télécharge aussi son install.sh ; son empreinte SHA-256 est vérifiée avant usage.
+      # Pour monter de version : changer les deux lignes ensemble (empreinte : `gh release view v<version> -R dolthub/dolt --json assets`).
+      DOLT_VERSION: 2.5.0
+      DOLT_LINUX_AMD64_SHA256: 639b8042d1ea46ebf6b645a002fc787134dbe1dc02888cc51a51d1d3eb557c93
+    steps:
+      - uses: actions/checkout@v7
+
+      # pnpm avant Node : `cache: pnpm` de setup-node a besoin de pnpm dans le PATH.
+      # package.json n'a pas de champ `packageManager` : la version vient du lockfile (lockfileVersion 9.0, produit par pnpm 9 ou 10) et de la
+      # machine de développement (pnpm 10.0.0). Si `packageManager` est ajouté un jour à package.json, retirer `version` : l'action le lira seule.
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.0.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Le script `prepare` de package.json (git config core.hooksPath .githooks || true) tourne ici aussi : sans effet pour la CI, et sans risque
+      # d'échec (`|| true`).
+      - run: pnpm install --frozen-lockfile
+
+      # Les tests d'intégration exigent `dolt` dans le PATH ; sans lui ils sont SAUTÉS avec un avertissement (ni réussis, ni échoués) et la CI
+      # passerait au vert sans avoir lu une seule base. D'où cette installation, avec une version épinglée.
+      - name: Installer dolt
+        run: |
+          set -euo pipefail
+          archive="dolt-linux-amd64.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "$RUNNER_TEMP/$archive" \
+            "https://github.com/dolthub/dolt/releases/download/v${DOLT_VERSION}/${archive}"
+          echo "${DOLT_LINUX_AMD64_SHA256}  $RUNNER_TEMP/$archive" | sha256sum --check -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP"
+          mkdir -p "$HOME/.local/bin"
+          install -m 0755 "$RUNNER_TEMP/dolt-linux-amd64/bin/dolt" "$HOME/.local/bin/dolt"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/dolt" version
+
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm build
+
+      # `bd` n'est volontairement PAS installé : il est facultatif. Seuls bd.integration.test.ts et live.integration.test.ts l'exigent ; ils sont
+      # sautés (avec un avertissement `ATTENTION : « bd » est introuvable…`) quand il manque. Les lectures Dolt, elles, sont bien exécutées.
+      # `--maxWorkers=3` SANS `--` : pnpm transmet le `--` au script, et vitest ignore alors tout ce qui le suit (le plafond ne s'appliquerait pas).
+      - run: pnpm test --maxWorkers=3
