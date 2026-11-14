@@ -1,0 +1,5 @@
+#!/bin/sh
+# Relais vers le hook du même nom de beads (.beads/hooks), que core.hooksPath=.githooks ferait taire sans lui. Voir .githooks/pre-commit.
+hook="$(dirname "$0")/../.beads/hooks/$(basename "$0")"
+[ -x "$hook" ] || exit 0
+exec "$hook" "$@"

@@ -1,6 +1,16 @@
 @import 'tailwindcss';
 
 /*
+ * Tailwind lit tout `src/web` pour y trouver des noms de classes, tests compris : un mot de test qui est le nom d'une classe (même dans un commentaire, une chaîne ou une
+ * variante arbitraire) en ferait naître la règle dans la feuille de style de production (`!flex`, `text-wrap`, `[--m:…]` l'ont déjà fait). Les fichiers qui ne servent qu'aux tests
+ * n'en écrivent aucune pour l'interface : on ne les lui fait plus lire. Les tests qui compilent cette feuille (src/web/test/compiledCss.ts) donnent leurs classes à
+ * `compile().build()` eux-mêmes et ne scannent rien : ils n'en sont pas touchés.
+ */
+@source not "./**/*.test.{ts,tsx}";
+@source not "./test";
+@source not "./metrics/testing.ts";
+
+/*
  * Thèmes : `data-theme` est posé sur <html> avant le premier rendu (script de index.html),
  * puis tenu à jour par ThemeProvider. Sans attribut : thème clair.
  * Les composants n'utilisent que des tokens sémantiques (bg-panel, text-ink-2, border-line…) :

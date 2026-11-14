@@ -29,7 +29,7 @@ const FIXED_FOLDER_FORMS = [
 ];
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules', '.beads'] },
+  { ignores: ['dist', 'node_modules', '.beads', '.claude/worktrees', '.sandbox', '.gates'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

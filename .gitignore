@@ -7,3 +7,8 @@
 *.gate.lock*
 node_modules/
 dist/
+
+# Bacs à sable et gates des sous-agents (scripts/sandbox.sh, scripts/gates.sh)
+.sandbox/
+.gates/
+dist.sha256

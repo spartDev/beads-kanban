@@ -93,3 +93,8 @@ _Add a brief overview of your project architecture_
 ## Conventions & Patterns
 
 _Add your project-specific conventions here_
+
+## Sous-agents
+
+- Copie isolée : `scripts/sandbox.sh <commit> <dir>` puis `source <dir>/env.sh` (`bd` hors du PATH) ; gates : `scripts/gates.sh [dir]`.
+- Le hook `.claude/hooks/guard-bash.sh` refuse `find` sur `/`, `~`, `/Users/<nom>`, `pkill`, `pgrep -f` et `rm -rf` sur `/` ou `~` : tuez par PID noté.
