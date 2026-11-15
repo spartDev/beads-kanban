@@ -15,7 +15,7 @@ export interface SqlServer {
 }
 
 /**
- * Le superviseur : un petit processus Node qui lance `dolt sql-server` sur le port de son premier argument et ne lui survit pas. Il l'arrête (SIGINT,
+ * Le superviseur : un petit processus Node qui lance `dolt sql-server` sur le port de son premier argument, avec les options qui le suivent, et ne lui survit pas. Il l'arrête (SIGINT,
  * puis SIGKILL au bout de 20 s) quand son entrée standard se ferme, ou qu'il reçoit un signal d'arrêt, et sort dès que le serveur sort. L'entrée se
  * ferme quand `stop()` le demande, mais aussi quand le processus qui l'a lancé disparaît, quelle qu'en soit la cause : le noyau en ferme alors le tube.
  * C'est le cas que ni `process.on('exit')` ni un signal ne couvrent, un SIGKILL du worker de test (manque de mémoire, `kill -9`, délai que le lanceur
@@ -26,7 +26,7 @@ export interface SqlServer {
  */
 const SUPERVISOR = `
 const { spawn } = require('node:child_process');
-const server = spawn('dolt', ['sql-server', '--host', '127.0.0.1', '--port', process.argv[1], '--loglevel', 'error'], { stdio: ['ignore', 2, 'inherit'] });
+const server = spawn('dolt', ['sql-server', '--host', '127.0.0.1', '--port', process.argv[1], '--loglevel', 'error', ...process.argv.slice(2)], { stdio: ['ignore', 2, 'inherit'] });
 let stopping = false;
 const stop = () => {
   if (stopping) return;
@@ -115,11 +115,22 @@ export function retryableStartFailure(output: string): boolean {
 export async function startSqlServer(
   env: NodeJS.ProcessEnv,
   dir: string,
-  { timeoutMs = 90_000, databaseDir = dir, choosePort = freePort }: { timeoutMs?: number; databaseDir?: string; choosePort?: () => Promise<number> } = {},
+  {
+    timeoutMs = 90_000,
+    databaseDir = dir,
+    choosePort = freePort,
+    serverArgs = [],
+  }: {
+    timeoutMs?: number;
+    databaseDir?: string;
+    choosePort?: () => Promise<number>;
+    /** Des options de plus pour `dolt sql-server` (`--event-scheduler=OFF`, par exemple). */
+    serverArgs?: readonly string[];
+  } = {},
 ): Promise<SqlServer> {
   for (let attempt = 1; ; attempt++) {
     const port = await choosePort();
-    const child = spawn(process.execPath, ['-e', SUPERVISOR, String(port)], { cwd: dir, env, stdio: ['pipe', 'ignore', 'pipe'] });
+    const child = spawn(process.execPath, ['-e', SUPERVISOR, String(port), ...serverArgs], { cwd: dir, env, stdio: ['pipe', 'ignore', 'pipe'] });
     child.stdin.on('error', () => undefined); // le superviseur est déjà parti : rien à lui dire
     let stderr = '';
     child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
