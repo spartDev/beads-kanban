@@ -1,5 +1,5 @@
 import { request } from 'node:http';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -175,7 +175,7 @@ describe('la valeur de l’en-tête, et où elle est posée (bdesk-38k.67)', () 
     expect(res.headers['content-security-policy']).toBe(POLICY);
   });
 
-  it.each(['//', '/INDEX.HTML', '/index.html?x=1', '/p/x/kanban/', '/./', '/%2e/', '/assets/../index.html', '/assets/%2e%2e/index.html'])(
+  it.each(['//', '/index.html?x=1', '/p/x/kanban/', '/./', '/%2e/', '/assets/../index.html', '/assets/%2e%2e/index.html'])(
     'le pose aussi sur le document servi par une adresse écrite autrement : %s (relecture de bdesk-38k.67, R5)',
     async (url) => {
       const res = await get(url);
@@ -185,6 +185,29 @@ describe('la valeur de l’en-tête, et où elle est posée (bdesk-38k.67)', () 
       expect(res.headers['content-security-policy'], url).toBe(POLICY);
     },
   );
+});
+
+/**
+ * `/INDEX.HTML` ne désigne le document que sur un système de fichiers insensible à la casse (APFS par défaut, sur la machine de développement) : `@fastify/static` le sert alors, et il doit porter
+ * l'en-tête comme les autres. Sur un système sensible à la casse (ext4, celui de la CI), aucun fichier ne porte ce nom et l'adresse a une extension : ce n'est pas une route de l'app, c'est un 404,
+ * et aucun document ne part. Le test demande au dossier de l'interface lequel des deux il est, plutôt que de supposer celui de la machine.
+ */
+describe('le document servi sous une autre casse : /INDEX.HTML (relecture de bdesk-38k.67, R5)', () => {
+  it('porte l’en-tête quand le système de fichiers le sert, et n’est pas servi du tout sinon', async () => {
+    const webRoot = webRootWithAssets();
+    const caseInsensitive = existsSync(join(webRoot, 'INDEX.HTML'));
+
+    const res = await buildServer({ config, webRoot }).inject({ method: 'GET', url: '/INDEX.HTML', headers: FRAMED });
+
+    if (caseInsensitive) {
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toContain('<title>beads-desktop</title>');
+      expect(res.headers['content-security-policy']).toBe(POLICY);
+    } else {
+      expect(res.statusCode).toBe(404);
+      expect(res.body).not.toContain('<title>beads-desktop</title>');
+    }
+  });
 });
 
 // En développement (`pnpm dev`), Vite sert la page (le serveur de `--dev` n'a pas d'interface). Son `server.headers` n'est pas appliqué à la 304 d'une page revalidée (relecture de

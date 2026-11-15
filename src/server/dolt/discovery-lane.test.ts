@@ -36,7 +36,7 @@ function peak(log: string): number {
 /** Les requêtes qui contiennent « slow » durent ; les autres sont immédiates. Chaque processus note son début et sa fin. */
 const slowDolt = (seconds: string) => {
   const fake = fakeDolt(
-    `log="$(dirname "$0")/events"\nq="\${5#start transaction read only; }"\necho "start $q" >> "$log"\ncase "$q" in *slow*) sleep ${seconds};; esac\necho "end $q" >> "$log"\necho '{"rows": []}'`,
+    `log="$(dirname "$0")/events"\nq="\${q#start transaction read only; }"\necho "start $q" >> "$log"\ncase "$q" in *slow*) sleep ${seconds};; esac\necho "end $q" >> "$log"\necho '{"rows": []}'`,
   );
   return { ...fake, events: () => lines(join(fake.dir, 'events')) };
 };

@@ -21,7 +21,7 @@ import { withStoredSqlCheck } from './stored-sql';
  *   qc  `dolt_query_catalog` : une requête enregistrée, que seul `dolt sql -x <nom>` lance
  *   pr  une procédure stockée, que seul `call` lance (et le garde de lecture seule refuse `call`)
  *   tg  un déclencheur, qui ne part que d'une écriture
- *   ev  un événement, que le planificateur lance : la lecture de l'app ne l'a pas vu partir (voir plus bas)
+ *   ev  un événement : `dolt sql` le lance une fois, à sa création ; un serveur, de son propre planificateur (arrêté ici, voir plus bas). Les lectures de l'app ne le lancent pas
  *   ts  `dolt_tests` : une requête de test, que seule `dolt_test_run` lance
  *   df  une valeur par défaut calculée, évaluée à l'écriture : pas exécutée à la lecture, mais refusée quand même depuis la liste fermée du round 3 (B-FI) — `(json_extract(…))` n'est
  *       pas la forme exacte, `(json_object())`, qu'elle admet pour un défaut entre parenthèses
@@ -55,6 +55,8 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)('m
   const created = (name: Scenario) => readdirSync(outDir(name)).filter((file) => file === OUT(name));
   const run = (name: Scenario, sql: string): string => dolt(env, dbOf(name), 'sql', '-q', sql);
   const rows = (name: Scenario, sql: string): string => dolt(env, dbOf(name), 'sql', '-r', 'csv', '-q', sql).trim();
+  /** Les lignes que l'événement de `ev` a écrites. */
+  const evCount = (): number => Number(rows('ev', 'select count(*) as n from evlog').split('\n')[1]);
   const clear = (name: Scenario) => {
     for (const file of created(name)) rmSync(join(outDir(name), file));
   };
@@ -110,7 +112,10 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)('m
       setup[name](beadsLikeDatabase(env, dbOf(name)), target(name));
       await new Promise((resolve) => setImmediate(resolve)); // rendre la main entre deux bases (voir `stored-sql.integration.test.ts`)
     }
-    if (mode === 'server') server = await startSqlServer(env, folder, { databaseDir: dbOf('ba') });
+    // Le planificateur du serveur est arrêté : il lance les événements de lui-même, quoi que l'app lise, et pas de la même façon partout (mesuré avec Dolt 2.5.0 : toutes les
+    // 30 secondes depuis le démarrage du serveur sous Linux, une fois au démarrage sous macOS). Laissé en marche, il écrivait dans `evlog` pendant les lectures de `ev` quand le
+    // fichier durait plus de 30 secondes (une machine chargée, la CI) : c'est le serveur de l'utilisateur qui exécute ses événements, pas les lectures de l'app, que ce test mesure.
+    if (mode === 'server') server = await startSqlServer(env, folder, { databaseDir: dbOf('ba'), serverArgs: ['--event-scheduler=OFF'] });
   }, 600_000);
 
   afterAll(async () => {
@@ -139,10 +144,10 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)('m
       clear(name);
     });
 
-    it('ev : l’événement part une fois, à sa création, puis le planificateur ne le relance ni pendant une lecture de plusieurs secondes ni pendant que le serveur tourne', () => {
-      rows('ev', 'select sleep(3)'); // un processus qui vit trois secondes (derrière un serveur : le serveur vit)
+    it('ev : l’événement part une fois, à sa création, puis rien ne le relance pendant une lecture de plusieurs secondes, derrière un serveur ou non', () => {
+      rows('ev', 'select sleep(3)'); // un processus qui vit trois secondes (derrière un serveur : le serveur vit, son planificateur arrêté)
 
-      expect(rows('ev', 'select count(*) as n from evlog')).toBe('n\n0');
+      expect(evCount()).toBe(0);
       expect(rows('ev', 'select count(*) as n from information_schema.events')).toBe('n\n1'); // l'événement est bien là
     });
 
@@ -200,7 +205,7 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)('m
       for (const read of Object.values(reads(checked('ev')))) await read();
       await new Promise((resolve) => setTimeout(resolve, 2500)); // plus que l'intervalle de l'événement
 
-      expect(rows('ev', 'select count(*) as n from evlog')).toBe('n\n0');
+      expect(evCount()).toBe(0);
     });
 
     it('dolt_ignore, même quand ses motifs couvrent tout, ne change rien à ce que l’app lit : ig et ba rendent les mêmes tickets (les dates de création, elles, sont celles de chaque base)', async () => {

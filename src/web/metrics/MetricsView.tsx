@@ -26,6 +26,7 @@ import { MetricsSkeleton } from './MetricsSkeleton';
 import { AddressNotices, UnreadableProjects, ZoneNotice } from './Notices';
 import { parseMetricsParams, withDimension, withPeriod, type Dimension, type PeriodChoice, type Scope } from './params';
 import { ReadyAgePanel } from './ReadyAgeChart';
+import { CopyRetrospectiveButton, RetrospectivePreview, useRetrospective } from './RetrospectiveReport';
 import { ReworkPanel } from './ReworkPanel';
 import { SliceTable } from './SliceTable';
 import { describeSlices } from './slices';
@@ -97,6 +98,13 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
   // l'enveloppe des chiffres, par Projet ou Vue globale : celle d'un autre Projet ne vaut pas pour celui-ci.
   const place = useKeptPlace<HTMLDivElement>(!data && !query.isError, scope.kind === 'project' ? scope.project.id : '*');
   const ctx = useSeriesContext(data?.projects ?? [], projects.data?.projects);
+  // Le rapport de rétrospective (bdesk-3yu) : la période affichée, telle que la page la montre, et les Signaux du moment. Pas pendant qu'une autre période se calcule : les
+  // chiffres gardés sont ceux de la précédente, et le rapport porterait le titre de l'une avec les chiffres de l'autre.
+  const report = useRetrospective({
+    projectId: scope.kind === 'project' ? scope.project.id : undefined,
+    scopeName: scope.kind === 'project' ? scope.project.name : 'Vue globale',
+    metrics: query.isPlaceholderData ? undefined : data,
+  });
 
   const changePeriod = useCallback((next: PeriodChoice) => setSearchParams((current) => withPeriod(current, next), { replace: true }), [setSearchParams]);
   const changeDimension = useCallback((next: Dimension) => setSearchParams((current) => withDimension(current, next, kind), { replace: true }), [setSearchParams, kind]);
@@ -123,7 +131,10 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
         onPeriodChange={changePeriod}
         onDimensionChange={changeDimension}
         onRefresh={() => void query.refetch()}
+        report={<CopyRetrospectiveButton build={report} disabled={!data || query.isPlaceholderData || data.projects.length === 0} />}
       />
+
+      {data && data.projects.length > 0 && !query.isPlaceholderData ? <RetrospectivePreview build={report} /> : null}
 
       {/* Un recalcul qui garde les chiffres à l'écran n'a pas d'autre signal pour un lecteur d'écran. */}
       <p aria-live="polite" className="sr-only">

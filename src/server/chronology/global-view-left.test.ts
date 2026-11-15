@@ -46,7 +46,7 @@ describe.skipIf(process.platform === 'win32')('Vue globale quittée à froid, pu
     // (`hist` pour l'historique, `list` pour la liste des tickets), puis dure 0,15 s : le nombre de lectures lancées ne dépend que de l'ordonnancement.
     const ticket = `{"id": "x-1", "title": "T", "issue_type": "task", "status": "open", "priority": 2, "created_at": "2026-10-01 10:00:00", "updated_at": "2026-10-01 10:00:00"}`;
     const body = [
-      `q="\${5#start transaction read only; }"`,
+      `q="\${q#start transaction read only; }"`,
       `log="$(dirname "$0")/log"`,
       `case "$q" in`,
       `  *issue_prefix*) printf '{}\\n\\n{"rows": [{"value": "x"}]}\\n'; exit 0;;`,

@@ -31,7 +31,7 @@ beforeEach(() => {
  */
 function slowTickets() {
   const body = [
-    `q="\${5#start transaction read only; }"`,
+    `q="\${q#start transaction read only; }"`,
     `case "$q" in`,
     `  *issue_prefix*) printf '{}\\n\\n{"rows": [{"value": "x"}]}\\n';;`,
     `  *"hashof('HEAD')"*) printf '{}\\n\\n{"rows": [{"head": "h1"}]}\\n';;`,
@@ -143,7 +143,7 @@ describe.skipIf(process.platform === 'win32')('rescan de nombreux Projets (bdesk
   /** Un faux dolt dont chaque lecture de préfixe dure 0,25 s et se note dans `prefixes` ; le HEAD répond aussitôt. */
   function slowPrefixes() {
     const body = [
-      `q="\${5#start transaction read only; }"`,
+      `q="\${q#start transaction read only; }"`,
       `case "$q" in`,
       `  *issue_prefix*) echo x >> "$(dirname "$0")/prefixes"; sleep 0.25; printf '{}\\n\\n{"rows": [{"value": "x"}]}\\n';;`,
       `  *"hashof('HEAD')"*) printf '{}\\n\\n{"rows": [{"head": "h1"}]}\\n';;`,

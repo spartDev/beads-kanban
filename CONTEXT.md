@@ -180,6 +180,10 @@ _Avoid_: rework, régression
 **Tendance longue**:
 Débit, Lead Time au 85ᵉ centile et Taux de Réouverture semaine par semaine sur les 12 dernières semaines du Fuseau de l'utilisateur, sans lissage. Une semaine de moins de 4 Livraisons ne suffit pas à un centile digne de foi.
 
+**Rapport de rétrospective**:
+Un résumé en markdown, à copier, de la période que montre la page Métriques : Débit, Lead Time, Taux de Réouverture et Taux d'échec avec leur évolution par rapport à la période précédente, la Tendance longue, le Retravail de la période et les Signaux en cours. Les Signaux disent le moment du rapport, pas la période.
+_Avoid_: export, bilan
+
 ## Relationships
 
 - Un **Projet** contient zéro ou plusieurs tickets
@@ -194,4 +198,5 @@ Débit, Lead Time au 85ᵉ centile et Taux de Réouverture semaine par semaine s
 - Une **Dérive** compare le **Cycle Time** en cours d'un ticket à son **Cycle Time de référence**
 - Les **Signaux** sont la **Dérive**, le **Prêt qui stagne**, le **Blocage long** et le **WIP inhabituel** ; le **Retravail** n'en est pas un
 - Le **Retravail** naît d'une **Réouverture**, d'une **Prise rendue** ou d'un **Bug d'origine**
+- Le **Rapport de rétrospective** réunit les indicateurs d'une période, sa **Tendance longue**, son **Retravail** et les **Signaux** en cours
 - Le **Panneau de ticket** montre la **Chronologie** du ticket : ses **Transitions**, ses **Blocages** et leurs phases, avec les durées des métriques
