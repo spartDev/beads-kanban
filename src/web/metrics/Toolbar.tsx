@@ -1,5 +1,5 @@
 import { RefreshCw } from 'lucide-react';
-import { useEffect, useId, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { cx } from '../lib/cx';
 import {
   checkRange,
@@ -67,6 +67,8 @@ export interface MetricsToolbarProps {
   onPeriodChange: (period: PeriodChoice) => void;
   onDimensionChange: (by: Dimension) => void;
   onRefresh: () => void;
+  /** Ce que la barre offre à côté d'« Actualiser » : le bouton qui copie le rapport de rétrospective. */
+  report?: ReactNode;
 }
 
 const BUSY_TEXT = 'Calcul en cours';
@@ -93,7 +95,7 @@ function ComputedAt({ computed, provisional }: { computed: { at: string; timeZon
 }
 
 /** Les réglages de la page : période, découpage, et le bouton qui recalcule (les métriques ne sont pas en direct). */
-export function MetricsToolbar({ scope, period, by, today, displayed, computed, provisional, fetching, onPeriodChange, onDimensionChange, onRefresh }: MetricsToolbarProps) {
+export function MetricsToolbar({ scope, period, by, today, displayed, computed, provisional, fetching, onPeriodChange, onDimensionChange, onRefresh, report }: MetricsToolbarProps) {
   const periodValue = period.kind === 'custom' ? 'custom' : period.range;
 
   const choosePeriod = (value: string) => {
@@ -120,6 +122,7 @@ export function MetricsToolbar({ scope, period, by, today, displayed, computed, 
         />
         <div className="ml-auto flex items-center gap-2 text-micro text-ink-3">
           {computed ? <ComputedAt computed={computed} provisional={provisional === true} /> : null}
+          {report}
           <button
             type="button"
             onClick={onRefresh}
