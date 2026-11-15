@@ -142,7 +142,7 @@ function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode
           placeholder={
             mode === 'projects' ? 'Changer de Projet' : 'Chercher un ticket, une Epic, un Projet ou une commande'
           }
-          className="h-12 min-w-0 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-ink-3"
+          className="h-12 min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-ink-3"
         />
         <ScopeChip mode={mode} everywhere={everywhere} project={currentProject} />
       </div>

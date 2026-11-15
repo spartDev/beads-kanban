@@ -42,7 +42,7 @@ export function GlobalPage() {
               </p>
             </Notice>
           ) : (
-            <ul className="divide-y divide-line overflow-hidden rounded-lg border border-line">
+            <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-panel">
               {projects.data.projects.map((project) => (
                 <li key={project.id}>
                   <ProjectRow project={project} />
@@ -62,7 +62,7 @@ export function GlobalPage() {
       </section>
 
       {projects.data && projects.data.ignored.length > 0 ? (
-        <details className="group rounded-lg border border-line">
+        <details className="group rounded-xl border border-line bg-panel">
           <summary className="flex cursor-default list-none items-center gap-2 px-4 py-3 font-medium text-ink-2 hover:text-ink [&::-webkit-details-marker]:hidden">
             <ChevronRight size={14} aria-hidden="true" className="text-ink-3 transition-transform group-open:rotate-90" />
             {projects.data.ignored.length} {projects.data.ignored.length > 1 ? 'dossiers ignorés' : 'dossier ignoré'}

@@ -1,5 +1,6 @@
-import '@fontsource-variable/geist-mono';
-import '@fontsource-variable/mona-sans/wdth.css';
+import '@fontsource-variable/atkinson-hyperlegible-mono';
+import '@fontsource-variable/atkinson-hyperlegible-next';
+import '@fontsource-variable/atkinson-hyperlegible-next/wght-italic.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';

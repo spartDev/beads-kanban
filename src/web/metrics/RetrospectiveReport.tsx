@@ -79,7 +79,7 @@ export function CopyRetrospectiveButton({ build, disabled }: { build: () => Prom
         onClick={() => void copy()}
         disabled={disabled || state === 'copying'}
         title="Copier le rapport de rétrospective de la période, en markdown"
-        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-well px-2.5 text-ui font-medium text-ink-2 transition-colors hover:text-ink disabled:opacity-60"
+        className="inline-flex h-9 items-center gap-2 rounded-xl border border-line bg-panel px-3 text-ui font-semibold text-ink transition-colors hover:border-line-strong disabled:opacity-60"
       >
         <Icon size={14} aria-hidden="true" className={state === 'failed' ? 'text-danger' : undefined} />
         {label}

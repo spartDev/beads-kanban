@@ -141,6 +141,10 @@ _Avoid_: ticket oublié, ticket périmé
 **Carte d'activité**:
 Nombre de Transitions d'une période selon le jour de la semaine (du lundi au dimanche) et l'heure, dans le fuseau de l'utilisateur. La création d'un ticket n'en est pas une : c'est une Arrivée.
 
+**Parcours d'un ticket**:
+Le dessin, en tête des métriques, de ce qui entre (les Arrivées), des trois états qu'un ticket traverse (Backlog, Prêt, En cours) et de ce qui sort (les Livraisons). C'est un fil : la longueur de chaque tronçon est la part du Lead Time cumulé qui s'y passe (celles de la Décomposition du Lead Time), le tube est vide là où le ticket attend et plein là où l'on y travaille. Le Lead Time y embrasse tout le fil, le Cycle Time le seul tronçon En cours.
+_Avoid_: pipeline, tunnel, funnel
+
 **Panneau de ticket**:
 Le détail d'un ticket, en lecture seule, ouvert depuis le kanban de son Projet. Il réunit les champs du ticket et sa Chronologie.
 _Avoid_: page de ticket
@@ -200,3 +204,4 @@ _Avoid_: export, bilan
 - Le **Retravail** naît d'une **Réouverture**, d'une **Prise rendue** ou d'un **Bug d'origine**
 - Le **Rapport de rétrospective** réunit les indicateurs d'une période, sa **Tendance longue**, son **Retravail** et les **Signaux** en cours
 - Le **Panneau de ticket** montre la **Chronologie** du ticket : ses **Transitions**, ses **Blocages** et leurs phases, avec les durées des métriques
+- Le **Parcours d'un ticket** dessine la **Décomposition du Lead Time** : l'**Attente de dépendance** est le tronçon Backlog, l'**Attente en Prêt** le tronçon Prêt, le travail et le **Blocage** le tronçon En cours

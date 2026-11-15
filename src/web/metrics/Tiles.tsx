@@ -85,11 +85,11 @@ export function Tile({
     <article
       aria-labelledby={titleId}
       data-indicative={indicative ? '' : undefined}
-      className={cx('flex min-w-0 flex-col gap-2 rounded-lg border p-3', indicative ? 'border-dashed border-line-strong bg-well' : 'border-line bg-panel', className)}
+      className={cx('flex min-w-0 flex-col gap-2 rounded-xl border p-4', indicative ? 'border-dashed border-line-strong bg-well' : 'border-line bg-panel', className)}
     >
       <header className="flex flex-wrap items-baseline justify-between gap-x-2">
         <span className="flex min-w-0 items-center gap-0.5">
-          <h3 id={titleId} className="min-w-0 text-ui font-medium text-ink-2">
+          <h3 id={titleId} className="min-w-0 text-ui font-bold text-ink">
             {title}
           </h3>
           {help ? <MetricHelp title={title} help={help} /> : null}
@@ -124,7 +124,7 @@ function MetricHelp({ title, help }: { title: string; help: string }) {
 export function Value({ children, caption, muted = false }: { children: ReactNode; caption?: ReactNode; muted?: boolean }) {
   return (
     <div className="flex flex-col">
-      <p data-value="" className={cx('tnum text-[26px] font-semibold leading-8 tracking-[-0.02em] wrap-anywhere', muted ? 'text-ink-3' : 'text-ink')}>
+      <p data-value="" className={cx('text-[1.875rem] font-extrabold leading-9 tracking-[-0.02em] wrap-anywhere', muted ? 'text-ink-3' : 'text-ink')}>
         {children}
       </p>
       {caption ? <p className="text-micro text-ink-3">{caption}</p> : null}
@@ -157,13 +157,13 @@ export function Trend({ trend, measure, comparison, label, hasValue = true }: { 
         tabIndex={0}
         data-trend={view.direction}
         data-tone={view.tone}
-        className={cx('inline-flex w-fit max-w-full flex-wrap items-center gap-x-1.5 rounded-sm text-micro tnum', TONE_CLASSES[view.tone])}
+        className={cx('inline-flex w-fit max-w-full flex-wrap items-center gap-x-1.5 rounded-sm text-micro font-semibold tnum', TONE_CLASSES[view.tone])}
       >
-        <span aria-hidden="true" className="inline-flex items-center gap-0.5 font-medium">
+        <span aria-hidden="true" className="inline-flex items-center gap-0.5 font-bold">
           <Icon size={12} strokeWidth={2.25} />
           {view.direction === 'flat' ? 'stable' : view.delta}
         </span>
-        <span aria-hidden="true" className="text-ink-3">
+        <span aria-hidden="true" className="font-normal text-ink-3">
           avant {view.previous}
         </span>
         <span className="sr-only">{label ? `${label} : ${lowerFirst(view.sentence)}` : view.sentence}</span>
@@ -200,7 +200,7 @@ function DurationTile({ title, help, tile, sample, empty, comparison }: { title:
         <div className="flex flex-col gap-1 border-t border-line pt-2">
           <p className="flex items-baseline gap-1.5">
             <span className="text-micro text-ink-3">P85</span>
-            <span data-p85="" className="tnum text-[15px] font-semibold leading-5 text-ink">
+            <span data-p85="" className="tnum text-base font-bold leading-6 text-ink">
               <DurationText ms={tile.p85} />
             </span>
           </p>
@@ -225,7 +225,7 @@ function FailureRateTile({ tile, comparison }: { tile: MetricsFailureRateTile; c
     return (
       <Tile title="Taux d’échec" help={METRIC_HELP.failureRate} sample={sample} indicative>
         <div className="flex flex-col gap-1">
-          <p className="flex items-center gap-1.5 text-[15px] font-semibold leading-8 text-ink-2">
+          <p className="flex items-center gap-1.5 text-base font-bold leading-9 text-ink-2">
             <TriangleAlert size={15} aria-hidden="true" className="shrink-0 text-ink-3" />
             Non significatif
           </p>
@@ -255,7 +255,7 @@ function WipTile({ tile, comparison }: { tile: MetricsWipTile; comparison: Compa
       <div className="flex flex-col gap-1 border-t border-line pt-2">
         <p className="flex items-baseline gap-1.5">
           <span className="text-micro text-ink-3">moyenne</span>
-          <span data-average="" className="tnum text-[15px] font-semibold leading-5 text-ink">
+          <span data-average="" className="tnum text-base font-bold leading-6 text-ink">
             {formatDecimal(tile.average, 1)}
           </span>
         </p>

@@ -28,11 +28,11 @@ function Segmented<T extends string>({ legend, name, options, value, onChange }:
   return (
     <fieldset className="flex min-w-0 flex-col gap-1">
       <legend className="mb-1 text-micro text-ink-3">{legend}</legend>
-      <div className="inline-flex max-w-full flex-wrap gap-0.5 rounded-lg border border-line bg-well p-0.5">
+      <div className="inline-flex max-w-full flex-wrap gap-0.5 rounded-xl border border-line bg-panel p-1">
         {options.map((option) => (
           <label
             key={option.value}
-            className="inline-flex h-7 cursor-default items-center rounded-md px-2.5 text-ui font-medium text-ink-2 transition-colors hover:text-ink has-[:checked]:bg-panel has-[:checked]:text-ink has-[:checked]:shadow-panel has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-accent"
+            className="inline-flex h-8 cursor-default items-center rounded-lg px-3 text-ui font-semibold text-ink-2 transition-colors hover:text-ink has-[:checked]:bg-mark has-[:checked]:text-mark-ink has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-accent"
           >
             <input type="radio" name={name} value={option.value} checked={option.value === value} onChange={() => onChange(option.value)} className="sr-only" />
             {option.label}
@@ -128,7 +128,7 @@ export function MetricsToolbar({ scope, period, by, today, displayed, computed, 
             onClick={onRefresh}
             aria-label="Actualiser les métriques"
             title="Actualiser les métriques"
-            className="grid size-8 place-items-center rounded-lg border border-line bg-well text-ink-2 transition-colors hover:text-ink"
+            className="grid size-9 place-items-center rounded-xl border border-line bg-panel text-ink-2 transition-colors hover:text-ink"
           >
             <RefreshCw size={14} aria-hidden="true" className={cx(fetching && 'animate-spin motion-reduce:animate-none')} />
           </button>
@@ -140,7 +140,7 @@ export function MetricsToolbar({ scope, period, by, today, displayed, computed, 
 }
 
 const DATE_INPUT =
-  'h-8 rounded-md border border-line-strong bg-panel px-2 text-ui text-ink aria-[invalid=true]:border-danger';
+  'h-9 rounded-lg border border-line-strong bg-panel px-2.5 text-ui text-ink aria-[invalid=true]:border-danger';
 
 /**
  * Le silence, après le dernier chiffre tapé, au bout duquel une plage refusée est dite. Un champ de date tapé au clavier émet

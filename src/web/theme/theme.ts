@@ -9,7 +9,7 @@ export const THEME_STORAGE_KEY = 'beads-desktop:theme';
 export const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark'];
 
 /** Couleur de la barre du navigateur mobile (`<meta name="theme-color">`). Le script de index.html en répète les valeurs : un test les compare. */
-export const THEME_COLOR: Record<ResolvedTheme, string> = { light: '#f3f4f6', dark: '#0f1114' };
+export const THEME_COLOR: Record<ResolvedTheme, string> = { light: '#eef1f4', dark: '#0a1222' };
 
 export function parseThemePreference(value: unknown): ThemePreference {
   return value === 'light' || value === 'dark' ? value : 'system';

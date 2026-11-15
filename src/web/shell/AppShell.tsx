@@ -23,7 +23,7 @@ export function AppShell() {
 }
 
 /**
- * Desktop : barre latérale à gauche, contenu dans un panneau qui flotte sur le fond.
+ * Desktop : barre latérale marine à gauche ; le contenu défile sur le fond de l'app, et chaque page y pose ses cartes.
  * Mobile (< 768 px) : bandeau en haut, contenu pleine largeur, barre d'onglets en bas.
  * La page ne défile jamais horizontalement : un contenu large (le kanban) gère son propre défilement.
  */
@@ -40,7 +40,7 @@ function Layout() {
         Aller au contenu
       </a>
       <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col md:py-2 md:pr-2">
+      <div className="flex min-w-0 flex-1 flex-col">
         <main
           id="contenu"
           // Il prend le focus par programme quand une boîte de dialogue se referme sans rien d'autre à qui le rendre (voir `OverlayProvider`), et quand
@@ -50,7 +50,7 @@ function Layout() {
           // La page qu'il montre (chemin et paramètres, sans l'ancre), écrite dans le même rendu que la page : `focusTitleWhenReady` attend le titre d'une page, et s'arrête quand
           // l'utilisateur va sur une autre (voir `locationOf`, `zoneFocus`).
           data-location={pathname + search}
-          className="relative flex min-h-0 flex-1 flex-col bg-panel pb-[calc(3.5rem+env(safe-area-inset-bottom))] outline-none md:overflow-y-auto md:rounded-xl md:border md:border-line md:pb-0 md:shadow-panel"
+          className="relative flex min-h-0 flex-1 flex-col bg-canvas pb-[calc(3.5rem+env(safe-area-inset-bottom))] outline-none md:overflow-y-auto md:pb-0"
         >
           <TopBar />
           <LiveUpdates />

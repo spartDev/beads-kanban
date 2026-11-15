@@ -32,10 +32,10 @@ export function projectMonogram(name: string): string {
  */
 const UNNAMED_MONOGRAM = '?';
 
-/** Pastille d'un Projet ; grisée quand il est illisible. */
+/** Pastille d'un Projet : une perle à ses initiales ; grisée quand il est illisible. */
 export function ProjectTile({
   project,
-  size = 18,
+  size = 22,
   className,
 }: {
   project: Pick<Project, 'name' | 'prefix' | 'status' | 'path' | 'unnamed'>;
@@ -46,7 +46,7 @@ export function ProjectTile({
   const style = {
     width: size,
     height: size,
-    fontSize: Math.round(size * 0.46),
+    fontSize: Math.round(size * 0.42),
     '--h': projectHue(projectHueKey(project)),
   } as CSSProperties;
   return (
@@ -54,7 +54,7 @@ export function ProjectTile({
       aria-hidden="true"
       style={style}
       className={cx(
-        'inline-flex shrink-0 items-center justify-center rounded-[5px] font-semibold leading-none tracking-normal',
+        'inline-flex shrink-0 items-center justify-center rounded-full font-bold leading-none tracking-normal',
         unreadable ? 'bg-press text-ink-2' : 'project-tile',
         className,
       )}

@@ -25,7 +25,7 @@ export function ShortcutsHelp() {
         <Dialog.Content className={dialogSurface} aria-describedby="shortcuts-help-description" {...overlay}>
           <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
             <div>
-              <Dialog.Title className="text-[15px] font-semibold text-ink">Raccourcis clavier</Dialog.Title>
+              <Dialog.Title className="text-base font-bold text-ink">Raccourcis clavier</Dialog.Title>
               <Dialog.Description id="shortcuts-help-description" className="mt-0.5 text-ink-2">
                 Ils sont ignorés quand le curseur est dans un champ de saisie. Entrée et les flèches restent au bouton, au
                 lien ou à la liste qui les utilise.
