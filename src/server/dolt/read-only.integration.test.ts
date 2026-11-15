@@ -390,7 +390,7 @@ describe.skipIf(!hasBinary('dolt'))('garde en lecture seule face à un vrai Dolt
       expect(results.flat().filter((row) => 'zq' in row)).toEqual([]);
     }, 120_000);
 
-    it('un octet nul n’est pas une affaire du garde (c’est un caractère de chaîne) : le client le dit, car dolt ne peut pas le recevoir en argument', async () => {
+    it('un octet nul n’est pas une affaire du garde (c’est un caractère de chaîne) : le client le dit, et la requête ne part pas', async () => {
       const error = await client.open(dirs.plain).query(`select id from issues as of 'HEAD' where id = ${sqlString('a\u0000b')}`).catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(DoltQueryError);

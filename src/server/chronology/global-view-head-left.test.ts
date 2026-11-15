@@ -72,7 +72,7 @@ describe.skipIf(process.platform === 'win32')('Vue globale quittée, puis une le
     const ticket = `{"id": "x-1", "title": "T", "issue_type": "task", "status": "open", "priority": 2, "created_at": "2026-10-01 10:00:00", "updated_at": "2026-10-01 10:00:00"}`;
     const body = [
       `d="$(dirname "$0")"`,
-      `q="\${5#start transaction read only; }"`,
+      `q="\${q#start transaction read only; }"`,
       `case "$q" in`,
       `  *issue_prefix*) printf '{}\\n\\n{"rows": [{"value": "x"}]}\\n'; exit 0;;`,
       `  *"hashof('HEAD'), 0"*|*dolt_history*|*dolt_log*|*"show columns"*|*"issue_type from issues order by id"*) printf '{}\\n\\n{"rows": []}\\n'; exit 0;;`,

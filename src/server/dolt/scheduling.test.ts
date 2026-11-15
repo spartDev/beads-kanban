@@ -80,12 +80,12 @@ describe.skipIf(process.platform === 'win32')('ordonnancement des lectures Dolt'
 
     it('les passe à dolt dans une seule transaction en lecture seule, chaque requête fermée par un saut de ligne et un point-virgule', async () => {
       // Le saut de ligne referme un commentaire de fin de ligne, qui avalerait sinon le « ; » et la requête suivante. Le garde n'en admet plus aucun (bdesk-38k.56, B4) : ce séparateur reste une précaution.
-      const fake = fakeDolt(`a=$(printf '%s' "$*" | tr '\\n' '~')\nprintf '{}\\n\\n{"rows": [{"args": "%s"}]}\\n{}\\n\\n' "$a"`);
+      const fake = fakeDolt(`a=$(printf '%s %s' "$*" "$q" | tr '\\n' '~')\nprintf '{}\\n\\n{"rows": [{"args": "%s"}]}\\n{}\\n\\n' "$a"`);
       const db = createDoltClient(options(fake.binary)).open(fake.dir);
 
       const [first] = await queryAll(db, ['select 1 as a', 'select 2']);
 
-      expect(first?.[0]?.args).toBe('sql -r json -q start transaction read only; select 1 as a~;~select 2');
+      expect(first?.[0]?.args).toBe('sql -r json start transaction read only; select 1 as a~;~select 2');
     });
 
     it('ne lance rien pour une liste vide', async () => {
@@ -175,7 +175,7 @@ describe.skipIf(process.platform === 'win32')('ordonnancement des lectures Dolt'
     /** Les requêtes qui contiennent « slow » durent ; les autres sont immédiates. Chaque processus note son début et sa fin. */
     const slowDolt = (seconds: string) => {
       const fake = fakeDolt(
-        `log="$(dirname "$0")/events"\nq="\${5#start transaction read only; }"\necho "start $q" >> "$log"\ncase "$q" in *slow*) sleep ${seconds};; esac\necho "end $q" >> "$log"\necho '{"rows": []}'`,
+        `log="$(dirname "$0")/events"\nq="\${q#start transaction read only; }"\necho "start $q" >> "$log"\ncase "$q" in *slow*) sleep ${seconds};; esac\necho "end $q" >> "$log"\necho '{"rows": []}'`,
       );
       return { ...fake, events: () => lines(join(fake.dir, 'events')) };
     };
@@ -246,7 +246,7 @@ describe.skipIf(process.platform === 'win32')('ordonnancement des lectures Dolt'
   describe('voie des analyses : l’historique ne fait pas la queue derrière les fiches', () => {
     const slowDolt = (seconds: string) => {
       const fake = fakeDolt(
-        `log="$(dirname "$0")/events"\nq="\${5#start transaction read only; }"\necho "start $q" >> "$log"\ncase "$q" in *slow*) sleep ${seconds};; esac\necho "end $q" >> "$log"\necho '{"rows": []}'`,
+        `log="$(dirname "$0")/events"\nq="\${q#start transaction read only; }"\necho "start $q" >> "$log"\ncase "$q" in *slow*) sleep ${seconds};; esac\necho "end $q" >> "$log"\necho '{"rows": []}'`,
       );
       return { ...fake, events: () => lines(join(fake.dir, 'events')) };
     };
@@ -302,7 +302,7 @@ describe.skipIf(process.platform === 'win32')('ordonnancement des lectures Dolt'
       const fake = fakeDolt(
         [
           `d="$(dirname "$0")"`,
-          `q="\${5#start transaction read only; }"`,
+          `q="\${q#start transaction read only; }"`,
           `echo "$q" >> "$d/events"`,
           `case "$q" in`,
           `*later*) i=0; while [ ! -e "$d/go-later" ] && [ $i -lt 200 ]; do sleep 0.05; i=$((i+1)); done;;`,
@@ -519,7 +519,7 @@ describe.skipIf(process.platform === 'win32')('ordonnancement des lectures Dolt'
     });
 
     it('retire de la file une lecture abandonnée avant son tour : elle est libérée aussitôt et son processus ne part jamais', async () => {
-      const fake = fakeDolt(`echo "$5" >> "$(dirname "$0")/ran"\nsleep 0.5\necho '{"rows": []}'`);
+      const fake = fakeDolt(`echo "$q" >> "$(dirname "$0")/ran"\nsleep 0.5\necho '{"rows": []}'`);
       const db = createDoltClient({ ...options(fake.binary), maxConcurrent: 1 }).open(fake.dir);
       const running = db.query('select 1');
       const controller = new AbortController();
@@ -538,7 +538,7 @@ describe.skipIf(process.platform === 'win32')('ordonnancement des lectures Dolt'
     it('laisse finir le processus d’une lecture abandonnée en cours : le demandeur est libéré aussitôt, et la place n’est rendue qu’à la fin du processus', async () => {
       // Un processus tué en pleine ouverture de la base laisse des fichiers (journal.idx tronqué, nbs_manifest_… que Dolt ne nettoie jamais) :
       // on ne tue donc pas une lecture lancée, on jette son résultat (ADR 0003).
-      const fake = fakeDolt(`case "$5" in *wait*)\n${WAIT_FOR_GO};;\nesac\necho '{"rows": [{"ok": 1}]}'`);
+      const fake = fakeDolt(`case "$q" in *wait*)\n${WAIT_FOR_GO};;\nesac\necho '{"rows": [{"ok": 1}]}'`);
       const db = createDoltClient({ ...options(fake.binary), maxConcurrent: 1 }).open(fake.dir);
       const controller = new AbortController();
       const abandoned = db.query("select 'wait'", { signal: controller.signal });
@@ -648,7 +648,7 @@ describe.skipIf(process.platform === 'win32')('ordonnancement des lectures Dolt'
     /** Chaque appel répond son propre numéro ; « slow » dure. Le journal note les débuts et les fins. */
     const numbered = (seconds: string) => {
       const fake = fakeDolt(
-        `log="$(dirname "$0")/events"\nq="\${5#start transaction read only; }"\necho "start $q" >> "$log"\ncase "$q" in *slow*) sleep ${seconds};; esac\necho "end $q" >> "$log"\nprintf '{}\\n\\n{"rows": [{"n": %s}]}\\n' "$n"`,
+        `log="$(dirname "$0")/events"\nq="\${q#start transaction read only; }"\necho "start $q" >> "$log"\ncase "$q" in *slow*) sleep ${seconds};; esac\necho "end $q" >> "$log"\nprintf '{}\\n\\n{"rows": [{"n": %s}]}\\n' "$n"`,
       );
       return { ...fake, events: () => lines(join(fake.dir, 'events')) };
     };
@@ -761,7 +761,7 @@ describe.skipIf(process.platform === 'win32')('ordonnancement des lectures Dolt'
 
     it('quand tous les demandeurs d’une lecture partie abandonnent, son processus n’est pas tué : il finit, son résultat est jeté', async () => {
       const fake = fakeDolt(
-        `d="$(dirname "$0")"\ncase "$5" in *blocker*) sleep 0.3;; *) echo $$ > "$d/pid$n"; sleep 1.5; echo fini > "$d/fini$n";; esac\necho '{"rows": [{"n": 1}]}'`,
+        `d="$(dirname "$0")"\ncase "$q" in *blocker*) sleep 0.3;; *) echo $$ > "$d/pid$n"; sleep 1.5; echo fini > "$d/fini$n";; esac\necho '{"rows": [{"n": 1}]}'`,
       );
       const db = createDoltClient({ ...options(fake.binary), maxConcurrent: 1 }).open(fake.dir);
       const blocker = db.query("select 'blocker'");

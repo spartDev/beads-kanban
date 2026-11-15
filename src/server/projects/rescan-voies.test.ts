@@ -50,7 +50,7 @@ async function until(condition: () => boolean, what: string): Promise<void> {
 function gatedPrefixes() {
   const body = [
     `d="$(dirname "$0")"`,
-    `q="\${5#start transaction read only; }"`,
+    `q="\${q#start transaction read only; }"`,
     `case "$q" in`,
     `  *issue_prefix*)`,
     `    echo x >> "$d/prefixes"`,

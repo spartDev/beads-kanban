@@ -103,14 +103,16 @@ describe.skipIf(process.platform === 'win32')('client dolt', () => {
     expect(await db.query('select id, priority from issues')).toEqual([{ id: 'a-1', priority: 2 }, { id: 'a-2' }]);
   });
 
-  it('passe la requête à `dolt sql` depuis le dossier de la base', async () => {
-    const fake = fakeDolt(`echo "{\\"rows\\": [{\\"cwd\\": \\"$(pwd -P)\\", \\"args\\": \\"$*\\"}]}"`);
+  it('passe la requête à `dolt sql` sur son entrée, depuis le dossier de la base', async () => {
+    const fake = fakeDolt(`echo "{\\"rows\\": [{\\"cwd\\": \\"$(pwd -P)\\", \\"args\\": \\"$*\\", \\"stdin\\": \\"$q\\"}]}"`);
     const db = createDoltClient(options(fake.binary)).open(fake.dir);
 
     const [row] = await db.query('select 1');
 
-    // Chaque appel commence par une transaction en lecture seule : Dolt refuse alors toute écriture de données.
-    expect(row?.args).toBe('sql -r json -q start transaction read only; select 1');
+    // Chaque appel commence par une transaction en lecture seule : Dolt refuse alors toute écriture de données. La requête n'est pas un argument (`-q`) : sous Linux,
+    // un argument de plus de 128 Kio empêche le lancement (E2BIG).
+    expect(row?.args).toBe('sql -r json');
+    expect(row?.stdin).toBe('start transaction read only; select 1');
     expect(row?.cwd).toMatch(/bdesk-fake-dolt-/);
   });
 
@@ -206,14 +208,13 @@ EOF`);
       expect((error as Error).message).not.toMatch(QUERY_TRACE);
     });
 
-    it('type une requête trop longue pour la ligne de commande (E2BIG), sans lancer dolt', async () => {
-      const before = empty.calls();
+    it('envoie entière une requête bien plus longue que ce que Linux admet en argument (128 Kio) : elle passe par l’entrée de dolt', async () => {
+      const fake = fakeDolt(`printf '{"rows": [{"bytes": %s}]}' "$(printf '%s' "$q" | wc -c | tr -d ' ')"`);
+      const sql = `select '${'x'.repeat(2 * 1024 * 1024)}'`;
 
-      const error = await failure(empty.binary, `select '${'x'.repeat(2 * 1024 * 1024)}'`);
+      const [row] = await createDoltClient(options(fake.binary)).open(fake.dir).query(sql);
 
-      expect(error).toBeInstanceOf(DoltQueryError);
-      expect((error as Error).message).not.toContain('xxxx');
-      expect(empty.calls()).toBe(before);
+      expect(row?.bytes).toBe(Buffer.byteLength(`start transaction read only; ${sql}`));
     });
 
     it('ne reprend pas la requête quand dolt s’arrête sans rien dire : seul le code de sortie est donné', async () => {
@@ -298,7 +299,7 @@ EOF`);
       // Dolt écrit « error on line 1 for query <requête> : <cause> » : sur une requête de plusieurs lignes, la
       // cause vient après les lignes que l'on garde. Ce faux dolt répète la requête reçue, comme le vrai.
       const fake = fakeDolt(
-        `printf 'error on line 1 for query %s: WITH RECURSIVE iteration limit exceeded\\n' "\${5#start transaction read only; }" >&2\nexit 1`,
+        `printf 'error on line 1 for query %s: WITH RECURSIVE iteration limit exceeded\\n' "\${q#start transaction read only; }" >&2\nexit 1`,
       );
 
       const error = await failure(fake.binary, 'select a,\n  b\n  from table_secrete\n  where c = 1');

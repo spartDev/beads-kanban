@@ -42,7 +42,7 @@ describe.skipIf(process.platform === 'win32')('Vue globale quittée à froid (bd
     // puis attend que le test la libère : le nombre de lectures lancées ne dépend ainsi que de l'ordonnancement, pas de la vitesse de la machine.
     const ticket = `{"id": "x-1", "title": "T", "issue_type": "task", "status": "open", "priority": 2, "created_at": "2026-10-01 10:00:00", "updated_at": "2026-10-01 10:00:00"}`;
     const body = [
-      `q="\${5#start transaction read only; }"`,
+      `q="\${q#start transaction read only; }"`,
       `case "$q" in`,
       `  *issue_prefix*) printf '{}\\n\\n{"rows": [{"value": "x"}]}\\n';;`,
       `  *"hashof('HEAD')"*) printf '{}\\n\\n{"rows": [{"head": "h1"}]}\\n';;`,

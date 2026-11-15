@@ -304,9 +304,11 @@ function run(
 ): Promise<Row[][]> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(new ReadAborted());
-    execFile(
+    // Un octet nul n'est pas une affaire du garde (c'est un caractère de chaîne), et la chaîne C que dolt en ferait s'y couperait : la requête ne part pas (`typed` dit pourquoi).
+    if (sqls.some((sql) => sql.includes('\0'))) return reject(new TypeError('La requête contient un octet nul.'));
+    const child = execFile(
       binary,
-      ['sql', '-r', 'json', '-q', READ_ONLY_PREFIX + sqls.join(STATEMENT_SEPARATOR)],
+      ['sql', '-r', 'json'],
       { cwd: dir, env, timeout: timeoutMs, maxBuffer: maxOutputBytes, windowsHide: true },
       (error, stdout, stderr) => {
         if (signal.aborted) return reject(new ReadAborted()); // abandonnée en route : son résultat est jeté, ni délai ni échec à rapporter
@@ -318,6 +320,11 @@ function run(
         }
       },
     );
+    // Les requêtes passent par l'entrée de dolt, pas par un argument `-q` : Linux refuse au lancement (E2BIG) un argument de plus de 128 Kio (`MAX_ARG_STRLEN`),
+    // ce qu'un groupe atteint vite, quand macOS n'en limite que le total (1 Mio). `dolt sql` sans `-q` lit son entrée comme `-q` sa chaîne : mêmes instructions,
+    // même transaction en lecture seule, même sortie, mêmes erreurs. Un dolt qui sort sans tout lire ferme le tube (EPIPE) : c'est sa sortie qui fait foi, dans le rappel.
+    child.stdin?.on('error', () => undefined);
+    child.stdin?.end(READ_ONLY_PREFIX + sqls.join(STATEMENT_SEPARATOR));
   });
 }
 
@@ -434,15 +441,14 @@ function withoutQuery(text: string, sql: string): string {
 }
 
 /**
- * Toute erreur qui sort du client est typée. `execFile` lève lui-même des erreurs de Node : octet nul dans un
- * argument, requête trop longue pour la ligne de commande (E2BIG), option invalide… Leur message reprend la
- * requête (« Received "start transaction read only; select …" ») et finirait tel quel dans une réponse 500 :
- * on n'en garde que le code, et l'erreur d'origine reste dans `cause`. Un abandon n'est pas une erreur de lecture : il passe tel quel.
+ * Toute erreur qui sort du client est typée. Une requête qui contient un octet nul ne part pas (`run`), et `execFile` lève lui-même des erreurs de Node
+ * (binaire introuvable, option invalide…) dont le message peut reprendre la requête et finirait tel quel dans une réponse 500 : on n'en garde que le
+ * code, et l'erreur d'origine reste dans `cause`. Un abandon n'est pas une erreur de lecture : il passe tel quel.
  */
 function typed(err: unknown, binary: string, dir: string, sqls: readonly string[]): Error {
   if (err instanceof DoltQueryError || err instanceof DoltNotFoundError || (err instanceof Error && isAbortError(err))) return err;
   let reason = 'erreur inconnue';
-  if (sqls.some((sql) => sql.includes('\0'))) reason = 'la requête contient un octet nul, que dolt ne peut pas recevoir en argument';
+  if (sqls.some((sql) => sql.includes('\0'))) reason = 'la requête contient un octet nul, que le client n’envoie pas à dolt';
   else if (err instanceof Error) reason = String((err as NodeJS.ErrnoException).code ?? err.name);
   return new DoltQueryError(`Impossible de lancer « ${binary} » : ${reason}.`, dir, false, err);
 }
