@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grands chiffres · variante 2 · beads-desktop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+/*
+ * Variante 2 — Grands chiffres.
+ * Idée : un tableau d'affichage. Quatre nombres lisibles depuis l'autre bout de la pièce, sur un bandeau de couleur ;
+ * le reste de la page se tient en retrait, sans cadres, séparé par du blanc et des filets.
+ * Police : Bricolage Grotesque (Mathieu Triay), dont le dessin change avec le corps : sage en texte, pleine de caractère
+ * dans les très grands chiffres.
+ * Couleurs : vert sapin et citron. Le vert porte les chiffres, le citron marque ce qui est choisi ou ce qui progresse.
+ */
+:root {
+  --paper: #ffffff;
+  --mist: #f1f5f1;
+  --ink: #0b1f17;
+  --muted: #55695f;
+  --line: #dce5de;
+  --green: #0e5c43;
+  --green-deep: #0a4633;
+  --citron: #ddf36b;
+  --on-band: #ffffff;
+  --on-band-muted: #bfd9cc;
+  --good: #0e7a4e;
+  --bad: #b5371b;
+  --sans: 'Bricolage Grotesque', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --chart-bar: var(--green);
+  --chart-bar-partial: #8fb8a6;
+  --chart-grid: #e6ede8;
+  --chart-axis: #b9c9c0;
+  --chart-ink: var(--muted);
+  --chart-ink-strong: var(--ink);
+  --chart-hover: rgba(14, 92, 67, 0.07);
+  --tip-bg: var(--ink);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 17px/1.5 var(--sans);
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+a { color: inherit; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 6px; }
+.band :focus-visible { outline-color: var(--citron); }
+.ic { flex: none; }
+
+.wrap { width: 100%; max-width: 1360px; margin: 0 auto; padding: 0 40px; }
+
+/* ---------- Le bandeau : navigation et tableau d'affichage ---------- */
+
+.band { background: var(--green); color: var(--on-band); }
+
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 28px; padding-top: 18px; padding-bottom: 18px; }
+
+.brand { display: flex; align-items: center; gap: 10px; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; text-decoration: none; }
+
+.bar nav { display: flex; flex-wrap: wrap; gap: 4px; margin-right: auto; }
+
+.bar nav a,
+.bar nav button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--on-band-muted);
+  font-size: 17px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.bar nav a:hover, .bar nav button:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
+.bar nav a[aria-current='page'] { color: var(--ink); background: var(--citron); font-weight: 600; }
+
+.count { min-width: 26px; padding: 0 8px; border-radius: 999px; background: #fff; color: var(--ink); font-size: 14px; font-weight: 700; line-height: 1.6; text-align: center; }
+
+.bar-tools { display: flex; align-items: center; gap: 8px; }
+
+.find {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  background: none;
+  color: var(--on-band-muted);
+  font-size: 16px;
+}
+
+.find kbd { font: 500 13px/1 var(--sans); color: #fff; }
+
+.round { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 50%; background: none; color: #fff; }
+
+.hero { padding-top: 26px; padding-bottom: 44px; }
+
+.hero-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px 24px; margin-bottom: 30px; }
+
+h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.2; }
+h1 span { color: var(--on-band-muted); font-weight: 400; }
+
+.period { display: flex; gap: 2px; margin: 0; padding: 4px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 999px; }
+.period label { display: grid; place-items: center; height: 36px; padding: 0 16px; border-radius: 999px; color: var(--on-band-muted); font-size: 16px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.period label:hover { color: #fff; }
+.period label:has(:checked) { background: var(--citron); color: var(--ink); font-weight: 600; }
+.period label:has(:focus-visible) { outline: 3px solid var(--citron); outline-offset: 2px; }
+.period input { position: absolute; opacity: 0; pointer-events: none; }
+
+.score { display: grid; grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(0, 1fr)); }
+
+.score article { min-width: 0; padding: 0 28px; border-left: 1px solid rgba(255, 255, 255, 0.22); }
+.score article:first-child { padding-left: 0; border-left: 0; }
+
+.score h2 { color: var(--on-band-muted); font-size: 19px; font-weight: 500; line-height: 1.2; }
+
+.n {
+  margin-top: 6px;
+  font-size: clamp(54px, 5.9vw, 92px);
+  font-weight: 700;
+  font-stretch: 88%;
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
+  --unit-size: 0.46em;
+  --unit-weight: 600;
+}
+
+.n .u { letter-spacing: 0; margin: 0 0.04em; }
+
+.score .main .n { font-size: clamp(120px, 14.5vw, 216px); font-weight: 800; line-height: 0.86; letter-spacing: -0.05em; margin-left: -0.04em; }
+
+.what { margin-top: 12px; color: var(--on-band-muted); font-size: 17px; line-height: 1.35; }
+.what b { color: #fff; font-weight: 600; }
+
+.verdict { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; padding: 6px 14px 6px 10px; border-radius: 999px; background: var(--citron); color: var(--ink); font-size: 17px; font-weight: 600; line-height: 1.3; }
+
+.band .trend { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin-top: 12px; font-size: 16px; font-weight: 600; white-space: nowrap; color: #fff; }
+.band .trend[data-tone='good'] .trend-ic, .band .trend[data-tone='good'] .trend-delta, .band .trend[data-tone='good'] .trend-word { color: var(--citron); }
+.band .trend[data-tone='bad'] .trend-ic, .band .trend[data-tone='bad'] .trend-delta, .band .trend[data-tone='bad'] .trend-word { color: #ffc2b0; }
+.band .trend-ic { display: inline-grid; }
+.band .trend-prev { color: var(--on-band-muted); font-weight: 400; }
+
+.band .bd-chart {
+  margin-top: 22px;
+  --chart-bar: var(--citron);
+  --chart-bar-partial: rgba(221, 243, 107, 0.45);
+  --chart-ink: var(--on-band-muted);
+  --chart-ink-strong: #fff;
+  --chart-axis: rgba(255, 255, 255, 0.4);
+  --chart-hover: rgba(255, 255, 255, 0.08);
+}
+
+.chart-note { margin-top: 4px; color: var(--on-band-muted); font-size: 15px; }
+
+/* ---------- Le reste de la page : sans cadres ---------- */
+
+main { padding-top: 12px; padding-bottom: 40px; }
+
+.block { padding: 44px 0; border-top: 1px solid var(--line); }
+.block:first-child { border-top: 0; }
+
+.block-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 24px; margin-bottom: 24px; }
+
+.block h2 { font-size: 34px; font-weight: 700; font-stretch: 92%; letter-spacing: -0.025em; line-height: 1.1; }
+.block-head p { max-width: 62ch; color: var(--muted); }
+.link { font-weight: 600; text-underline-offset: 4px; text-decoration-thickness: 2px; text-decoration-color: var(--citron); white-space: nowrap; }
+
+.notice { display: flex; align-items: flex-start; gap: 10px; padding: 14px 18px; border-radius: 12px; background: var(--mist); color: var(--muted); font-size: 16px; }
+.notice .ic { margin-top: 3px; color: var(--bad); }
+.notice strong { color: var(--ink); font-weight: 600; }
+
+/* À regarder : trois compteurs. */
+.watch { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0; }
+.watch a { display: block; min-width: 0; padding: 4px 28px 4px 0; text-decoration: none; }
+.watch a + a { padding-left: 28px; border-left: 1px solid var(--line); }
+.watch .k { display: flex; align-items: baseline; gap: 12px; font-size: 22px; font-weight: 600; line-height: 1.15; }
+.watch .k b { font-size: 68px; font-weight: 700; font-stretch: 88%; letter-spacing: -0.04em; line-height: 0.95; }
+.watch p { margin-top: 10px; color: var(--muted); font-size: 16px; line-height: 1.4; }
+.watch p strong { color: var(--ink); font-weight: 600; }
+.watch a:hover .k span { text-decoration: underline; text-decoration-color: var(--citron); text-decoration-thickness: 3px; text-underline-offset: 5px; }
+
+.split { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 56px; }
+
+/* Où passe le temps. */
+.bd-seg { height: 28px; }
+.bd-seg-part { padding: 0 9px; border-radius: 4px; background: #c5d1ca; color: var(--ink); font-size: 15px; font-weight: 700; }
+.bd-seg-part[data-key='ready'] { background: #9db3a8; }
+.bd-seg-part[data-key='other'] { background: #dde5e0; }
+.bd-seg-part[data-key='work'] { background: var(--green); color: #fff; }
+
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px 28px; margin-top: 20px; }
+.legend li { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 2px 10px; align-items: baseline; }
+.legend i { width: 14px; height: 14px; border-radius: 4px; background: #c5d1ca; transform: translateY(2px); }
+.legend li[data-key='ready'] i { background: #9db3a8; }
+.legend li[data-key='other'] i { background: #dde5e0; }
+.legend li[data-key='work'] i { background: var(--green); }
+.legend li[data-key='blocked'] i { background: none; box-shadow: inset 0 0 0 2px #9db3a8; }
+.legend b { font-weight: 600; }
+.legend span { grid-column: 2; color: var(--muted); font-size: 15px; }
+
+.insight { margin-bottom: 20px; font-size: 24px; font-weight: 600; font-stretch: 94%; letter-spacing: -0.015em; line-height: 1.25; max-width: 30ch; }
+
+/* Qualité : des nombres moyens, une ligne chacun. */
+.facts { display: grid; }
+.fact { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 20px; align-items: baseline; padding: 14px 0; border-top: 1px solid var(--line); }
+.fact:first-child { padding-top: 0; border-top: 0; }
+.fact dt { font-size: 18px; font-weight: 600; }
+.fact .f-help { grid-column: 1; color: var(--muted); font-size: 15px; line-height: 1.4; }
+.fact .f-value { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 38px; font-weight: 700; font-stretch: 88%; letter-spacing: -0.03em; line-height: 1; text-align: right; white-space: nowrap; --unit-size: 0.55em; }
+.fact .f-value.muted { color: var(--muted); font-size: 19px; font-weight: 600; letter-spacing: 0; font-stretch: 100%; }
+
+main .trend { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 5px; color: var(--muted); font-size: 15px; font-weight: 600; white-space: nowrap; }
+main .trend[data-tone='good'] { color: var(--good); }
+main .trend[data-tone='bad'] { color: var(--bad); }
+main .trend-ic { display: inline-grid; }
+main .trend-prev { color: var(--muted); font-weight: 400; }
+
+/* Tableaux. */
+.rows { width: 100%; border-collapse: collapse; }
+.rows th, .rows td { padding: 13px 16px 13px 0; border-top: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.rows thead th { padding-top: 0; border-top: 0; color: var(--muted); font-size: 15px; font-weight: 500; }
+.rows .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rows td.num { font-size: 19px; font-weight: 600; }
+.rows td:last-child, .rows th:last-child { padding-right: 0; }
+.rows tbody th { font-size: 18px; font-weight: 600; white-space: nowrap; }
+
+.t-title { display: block; font-size: 17px; font-weight: 600; line-height: 1.3; }
+.t-meta { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 2px; color: var(--muted); font-size: 15px; }
+.t-meta .late { color: var(--bad); font-weight: 600; }
+
+.bar-cell { display: flex; align-items: center; gap: 12px; min-width: 120px; }
+.bar-cell b { min-width: 36px; font-size: 19px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.bar-cell i { height: 12px; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--green); width: calc(var(--v) * (100% - 48px)); }
+.dash { color: var(--muted); font-weight: 400; }
+
+@media (max-width: 1080px) {
+  .wrap { padding: 0 24px; }
+  .score { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 34px; }
+  .score .main { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 32px; align-items: end; }
+  .score .main h2 { grid-column: 1 / -1; }
+  .score .main .n { grid-row: 2 / span 2; }
+  .score .main .bd-chart, .score .main .chart-note { grid-column: 2; }
+  .score .main .verdict { grid-column: 2; justify-self: start; }
+  .score article:nth-child(2) { padding-left: 0; border-left: 0; }
+  .split { grid-template-columns: minmax(0, 1fr); gap: 44px; }
+}
+
+@media (max-width: 720px) {
+  .wrap { padding: 0 16px; }
+  .find span, .find kbd { display: none; }
+  .find { width: 42px; padding: 0; justify-content: center; }
+  .period { width: 100%; overflow-x: auto; }
+  .score { grid-template-columns: minmax(0, 1fr); }
+  .score .main { display: block; }
+  .score article { padding: 0; border-left: 0; }
+  .block { padding: 34px 0; }
+  .block h2 { font-size: 28px; }
+  .watch a + a { margin-top: 22px; padding: 22px 0 0; border-left: 0; border-top: 1px solid var(--line); }
+  .rows .hide-s { display: none; }
+}
+</style>
+</head>
+<body data-variant="2" data-fonts="Bricolage Grotesque">
+<div class="band">
+  <header class="bar wrap">
+    <a class="brand" href="#">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
+        <circle cx="7" cy="15" r="5" fill="#ddf36b"/>
+        <circle cx="17" cy="15" r="5" fill="#fff"/>
+        <circle cx="26" cy="15" r="2.5" fill="#fff"/>
+      </svg>
+      beads-desktop
+    </a>
+    <nav aria-label="Navigation principale">
+      <a href="#" aria-current="page">Vue globale</a>
+      <a href="#">À regarder<span class="count" data-b="x.signals.total"></span></a>
+      <button type="button" aria-haspopup="menu" aria-expanded="false">Projets<i data-icon="down" data-size="16"></i></button>
+    </nav>
+    <div class="bar-tools">
+      <button class="find" type="button"><i data-icon="search"></i><span>Rechercher</span><kbd>⌘K</kbd></button>
+      <button class="round" type="button" aria-label="Changer de thème"><i data-icon="sun"></i></button>
+    </div>
+  </header>
+
+  <div class="hero wrap">
+    <div class="hero-head">
+      <h1>Vue globale <span><span data-b="x.readable"></span> Projets, <span data-b="x.periodLong"></span></span></h1>
+      <fieldset class="period">
+        <legend class="sr-only">Période</legend>
+        <label><input type="radio" name="period">7 jours</label>
+        <label><input type="radio" name="period" checked>30 jours</label>
+        <label><input type="radio" name="period">90 jours</label>
+        <label><input type="radio" name="period">Autre</label>
+      </fieldset>
+    </div>
+
+    <div class="score">
+      <article class="main">
+        <h2>Livraisons</h2>
+        <p class="n" data-b="debit.value"></p>
+        <p class="verdict"><i data-icon="up" data-size="18"></i><span><span data-b="x.debitTimes"></span> plus qu’avant (<span data-b="debit.prev"></span>)</span></p>
+        <div class="bd-chart" id="chart-weekly"></div>
+        <p class="chart-note">Par semaine, sur douze semaines. La dernière est en cours.</p>
+      </article>
+
+      <article>
+        <h2>Lead Time</h2>
+        <p class="n" data-b="lead.median" data-f="dur"></p>
+        <p class="what">de la création d’un ticket à sa Livraison, en médiane</p>
+        <p data-trend="leadMedian" data-word></p>
+        <p class="what">85 % en moins de <b data-b="lead.p85" data-f="dur"></b></p>
+      </article>
+
+      <article>
+        <h2>Cycle Time</h2>
+        <p class="n" data-b="cycle.median" data-f="dur"></p>
+        <p class="what">de travail par ticket, en médiane</p>
+        <p data-trend="cycleMedian" data-word></p>
+        <p class="what">85 % en moins de <b data-b="cycle.p85" data-f="dur"></b></p>
+      </article>
+
+      <article>
+        <h2>En cours</h2>
+        <p class="n" data-b="wip.current"></p>
+        <p class="what">tickets en ce moment, dont <b data-b="stock.blocked"></b> bloqué</p>
+        <p data-trend="wipAvg"></p>
+        <p class="what">en moyenne <b data-b="wip.avg" data-f="dec1"></b> sur la période</p>
+      </article>
+    </div>
+  </div>
+</div>
+
+<main class="wrap">
+  <section class="block" aria-labelledby="watch-title">
+    <div class="block-head">
+      <h2 id="watch-title">À regarder</h2>
+      <a class="link" href="#">Voir les <span data-b="x.signals.total"></span> Signaux</a>
+    </div>
+    <div class="watch" id="watch"></div>
+    <p class="notice" id="unreadable" hidden style="margin-top: 28px"></p>
+  </section>
+
+  <section class="block">
+    <div class="split">
+      <div>
+        <div class="block-head"><h2 id="time-title">Où passe le temps</h2></div>
+        <p class="insight" id="insight"></p>
+        <div id="seg"></div>
+        <ul class="legend" id="legend"></ul>
+      </div>
+      <div>
+        <div class="block-head"><h2 id="quality-title">Qualité</h2></div>
+        <dl class="facts">
+          <div class="fact">
+            <dt>Taux d’échec</dt>
+            <dd class="f-value muted">Non significatif</dd>
+            <dd class="f-help">Seuls <span data-b="failure.coverage" data-f="pct"></span> des bugs ont une origine renseignée, il en faut <span data-b="failure.minCoverage" data-f="pct"></span>.</dd>
+          </div>
+          <div class="fact">
+            <dt>Taux de Réouverture</dt>
+            <dd class="f-value" data-b="reopening.rate" data-f="pct1"></dd>
+            <dd class="f-help"><span data-b="reopening.reopened"></span> ticket rouvert sur <span data-b="reopening.closures"></span> clôtures. <span data-trend="reopening"></span></dd>
+          </div>
+          <div class="fact">
+            <dt>Temps de rétablissement</dt>
+            <dd class="f-value" data-b="recovery.median" data-f="dur"></dd>
+            <dd class="f-help">Médiane des <span data-b="recovery.n"></span> bugs critiques livrés. <span data-trend="recoveryMedian"></span></dd>
+          </div>
+          <div class="fact">
+            <dt>Efficacité du flux</dt>
+            <dd class="f-value" data-b="efficiency.ratio" data-f="efficiency"></dd>
+            <dd class="f-help">La part du Cycle Time passée hors Blocage. <span data-trend="efficiency"></span></dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="split">
+      <div>
+        <div class="block-head"><h2>Tickets en cours</h2></div>
+        <table class="rows">
+          <thead><tr><th scope="col">Ticket</th><th scope="col" class="num">En cours depuis</th></tr></thead>
+          <tbody id="wip-rows"></tbody>
+        </table>
+      </div>
+      <div>
+        <div class="block-head"><h2>Projets</h2></div>
+        <table class="rows">
+          <thead>
+            <tr><th scope="col">Projet</th><th scope="col">Livraisons</th><th scope="col" class="num hide-s">Lead Time</th><th scope="col" class="num">En cours</th></tr>
+          </thead>
+          <tbody id="project-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<template id="tpl-wip-row">
+  <tr>
+    <td>
+      <span class="t-title" data-t="title"></span>
+      <span class="t-meta"><span data-t="project"></span><span data-t="type"></span><span class="late" data-t="late"></span></span>
+    </td>
+    <td class="num" data-t="age"></td>
+  </tr>
+</template>
+
+<template id="tpl-project-row">
+  <tr>
+    <th scope="row" data-t="name"></th>
+    <td><span class="bar-cell" data-v="share"><b data-t="throughput"></b><i></i></span></td>
+    <td class="num hide-s" data-t="lead"></td>
+    <td class="num" data-t="wip"></td>
+  </tr>
+</template>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  const { h, fmt, repeat, mount, columns, series, X } = BDK;
+
+  /* Le Débit semaine par semaine, sur le bandeau : la semaine la plus haute et la semaine en cours sont chiffrées. */
+  const weeks = series.weekly.throughput;
+  const last = weeks.length - 1;
+  mount('#chart-weekly', (width) =>
+    columns(width, {
+      values: weeks,
+      labels: series.weekly.labels.map((label, index) => (index % 4 === 0 || index === last ? label : '')),
+      tips: series.weekly.tips,
+      cls: (index) => (index === last ? 'is-partial' : ''),
+      marks: [weeks.indexOf(Math.max(...weeks)), last],
+      height: 132,
+      grid: false,
+      pad: { l: 0, r: 0 },
+      barMax: 22,
+      label: 'Livraisons par semaine sur douze semaines',
+    }),
+  );
+
+  /* À regarder : un compteur par sorte de Signal, et le cas le plus marquant. */
+  const watch = document.getElementById('watch');
+  BDK.signalGroups().forEach((group) => {
+    const first = BDK.signalFields(group.items[0]);
+    const many = group.items.length > 1;
+    watch.append(
+      h(
+        'a',
+        { href: '#' },
+        h('p', { class: 'k' }, h('b', { text: String(group.items.length) }), h('span', { text: many ? group.many : group.label })),
+        h('p', null, h('strong', { text: (many ? 'Le plus ancien : ' : '') + first.title }), first.project ? ' (' + first.project + ')' : '', '. ', first.detail.charAt(0).toUpperCase() + first.detail.slice(1) + '.'),
+      ),
+    );
+  });
+
+  const unreadable = BD.projects.filter((project) => project.status !== 'ok');
+  if (unreadable.length > 0) {
+    const notice = document.getElementById('unreadable');
+    notice.hidden = false;
+    notice.append(
+      BDK.icon('alert', 18),
+      h('span', null, h('strong', { text: unreadable.map((project) => project.name).join(', ') }), unreadable.length > 1 ? ' sont illisibles et absents' : ' est illisible et absent', ' de ces chiffres. ', unreadable[0].reason || ''),
+    );
+  }
+
+  /* Où passe le temps : le travail en vert, les attentes en gris. */
+  const parts = BDK.breakdownParts();
+  document.getElementById('insight').textContent = fmt.pct(X.waitShare) + ' du Lead Time est de l’attente. Le travail en occupe ' + fmt.pct(X.shares.work) + '.';
+  document.getElementById('seg').append(BDK.segments(parts, { label: 'Décomposition du Lead Time cumulé des Livraisons' }));
+  const legend = document.getElementById('legend');
+  parts.forEach((part) => legend.append(h('li', { 'data-key': part.key }, h('i'), h('b', { text: part.label }), h('span', { text: fmt.dur(part.value) + ', soit ' + fmt.pct(part.share) }))));
+
+  repeat('#wip-rows', 'tpl-wip-row', BD.inProgress, (ticket) => ({
+    title: ticket.title,
+    project: BDK.project(ticket.project).name,
+    type: ticket.type + ', P' + ticket.priority,
+    late: ticket.blocked ? 'bloqué' : ticket.age > BD.cycle.p85 ? 'au-delà du P85' : '',
+    age: fmt.dur(ticket.age),
+  }));
+
+  const most = Math.max(1, ...BD.projects.map((project) => project.throughput || 0));
+  repeat('#project-rows', 'tpl-project-row', BD.projects.filter((project) => project.status === 'ok'), (project) => ({
+    name: project.name,
+    share: (project.throughput / most).toFixed(3),
+    throughput: fmt.int(project.throughput),
+    lead: project.leadMedian === null ? h('span', { class: 'dash', text: 'aucune' }) : fmt.dur(project.leadMedian),
+    wip: fmt.int(project.wip),
+  }));
+})();
+</script>
+</body>
+</html>

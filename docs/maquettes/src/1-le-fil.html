@@ -1,0 +1,1054 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Le fil · variante 1 · beads-desktop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400..600&family=Atkinson+Hyperlegible+Next:wght@400..800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+/*
+ * Variante 1 — Le fil.
+ * Idée : le parcours d'un ticket dessiné comme un fil de perles. Les chiffres sont posés là où ils se produisent :
+ * ce qui entre à gauche, ce qui attend au milieu, ce qui sort à droite, et les deux délais cotés au-dessus.
+ * Police : Atkinson Hyperlegible Next, dessinée pour que chaque caractère se distingue des autres (0 et O, 1 et l).
+ * Couleurs : marine et jaune signal sur brume froide, comme un plan de réseau. Le jaune dit « vous êtes ici ».
+ */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --navy: #101b33;
+  --ink: #101b33;
+  --ink-2: #45506a;
+  --ink-3: #5e6981;
+  --line: #d9dfe7;
+  --yellow: #ffc83d;
+  --good: #13774a;
+  --good-bg: #e1f3e8;
+  --bad: #c2371f;
+  --bad-bg: #fbe5df;
+  --side-muted: #aeb8cc;
+  --radius: 14px;
+  --sans: 'Atkinson Hyperlegible Next', 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Atkinson Hyperlegible Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --chart-bar: var(--navy);
+  --chart-bar-partial: #8394b0;
+  --chart-grid: #e4e9ef;
+  --chart-axis: #b8c2d0;
+  --chart-ink: var(--ink-3);
+  --chart-ink-strong: var(--ink);
+  --chart-hover: rgba(16, 27, 51, 0.06);
+  --tip-bg: var(--navy);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 16px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+a { color: inherit; }
+button { font: inherit; color: inherit; cursor: pointer; }
+
+:focus-visible { outline: 3px solid var(--navy); outline-offset: 2px; border-radius: 6px; }
+.side :focus-visible { outline-color: var(--yellow); }
+
+.ic { flex: none; }
+
+/* ---------- Ossature ---------- */
+
+.app {
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.side {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  height: 100vh;
+  padding: 22px 14px 16px;
+  overflow-y: auto;
+  background: var(--navy);
+  color: #fff;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+  font-size: 17px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.find {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--side-muted);
+  font-size: 15px;
+  text-align: left;
+}
+
+.find span { flex: 1; }
+
+.find kbd {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font: 500 12px/1.4 var(--sans);
+}
+
+.nav { display: grid; gap: 4px; }
+
+.nav a,
+.plist a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 10px;
+  color: #dfe5f0;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.nav a:hover,
+.plist a:hover { background: rgba(255, 255, 255, 0.09); color: #fff; }
+
+.nav a[aria-current='page'] { background: var(--yellow); color: var(--navy); }
+
+.nav .count {
+  margin-left: auto;
+  min-width: 26px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--navy);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.projects { display: grid; gap: 6px; min-height: 0; }
+
+.projects h2 {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 10px;
+  color: var(--side-muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.plist { display: grid; gap: 2px; }
+
+.plist a { font-weight: 500; }
+
+.pbead {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: oklch(0.8 0.13 var(--v));
+}
+
+.pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pmeta { flex: none; color: var(--side-muted); font-size: 13px; font-weight: 500; }
+
+.plist li[data-status='unreadable'] a { color: var(--side-muted); }
+.plist li[data-status='unreadable'] .pbead { background: transparent; box-shadow: inset 0 0 0 2px var(--side-muted); }
+
+.side-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding: 0 4px;
+}
+
+.theme { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: rgba(255, 255, 255, 0.08); }
+
+.theme button,
+.side-foot > button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--side-muted);
+}
+
+.theme button[aria-pressed='true'] { background: #fff; color: var(--navy); }
+
+main {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 30px 40px 40px;
+}
+
+/* ---------- En-tête ---------- */
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 24px;
+  margin-bottom: 22px;
+}
+
+h1 { font-size: 32px; line-height: 1.15; font-weight: 800; letter-spacing: -0.015em; }
+
+.top p { margin-top: 4px; color: var(--ink-2); font-size: 17px; }
+
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+.period {
+  display: flex;
+  gap: 2px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.period label {
+  display: grid;
+  place-items: center;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  color: var(--ink-2);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.period label:hover { color: var(--ink); }
+.period label:has(:checked) { background: var(--yellow); color: var(--navy); }
+.period label:has(:focus-visible) { outline: 3px solid var(--navy); outline-offset: 2px; }
+.period input { position: absolute; opacity: 0; pointer-events: none; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.btn:hover { border-color: var(--ink-3); }
+.btn.square { width: 44px; justify-content: center; padding: 0; }
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 15px;
+}
+
+.notice .ic { margin-top: 2px; color: var(--bad); }
+.notice strong { color: var(--ink); font-weight: 700; }
+
+/* ---------- Cartes ---------- */
+
+.card {
+  min-width: 0;
+  padding: 24px 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.card > header { margin-bottom: 18px; }
+
+h2 { font-size: 21px; line-height: 1.25; font-weight: 700; letter-spacing: -0.005em; }
+
+.card > header p { margin-top: 3px; color: var(--ink-2); font-size: 15px; max-width: 68ch; }
+
+.grid { display: grid; gap: 18px; margin-top: 18px; }
+.grid.two { grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); }
+.grid.half { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* ---------- Tendance ---------- */
+
+.trend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 5px;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.trend[data-tone='good'] { color: var(--good); }
+.trend[data-tone='bad'] { color: var(--bad); }
+.trend-ic { display: inline-grid; }
+.trend-prev { color: var(--ink-3); font-weight: 400; }
+
+/* ---------- Le parcours d'un ticket ---------- */
+
+.journey { padding-bottom: 22px; }
+
+.fil {
+  display: grid;
+  grid-template-columns:
+    minmax(92px, max-content)
+    minmax(136px, var(--c1, 16fr))
+    minmax(0, var(--c2, 64fr))
+    minmax(164px, var(--c3, 20fr))
+    minmax(150px, max-content);
+  align-items: start;
+  margin-top: 6px;
+}
+
+/* Les deux délais, cotés au-dessus du fil comme sur un plan. */
+.dim { display: grid; gap: 5px; }
+.dim.lead { grid-column: 2 / 5; grid-row: 1; margin-bottom: 14px; }
+.dim.cycle { grid-column: 4 / 5; grid-row: 2; margin-bottom: 16px; }
+
+.dim-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 12px;
+  line-height: 1.25;
+}
+
+.dim.cycle .dim-label { justify-content: flex-end; margin-left: -420px; text-align: right; }
+
+.dim-name { font-size: 16px; font-weight: 700; }
+
+.dim-value {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  --unit-size: 0.62em;
+  --unit-weight: 700;
+}
+
+.dim-note { color: var(--ink-2); font-size: 15px; }
+
+.brace {
+  display: block;
+  height: 10px;
+  border: 2px solid var(--navy);
+  border-bottom: 0;
+  border-radius: 5px 5px 0 0;
+}
+
+/* Le fil : un tube vide quand le ticket attend, plein quand on y travaille. */
+.stub, .s { grid-row: 3; position: relative; height: 30px; }
+
+.s::after {
+  content: '';
+  position: absolute;
+  inset: 9px 0;
+  border: 2px solid var(--navy);
+  background: var(--surface);
+}
+
+.s.work::after { background: var(--navy); }
+
+.s::before,
+.s.work > i {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  border: 5px solid var(--navy);
+  border-radius: 50%;
+  background: var(--yellow);
+  transform: translate(-50%, -50%);
+}
+
+.s.work > i { left: 100%; }
+
+.stub::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  height: 2px;
+  background: var(--ink-3);
+  transform: translateY(-50%);
+}
+
+.stub.in::after { left: 0; right: 26px; }
+.stub.out::after { left: 26px; right: 12px; }
+
+.stub::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border: solid var(--ink-3);
+  border-width: 2px 2px 0 0;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.stub.in::before { right: 26px; }
+.stub.out::before { right: 12px; }
+
+/* Sous le fil : ce qui entre, les trois états, ce qui sort. */
+.flow, .stage { grid-row: 4; padding-top: 12px; }
+
+.stage { padding-right: 14px; }
+.flow.out { padding-left: 22px; }
+.flow.in { padding-right: 18px; }
+
+.big {
+  display: block;
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.025em;
+}
+
+.what { display: block; margin-top: 4px; font-size: 17px; font-weight: 700; }
+.hint { display: block; color: var(--ink-2); font-size: 14px; line-height: 1.35; }
+.hint.good { color: var(--good); font-weight: 600; }
+
+.stage h3 { font-size: 17px; font-weight: 700; }
+
+.stage .share { color: var(--ink-2); font-size: 15px; line-height: 1.35; }
+.stage .share b { color: var(--ink); font-size: 22px; font-weight: 800; --unit-size: 0.75em; }
+
+.stage .now { margin-top: 8px; font-size: 15px; line-height: 1.35; }
+.stage .now b { font-weight: 800; }
+.stage .now a { text-decoration-thickness: 2px; text-underline-offset: 3px; text-decoration-color: var(--yellow); }
+
+.journey-foot {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 15px;
+}
+
+.journey-foot strong { color: var(--ink); }
+
+/* ---------- À regarder ---------- */
+
+.wgroup + .wgroup { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+
+.wgroup h3 { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; }
+
+.wgroup h3 span {
+  min-width: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--yellow);
+  font-size: 14px;
+  text-align: center;
+}
+
+.wgroup li { margin-top: 10px; }
+.wgroup .w-title { display: block; font-size: 15px; font-weight: 600; line-height: 1.35; text-decoration: none; }
+.wgroup .w-title:hover { text-decoration: underline; }
+.wgroup .w-detail { display: block; color: var(--ink-2); font-size: 14px; line-height: 1.4; }
+.wgroup .w-rest { margin-top: 10px; color: var(--ink-2); font-size: 14px; }
+
+.more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 18px;
+  font-size: 15px;
+  font-weight: 700;
+  text-underline-offset: 3px;
+}
+
+/* ---------- Délais et qualité ---------- */
+
+.facts { display: grid; }
+
+.fact {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 16px;
+  align-items: baseline;
+  padding: 13px 0;
+  border-top: 1px solid var(--line);
+}
+
+.fact:first-child { border-top: 0; padding-top: 0; }
+
+.fact dt { font-size: 16px; font-weight: 700; }
+.fact .f-help { grid-column: 1; color: var(--ink-2); font-size: 14px; line-height: 1.4; }
+
+.fact .f-value {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-align: right;
+  white-space: nowrap;
+  --unit-size: 0.68em;
+  --unit-weight: 700;
+}
+
+.fact .f-value.muted { color: var(--ink-2); font-size: 17px; font-weight: 700; }
+.fact .f-side { grid-column: 2; text-align: right; }
+.fact .f-side .trend { justify-content: flex-end; }
+
+.hist-title { margin: 20px 0 8px; font-size: 15px; font-weight: 700; }
+
+/* ---------- Tableaux ---------- */
+
+.rows { width: 100%; border-collapse: collapse; }
+
+.rows th,
+.rows td {
+  padding: 11px 12px 11px 0;
+  border-top: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.rows thead th { border-top: 0; padding-top: 0; color: var(--ink-2); font-size: 14px; font-weight: 500; }
+.rows .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rows td.num { font-weight: 700; }
+.rows td:last-child, .rows th:last-child { padding-right: 0; }
+
+.t-title { display: block; font-size: 15px; font-weight: 600; line-height: 1.35; }
+
+.t-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 3px; color: var(--ink-2); font-size: 14px; }
+.t-id { font-family: var(--mono); font-size: 13px; }
+
+.tag {
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.tag.late { border-color: transparent; background: var(--bad-bg); color: var(--bad); }
+
+.p-cell { display: flex; align-items: center; gap: 10px; font-weight: 600; white-space: nowrap; }
+.p-cell .pbead { background: oklch(0.68 0.15 var(--v)); }
+
+.bar-cell { display: flex; align-items: center; gap: 10px; min-width: 104px; }
+.bar-cell b { min-width: 34px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.bar-cell i { height: 10px; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--navy); width: calc(var(--v) * (100% - 44px)); }
+
+.dash { color: var(--ink-3); }
+
+/* ---------- Écrans étroits ---------- */
+
+@media (max-width: 1160px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+
+  .side {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    height: auto;
+    padding: 12px 20px;
+  }
+
+  .find { width: 44px; padding: 0; justify-content: center; order: 3; }
+  .find span, .find kbd { display: none; }
+  .nav { display: flex; order: 2; margin-right: auto; }
+  .projects { order: 5; width: 100%; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+  .projects h2 { padding: 0; gap: 6px; }
+  .plist { display: flex; overflow-x: auto; }
+  .plist a { white-space: nowrap; }
+  .pname { overflow: visible; }
+  .side-foot { order: 4; margin: 0; gap: 8px; }
+  main { padding: 24px 24px 32px; }
+}
+
+@media (max-width: 900px) {
+  .grid.two, .grid.half { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 760px) {
+  main { padding: 18px 16px 28px; }
+  h1 { font-size: 27px; }
+  .card { padding: 20px 18px; }
+  .period { width: 100%; overflow-x: auto; }
+
+  /* Le fil se lit de haut en bas : un trait à gauche, une perle par étape. */
+  .fil { display: block; margin-top: 14px; }
+  .stub, .s, .brace { display: none; }
+  .dim.cycle .dim-label { justify-content: flex-start; margin-left: 0; text-align: left; }
+  .dim { margin-bottom: 14px !important; }
+
+  .flow, .stage {
+    position: relative;
+    margin-left: 12px;
+    padding: 0 0 20px 26px;
+    border-left: 4px solid var(--navy);
+  }
+
+  .flow.out { padding-left: 26px; padding-bottom: 0; border-left-color: transparent; }
+
+  .flow::before, .stage::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: -2px;
+    width: 22px;
+    height: 22px;
+    border: 4px solid var(--navy);
+    border-radius: 50%;
+    background: var(--yellow);
+    transform: translateX(-50%);
+  }
+
+  .stage::before { width: 12px; height: 12px; top: 7px; background: var(--surface); border-width: 3px; }
+  .rows .hide-s { display: none; }
+}
+</style>
+</head>
+<body data-variant="1" data-fonts="Atkinson Hyperlegible Next">
+<div class="app">
+  <aside class="side" aria-label="Navigation">
+    <a class="brand" href="#">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
+        <path d="M2 15h26" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="8" cy="15" r="4.5" fill="#ffc83d"/>
+        <circle cx="16.5" cy="15" r="4.5" fill="#ffc83d"/>
+        <circle cx="25" cy="15" r="3" fill="#fff"/>
+      </svg>
+      beads-desktop
+    </a>
+
+    <button class="find" type="button">
+      <i data-icon="search"></i>
+      <span>Rechercher</span>
+      <kbd>⌘K</kbd>
+    </button>
+
+    <nav class="nav" aria-label="Navigation principale">
+      <a href="#" aria-current="page"><i data-icon="grid"></i>Vue globale</a>
+      <a href="#"><i data-icon="eye"></i>À regarder<span class="count" data-b="x.signals.total"></span></a>
+    </nav>
+
+    <section class="projects" aria-labelledby="side-projects">
+      <h2 id="side-projects">Projets <span data-b="x.projectCount"></span></h2>
+      <ul class="plist" id="side-list"></ul>
+    </section>
+
+    <div class="side-foot">
+      <div class="theme" role="group" aria-label="Thème">
+        <button type="button" aria-pressed="false" aria-label="Thème du système"><i data-icon="screen" data-size="16"></i></button>
+        <button type="button" aria-pressed="true" aria-label="Thème clair"><i data-icon="sun" data-size="16"></i></button>
+        <button type="button" aria-pressed="false" aria-label="Thème sombre"><i data-icon="moon" data-size="16"></i></button>
+      </div>
+      <button type="button" aria-label="Raccourcis clavier"><i data-icon="keyboard"></i></button>
+    </div>
+  </aside>
+
+  <main>
+    <header class="top">
+      <div>
+        <h1>Vue globale</h1>
+        <p>Le flux des <span data-b="x.readable"></span> Projets suivis, <span data-b="x.periodLong"></span>.</p>
+      </div>
+      <div class="tools">
+        <fieldset class="period">
+          <legend class="sr-only">Période</legend>
+          <label><input type="radio" name="period">7 jours</label>
+          <label><input type="radio" name="period" checked>30 jours</label>
+          <label><input type="radio" name="period">90 jours</label>
+          <label><input type="radio" name="period">Autre</label>
+        </fieldset>
+        <button class="btn" type="button"><i data-icon="copy"></i>Copier le rapport</button>
+        <button class="btn square" type="button" aria-label="Actualiser les métriques" title="Calculé à 21:55"><i data-icon="refresh"></i></button>
+      </div>
+    </header>
+
+    <p class="notice" id="unreadable" hidden></p>
+
+    <section class="card journey" aria-labelledby="journey-title">
+      <header>
+        <h2 id="journey-title">Le parcours d’un ticket</h2>
+        <p>Ce qui entre, ce qui attend, ce qui sort. Le tube est vide quand le ticket attend, plein quand on y travaille.</p>
+      </header>
+
+      <div class="fil" id="fil">
+        <div class="dim lead">
+          <p class="dim-label">
+            <span class="dim-name">Lead Time</span>
+            <b class="dim-value" data-b="lead.median" data-f="dur"></b>
+            <span class="dim-note">de la création à la Livraison, en médiane</span>
+            <span data-trend="leadMedian"></span>
+          </p>
+          <i class="brace"></i>
+        </div>
+        <div class="dim cycle">
+          <p class="dim-label">
+            <span class="dim-name">Cycle Time</span>
+            <b class="dim-value" data-b="cycle.median" data-f="dur"></b>
+            <span class="dim-note">de travail, en médiane</span>
+            <span data-trend="cycleMedian"></span>
+          </p>
+          <i class="brace"></i>
+        </div>
+
+        <div class="stub in"></div>
+        <div class="s wait"></div>
+        <div class="s wait"></div>
+        <div class="s work"><i></i></div>
+        <div class="stub out"></div>
+
+        <div class="flow in">
+          <b class="big" data-b="arrivals.value"></b>
+          <span class="what">Arrivées</span>
+          <span class="hint">tickets créés</span>
+        </div>
+        <div class="stage" id="stage-backlog"></div>
+        <div class="stage" id="stage-ready"></div>
+        <div class="stage" id="stage-work"></div>
+        <div class="flow out">
+          <b class="big" data-b="debit.value"></b>
+          <span class="what">Livraisons</span>
+          <span class="hint good"><span data-b="x.debitTimes"></span> plus qu’avant (<span data-b="debit.prev"></span>)</span>
+        </div>
+      </div>
+
+      <p class="journey-foot" id="journey-foot"></p>
+    </section>
+
+    <div class="grid two">
+      <section class="card" aria-labelledby="daily-title">
+        <header>
+          <h2 id="daily-title">Livraisons par jour</h2>
+          <p>Le jour le plus chargé : <span data-b="x.peakDay.label"></span>, avec <span data-b="x.peakDay.value"></span> Livraisons. La dernière colonne, plus claire, est le jour en cours.</p>
+        </header>
+        <div class="bd-chart" id="chart-daily"></div>
+      </section>
+
+      <section class="card" aria-labelledby="watch-title">
+        <header>
+          <h2 id="watch-title">À regarder</h2>
+          <p><span data-b="x.signals.total"></span> Signaux en ce moment, dans tous les Projets.</p>
+        </header>
+        <div id="watch"></div>
+        <a class="more" href="#">Voir tous les Signaux<i data-icon="right" data-size="16"></i></a>
+      </section>
+    </div>
+
+    <div class="grid half">
+      <section class="card" aria-labelledby="delays-title">
+        <header>
+          <h2 id="delays-title">Délais</h2>
+          <p>La médiane dit le cas courant. Le P85 dit le pire cas raisonnable : 85 % des tickets font mieux.</p>
+        </header>
+        <dl class="facts">
+          <div class="fact">
+            <dt>Lead Time, P85</dt>
+            <dd class="f-value" data-b="lead.p85" data-f="dur"></dd>
+            <dd class="f-help">Médiane <span data-b="lead.median" data-f="dur"></span>, sur <span data-b="lead.n"></span> Livraisons.</dd>
+            <dd class="f-side"><span data-trend="leadP85"></span></dd>
+          </div>
+          <div class="fact">
+            <dt>Cycle Time, P85</dt>
+            <dd class="f-value" data-b="cycle.p85" data-f="dur"></dd>
+            <dd class="f-help">Médiane <span data-b="cycle.median" data-f="dur"></span>, sur <span data-b="cycle.n"></span> Livraisons démarrées.</dd>
+            <dd class="f-side"><span data-trend="cycleP85"></span></dd>
+          </div>
+          <div class="fact">
+            <dt>Temps de rétablissement</dt>
+            <dd class="f-value" data-b="recovery.median" data-f="dur"></dd>
+            <dd class="f-help">Le Lead Time médian des <span data-b="recovery.n"></span> bugs critiques (P0 et P1) livrés.</dd>
+            <dd class="f-side"><span data-trend="recoveryMedian"></span></dd>
+          </div>
+        </dl>
+        <h3 class="hist-title">Combien de travail demande un ticket</h3>
+        <div class="bd-chart" id="chart-hist"></div>
+      </section>
+
+      <section class="card" aria-labelledby="quality-title">
+        <header>
+          <h2 id="quality-title">Qualité du flux</h2>
+          <p>Ce qui est livré tient-il, et le travail démarré avance-t-il sans rester coincé ?</p>
+        </header>
+        <dl class="facts">
+          <div class="fact">
+            <dt>Taux d’échec</dt>
+            <dd class="f-value muted">Non significatif</dd>
+            <dd class="f-help">Seuls <span data-b="failure.coverage" data-f="pct"></span> des bugs ont une origine renseignée : il en faut <span data-b="failure.minCoverage" data-f="pct"></span> pour conclure.</dd>
+          </div>
+          <div class="fact">
+            <dt>Taux de Réouverture</dt>
+            <dd class="f-value" data-b="reopening.rate" data-f="pct1"></dd>
+            <dd class="f-help"><span data-b="reopening.reopened"></span> ticket rouvert sur <span data-b="reopening.closures"></span> clôtures.</dd>
+            <dd class="f-side"><span data-trend="reopening"></span></dd>
+          </div>
+          <div class="fact">
+            <dt>Efficacité du flux</dt>
+            <dd class="f-value" data-b="efficiency.ratio" data-f="efficiency"></dd>
+            <dd class="f-help">La part du Cycle Time passée hors Blocage.</dd>
+            <dd class="f-side"><span data-trend="efficiency"></span></dd>
+          </div>
+          <div class="fact">
+            <dt>Taux d’abandon</dt>
+            <dd class="f-value" data-b="abandon.rate" data-f="pct1"></dd>
+            <dd class="f-help">Aucun doublon ni ticket remplacé sur <span data-b="abandon.closed"></span> tickets fermés.</dd>
+            <dd class="f-side"><span data-trend="abandon"></span></dd>
+          </div>
+          <div class="fact">
+            <dt>WIP moyen</dt>
+            <dd class="f-value" data-b="wip.avg" data-f="dec1"></dd>
+            <dd class="f-help">Les tickets en cours en même temps, en moyenne sur la période.</dd>
+            <dd class="f-side"><span data-trend="wipAvg"></span></dd>
+          </div>
+        </dl>
+      </section>
+    </div>
+
+    <div class="grid half">
+      <section class="card" aria-labelledby="wip-title">
+        <header>
+          <h2 id="wip-title">Tickets en cours</h2>
+          <p>Du plus ancien au plus récent, depuis leur premier démarrage.</p>
+        </header>
+        <table class="rows">
+          <thead><tr><th scope="col">Ticket</th><th scope="col" class="num">En cours depuis</th></tr></thead>
+          <tbody id="wip-rows"></tbody>
+        </table>
+      </section>
+
+      <section class="card" aria-labelledby="projects-title">
+        <header>
+          <h2 id="projects-title">Projets</h2>
+          <p>Les mêmes mesures, Projet par Projet.</p>
+        </header>
+        <table class="rows">
+          <thead>
+            <tr>
+              <th scope="col">Projet</th>
+              <th scope="col">Livraisons</th>
+              <th scope="col" class="num hide-s">Lead Time</th>
+              <th scope="col" class="num hide-s">Cycle Time</th>
+              <th scope="col" class="num">En cours</th>
+            </tr>
+          </thead>
+          <tbody id="project-rows"></tbody>
+        </table>
+      </section>
+    </div>
+  </main>
+</div>
+
+<template id="tpl-side-project">
+  <li><a href="#"><span class="pbead" data-v="hue"></span><span class="pname" data-t="name"></span><span class="pmeta" data-t="meta"></span></a></li>
+</template>
+
+<template id="tpl-wip-row">
+  <tr>
+    <td>
+      <span class="t-title" data-t="title"></span>
+      <span class="t-meta"><span class="t-id" data-t="id"></span><span data-t="project"></span><span class="tag" data-t="type"></span><span class="tag late" data-t="late"></span></span>
+    </td>
+    <td class="num" data-t="age"></td>
+  </tr>
+</template>
+
+<template id="tpl-project-row">
+  <tr>
+    <th scope="row"><span class="p-cell"><span class="pbead" data-v="hue"></span><span data-t="name"></span></span></th>
+    <td><span class="bar-cell" data-v="share"><b data-t="throughput"></b><i></i></span></td>
+    <td class="num hide-s" data-t="lead"></td>
+    <td class="num hide-s" data-t="cycle"></td>
+    <td class="num" data-t="wip"></td>
+  </tr>
+</template>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  const { h, fmt, repeat, mount, columns, series, withUnits, X } = BDK;
+  const NBSP = ' ';
+
+  /* Barre latérale : une perle par Projet, et son nombre de tickets en cours. */
+  repeat('#side-list', 'tpl-side-project', BD.projects, (project) => ({
+    name: project.name,
+    meta: project.status !== 'ok' ? 'illisible' : project.wip > 0 ? fmt.plural(project.wip, 'en cours', 'en cours') : '',
+    hue: project.hue,
+    $: { 'data-status': project.status },
+  }));
+
+  /* Les Projets illisibles ne sont pas dans les chiffres : la page le dit, en une ligne. */
+  const unreadable = BD.projects.filter((project) => project.status !== 'ok');
+  if (unreadable.length > 0) {
+    const notice = document.getElementById('unreadable');
+    notice.hidden = false;
+    notice.append(
+      BDK.icon('alert', 18),
+      h('span', null, h('strong', { text: unreadable.map((project) => project.name).join(', ') }), unreadable.length > 1 ? ' sont illisibles et absents' : ' est illisible et absent', ' de ces chiffres. ', unreadable[0].reason || ''),
+    );
+  }
+
+  /* Le fil : la largeur de chaque tronçon est sa part du Lead Time cumulé. */
+  const share = X.shares;
+  const fil = document.getElementById('fil');
+  fil.style.setProperty('--c1', (share.dependency * 100).toFixed(1) + 'fr');
+  fil.style.setProperty('--c2', ((share.ready + share.other) * 100).toFixed(1) + 'fr');
+  fil.style.setProperty('--c3', ((share.work + share.blocked) * 100).toFixed(1) + 'fr');
+
+  const tickets = (count) => (count > 1 ? ' tickets' : ' ticket') + ' en ce moment';
+  const stage = (id, name, ratio, doing, now) => {
+    document.getElementById(id).append(
+      h('h3', { text: name }),
+      h('p', { class: 'share' }, h('b', null, withUnits(fmt.pct(ratio))), ' du temps', h('br'), doing),
+      h('p', { class: 'now' }, now),
+    );
+  };
+  stage('stage-backlog', 'Backlog', share.dependency, 'à attendre une dépendance', [h('b', { text: fmt.int(BD.stock.backlog) }), tickets(BD.stock.backlog)]);
+  stage('stage-ready', 'Prêt', share.ready + share.other, 'à attendre d’être démarré', [
+    h('b', { text: fmt.int(BD.stock.ready) }),
+    tickets(BD.stock.ready),
+    ', dont ',
+    h('a', { href: '#' }, h('b', { text: fmt.int(BD.ready.stagnant) }), ' stagnent depuis plus de ' + BD.ready.afterDays + ' jours'),
+  ]);
+  const working = BD.stock.inProgress + BD.stock.blocked;
+  stage('stage-work', 'En cours', share.work + share.blocked, 'au travail', [
+    h('b', { text: fmt.int(working) }),
+    tickets(working),
+    BD.stock.blocked > 0 ? ', dont ' + BD.stock.blocked + ' bloqué' + (BD.stock.blocked > 1 ? 's' : '') : '',
+  ]);
+
+  document.getElementById('journey-foot').append(
+    h('strong', { text: 'Un ticket livré a passé ' + fmt.pct(X.waitShare) + ' de sa vie à attendre' }),
+    ', surtout en Prêt. Les parts sont celles du Lead Time cumulé des ' + fmt.int(BD.breakdown.deliveries) + ' Livraisons de la période, soit ' + fmt.dur(BD.breakdown.total) + '.',
+  );
+
+  /* Livraisons par jour. */
+  const daily = BD.daily.deliveries;
+  mount('#chart-daily', (width) =>
+    columns(width, {
+      values: daily,
+      labels: series.daily.mondays,
+      tips: series.daily.tips(daily, 'Livraison'),
+      cls: (index) => (index === daily.length - 1 ? 'is-partial' : ''),
+      marks: [X.peakDay.index],
+      height: 250,
+      label: 'Livraisons par jour sur la période',
+    }),
+  );
+  document.getElementById('chart-daily').after(BDK.dataTable(['Jour', 'Livraisons', 'Arrivées'], series.daily.rows()));
+
+  /* À regarder : les Signaux, par sorte, les premiers de chaque sorte. */
+  const watch = document.getElementById('watch');
+  BDK.signalGroups().forEach((group) => {
+    const shown = group.items.slice(0, 3);
+    const rest = group.items.length - shown.length;
+    watch.append(
+      h(
+        'section',
+        { class: 'wgroup' },
+        h('h3', null, group.items.length > 1 ? group.many : group.label, h('span', { text: String(group.items.length) })),
+        h(
+          'ul',
+          null,
+          shown.map((signal) => {
+            const fields = BDK.signalFields(signal);
+            return h('li', null, h('a', { class: 'w-title', href: '#', text: fields.title }), h('span', { class: 'w-detail', text: (fields.project ? fields.project + ', ' : '') + fields.detail }));
+          }),
+        ),
+        rest > 0 ? h('p', { class: 'w-rest', text: 'et ' + rest + ' autres, tous Prêts depuis plus de ' + fmt.dur(group.items[group.items.length - 1].age) + '.' }) : null,
+      ),
+    );
+  });
+
+  /* Cycle Time par tranche : la forme de la distribution, pas un nuage de points. */
+  mount('#chart-hist', (width) =>
+    columns(width, {
+      values: BD.cycleHist.map((bucket) => bucket.n),
+      labels: BD.cycleHist.map((bucket) => bucket.label),
+      tips: BD.cycleHist.map((bucket) => fmt.plural(bucket.n, 'Livraison') + '\nCycle Time de ' + bucket.label),
+      marks: BD.cycleHist.map((_, index) => index),
+      height: 170,
+      barMax: 40,
+      grid: false,
+      pad: { l: 0, r: 0 },
+      label: 'Répartition du Cycle Time des Livraisons',
+    }),
+  );
+
+  /* Tickets en cours : « au-delà du P85 » quand le travail dure plus que le Cycle Time P85. */
+  repeat('#wip-rows', 'tpl-wip-row', BD.inProgress, (ticket) => ({
+    title: ticket.title,
+    id: ticket.id,
+    project: BDK.project(ticket.project).name,
+    type: ticket.type + NBSP + 'P' + ticket.priority,
+    late: ticket.blocked ? 'bloqué' : ticket.age > BD.cycle.p85 ? 'au-delà du P85' : '',
+    age: fmt.dur(ticket.age),
+  }));
+
+  /* Projets : la barre compare les Livraisons, les délais sont des médianes. */
+  const most = Math.max(1, ...BD.projects.map((project) => project.throughput || 0));
+  repeat('#project-rows', 'tpl-project-row', BD.projects.filter((project) => project.status === 'ok'), (project) => ({
+    name: project.name,
+    hue: project.hue,
+    share: (project.throughput / most).toFixed(3),
+    throughput: fmt.int(project.throughput),
+    lead: project.leadMedian === null ? h('span', { class: 'dash', text: 'aucune' }) : fmt.dur(project.leadMedian),
+    cycle: project.cycleMedian === null ? h('span', { class: 'dash', text: 'aucune' }) : fmt.dur(project.cycleMedian),
+    wip: fmt.int(project.wip),
+  }));
+})();
+</script>
+</body>
+</html>

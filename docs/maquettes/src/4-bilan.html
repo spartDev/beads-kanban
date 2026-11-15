@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bilan · variante 4 · beads-desktop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400..900&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+/*
+ * Variante 4 — Bilan.
+ * Idée : un bilan de santé. Un indicateur par ligne, toujours dans le même ordre de lecture : une perle de couleur,
+ * le nom et ce qu'il mesure, la valeur, la comparaison avec la période précédente, le verdict en mots.
+ * On lit la colonne des perles pour savoir où regarder, sans connaître les métriques.
+ * Police : Nunito, aux terminaisons arrondies, qui répond aux perles.
+ * Couleurs : la couleur ne sert qu'à dire un verdict. Tout le reste est neutre, sur un fond sable.
+ */
+:root {
+  --bg: #f4f1ec;
+  --card: #ffffff;
+  --ink: #1f2937;
+  --ink-2: #566273;
+  --ink-3: #5f6a7a;
+  --line: #e8e3db;
+  --primary: #3454d1;
+  --primary-bg: #e6ebfb;
+  --good: #18794e;
+  --good-bg: #dcf3e6;
+  --bad: #b83720;
+  --bad-bg: #fce4dd;
+  --watch: #8f5200;
+  --watch-bg: #fbebc9;
+  --neutral: #566273;
+  --neutral-bg: #eceef1;
+  --sans: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --chart-bar: var(--primary);
+  --chart-grid: #eeeae3;
+  --chart-axis: #cfc8bc;
+  --chart-ink: var(--ink-3);
+  --chart-line: var(--primary);
+  --chart-area: var(--primary);
+  --chart-surface: var(--card);
+  --tip-bg: var(--ink);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 500 17px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+a { color: inherit; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; border-radius: 8px; }
+.ic { flex: none; }
+
+/* ---------- Ossature ---------- */
+
+.app { display: grid; grid-template-columns: 264px minmax(0, 1fr); min-height: 100vh; }
+
+.side {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  height: 100vh;
+  padding: 22px 16px 16px;
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+  background: var(--card);
+}
+
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; font-size: 19px; font-weight: 800; text-decoration: none; }
+
+.find { display: flex; align-items: center; gap: 10px; width: 100%; height: 44px; padding: 0 14px; border: 0; border-radius: 14px; background: var(--bg); color: var(--ink-2); font-size: 16px; font-weight: 600; text-align: left; }
+.find span { flex: 1; }
+.find kbd { padding: 1px 7px; border-radius: 7px; background: var(--card); color: var(--ink-2); font: 700 13px/1.5 var(--sans); }
+
+.nav { display: grid; gap: 4px; }
+
+.nav a, .plist a { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 14px; color: var(--ink-2); font-size: 17px; font-weight: 700; text-decoration: none; }
+.nav a:hover, .plist a:hover { background: var(--bg); color: var(--ink); }
+.nav a[aria-current='page'] { background: var(--primary-bg); color: var(--primary); }
+.nav .count { margin-left: auto; min-width: 28px; padding: 0 8px; border-radius: 999px; background: var(--watch-bg); color: var(--watch); font-size: 14px; font-weight: 800; line-height: 1.7; text-align: center; }
+
+.projects { display: grid; gap: 6px; }
+.projects h2 { display: flex; justify-content: space-between; padding: 0 12px; color: var(--ink-3); font-size: 15px; font-weight: 700; }
+.plist { display: grid; gap: 2px; }
+.plist a { font-weight: 600; font-size: 16px; }
+
+.ptile { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 10px; background: oklch(0.93 0.045 var(--v)); color: oklch(0.4 0.11 var(--v)); font-size: 12px; font-weight: 800; }
+.pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pmeta { flex: none; color: var(--ink-3); font-size: 14px; font-weight: 700; }
+.plist li[data-status='unreadable'] a { color: var(--ink-3); }
+.plist li[data-status='unreadable'] .pmeta { color: var(--bad); }
+
+.side-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; }
+.theme { display: flex; gap: 2px; padding: 4px; border-radius: 14px; background: var(--bg); }
+.theme button, .side-foot > button { display: grid; place-items: center; width: 38px; height: 34px; border: 0; border-radius: 10px; background: none; color: var(--ink-2); }
+.theme button[aria-pressed='true'] { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(31, 41, 55, 0.12); }
+
+main { width: 100%; max-width: 1320px; margin: 0 auto; padding: 30px 40px 40px; }
+
+/* ---------- En-tête ---------- */
+
+.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 24px; margin-bottom: 22px; }
+h1 { font-size: 36px; font-weight: 900; line-height: 1.1; letter-spacing: -0.01em; }
+.top p { margin-top: 4px; color: var(--ink-2); font-size: 18px; }
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+.period { display: flex; gap: 2px; margin: 0; padding: 4px; border: 0; border-radius: 16px; background: var(--card); }
+.period label { display: grid; place-items: center; height: 40px; padding: 0 16px; border-radius: 12px; color: var(--ink-2); font-size: 16px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.period label:hover { color: var(--ink); }
+.period label:has(:checked) { background: var(--primary); color: #fff; }
+.period label:has(:focus-visible) { outline: 3px solid var(--primary); outline-offset: 2px; }
+.period input { position: absolute; opacity: 0; pointer-events: none; }
+
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 48px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--card); font-size: 16px; font-weight: 700; }
+.btn.square { width: 48px; justify-content: center; padding: 0; }
+
+/* ---------- Résumé ---------- */
+
+.summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px 32px; padding: 24px 28px; border-radius: 24px; background: var(--card); }
+.summary .say { font-size: 26px; font-weight: 800; line-height: 1.2; letter-spacing: -0.01em; }
+.summary .sub { margin-top: 4px; color: var(--ink-2); }
+
+.tally { display: flex; flex-wrap: wrap; gap: 10px; }
+.tally li { display: flex; align-items: center; gap: 10px; padding: 8px 16px 8px 8px; border-radius: 999px; background: var(--neutral-bg); color: var(--neutral); font-weight: 700; }
+.tally b { font-size: 20px; font-weight: 900; color: var(--ink); }
+.tally li[data-tone='good'] { background: var(--good-bg); color: var(--good); }
+.tally li[data-tone='bad'] { background: var(--bad-bg); color: var(--bad); }
+.tally li[data-tone='watch'] { background: var(--watch-bg); color: var(--watch); }
+
+/* La perle : la couleur dit le verdict, la flèche dit le sens. */
+.bead { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 50%; background: #8793a3; color: #fff; }
+.bead[data-tone='good'] { background: var(--good); }
+.bead[data-tone='bad'] { background: var(--bad); }
+.bead[data-tone='watch'] { background: #b06a00; }
+.bead[data-tone='none'] { background: none; color: var(--ink-3); border: 2px dashed #a8b0bc; }
+.tally .bead { width: 30px; height: 30px; }
+
+/* ---------- Le bilan ---------- */
+
+.cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 20px; }
+
+.sheet { padding: 8px 28px 12px; border-radius: 24px; background: var(--card); container-type: inline-size; }
+
+.group > h2 { padding: 22px 0 6px; color: var(--ink-3); font-size: 16px; font-weight: 800; }
+
+.row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1.5fr) minmax(150px, max-content) minmax(220px, 1fr) 140px;
+  gap: 4px 20px;
+  align-items: center;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+
+.row h3 { font-size: 19px; font-weight: 800; line-height: 1.25; }
+.row .help { color: var(--ink-2); font-size: 15px; line-height: 1.4; }
+
+.row .value { text-align: right; }
+.row .value b { display: block; font-size: 32px; font-weight: 900; line-height: 1.05; letter-spacing: -0.015em; white-space: nowrap; --unit-size: 0.62em; --unit-weight: 800; }
+.row .value b.words { font-size: 19px; font-weight: 800; letter-spacing: 0; color: var(--ink-2); white-space: normal; }
+.row .value > span { display: block; max-width: 24ch; margin-left: auto; color: var(--ink-2); font-size: 14px; line-height: 1.3; }
+
+.cmp { display: grid; gap: 4px; min-width: 0; }
+.cmp-line { display: grid; grid-template-columns: 122px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--ink-2); font-size: 14px; font-weight: 700; white-space: nowrap; }
+.cmp-line b { font-weight: 800; color: var(--ink); }
+.cmp-bar { height: 8px; border-radius: 999px; background: var(--neutral-bg); overflow: hidden; }
+.cmp-bar i { display: block; height: 100%; width: calc(var(--v) * 100%); min-width: 3px; border-radius: 999px; background: #a8b0bc; }
+.row[data-tone='good'] .cmp-line.now i { background: var(--good); }
+.row[data-tone='bad'] .cmp-line.now i { background: var(--bad); }
+.row[data-tone='flat'] .cmp-line.now i, .row[data-tone='neutral'] .cmp-line.now i { background: #566273; }
+.cmp-note { color: var(--ink-2); font-size: 14px; line-height: 1.35; }
+
+.chip-slot { justify-self: end; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 999px; background: var(--neutral-bg); color: var(--neutral); font-size: 15px; font-weight: 800; white-space: nowrap; }
+.chip[data-tone='good'] { background: var(--good-bg); color: var(--good); }
+.chip[data-tone='bad'] { background: var(--bad-bg); color: var(--bad); }
+.chip[data-tone='watch'] { background: var(--watch-bg); color: var(--watch); }
+.chip[data-tone='none'] { background: none; box-shadow: inset 0 0 0 2px #c9cfd8; }
+
+/* ---------- À regarder ---------- */
+
+.watch { padding: 24px 28px 22px; border-radius: 24px; background: var(--card); }
+#watch { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 32px; }
+.watch > h2 { font-size: 22px; font-weight: 900; }
+.watch > p { margin-top: 2px; color: var(--ink-2); font-size: 15px; }
+
+.wgroup { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.wgroup h3 { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 800; }
+.wgroup h3 span { padding: 0 9px; border-radius: 999px; background: var(--watch-bg); color: var(--watch); font-size: 14px; line-height: 1.7; }
+.wgroup li { margin-top: 10px; }
+.wgroup a { display: block; font-size: 16px; font-weight: 700; line-height: 1.3; text-decoration: none; }
+.wgroup a:hover { text-decoration: underline; }
+.wgroup .d { display: block; color: var(--ink-2); font-size: 14px; line-height: 1.4; }
+.wgroup .rest { margin-top: 10px; color: var(--ink-2); font-size: 14px; }
+.more { display: inline-flex; align-items: center; gap: 4px; margin-top: 18px; color: var(--primary); font-weight: 800; text-underline-offset: 3px; }
+
+/* ---------- Tableaux ---------- */
+
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 20px; }
+.card { min-width: 0; padding: 24px 28px; border-radius: 24px; background: var(--card); }
+.card > h2 { margin-bottom: 14px; font-size: 22px; font-weight: 900; }
+
+.rows { width: 100%; border-collapse: collapse; }
+.rows th, .rows td { padding: 12px 14px 12px 0; border-top: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.rows thead th { padding-top: 0; border-top: 0; color: var(--ink-3); font-size: 14px; font-weight: 700; }
+.rows .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rows td.num { font-weight: 800; }
+.rows td:last-child, .rows th:last-child { padding-right: 0; }
+.t-title { display: block; font-size: 16px; font-weight: 700; line-height: 1.3; }
+.t-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 3px; color: var(--ink-2); font-size: 14px; }
+.tag { padding: 0 9px; border-radius: 999px; background: var(--neutral-bg); color: var(--neutral); font-size: 13px; font-weight: 800; line-height: 1.6; }
+.tag.late { background: var(--bad-bg); color: var(--bad); }
+.p-cell { display: flex; align-items: center; gap: 10px; font-weight: 700; white-space: nowrap; }
+.bar-cell { display: flex; align-items: center; gap: 10px; min-width: 104px; }
+.bar-cell b { min-width: 34px; font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
+.bar-cell i { height: 10px; min-width: 3px; border-radius: 999px; background: var(--primary); width: calc(var(--v) * (100% - 44px)); }
+.dash { color: var(--ink-3); font-weight: 600; }
+
+.notice { display: flex; align-items: flex-start; gap: 10px; margin-top: 16px; color: var(--ink-2); font-size: 15px; }
+.notice .ic { margin-top: 2px; color: var(--bad); }
+.notice strong { color: var(--ink); font-weight: 800; }
+
+/* Sur un très grand écran, « À regarder » se range à côté du bilan. */
+@media (min-width: 1680px) {
+  .cols { grid-template-columns: minmax(0, 1fr) 360px; }
+  .watch { position: sticky; top: 20px; }
+  #watch { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Quand le bilan manque de largeur, la comparaison et le verdict passent sous la valeur. */
+@container (max-width: 900px) {
+  .row { grid-template-columns: 40px minmax(0, 1fr) auto; }
+  .row .cmp { grid-column: 2 / -1; max-width: 520px; }
+  .row .chip-slot { grid-column: 2 / -1; justify-self: start; }
+}
+
+@media (max-width: 1100px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .side { position: static; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px 14px; height: auto; padding: 12px 20px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .find { width: 44px; padding: 0; justify-content: center; order: 3; }
+  .find span, .find kbd { display: none; }
+  .nav { display: flex; order: 2; margin-right: auto; }
+  .projects { order: 5; width: 100%; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+  .projects h2 { padding: 0; gap: 6px; }
+  .plist { display: flex; overflow-x: auto; }
+  .pname { overflow: visible; }
+  .side-foot { order: 4; margin: 0; gap: 8px; }
+  main { padding: 24px 24px 32px; }
+  .pair { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+  main { padding: 18px 16px 28px; }
+  h1 { font-size: 30px; }
+  .period { width: 100%; overflow-x: auto; }
+  .sheet, .card, .watch, .summary { padding-left: 18px; padding-right: 18px; border-radius: 20px; }
+  .summary .say { font-size: 22px; }
+  .row { grid-template-columns: 40px minmax(0, 1fr); }
+  .row .value { grid-column: 2; text-align: left; }
+  .row .value > span { margin-left: 0; }
+  .rows .hide-s { display: none; }
+}
+</style>
+</head>
+<body data-variant="4" data-fonts="Nunito">
+<div class="app">
+  <aside class="side" aria-label="Navigation">
+    <a class="brand" href="#">
+      <svg width="34" height="22" viewBox="0 0 34 22" aria-hidden="true">
+        <circle cx="6" cy="11" r="6" fill="#18794e"/>
+        <circle cx="17" cy="11" r="6" fill="#b06a00"/>
+        <circle cx="28" cy="11" r="6" fill="#b83720"/>
+      </svg>
+      beads-desktop
+    </a>
+
+    <button class="find" type="button"><i data-icon="search"></i><span>Rechercher</span><kbd>⌘K</kbd></button>
+
+    <nav class="nav" aria-label="Navigation principale">
+      <a href="#" aria-current="page"><i data-icon="grid"></i>Vue globale</a>
+      <a href="#"><i data-icon="eye"></i>À regarder<span class="count" data-b="x.signals.total"></span></a>
+    </nav>
+
+    <section class="projects" aria-labelledby="side-projects">
+      <h2 id="side-projects">Projets <span data-b="x.projectCount"></span></h2>
+      <ul class="plist" id="side-list"></ul>
+    </section>
+
+    <div class="side-foot">
+      <div class="theme" role="group" aria-label="Thème">
+        <button type="button" aria-pressed="false" aria-label="Thème du système"><i data-icon="screen" data-size="17"></i></button>
+        <button type="button" aria-pressed="true" aria-label="Thème clair"><i data-icon="sun" data-size="17"></i></button>
+        <button type="button" aria-pressed="false" aria-label="Thème sombre"><i data-icon="moon" data-size="17"></i></button>
+      </div>
+      <button type="button" aria-label="Raccourcis clavier"><i data-icon="keyboard"></i></button>
+    </div>
+  </aside>
+
+  <main>
+    <header class="top">
+      <div>
+        <h1>Vue globale</h1>
+        <p>Le bilan des <span data-b="x.readable"></span> Projets suivis, <span data-b="x.periodLong"></span>.</p>
+      </div>
+      <div class="tools">
+        <fieldset class="period">
+          <legend class="sr-only">Période</legend>
+          <label><input type="radio" name="period">7 jours</label>
+          <label><input type="radio" name="period" checked>30 jours</label>
+          <label><input type="radio" name="period">90 jours</label>
+          <label><input type="radio" name="period">Autre</label>
+        </fieldset>
+        <button class="btn" type="button"><i data-icon="copy"></i>Copier le rapport</button>
+        <button class="btn square" type="button" aria-label="Actualiser les métriques" title="Calculé à 21:55"><i data-icon="refresh"></i></button>
+      </div>
+    </header>
+
+    <section class="summary" aria-labelledby="summary-say">
+      <div>
+        <p class="say" id="summary-say"></p>
+        <p class="sub">Comparé aux trente jours précédents, <span data-b="x.prevLabel"></span>.</p>
+      </div>
+      <ul class="tally" id="tally"></ul>
+    </section>
+
+    <div class="cols">
+      <div class="sheet" id="sheet"></div>
+
+      <aside class="watch" aria-labelledby="watch-title">
+        <h2 id="watch-title">À regarder maintenant</h2>
+        <p><span data-b="x.signals.total"></span> Signaux, dans tous les Projets.</p>
+        <div id="watch"></div>
+        <a class="more" href="#">Voir tous les Signaux<i data-icon="right" data-size="16"></i></a>
+      </aside>
+    </div>
+
+    <div class="pair">
+      <section class="card" aria-labelledby="wip-title">
+        <h2 id="wip-title">Tickets en cours</h2>
+        <table class="rows">
+          <thead><tr><th scope="col">Ticket</th><th scope="col" class="num">En cours depuis</th></tr></thead>
+          <tbody id="wip-rows"></tbody>
+        </table>
+      </section>
+
+      <section class="card" aria-labelledby="projects-title">
+        <h2 id="projects-title">Projets</h2>
+        <table class="rows">
+          <thead>
+            <tr><th scope="col">Projet</th><th scope="col">Livraisons</th><th scope="col" class="num hide-s">Lead Time</th><th scope="col" class="num hide-s">Cycle Time</th><th scope="col" class="num">En cours</th></tr>
+          </thead>
+          <tbody id="project-rows"></tbody>
+        </table>
+        <p class="notice" id="unreadable" hidden></p>
+      </section>
+    </div>
+  </main>
+</div>
+
+<template id="tpl-side-project">
+  <li><a href="#"><span class="ptile" data-v="hue" data-t="initials"></span><span class="pname" data-t="name"></span><span class="pmeta" data-t="meta"></span></a></li>
+</template>
+
+<template id="tpl-row">
+  <article class="row">
+    <span class="bead-slot" data-t="bead"></span>
+    <div><h3 data-t="name"></h3><p class="help" data-t="help"></p></div>
+    <p class="value"><b data-t="value"></b><span data-t="unit"></span></p>
+    <div class="cmp" data-t="cmp"></div>
+    <span class="chip-slot" data-t="chip"></span>
+  </article>
+</template>
+
+<template id="tpl-wip-row">
+  <tr>
+    <td>
+      <span class="t-title" data-t="title"></span>
+      <span class="t-meta"><span data-t="project"></span><span class="tag" data-t="type"></span><span class="tag late" data-t="late"></span></span>
+    </td>
+    <td class="num" data-t="age"></td>
+  </tr>
+</template>
+
+<template id="tpl-project-row">
+  <tr>
+    <th scope="row"><span class="p-cell"><span class="ptile" data-v="hue" data-t="initials"></span><span data-t="name"></span></span></th>
+    <td><span class="bar-cell" data-v="share"><b data-t="throughput"></b><i></i></span></td>
+    <td class="num hide-s" data-t="lead"></td>
+    <td class="num hide-s" data-t="cycle"></td>
+    <td class="num" data-t="wip"></td>
+  </tr>
+</template>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  const { h, fmt, repeat, withUnits, icon, X, M } = BDK;
+  const NBSP = ' ';
+
+  repeat('#side-list', 'tpl-side-project', BD.projects, (project) => ({
+    initials: BDK.initials(project.name),
+    name: project.name,
+    meta: project.status !== 'ok' ? 'illisible' : project.wip > 0 ? String(project.wip) : '',
+    hue: project.hue,
+    $: { 'data-status': project.status, title: project.status === 'ok' && project.wip > 0 ? fmt.plural(project.wip, 'ticket') + ' en cours' : null },
+  }));
+
+  /* Les lignes du bilan : quel indicateur, dans quel groupe, et comment l'écrire. */
+  const duration = (key, p85Key) => ({
+    key,
+    unit: 'en médiane',
+    help: M[key].help + ' P85 : ' + M[p85Key].t.now + ', avant ' + M[p85Key].t.prev + '.',
+  });
+  const groups = [
+    {
+      title: 'Livrer',
+      rows: [
+        { key: 'debit', unit: 'Livraisons' },
+        { key: 'balance', unit: fmt.int(BD.arrivals.value) + ' Arrivées, ' + fmt.int(BD.debit.value) + ' Livraisons' },
+      ],
+    },
+    { title: 'Délais', rows: [duration('leadMedian', 'leadP85'), duration('cycleMedian', 'cycleP85'), duration('recoveryMedian', 'recoveryP85')] },
+    {
+      title: 'Qualité',
+      rows: [
+        {
+          none: true,
+          name: 'Taux d’échec',
+          help: 'La part des Livraisons suivies d’un bug. Seuls ' + fmt.pct(BD.failure.coverage) + ' des bugs ont une origine renseignée : il en faut ' + fmt.pct(BD.failure.minCoverage) + ' pour conclure.',
+        },
+        { key: 'reopening', unit: BD.reopening.reopened + ' sur ' + fmt.int(BD.reopening.closures) + ' clôtures' },
+        { key: 'efficiency', unit: 'hors Blocage' },
+        { key: 'abandon', unit: BD.abandon.abandoned + ' sur ' + fmt.int(BD.abandon.closed) + ' tickets fermés' },
+      ],
+    },
+    {
+      title: 'En attente',
+      rows: [
+        { key: 'wipAvg', name: 'WIP', value: fmt.int(BD.wip.current), unit: 'en cours, ' + M.wipAvg.t.now + ' en moyenne' },
+        { key: 'stagnant', unit: 'sur ' + fmt.int(BD.ready.count) + ' Prêts', watch: BD.ready.stagnant > 0 },
+      ],
+    },
+  ];
+
+  const arrow = { up: 'up', down: 'drop', flat: 'flat' };
+  const sheet = document.getElementById('sheet');
+  const tally = { good: 0, bad: 0, calm: 0, none: 0 };
+
+  groups.forEach((group) => {
+    const section = h('section', { class: 'group' }, h('h2', { text: group.title }));
+    sheet.append(section);
+    repeat(section, 'tpl-row', group.rows, (row) => {
+      if (row.none) {
+        tally.none += 1;
+        return {
+          bead: h('span', { class: 'bead', 'data-tone': 'none' }, icon('help', 20)),
+          name: row.name,
+          help: row.help,
+          value: h('b', { class: 'words', text: 'Non significatif' }),
+          cmp: h('p', { class: 'cmp-note', text: 'Pas de comparaison tant que la mesure n’est pas fiable.' }),
+          chip: h('span', { class: 'chip', 'data-tone': 'none', text: 'Non mesurable' }),
+        };
+      }
+      const m = M[row.key];
+      const tone = row.watch ? 'watch' : m.tone;
+      tally[m.tone === 'good' ? 'good' : m.tone === 'bad' ? 'bad' : 'calm'] += 1;
+      // Deux barres, avant et maintenant, à la même échelle : on voit l'écart sans lire les nombres.
+      const top = Math.max(m.now, m.prev);
+      const bars =
+        m.now >= 0 && m.prev >= 0 && top > 0
+          ? [
+              h('p', { class: 'cmp-line' }, h('span', null, 'Avant ', h('b', null, withUnits(m.t.prev))), h('span', { class: 'cmp-bar' }, h('i', { style: '--v:' + (m.prev / top).toFixed(3) }))),
+              h('p', { class: 'cmp-line now' }, h('span', null, 'Actuel ', h('b', null, withUnits(m.t.now))), h('span', { class: 'cmp-bar' }, h('i', { style: '--v:' + (m.now / top).toFixed(3) }))),
+            ]
+          : [h('p', { class: 'cmp-note' }, 'Avant : ', h('b', null, withUnits(m.t.prev)), m.tone === 'flat' ? '' : ', soit ' + m.t.delta + '.')];
+      return {
+        bead: h('span', { class: 'bead', 'data-tone': tone }, icon(row.watch ? 'eye' : arrow[m.dir], 20)),
+        name: row.name || m.name,
+        help: row.help || m.help,
+        value: withUnits(row.value || m.t.now),
+        unit: row.unit,
+        cmp: bars,
+        chip: h('span', { class: 'chip', 'data-tone': tone, text: row.watch ? 'À regarder' : m.judgment ? m.verdict : m.tone === 'flat' ? 'Stable' : m.verdict }),
+        $: { 'data-tone': m.tone },
+      };
+    });
+  });
+
+  /* Le résumé : combien progressent, combien reculent. Un fait compté, pas une note. */
+  const say = (count, one, many) => count + NBSP + (count > 1 ? many : one);
+  document.getElementById('summary-say').textContent =
+    say(tally.good, 'indicateur progresse', 'indicateurs progressent') + ', ' + say(tally.bad, 'recule', 'reculent') + '.';
+  const pill = (tone, name, count, label) => h('li', { 'data-tone': tone }, h('span', { class: 'bead', 'data-tone': tone }, icon(name, 16)), h('b', { text: String(count) }), label);
+  document.getElementById('tally').append(
+    pill('good', 'check', tally.good, 'en progrès'),
+    pill('bad', 'alert', tally.bad, 'en recul'),
+    pill('flat', 'flat', tally.calm, 'stables ou neutres'),
+    pill('watch', 'eye', X.signals.total, 'à regarder'),
+  );
+
+  /* À regarder : les Signaux par sorte. */
+  const watch = document.getElementById('watch');
+  BDK.signalGroups().forEach((group) => {
+    const shown = group.items.slice(0, 3);
+    const rest = group.items.length - shown.length;
+    watch.append(
+      h(
+        'section',
+        { class: 'wgroup' },
+        h('h3', null, group.items.length > 1 ? group.many : group.label, h('span', { text: String(group.items.length) })),
+        h(
+          'ul',
+          null,
+          shown.map((signal) => {
+            const fields = BDK.signalFields(signal);
+            return h('li', null, h('a', { href: '#', text: fields.title }), h('span', { class: 'd', text: (fields.project ? fields.project + ', ' : '') + fields.detail }));
+          }),
+        ),
+        rest > 0 ? h('p', { class: 'rest', text: 'et ' + rest + ' autres.' }) : null,
+      ),
+    );
+  });
+
+  repeat('#wip-rows', 'tpl-wip-row', BD.inProgress, (ticket) => ({
+    title: ticket.title,
+    project: BDK.project(ticket.project).name,
+    type: ticket.type + NBSP + 'P' + ticket.priority,
+    late: ticket.blocked ? 'bloqué' : ticket.age > BD.cycle.p85 ? 'au-delà du P85' : '',
+    age: fmt.dur(ticket.age),
+  }));
+
+  const readable = BD.projects.filter((project) => project.status === 'ok');
+  const most = Math.max(1, ...readable.map((project) => project.throughput));
+  repeat('#project-rows', 'tpl-project-row', readable, (project) => ({
+    initials: BDK.initials(project.name),
+    name: project.name,
+    hue: project.hue,
+    share: (project.throughput / most).toFixed(3),
+    throughput: fmt.int(project.throughput),
+    lead: project.leadMedian === null ? h('span', { class: 'dash', text: 'aucune' }) : fmt.dur(project.leadMedian),
+    cycle: project.cycleMedian === null ? h('span', { class: 'dash', text: 'aucune' }) : fmt.dur(project.cycleMedian),
+    wip: fmt.int(project.wip),
+  }));
+
+  const unreadable = BD.projects.filter((project) => project.status !== 'ok');
+  if (unreadable.length > 0) {
+    const notice = document.getElementById('unreadable');
+    notice.hidden = false;
+    notice.append(
+      icon('alert', 18),
+      h('span', null, h('strong', { text: unreadable.map((project) => project.name).join(', ') }), unreadable.length > 1 ? ' sont illisibles et absents' : ' est illisible et absent', ' de ces chiffres. ', unreadable[0].reason || ''),
+    );
+  }
+})();
+</script>
+</body>
+</html>
