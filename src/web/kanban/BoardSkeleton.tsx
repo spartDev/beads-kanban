@@ -1,3 +1,4 @@
+import { useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { Skeleton } from '../ui/states';
 
@@ -5,8 +6,9 @@ import { Skeleton } from '../ui/states';
 const PLACEHOLDER_CARDS = [3, 4, 2, 1, 3];
 
 export function BoardSkeleton() {
+  const t = useT();
   return (
-    <div role="status" aria-busy="true" aria-label="Chargement des tickets" className="@container">
+    <div role="status" aria-busy="true" aria-label={t.kanban.board.loading} className="@container">
       <div className="flex flex-col gap-2 @min-[60rem]:grid @min-[60rem]:grid-cols-5">
         {PLACEHOLDER_CARDS.map((cards, column) => (
           <div

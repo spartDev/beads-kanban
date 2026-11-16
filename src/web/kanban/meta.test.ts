@@ -3,12 +3,15 @@ import { withTimeZone } from '../test/timeZone';
 import { COLUMN_IDS } from './columns';
 import {
   COLUMN_META,
+  columnMeta,
+  columnsIn,
   COLUMNS,
   closedEarlierLabel,
   closedUndatedLabel,
   countLabel,
   daysLabel,
   onlyPausedNotice,
+  pausedLabel,
   ticketNoun,
 } from './meta';
 
@@ -86,7 +89,7 @@ describe('Terminé écrit son premier jour dans le fuseau courant, pas dans celu
 
 describe('daysLabel', () => {
   it('accorde « jour » : un seul est au singulier', () => {
-    expect([1, 2, 7, 14].map(daysLabel)).toEqual(['1 jour', '2 jours', '7 jours', '14 jours']);
+    expect([1, 2, 7, 14].map((days) => daysLabel(days))).toEqual(['1 jour', '2 jours', '7 jours', '14 jours']);
   });
 });
 
@@ -107,7 +110,7 @@ describe('countLabel', () => {
     expect(countLabel(0)).toBe('0 ticket');
     expect(countLabel(1)).toBe('1 ticket');
     expect(countLabel(2)).toBe('2 tickets');
-    expect([0, 1, 2].map(ticketNoun)).toEqual(['ticket', 'ticket', 'tickets']);
+    expect([0, 1, 2].map((count) => ticketNoun(count))).toEqual(['ticket', 'ticket', 'tickets']);
   });
 });
 
@@ -125,5 +128,34 @@ describe('onlyPausedNotice : l’état vide d’un tableau dont tous les tickets
     expect(onlyPausedNotice(1).detail).toBe(
       'Reporté, épinglé ou d’un statut inconnu, il n’est dans aucune colonne : il attend dans le tiroir « En pause ».',
     );
+  });
+});
+
+describe('en anglais', () => {
+  it('nomme les colonnes avec les termes anglais de CONTEXT.md, chaque indice sur une ligne', () => {
+    expect(columnsIn('en').map((column) => column.label)).toEqual(['Backlog', 'Ready', 'In progress', 'Blocked', 'Done']);
+    for (const { id, hint } of columnsIn('en')) {
+      expect(hint(365).length, `${id} : un indice tient sur une ligne de colonne`).toBeLessThanOrEqual(30);
+    }
+    expect(columnMeta('en').done.hint(1)).toBe('Closed today');
+    expect(columnMeta('en').done.rule(14, new Date(2026, 9, 13).getTime())).toContain('since midnight on Tue, Oct 13');
+    expect(pausedLabel('en')).toBe('Paused');
+  });
+
+  it('accorde au nombre à l’anglaise : seul un est au singulier, zéro compris', () => {
+    expect(countLabel(0, 'en')).toBe('0 tickets');
+    expect(countLabel(1, 'en')).toBe('1 ticket');
+    expect(countLabel(1234, 'en')).toBe('1,234 tickets');
+    expect(daysLabel(1, 'en')).toBe('1 day');
+    expect(closedEarlierLabel(2, 'en')).toBe('2 others closed earlier');
+    expect(onlyPausedNotice(1, 'en').title).toBe('The only ticket on the board is paused');
+    expect([0, 1, 2].map((count) => ticketNoun(count, 'en'))).toEqual(['tickets', 'ticket', 'tickets']);
+  });
+
+  it('groupe les grands nombres par milliers, dans chaque langue', () => {
+    expect(countLabel(1234)).toBe('1 234 tickets');
+    expect(closedEarlierLabel(1234)).toBe('1 234 autres fermés plus tôt');
+    expect(closedUndatedLabel(1234, 'en')).toBe('1,234 closed tickets with no close date');
+    expect(closedUndatedLabel(1, 'en')).toBe('1 closed ticket with no close date');
   });
 });

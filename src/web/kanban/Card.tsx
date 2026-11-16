@@ -4,9 +4,9 @@ import { Link, useLocation } from 'react-router';
 import { ticketTitle } from '../data/helpers';
 import type { TicketSignals } from '../data/hooks';
 import type { ApiSignal, Issue } from '../data/types';
-import { shownSignals, signalSentence } from '../lib/signals';
+import { SIGNAL_KINDS, shownSignals, signalSentence } from '../lib/signals';
 import { statusLabel, typeMeta } from '../design/issue-palette';
-import { formatAge, formatDateTime } from '../lib/relativeTime';
+import { useFormat, useLanguage, useT } from '../i18n';
 import { parsePath, paths } from '../paths';
 import { AbandonBadge, PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
 import { openedFromCard } from './boardFocus';
@@ -47,8 +47,11 @@ export function Card({
   /** Les Signaux du ticket : sa Dérive, son Blocage long. */
   signals?: TicketSignals | undefined;
 }) {
+  const { language } = useLanguage();
+  const t = useT();
+  const format = useFormat();
   const dated = lane === 'done' ? (issue.closedAt ?? issue.updatedAt) : issue.updatedAt;
-  const age = formatAge(dated, now);
+  const age = format.formatAge(dated, now);
   // Le ticket s'ouvre par-dessus ce tableau : son adresse garde les réglages du tableau (`?epic=`, `?done=`, `?col=`), et
   // une carte ouverte pendant qu'un ticket l'est déjà remplace son entrée d'historique (« Retour » ferme le panneau).
   const { pathname, search } = useLocation();
@@ -66,7 +69,7 @@ export function Card({
       <div className="flex min-w-0 items-start gap-1.5">
         <span className="mt-0.5 shrink-0">
           <TypeGlyph type={issue.type} />
-          <span className="sr-only">{typeMeta(issue.type).label} </span>
+          <span className="sr-only">{typeMeta(issue.type, language).label} </span>
         </span>
         <span id={idId} className="min-w-0 flex-1 wrap-anywhere font-mono text-xs leading-5 text-ink-3">
           {issue.id}
@@ -91,15 +94,15 @@ export function Card({
         // Les pastilles passent à la ligne plutôt que de serrer l'identifiant, qui ne doit jamais se couper en deux.
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           {issue.abandon ? <AbandonBadge abandon={issue.abandon} /> : null}
-          {drift ? <SignalBadge signal={drift} label="Dérive" icon={Timer} /> : null}
-          {longBlockage ? <SignalBadge signal={longBlockage} label="Blocage long" icon={Hourglass} /> : null}
+          {drift ? <SignalBadge signal={drift} label={signalKind('drift')} icon={Timer} /> : null}
+          {longBlockage ? <SignalBadge signal={longBlockage} label={signalKind('longBlockage')} icon={Hourglass} /> : null}
           {issue.status === 'hooked' ? <AgentBadge /> : null}
           {epic ? <EpicPill projectId={projectId} epic={epic} /> : null}
         </div>
       ) : null}
       <Blocking issue={issue} />
       {lane === 'paused' ? (
-        <p className="self-start rounded-full border border-line px-1.5 text-xs leading-5 text-ink-2">{statusLabel(issue.status)}</p>
+        <p className="self-start rounded-full border border-line px-1.5 text-xs leading-5 text-ink-2">{statusLabel(issue.status, language)}</p>
       ) : null}
 
       {issue.assignee || age ? (
@@ -108,11 +111,11 @@ export function Card({
           {age ? (
             <time
               dateTime={dated}
-              title={formatDateTime(dated)}
+              title={format.formatDateTime(dated)}
               className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap"
             >
               <Clock size={11} aria-hidden="true" />
-              <span className="sr-only">{lane === 'done' ? 'Fermé' : 'Mis à jour'} </span>
+              <span className="sr-only">{lane === 'done' ? t.kanban.card.closed : t.kanban.card.updated} </span>
               {age}
             </time>
           ) : null}
@@ -122,11 +125,15 @@ export function Card({
   );
 }
 
+/** Le nom d'une sorte de Signal : un texte de la zone shell (`lib/signals.ts`), lu là sans être recopié. */
+const signalKind = (kind: ApiSignal['kind']): string => SIGNAL_KINDS.find((entry) => entry.kind === kind)?.label ?? kind;
+
 /**
  * Un Signal du ticket (Dérive, Blocage long) : la pastille dit sa sorte, l'infobulle et les lecteurs d'écran disent de combien il dépasse la normale. La
  * phrase n'est pas dans le nom du lien de la carte : elle suit le titre, dans la carte, comme les autres pastilles.
  */
 function SignalBadge({ signal, label, icon: Icon }: { signal: ApiSignal; label: string; icon: typeof Timer }) {
+  const t = useT();
   const sentence = signalSentence(signal);
   return (
     <span
@@ -136,26 +143,28 @@ function SignalBadge({ signal, label, icon: Icon }: { signal: ApiSignal; label: 
     >
       <Icon size={11} aria-hidden="true" />
       {label}
-      <span className="sr-only"> : {sentence}</span>
+      <span className="sr-only">{t.kanban.card.signalDetail(sentence)}</span>
     </span>
   );
 }
 
 /** Ticket rattaché à un agent (statut `hooked`). */
 function AgentBadge() {
+  const t = useT();
   return (
     <span
-      title="Rattaché à un agent"
+      title={t.kanban.card.agentTitle}
       className="inline-flex shrink-0 items-center gap-1 rounded-full bg-accent-soft px-1.5 text-micro font-medium text-accent"
     >
       <Bot size={11} aria-hidden="true" />
-      agent
+      {t.kanban.card.agent}
     </span>
   );
 }
 
 /** Pastille de l'Epic : son titre court, et un lien vers elle. Le titre entier est en infobulle. Sans titre, son identifiant la nomme (`epicName`). */
 function EpicPill({ projectId, epic }: { projectId: string; epic: Issue }) {
+  const t = useT();
   return (
     <Link
       to={paths.epics(projectId, epic.id)}
@@ -163,20 +172,21 @@ function EpicPill({ projectId, epic }: { projectId: string; epic: Issue }) {
       className="relative z-10 inline-flex max-w-full items-center gap-1 rounded-md border border-line bg-well px-1.5 py-px text-xs text-ink-2 transition-colors hover:text-ink"
     >
       <TypeGlyph type="epic" size={12} />
-      <span className="sr-only">Epic :</span> <span className="min-w-0 truncate">{epicShortName(epic)}</span>
+      <span className="sr-only">{t.kanban.card.epic}</span> <span className="min-w-0 truncate">{epicShortName(epic)}</span>
     </Link>
   );
 }
 
 /** Ce qui retient le ticket : les tickets dont il dépend, ou le seul statut bloqué. */
 function Blocking({ issue }: { issue: Issue }) {
+  const t = useT();
   const ids = issue.blockedBy;
-  if (ids.length === 0) return issue.status === 'blocked' ? <Reason>Statut bloqué</Reason> : null;
+  if (ids.length === 0) return issue.status === 'blocked' ? <Reason>{t.kanban.card.blockedStatus}</Reason> : null;
   const named = ids.slice(0, NAMED_BLOCKERS);
   const rest = ids.length - named.length;
   return (
-    <Reason title={`Attend ${ids.join(', ')}`}>
-      Attend{' '}
+    <Reason title={`${t.kanban.card.waitingOn} ${ids.join(', ')}`}>
+      {t.kanban.card.waitingOn}{' '}
       {named.map((id, index) => (
         <Fragment key={id}>
           {index > 0 ? ', ' : null}

@@ -1,13 +1,17 @@
 import type { Issue, IssueEpic } from '../data/types';
 import { collapseSpaces, isBlankTitle, isEpic, withoutInvisible } from '../data/helpers';
+import { kanban } from '../i18n/catalog/kanban';
 import { BLANK_CHAR, INVISIBLE_CHAR, SELECTOR_CHAR } from '../lib/invisibleText';
 import { compareIssues } from './columns';
 
 /** Les tickets d'un Projet par identifiant. */
 export const indexById = (issues: readonly Issue[]): Map<string, Issue> => new Map(issues.map((issue) => [issue.id, issue]));
 
-/** Le libellé de l'option du filtre qui retire le filtre (`EpicFilter`) : aucune Epic ne doit se lire comme elle (`epicLabels`). */
-export const ALL_EPICS = 'Toutes les Epics';
+/**
+ * Le libellé français de l'option du filtre qui retire le filtre (`EpicFilter`) : aucune Epic ne doit se lire comme elle (`epicLabels`). Le filtre
+ * passe celui de la langue affichée (`t.kanban.epicFilter.all`).
+ */
+export const ALL_EPICS = kanban.fr.epicFilter.all;
 
 const MIN_HEAD = 3;
 const SEPARATOR = /\s*[:–—]\s+|\s+-\s+/;

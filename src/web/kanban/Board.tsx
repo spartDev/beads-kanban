@@ -3,6 +3,7 @@ import { useMemo, useRef, useState } from 'react';
 import { epicOf } from '../../domain/epics';
 import { useTicketSignals } from '../data/hooks';
 import type { Issue, Project } from '../data/types';
+import { useFormat, useLanguage, useT } from '../i18n';
 import { Button } from '../ui/Button';
 import { Notice } from '../ui/states';
 import { useNow } from '../lib/useNow';
@@ -11,10 +12,10 @@ import { Card } from './Card';
 import { useCardFlash } from './cardFlash';
 import { Column } from './Column';
 import { ColumnSelector } from './ColumnSelector';
-import { buildBoard, defaultColumn, doneSince, onlyPaused, type Lane } from './columns';
+import { buildBoard, COLUMN_IDS, defaultColumn, doneSince, onlyPaused, type Lane } from './columns';
 import { EpicFilter } from './EpicFilter';
 import { epicChoices, indexById } from './epics';
-import { COLUMNS, countLabel, onlyPausedNotice } from './meta';
+import { countLabel, onlyPausedNotice } from './meta';
 import { PausedDrawer } from './PausedDrawer';
 import { useBoardParams } from './useBoardParams';
 import { useBoardShortcuts, type Lanes } from './useBoardShortcuts';
@@ -36,6 +37,9 @@ import { useBoardShortcuts, type Lanes } from './useBoardShortcuts';
 export function Board({ project, issues }: { project: Project; issues: readonly Issue[] }) {
   const params = useBoardParams();
   const now = useNow();
+  const { language } = useLanguage();
+  const t = useT();
+  const format = useFormat();
   const rootRef = useRef<HTMLDivElement>(null);
   const pausedToggle = useRef<HTMLButtonElement>(null);
   const [pausedOpen, setPausedOpen] = useState(false);
@@ -95,12 +99,12 @@ export function Board({ project, issues }: { project: Project; issues: readonly 
           <EpicFilter open={choices.open} closed={choices.closed} value={epic?.id ?? ''} onChange={params.setEpic} />
         ) : null}
         <p aria-live="polite" className="tnum text-ui text-ink-2 sm:ml-auto">
-          {countLabel(board.total)}
+          {countLabel(board.total, language)}
           {/* Une Epic regroupe des tickets sans être une carte : on dit où la trouver, tant que le tableau n'est pas filtré. */}
           {hasEpics && !epic ? (
             <span className="text-ink-3">
               {' '}
-              · {epicCount} {epicCount > 1 ? 'Epics' : 'Epic'} dans le filtre
+              {t.kanban.board.epicsInFilter(format.formatCount(epicCount), epicCount)}
             </span>
           ) : null}
         </p>
@@ -109,10 +113,10 @@ export function Board({ project, issues }: { project: Project; issues: readonly 
       {params.epicId && !epic ? (
         <Notice
           icon={SearchX}
-          title={`Aucune Epic « ${params.epicId} » dans ce Projet`}
-          action={<Button onClick={() => params.setEpic(null)}>Retirer le filtre</Button>}
+          title={t.kanban.board.unknownEpic.title(params.epicId)}
+          action={<Button onClick={() => params.setEpic(null)}>{t.kanban.board.unknownEpic.clear}</Button>}
         >
-          Le tableau montre tous les tickets. L’Epic a peut-être été supprimée, ou le lien vient d’un autre Projet.
+          {t.kanban.board.unknownEpic.detail}
         </Notice>
       ) : null}
 
@@ -121,7 +125,7 @@ export function Board({ project, issues }: { project: Project; issues: readonly 
       <ColumnSelector board={board} current={column} onSelect={params.setColumn} />
 
       <div className="flex min-w-0 flex-col gap-2 @min-[60rem]:grid @min-[60rem]:grid-cols-5">
-        {COLUMNS.map(({ id }) => (
+        {COLUMN_IDS.map((id) => (
           <Column
             key={id}
             id={id}
@@ -150,9 +154,11 @@ export function Board({ project, issues }: { project: Project; issues: readonly 
  * sont, et le bouton ouvre le tiroir (il s'efface une fois le tiroir ouvert, le tiroir s'y ouvre à la main).
  */
 function OnlyPausedNotice({ count, opened, onOpen }: { count: number; opened: boolean; onOpen: () => void }) {
-  const { title, detail } = onlyPausedNotice(count);
+  const { language } = useLanguage();
+  const t = useT();
+  const { title, detail } = onlyPausedNotice(count, language);
   return (
-    <Notice icon={CirclePause} title={title} action={opened ? null : <Button onClick={onOpen}>Ouvrir « En pause »</Button>}>
+    <Notice icon={CirclePause} title={title} action={opened ? null : <Button onClick={onOpen}>{t.kanban.board.onlyPaused.open}</Button>}>
       {detail}
     </Notice>
   );

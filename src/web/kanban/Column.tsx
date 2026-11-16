@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
+import { useFormat, useLanguage, useT } from '../i18n';
 import { cx } from '../lib/cx';
 import type { ColumnId } from './columns';
-import { closedEarlierLabel, closedUndatedLabel, COLUMN_META, daysLabel, ticketNoun } from './meta';
+import { closedEarlierLabel, closedUndatedLabel, columnMeta, daysLabel, ticketNoun } from './meta';
 import { doneDayChoices } from './params';
 
 export const columnTitleId = (id: ColumnId) => `kanban-${id}-title`;
@@ -37,7 +38,9 @@ export function Column({
   onDoneDays: (days: number) => void;
   children: ReactNode;
 }) {
-  const meta = COLUMN_META[id];
+  const { language } = useLanguage();
+  const format = useFormat();
+  const meta = columnMeta(language)[id];
   const Icon = meta.icon;
 
   return (
@@ -55,8 +58,8 @@ export function Column({
             {meta.label}
           </h2>
           <span id={columnCountId(id)} className="tnum text-xs text-ink-2">
-            {count}
-            <span className="sr-only"> {ticketNoun(count)}</span>
+            {format.formatCount(count)}
+            <span className="sr-only"> {ticketNoun(count, language)}</span>
           </span>
           {id === 'done' ? <DoneWindow doneDays={doneDays} onChange={onDoneDays} /> : null}
         </div>
@@ -75,8 +78,8 @@ export function Column({
       {id === 'done' && (closedEarlier > 0 || closedUndated > 0) ? (
         // Deux lignes, pas une somme : « plus tôt » ne vaut que pour une clôture datée.
         <div className="flex flex-col gap-0.5 px-2.5 pb-2.5 pt-1 text-xs text-ink-3">
-          {closedEarlier > 0 ? <p>{closedEarlierLabel(closedEarlier)}</p> : null}
-          {closedUndated > 0 ? <p>{closedUndatedLabel(closedUndated)}</p> : null}
+          {closedEarlier > 0 ? <p>{closedEarlierLabel(closedEarlier, language)}</p> : null}
+          {closedUndated > 0 ? <p>{closedUndatedLabel(closedUndated, language)}</p> : null}
         </div>
       ) : null}
     </section>
@@ -85,10 +88,12 @@ export function Column({
 
 /** Le réglage de Terminé : combien de jours calendaires les tickets fermés y restent. Une liste native : clavier et mobile pour rien. */
 function DoneWindow({ doneDays, onChange }: { doneDays: number; onChange: (days: number) => void }) {
+  const { language } = useLanguage();
+  const t = useT();
   return (
     <>
       <label htmlFor="kanban-done-days" className="sr-only">
-        Durée de Terminé
+        {t.kanban.board.doneWindow}
       </label>
       <select
         id="kanban-done-days"
@@ -98,7 +103,7 @@ function DoneWindow({ doneDays, onChange }: { doneDays: number; onChange: (days:
       >
         {doneDayChoices(doneDays).map((days) => (
           <option key={days} value={days}>
-            {daysLabel(days)}
+            {daysLabel(days, language)}
           </option>
         ))}
       </select>
