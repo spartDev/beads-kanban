@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { dayInZone, formatTime } from '../metrics/format';
 import { withTimeZone } from '../test/timeZone';
-import { browserTimeZone } from './instant';
+import { browserTimeZone, formatInstant } from './instant';
 
 /** Un oracle indépendant du code testé : un nom est un fuseau si `Intl` en construit un. */
 function isZone(name: unknown): boolean {
@@ -63,5 +63,30 @@ describe('browserTimeZone', () => {
 
       expect(browserTimeZone()).toBe('UTC');
     });
+  });
+});
+
+describe('formatInstant', () => {
+  withTimeZone('Europe/Paris');
+
+  it('écrit l’instant dans le fuseau du navigateur, en français ou en anglais (heures sur 24 h)', () => {
+    expect(formatInstant(NOON_UTC).replace(/[\u202f\u00a0]/g, ' ')).toBe('1 juil. 2026, 14:00');
+    expect(formatInstant(NOON_UTC, 'en')).toBe('Jul 1, 2026, 14:00');
+    expect(formatInstant('2026-03-01T22:05:00Z', 'en')).toBe('Mar 1, 2026, 23:05');
+    // Le lendemain à Paris : le jour, le mois et l'heure sont ceux du calendrier local.
+    expect(formatInstant('2026-10-05T22:05:00Z', 'en')).toBe('Oct 6, 2026, 00:05');
+    expect(formatInstant('2026-12-31T23:30:00Z', 'en')).toBe('Jan 1, 2027, 00:30');
+  });
+
+  it('ne dit rien d’un instant illisible', () => {
+    expect(formatInstant('n’importe quoi', 'en')).toBe('');
+  });
+});
+
+describe('formatInstant en anglais, dans un fuseau décalé d’une demi-heure (Kolkata)', () => {
+  withTimeZone('Asia/Kolkata');
+
+  it('écrit les minutes du fuseau', () => {
+    expect(formatInstant('2026-10-05T12:00:00Z', 'en')).toBe('Oct 5, 2026, 17:30');
   });
 });

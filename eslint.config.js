@@ -36,7 +36,8 @@ export default tseslint.config(
     files: ['src/web/**/*.{ts,tsx}'],
     languageOptions: { globals: globals.browser },
     plugins: { 'react-hooks': reactHooks },
-    rules: reactHooks.configs.recommended.rules,
+    // Un mémo qui oublie `t` ou `format` (useT, useFormat) garderait l'ancienne langue après un changement : l'oubli est une erreur, pas un avertissement.
+    rules: { ...reactHooks.configs.recommended.rules, 'react-hooks/exhaustive-deps': 'error' },
   },
   { files: ['src/server/**/*.ts', '*.config.ts'], languageOptions: { globals: globals.node } },
   // Les dossiers temporaires des tests passent par `scratchDir` : voir plus haut. Le code de l'app (`client.ts`) peut en créer.
