@@ -10,7 +10,7 @@ const DAY = 86_400_000;
  */
 
 describe('describeBreakdown', () => {
-  const view = describeBreakdown(healthFixture().leadTimeBreakdown);
+  const view = describeBreakdown(healthFixture().leadTimeBreakdown, 'fr');
 
   it('range les parts dans l’ordre de la vie d’un ticket : Attente de dépendance, Attente en Prêt, autre attente, travail, Blocage', () => {
     expect(view.parts.map((part) => [part.key, part.label])).toEqual([
@@ -50,19 +50,19 @@ describe('describeBreakdown', () => {
     expect(view.parts.map((part) => part.text.replaceAll('\u00a0', ' '))).toEqual(['21 j', '52 j', '16 j', '29 j', '2,5 j']);
 
     const base = healthFixture().leadTimeBreakdown;
-    const zeros = describeBreakdown({ ...base, dependencyWait: 0, readyWait: 0, otherWait: 0, work: 0, blocked: 0, total: 1 });
+    const zeros = describeBreakdown({ ...base, dependencyWait: 0, readyWait: 0, otherWait: 0, work: 0, blocked: 0, total: 1 }, 'fr');
     expect(zeros.parts.map((part) => part.text)).toEqual(['Aucune', 'Aucune', 'Aucune', 'Aucun', 'Aucun']); // féminin pour les attentes, masculin pour le travail et le Blocage
     // Trois secondes de Blocage ont bien eu lieu : « < 1 min », pas « Aucun ».
-    expect(describeBreakdown({ ...base, blocked: 3000 }).parts[4]?.text.replaceAll('\u00a0', ' ')).toBe('< 1 min');
+    expect(describeBreakdown({ ...base, blocked: 3000 }, 'fr').parts[4]?.text.replaceAll('\u00a0', ' ')).toBe('< 1 min');
   });
 
   it('dit la durée de chaque part en toutes lettres, « moins d’une minute » là où elle s’écrit « < 1 min », « Aucun » ou « Aucune » quand elle est nulle', () => {
     expect(view.parts.map((part) => part.spoken)).toEqual(['21 jours', '52 jours', '16 jours', '29 jours', '2,5 jours']);
 
     const base = healthFixture().leadTimeBreakdown;
-    const zeros = describeBreakdown({ ...base, dependencyWait: 0, readyWait: 0, otherWait: 0, work: 0, blocked: 0, total: 1 });
+    const zeros = describeBreakdown({ ...base, dependencyWait: 0, readyWait: 0, otherWait: 0, work: 0, blocked: 0, total: 1 }, 'fr');
     expect(zeros.parts.map((part) => part.spoken)).toEqual(['Aucune', 'Aucune', 'Aucune', 'Aucun', 'Aucun']);
-    expect(describeBreakdown({ ...base, blocked: 3000 }).parts[4]?.spoken).toBe('moins d’une minute');
+    expect(describeBreakdown({ ...base, blocked: 3000 }, 'fr').parts[4]?.spoken).toBe('moins d’une minute');
   });
 
   it('reprend les Livraisons qui ont attendu une dépendance, avec la médiane et le P85 de leur attente', () => {
@@ -70,7 +70,7 @@ describe('describeBreakdown', () => {
   });
 
   it('n’a pas de part sans Livraison : rien à répartir, pas de pourcentage à partir de zéro', () => {
-    const empty = describeBreakdown(emptyHealthFixture().leadTimeBreakdown);
+    const empty = describeBreakdown(emptyHealthFixture().leadTimeBreakdown, 'fr');
 
     expect(empty.empty).toBe(true);
     expect(empty.parts.map((part) => part.share)).toEqual([null, null, null, null, null]);
@@ -80,7 +80,18 @@ describe('describeBreakdown', () => {
   it('distingue l’absence de Livraison d’un Lead Time cumulé nul : la raison de l’état vide', () => {
     const base = healthFixture().leadTimeBreakdown;
 
-    expect(describeBreakdown(emptyHealthFixture().leadTimeBreakdown)).toMatchObject({ empty: true, deliveries: 0 });
-    expect(describeBreakdown({ ...base, total: 0, deliveries: 3 })).toMatchObject({ empty: true, deliveries: 3, total: 0 });
+    expect(describeBreakdown(emptyHealthFixture().leadTimeBreakdown, 'fr')).toMatchObject({ empty: true, deliveries: 0 });
+    expect(describeBreakdown({ ...base, total: 0, deliveries: 3 }, 'fr')).toMatchObject({ empty: true, deliveries: 3, total: 0 });
+  });
+});
+
+describe('en anglais', () => {
+  it('nomme les parts et écrit leurs durées en anglais, « None » quand elles sont nulles', () => {
+    const base = healthFixture().leadTimeBreakdown;
+    const view = describeBreakdown({ ...base, blocked: 0 }, 'en');
+
+    expect(view.parts.map((part) => part.label)).toEqual(['Dependency wait', 'Ready wait', 'Other wait', 'Work', 'Blockage']);
+    expect(view.parts.map((part) => part.text.replaceAll('\u00a0', ' '))).toEqual(['21 d', '52 d', '16 d', '29 d', 'None']);
+    expect(view.parts[0]?.spoken).toBe('21 days');
   });
 });

@@ -3,25 +3,27 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import type { MetricsReadyAges } from '../../shared/api';
 import { ticketTitle } from '../data/helpers';
+import { useFormat, useLanguage, useT, type DisplayFormat, type Messages } from '../i18n';
 import { paths } from '../paths';
 import { Button } from '../ui/Button';
 import { TypeGlyph } from '../ui/IssueBadges';
 import { VISIBLE_AGES } from './AgeChart';
 import { EmptyChart } from './CfdChart';
 import { ChartCard, DataTable, Legend } from './ChartParts';
-import { dayInZone, formatCount, formatDay, formatDuration } from './format';
+import { dayInZone } from './format';
 import { outlineOf } from './palette';
 import type { Dimension } from './params';
 import { formatReadyAge, spokenReadyAge } from './readyAge';
-import { DIMENSION_LABELS, legendOf, seriesOf, type SeriesContext } from './series';
+import { legendOf, seriesOf, type SeriesContext } from './series';
 import { SpokenText } from './SpokenText';
 
 /** « 3 des 5 le sont depuis plus de 14 j » : combien de Prêts stagnent, accordé comme le dirait un lecteur. */
-function stagnation(stagnant: number, total: number, threshold: string): string {
-  if (stagnant === 0) return `Aucun ne l’est depuis plus de ${threshold}.`;
-  if (stagnant === total) return total === 1 ? `Il l’est depuis plus de ${threshold}.` : `Tous le sont depuis plus de ${threshold}.`;
-  if (stagnant === 1) return `1 des ${formatCount(total)} l’est depuis plus de ${threshold}.`;
-  return `${formatCount(stagnant)} des ${formatCount(total)} le sont depuis plus de ${threshold}.`;
+function stagnation(stagnant: number, total: number, threshold: string, t: Messages, format: DisplayFormat): string {
+  const text = t.metrics.readyAgeChart;
+  if (stagnant === 0) return text.noneStale(threshold);
+  if (stagnant === total) return total === 1 ? text.onlyOneStale(threshold) : text.allStale(threshold);
+  if (stagnant === 1) return text.oneStale(format.formatCount(total), threshold);
+  return text.someStale(format.formatCount(stagnant), format.formatCount(total), threshold);
 }
 
 export interface ReadyAgePanelProps {
@@ -45,6 +47,10 @@ export interface ReadyAgePanelProps {
  */
 export function ReadyAgePanel({ ages, dimension, ctx, projectOrder, showProject, timeZone, moment }: ReadyAgePanelProps) {
   const [expanded, setExpanded] = useState(false);
+  const t = useT();
+  const format = useFormat();
+  const { language } = useLanguage();
+  const text = t.metrics.readyAgeChart;
   const { tickets, stagnant, stagnantAfter } = ages;
   const series = useMemo(() => legendOf(dimension, tickets, ctx, projectOrder), [dimension, tickets, ctx, projectOrder]);
 
@@ -52,23 +58,20 @@ export function ReadyAgePanel({ ages, dimension, ctx, projectOrder, showProject,
   const scale = scaleLinear({ domain: [0, longest * 1.04 || 1], range: [0, 100] });
   const shown = expanded ? tickets : tickets.slice(0, VISIBLE_AGES);
   const hidden = tickets.length - shown.length;
-  const threshold = formatDuration(stagnantAfter);
+  const threshold = format.formatDuration(stagnantAfter);
 
   return (
     <ChartCard
-      title="Prêts qui stagnent"
-      description={
-        `Les tickets ouverts sans dépendance bloquante en suspens ${moment}, du plus ancien au plus récent.` +
-        `${tickets.length === 0 ? '' : ` ${stagnation(stagnant, tickets.length, threshold)}`}`
-      }
+      title={text.title}
+      description={text.description(moment) + (tickets.length === 0 ? '' : ` ${stagnation(stagnant, tickets.length, threshold, t, format)}`)}
       legend={
         tickets.length === 0 ? undefined : (
           <div className="flex flex-col gap-1">
-            <Legend label={`Couleurs : ${DIMENSION_LABELS[dimension].toLowerCase()}`} items={series} />
-            <ul aria-label="Repère" className="flex flex-wrap gap-x-4 gap-y-1 text-micro text-ink-2">
+            <Legend label={t.metrics.chartSeries.colors(t.metrics.chartSeries.dimensions[dimension].toLowerCase())} items={series} />
+            <ul aria-label={text.marker} className="flex flex-wrap gap-x-4 gap-y-1 text-micro text-ink-2">
               <li className="inline-flex items-center gap-1.5">
                 <span aria-hidden="true" className="h-3 w-0 border-l-2 border-dotted border-ink-2" />
-                Seuil de stagnation {threshold}
+                {text.threshold(threshold)}
               </li>
             </ul>
           </div>
@@ -77,10 +80,10 @@ export function ReadyAgePanel({ ages, dimension, ctx, projectOrder, showProject,
       data={tickets.length === 0 ? undefined : <ReadyTable ages={ages} ctx={ctx} showProject={showProject} timeZone={timeZone} moment={moment} />}
     >
       {tickets.length === 0 ? (
-        <EmptyChart>Aucun ticket Prêt.</EmptyChart>
+        <EmptyChart>{text.empty}</EmptyChart>
       ) : (
         <>
-          <ol aria-label="Prêts, du plus ancien au plus récent" className="flex flex-col gap-3">
+          <ol aria-label={text.list} className="flex flex-col gap-3">
             {shown.map((ticket) => {
               const color = seriesOf(dimension, ticket, ctx).color;
               return (
@@ -90,13 +93,13 @@ export function ReadyAgePanel({ ages, dimension, ctx, projectOrder, showProject,
                       <TypeGlyph type={ticket.type} />
                       <span className="min-w-0 flex-1 truncate font-medium text-ink group-hover/age:underline">{ticketTitle(ticket)}</span>
                       <span className="tnum shrink-0 font-semibold text-ink">
-                        <SpokenText written={formatReadyAge(ticket.age, stagnantAfter)} spoken={spokenReadyAge(ticket.age, stagnantAfter)} spelledOut />
+                        <SpokenText written={formatReadyAge(ticket.age, stagnantAfter, language)} spoken={spokenReadyAge(ticket.age, stagnantAfter, language)} spelledOut />
                       </span>
                     </span>
                     <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 pl-[22px] text-micro text-ink-3">
                       <span className="min-w-0 break-all font-mono">{ticket.id}</span>
                       {showProject ? <span>{ctx.projectName(ticket.project)}</span> : null}
-                      {ticket.stagnant ? <span className="font-medium text-ink-2">stagne</span> : null}
+                      {ticket.stagnant ? <span className="font-medium text-ink-2">{text.stale}</span> : null}
                     </span>
                     <span aria-hidden="true" className="relative block h-2 rounded-full bg-press">
                       <span
@@ -113,7 +116,7 @@ export function ReadyAgePanel({ ages, dimension, ctx, projectOrder, showProject,
           </ol>
           {tickets.length > VISIBLE_AGES ? (
             <Button variant="ghost" className="self-start" aria-expanded={expanded} onClick={() => setExpanded((open) => !open)}>
-              {expanded ? 'Réduire la liste' : `Afficher les ${hidden} autres`}
+              {expanded ? t.metrics.chartParts.collapse : t.metrics.chartParts.showMore(format.formatCount(hidden))}
             </Button>
           ) : null}
         </>
@@ -123,27 +126,32 @@ export function ReadyAgePanel({ ages, dimension, ctx, projectOrder, showProject,
 }
 
 function ReadyTable({ ages, ctx, showProject, timeZone, moment }: { ages: MetricsReadyAges; ctx: SeriesContext; showProject: boolean; timeZone: string; moment: string }) {
+  const t = useT();
+  const format = useFormat();
+  const { language } = useLanguage();
+  const text = t.metrics.readyAgeChart;
+  const columns = t.metrics.chartParts;
   return (
     <DataTable
-      caption={`Prêts ${moment}`}
+      caption={text.caption(moment)}
       head={
         <tr>
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Ticket
+            {columns.ticketColumn}
           </th>
           {showProject ? (
             <th scope="col" className="px-3 py-1.5 font-medium">
-              Projet
+              {columns.projectColumn}
             </th>
           ) : null}
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Prêt depuis
+            {text.sinceColumn}
           </th>
           <th scope="col" className="px-3 py-1.5 text-right font-medium">
-            Âge
+            {text.ageColumn}
           </th>
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Stagne
+            {text.staleColumn}
           </th>
         </tr>
       }
@@ -158,11 +166,11 @@ function ReadyTable({ ages, ctx, showProject, timeZone, moment }: { ages: Metric
             </Link>
           </th>
           {showProject ? <td className="whitespace-nowrap px-3 py-1">{ctx.projectName(ticket.project)}</td> : null}
-          <td className="whitespace-nowrap px-3 py-1 text-ink-2">{formatDay(dayInZone(ticket.since, timeZone), { year: true })}</td>
+          <td className="whitespace-nowrap px-3 py-1 text-ink-2">{format.formatDay(dayInZone(ticket.since, timeZone), { year: true })}</td>
           <td className="whitespace-nowrap px-3 py-1 text-right font-medium">
-            <SpokenText written={formatReadyAge(ticket.age, ages.stagnantAfter)} spoken={spokenReadyAge(ticket.age, ages.stagnantAfter)} />
+            <SpokenText written={formatReadyAge(ticket.age, ages.stagnantAfter, language)} spoken={spokenReadyAge(ticket.age, ages.stagnantAfter, language)} />
           </td>
-          <td className="whitespace-nowrap px-3 py-1">{ticket.stagnant ? 'Oui' : 'Non'}</td>
+          <td className="whitespace-nowrap px-3 py-1">{ticket.stagnant ? text.yes : text.no}</td>
         </tr>
       ))}
     </DataTable>

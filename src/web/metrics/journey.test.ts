@@ -10,7 +10,7 @@ const DAY = 86_400_000;
  * en Backlog, 33 Prêts (3 stagnent) et 11 en cours.
  */
 describe('describeJourney : le parcours d’un ticket', () => {
-  const journey = (data = metricsFixture()) => describeJourney({ tiles: data.tiles, health: data.health, cfd: data.cfd });
+  const journey = (data = metricsFixture()) => describeJourney({ tiles: data.tiles, health: data.health, cfd: data.cfd }, 'fr');
 
   it('donne ce qui entre et ce qui sort : les Arrivées et les Livraisons de la période', () => {
     expect(journey()).toMatchObject({ arrivals: 20, deliveries: 18 });
@@ -56,7 +56,7 @@ describe('describeJourney : le parcours d’un ticket', () => {
     const data = metricsFixture();
     const cfd = [...data.cfd.slice(0, -1), { ...data.cfd.at(-1)!, inProgress: 8, blocked: 3 }];
 
-    const view = describeJourney({ tiles: data.tiles, health: data.health, cfd });
+    const view = describeJourney({ tiles: data.tiles, health: data.health, cfd }, 'fr');
 
     expect(view.stages[2].stock).toBe(11);
     expect(view.blockedStock).toBe(3);
@@ -77,11 +77,14 @@ describe('describeJourney : le parcours d’un ticket', () => {
 
   it('avec des Livraisons sans durée (Lead Time cumulé nul), ne divise pas par zéro', () => {
     const health = healthFixture();
-    const view = describeJourney({
-      tiles: metricsFixture().tiles,
-      health: { ...health, leadTimeBreakdown: { ...health.leadTimeBreakdown, total: 0, dependencyWait: 0, readyWait: 0, work: 0, blocked: 0, otherWait: 0 } },
-      cfd: metricsFixture().cfd,
-    });
+    const view = describeJourney(
+      {
+        tiles: metricsFixture().tiles,
+        health: { ...health, leadTimeBreakdown: { ...health.leadTimeBreakdown, total: 0, dependencyWait: 0, readyWait: 0, work: 0, blocked: 0, otherWait: 0 } },
+        cfd: metricsFixture().cfd,
+      },
+      'fr',
+    );
 
     expect(view.empty).toBe(true);
     expect(view.stages.map((stage) => stage.share)).toEqual([null, null, null]);
@@ -89,9 +92,22 @@ describe('describeJourney : le parcours d’un ticket', () => {
 
   it('sans relevé du flux cumulé, ne prétend pas savoir combien de tickets attendent', () => {
     const data = metricsFixture();
-    const view = describeJourney({ tiles: data.tiles, health: data.health, cfd: [] });
+    const view = describeJourney({ tiles: data.tiles, health: data.health, cfd: [] }, 'fr');
 
     expect(view.stages.map((stage) => stage.stock)).toEqual([null, null, null]);
     expect(view.blockedStock).toBeNull();
+  });
+});
+
+describe('en anglais', () => {
+  it('nomme les trois états et ce que le ticket y fait', () => {
+    const data = metricsFixture();
+    const { stages } = describeJourney({ tiles: data.tiles, health: data.health, cfd: data.cfd }, 'en');
+
+    expect(stages.map((stage) => [stage.label, stage.doing])).toEqual([
+      ['Backlog', 'waiting for a dependency'],
+      ['Ready', 'waiting to be started'],
+      ['In progress', 'being worked on'],
+    ]);
   });
 });

@@ -7,16 +7,17 @@ import { Link } from 'react-router';
 import type { MetricsCycleTimePoint } from '../../shared/api';
 import { ticketTitle } from '../data/helpers';
 import { priorityMeta } from '../design/issue-palette';
+import { useFormat, useLanguage, useT, type DisplayFormat, type Messages } from '../i18n';
 import { paths } from '../paths';
 import { TypeBadge } from '../ui/IssueBadges';
 import { ChartCard, ChartFrame, ChartTooltip, DataTable, Legend, pointerIn, useActive } from './ChartParts';
 import { EmptyChart } from './CfdChart';
 import { AXIS_TEXT } from './axes';
-import { dayInZone, formatDay, formatDuration, formatTime, spokenDuration } from './format';
+import { dayInZone, formatTime } from './format';
 import { outlineOf } from './palette';
 import type { Dimension } from './params';
 import { dayTicks, DURATION_STEPS, logDomain, nearestPoint, pickTicks } from './scales';
-import { DIMENSION_LABELS, legendOf, seriesOf, type SeriesContext } from './series';
+import { legendOf, seriesOf, type SeriesContext } from './series';
 import { DurationText } from './SpokenText';
 
 const MARGIN = { top: 12, right: 12, bottom: 24, left: 46 };
@@ -49,6 +50,10 @@ interface PlotProps {
  */
 export function CycleTimePlot({ points, span, dimension, ctx, timeZone, median, p85, width, height }: PlotProps) {
   const { active, frame, show, clear } = useActive<number>();
+  const t = useT();
+  const format = useFormat();
+  const { language } = useLanguage();
+  const text = t.metrics.cycleTimeChart;
   const innerWidth = Math.max(0, width - MARGIN.left - MARGIN.right);
   const innerHeight = Math.max(0, height - MARGIN.top - MARGIN.bottom);
 
@@ -57,7 +62,7 @@ export function CycleTimePlot({ points, span, dimension, ctx, timeZone, median, 
   const y = scaleLog({ domain, range: [innerHeight, 0], clamp: true });
   const x = scaleLinear({ domain: [span.start, Math.max(span.end, span.start + 1)], range: [0, innerWidth] });
   const yTicks = pickTicks(DURATION_STEPS, domain, y, 30);
-  const xTicks = dayTicks({ from: span.from, days: span.days, timeZone }, Math.max(2, Math.floor(innerWidth / 62)));
+  const xTicks = dayTicks({ from: span.from, days: span.days, timeZone }, Math.max(2, Math.floor(innerWidth / 62)), language);
 
   const pixels = points.map((point) => ({ x: x(Date.parse(point.deliveredAt)), y: y(Math.max(point.cycleTime, domain[0])) }));
   const point = active ? points[active.value] : undefined;
@@ -76,10 +81,11 @@ export function CycleTimePlot({ points, span, dimension, ctx, timeZone, median, 
         width={width}
         height={height}
         role="img"
-        aria-label={
-          `Nuage de points du Cycle Time : ${points.length} ${points.length > 1 ? 'Livraisons' : 'Livraison'}` +
-          `${median !== null ? `, médiane ${spokenDuration(median)}` : ''}${p85 !== null ? `, P85 ${spokenDuration(p85)}` : ''}, échelle logarithmique.`
-        }
+        aria-label={text.ariaLabel(
+          t.metrics.chartParts.deliveries(format.formatCount(points.length), points.length),
+          median !== null ? format.spokenDuration(median) : null,
+          p85 !== null ? format.spokenDuration(p85) : null,
+        )}
         className="block overflow-visible"
       >
         <Group left={MARGIN.left} top={MARGIN.top}>
@@ -91,7 +97,7 @@ export function CycleTimePlot({ points, span, dimension, ctx, timeZone, median, 
             tickValues={yTicks}
             hideAxisLine
             hideTicks
-            tickFormat={(value) => formatDuration(Number(value))}
+            tickFormat={(value) => format.formatDuration(Number(value))}
             tickLabelProps={() => ({ ...AXIS_TEXT, textAnchor: 'end', dx: '-0.5em', dy: '0.33em' })}
           />
           <AxisBottom
@@ -121,8 +127,8 @@ export function CycleTimePlot({ points, span, dimension, ctx, timeZone, median, 
             );
           })}
           {/* Les étiquettes après les points : dans un SVG, ce qui est dessiné plus tard recouvre ce qui l'est avant. */}
-          {median !== null ? <ReferenceLabel y={y(median)} width={innerWidth} label={`Médiane ${formatDuration(median)}`} below /> : null}
-          {p85 !== null ? <ReferenceLabel y={y(p85)} width={innerWidth} label={`P85 ${formatDuration(p85)}`} /> : null}
+          {median !== null ? <ReferenceLabel y={y(median)} width={innerWidth} label={text.median(format.formatDuration(median))} below /> : null}
+          {p85 !== null ? <ReferenceLabel y={y(p85)} width={innerWidth} label={text.p85(format.formatDuration(p85))} /> : null}
           {pixel ? <circle cx={pixel.x} cy={pixel.y} r={8} fill="none" stroke="var(--ink)" strokeWidth={1.5} pointerEvents="none" /> : null}
           <rect
             data-chart-hit=""
@@ -151,9 +157,9 @@ export function CycleTimePlot({ points, span, dimension, ctx, timeZone, median, 
             {dimension === 'project' ? <span>{ctx.projectName(point.project)}</span> : null}
           </p>
           <p className="tnum">
-            Cycle Time <strong className="font-semibold">{formatDuration(point.cycleTime)}</strong>
+            {text.cycleTime} <strong className="font-semibold">{format.formatDuration(point.cycleTime)}</strong>
           </p>
-          <p className="tnum text-ink-2">Livré {deliveredLabel(point.deliveredAt, timeZone)}</p>
+          <p className="tnum text-ink-2">{text.delivered(deliveredLabel(point.deliveredAt, timeZone, t, format))}</p>
         </ChartTooltip>
       ) : null}
     </div>
@@ -161,8 +167,8 @@ export function CycleTimePlot({ points, span, dimension, ctx, timeZone, median, 
 }
 
 /** « lun. 2 nov. à 11:00 » : le jour et l'heure de la Livraison, dans le fuseau des métriques. */
-function deliveredLabel(instant: string, timeZone: string): string {
-  return `${formatDay(dayInZone(instant, timeZone), { weekday: true })} à ${formatTime(instant, timeZone)}`;
+function deliveredLabel(instant: string, timeZone: string, t: Messages, format: DisplayFormat): string {
+  return t.metrics.cycleTimeChart.at(format.formatDay(dayInZone(instant, timeZone), { weekday: true }), formatTime(instant, timeZone));
 }
 
 /** Une ligne de repère (médiane, P85) : tiretée, sous les points. Son étiquette est dessinée à part, par-dessus eux. */
@@ -210,16 +216,19 @@ export interface CycleTimePanelProps {
 /** La carte « Cycle Time » : le nuage, sa légende (le découpage ; la médiane et le P85 sont nommés sur le tracé), et les valeurs en tableau. */
 export function CycleTimePanel({ points, span, dimension, ctx, projectOrder, timeZone, median, p85, showProject }: CycleTimePanelProps) {
   const series = useMemo(() => legendOf(dimension, points, ctx, projectOrder), [dimension, points, ctx, projectOrder]);
+  const t = useT();
+  const text = t.metrics.cycleTimeChart;
+  const noun = t.metrics.chartSeries.dimensions[dimension].toLowerCase();
 
   return (
     <ChartCard
-      title="Cycle Time"
-      description={`Une Livraison par point : sa date de Livraison, et le temps passé en travail. Échelle logarithmique, colorée par ${DIMENSION_LABELS[dimension].toLowerCase()}.`}
-      legend={<Legend label={`Couleurs : ${DIMENSION_LABELS[dimension].toLowerCase()}`} items={series.map((entry) => ({ ...entry, round: true }))} />}
+      title={text.title}
+      description={text.description(noun)}
+      legend={<Legend label={t.metrics.chartSeries.colors(noun)} items={series.map((entry) => ({ ...entry, round: true }))} />}
       data={<CycleTimeTable points={points} ctx={ctx} timeZone={timeZone} showProject={showProject} />}
     >
       {points.length === 0 ? (
-        <EmptyChart>Aucune Livraison démarrée sur cette période : le Cycle Time n’est défini que pour un ticket qui a été démarré.</EmptyChart>
+        <EmptyChart>{text.empty}</EmptyChart>
       ) : (
         <ChartFrame height={260}>
           {({ width, height }) => (
@@ -242,30 +251,34 @@ function CycleTimeTable({
   timeZone: string;
   showProject: boolean;
 }) {
+  const t = useT();
+  const format = useFormat();
+  const text = t.metrics.cycleTimeChart;
+  const columns = t.metrics.chartParts;
   return (
     <DataTable
-      caption="Livraisons de la période et leur Cycle Time"
+      caption={text.caption}
       head={
         <tr>
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Ticket
+            {columns.ticketColumn}
           </th>
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Type
+            {text.typeColumn}
           </th>
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Priorité
+            {text.priorityColumn}
           </th>
           {showProject ? (
             <th scope="col" className="px-3 py-1.5 font-medium">
-              Projet
+              {columns.projectColumn}
             </th>
           ) : null}
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Livré
+            {text.deliveredColumn}
           </th>
           <th scope="col" className="px-3 py-1.5 text-right font-medium">
-            Cycle Time
+            {text.cycleTime}
           </th>
         </tr>
       }
@@ -285,7 +298,7 @@ function CycleTimeTable({
           </td>
           <td className="whitespace-nowrap px-3 py-1">{priorityMeta(point.priority).code}</td>
           {showProject ? <td className="whitespace-nowrap px-3 py-1">{ctx.projectName(point.project)}</td> : null}
-          <td className="whitespace-nowrap px-3 py-1 text-ink-2">{deliveredLabel(point.deliveredAt, timeZone)}</td>
+          <td className="whitespace-nowrap px-3 py-1 text-ink-2">{deliveredLabel(point.deliveredAt, timeZone, t, format)}</td>
           <td className="whitespace-nowrap px-3 py-1 text-right font-medium">
             <DurationText ms={point.cycleTime} />
           </td>

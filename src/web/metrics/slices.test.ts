@@ -65,7 +65,7 @@ describe('describeSlices : par type', () => {
   ];
 
   it('garde l’ordre de l’API et nomme les types en français', () => {
-    const view = describeSlices({ slices, dimension: 'type', tiles: tiles(), ctx });
+    const view = describeSlices({ slices, dimension: 'type', tiles: tiles(), ctx }, 'fr');
     expect(view.rows.map((row) => [row.key, row.label])).toEqual([
       ['bug', 'Bug'],
       ['feature', 'Fonctionnalité'],
@@ -75,7 +75,7 @@ describe('describeSlices : par type', () => {
   });
 
   it('ne dit pas « non significatif » ligne à ligne : la Couverture n’est pas celle du type, elle est celle de tous les Projets', () => {
-    const view = describeSlices({ slices, dimension: 'type', tiles: tiles(), ctx });
+    const view = describeSlices({ slices, dimension: 'type', tiles: tiles(), ctx }, 'fr');
     expect(view.failureColumn).toBe(false);
     expect(view.coverageNote).toContain(`Couverture insuffisante : 19${NBSP}% des bugs ont une origine renseignée (minimum 50${NBSP}%).`);
     expect(view.coverageNote).toContain('tous les Projets mesurés');
@@ -84,7 +84,7 @@ describe('describeSlices : par type', () => {
 
   it('affiche le Taux d’échec de chaque type quand la Couverture, celle de tous les Projets, suffit', () => {
     const significant = slices.map((row) => ({ ...row, significant: true, coverage: coverage(40, 30) }));
-    const view = describeSlices({ slices: significant, dimension: 'type', tiles: tiles({ significant: true, reasons: [], reason: null, coverage: coverage(40, 30) }), ctx });
+    const view = describeSlices({ slices: significant, dimension: 'type', tiles: tiles({ significant: true, reasons: [], reason: null, coverage: coverage(40, 30) }), ctx }, 'fr');
     expect(view.failureColumn).toBe(true);
     expect(view.rows[0]?.failure).toEqual({ kind: 'rate', rate: 1 / 26, failed: 1, deliveries: 26 });
     expect(view.rows[1]?.failure).toEqual({ kind: 'rate', rate: 0, failed: 0, deliveries: 9 });
@@ -101,7 +101,7 @@ describe('describeSlices : par priorité', () => {
       dimension: 'priority',
       tiles: tiles(),
       ctx,
-    });
+    }, 'fr');
     expect(view.rows.map((row) => row.label)).toEqual(['P1 · Haute', 'P3 · Basse']);
     expect(view.rows[0]?.series).toMatchObject({ key: '1', color: 'var(--prio-1)' });
     expect(view.failureColumn).toBe(false);
@@ -116,7 +116,7 @@ describe('describeSlices : par Projet', () => {
   ];
 
   it('juge chaque Projet sur sa propre Couverture', () => {
-    const view = describeSlices({ slices, dimension: 'project', tiles: tiles(), ctx });
+    const view = describeSlices({ slices, dimension: 'project', tiles: tiles(), ctx }, 'fr');
     expect(view.failureColumn).toBe(true);
     expect(view.rows[0]?.failure).toEqual({ kind: 'rate', rate: 0.125, failed: 7, deliveries: 56 });
     expect(view.rows[1]?.failure).toEqual({ kind: 'insignificant', reason: `Couverture 0${NBSP}% (minimum 50${NBSP}%)` });
@@ -125,7 +125,7 @@ describe('describeSlices : par Projet', () => {
   });
 
   it('explique « n. s. » une fois, sous le tableau', () => {
-    const view = describeSlices({ slices, dimension: 'project', tiles: tiles(), ctx });
+    const view = describeSlices({ slices, dimension: 'project', tiles: tiles(), ctx }, 'fr');
     expect(view.coverageNote).toContain('n. s.');
     expect(view.coverageNote).toContain(`50${NBSP}%`);
     expect(view.coverageNote).toContain('5 bugs');
@@ -138,7 +138,7 @@ describe('describeSlices : par Projet', () => {
       // L'ensemble a lui aussi un taux significatif : aucune cellule du tableau ne dit « n. s. ».
       tiles: tiles({ significant: true, reasons: [], reason: null, coverage: coverage(100, 80) }),
       ctx,
-    });
+    }, 'fr');
     expect(view.failureColumn).toBe(true);
     expect([...view.rows, view.overall].map((row) => row.failure.kind)).toEqual(['rate', 'rate', 'empty', 'rate']);
     expect(view.coverageNote).toBeNull();
@@ -146,21 +146,21 @@ describe('describeSlices : par Projet', () => {
 
   it('explique « n. s. » dès qu’une ligne en est marquée, même si c’est seulement la ligne Ensemble', () => {
     // Le Projet a un taux ; l'ensemble, lui, n'a pas assez de Couverture (celle de tuiles() : 19 %).
-    const view = describeSlices({ slices: [slices[0]!], dimension: 'project', tiles: tiles(), ctx });
+    const view = describeSlices({ slices: [slices[0]!], dimension: 'project', tiles: tiles(), ctx }, 'fr');
     expect(view.rows.map((row) => row.failure.kind)).toEqual(['rate']);
     expect(view.overall.failure.kind).toBe('insignificant');
     expect(view.coverageNote).toContain('n. s.');
   });
 
   it('dit « n. s. » sans parler d’un Projet : la légende sert aussi à la ligne Ensemble', () => {
-    const view = describeSlices({ slices: [slices[0]!], dimension: 'project', tiles: tiles(), ctx });
+    const view = describeSlices({ slices: [slices[0]!], dimension: 'project', tiles: tiles(), ctx }, 'fr');
     expect(view.coverageNote).toBe(
       `n. s. : Taux d’échec non significatif, faute de Couverture ou de bugs (moins de 50${NBSP}% des bugs avec une origine, ou moins de 5 bugs).`,
     );
   });
 
   it('retire la colonne quand aucun Projet n’a de taux significatif, et le dit', () => {
-    const view = describeSlices({ slices: slices.slice(1), dimension: 'project', tiles: tiles(), ctx });
+    const view = describeSlices({ slices: slices.slice(1), dimension: 'project', tiles: tiles(), ctx }, 'fr');
     expect(view.failureColumn).toBe(false);
     expect(view.coverageNote).toContain('aucun Projet');
   });
@@ -171,7 +171,7 @@ describe('describeSlices : par Projet', () => {
       dimension: 'project',
       tiles: tiles(),
       ctx,
-    });
+    }, 'fr');
     expect(view.failureColumn).toBe(false);
     expect(view.coverageNote).toContain('aucun Projet n’a assez de Couverture');
   });
@@ -187,7 +187,7 @@ describe('describeSlices : par Projet', () => {
       dimension: 'project',
       tiles: tiles(),
       ctx,
-    });
+    }, 'fr');
 
     expect(view.failureColumn).toBe(false);
     expect(view.coverageNote).not.toContain('aucun Projet n’a assez de Couverture');
@@ -197,7 +197,7 @@ describe('describeSlices : par Projet', () => {
   });
 
   it('lie chaque Projet à sa page Métriques', () => {
-    const view = describeSlices({ slices, dimension: 'project', tiles: tiles(), ctx, projectHref: (id) => `/p/${id}/metrics?range=7d` });
+    const view = describeSlices({ slices, dimension: 'project', tiles: tiles(), ctx, projectHref: (id) => `/p/${id}/metrics?range=7d` }, 'fr');
     expect(view.rows.map((row) => row.href)).toEqual(['/p/mpm/metrics?range=7d', '/p/sais/metrics?range=7d', '/p/vide/metrics?range=7d']);
     expect(view.rows[0]?.series).toMatchObject({ key: 'mpm', label: 'My-Prompt-Manager', color: 'oklch(var(--series-l) var(--series-c) 120)' });
   });
@@ -205,7 +205,7 @@ describe('describeSlices : par Projet', () => {
 
 describe('describeSlices : la ligne « Ensemble »', () => {
   it('reprend les tuiles, pour comparer chaque ligne à l’ensemble et recouper les totaux', () => {
-    const view = describeSlices({ slices: [slice('bug', 'bug')], dimension: 'type', tiles: tiles(), ctx });
+    const view = describeSlices({ slices: [slice('bug', 'bug')], dimension: 'type', tiles: tiles(), ctx }, 'fr');
     expect(view.overall).toMatchObject({
       key: 'all',
       label: 'Ensemble',
@@ -218,7 +218,8 @@ describe('describeSlices : la ligne « Ensemble »', () => {
     });
     expect(view.overall.failure).toEqual({
       kind: 'insignificant',
-      reason: 'Couverture insuffisante : 19 % des bugs ont une origine renseignée (minimum 50 %).',
+      // Écrit d'après les codes de l'API (`failureRateReason`), pas d'après le motif français du serveur : les « % » sont insécables.
+      reason: `Couverture insuffisante : 19${NBSP}% des bugs ont une origine renseignée (minimum 50${NBSP}%).`,
     });
   });
 
@@ -228,27 +229,41 @@ describe('describeSlices : la ligne « Ensemble »', () => {
       dimension: 'type',
       tiles: tiles({ significant: true, reasons: [], reason: null, rate: 0.2, failed: 13, deliveries: 64 }),
       ctx,
-    });
+    }, 'fr');
     expect(view.overall.failure).toEqual({ kind: 'rate', rate: 0.2, failed: 13, deliveries: 64 });
   });
 });
 
 describe('explainInsignificance : pourquoi un taux ne dit rien, avec les chiffres de l’API', () => {
   it('dit la Couverture sous le minimum', () => {
-    expect(explainInsignificance(coverage(28, 0), THRESHOLDS)).toBe(`Couverture 0${NBSP}% (minimum 50${NBSP}%)`);
-    expect(explainInsignificance(coverage(36, 13), THRESHOLDS)).toBe(`Couverture 36${NBSP}% (minimum 50${NBSP}%)`);
+    expect(explainInsignificance(coverage(28, 0), THRESHOLDS, 'fr')).toBe(`Couverture 0${NBSP}% (minimum 50${NBSP}%)`);
+    expect(explainInsignificance(coverage(36, 13), THRESHOLDS, 'fr')).toBe(`Couverture 36${NBSP}% (minimum 50${NBSP}%)`);
   });
 
   it('dit le nombre de bugs sous le minimum', () => {
-    expect(explainInsignificance(coverage(3, 3), THRESHOLDS)).toBe('3 bugs (minimum 5)');
-    expect(explainInsignificance(coverage(1, 1), THRESHOLDS)).toBe('1 bug (minimum 5)');
+    expect(explainInsignificance(coverage(3, 3), THRESHOLDS, 'fr')).toBe('3 bugs (minimum 5)');
+    expect(explainInsignificance(coverage(1, 1), THRESHOLDS, 'fr')).toBe('1 bug (minimum 5)');
   });
 
   it('dit les deux quand les deux manquent', () => {
-    expect(explainInsignificance(coverage(2, 0), THRESHOLDS)).toBe(`Couverture 0${NBSP}% (minimum 50${NBSP}%) ; 2 bugs (minimum 5)`);
+    expect(explainInsignificance(coverage(2, 0), THRESHOLDS, 'fr')).toBe(`Couverture 0${NBSP}% (minimum 50${NBSP}%) ; 2 bugs (minimum 5)`);
   });
 
   it('dit « aucun bug » sans bug : il n’y a rien à couvrir', () => {
-    expect(explainInsignificance(coverage(0, 0), THRESHOLDS)).toBe('0 bug (minimum 5)');
+    expect(explainInsignificance(coverage(0, 0), THRESHOLDS, 'fr')).toBe('0 bug (minimum 5)');
+  });
+});
+
+describe('en anglais', () => {
+  it('écrit la ligne Ensemble, le motif et la note de Couverture en anglais', () => {
+    const view = describeSlices({ slices: [slice('bug', 'bug')], dimension: 'type', tiles: tiles(), ctx }, 'en');
+
+    expect(view.overall.label).toBe('Overall');
+    expect(view.overall.failure).toEqual({ kind: 'insignificant', reason: 'Coverage too low: 19% of bugs have a recorded origin (minimum 50%).' });
+    expect(view.coverageNote).toBe(
+      'Change failure rate not shown, as it is not significant. Coverage too low: 19% of bugs have a recorded origin (minimum 50%). ' +
+        'This Coverage is that of all measured Projects: a bug has neither the type nor the priority of the Delivery it fails.',
+    );
+    expect(explainInsignificance(coverage(2, 0), THRESHOLDS, 'en')).toBe('Coverage 0% (minimum 50%); 2 bugs (minimum 5)');
   });
 });

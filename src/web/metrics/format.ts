@@ -295,11 +295,3 @@ export function formatTime(instant: string, timeZone: string): string {
   const { hour, minute } = wallClock(instant, timeZone);
   return `${hour}:${minute}`;
 }
-
-/**
- * Typographie d'une phrase écrite par le serveur (« 19 % des bugs… ») : une espace insécable entre le nombre et « % »,
- * pour qu'une fin de ligne ne les sépare pas. Le sens du texte n'est pas touché.
- */
-export function tidy(sentence: string): string {
-  return sentence.replace(/(\d) %/g, `$1${NBSP}%`);
-}

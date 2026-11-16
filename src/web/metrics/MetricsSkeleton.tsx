@@ -1,3 +1,4 @@
+import { useT } from '../i18n';
 import { Skeleton } from '../ui/states';
 import { HEALTH_GRID, HEALTH_SPANS } from './healthGrid';
 
@@ -9,8 +10,9 @@ import { HEALTH_GRID, HEALTH_SPANS } from './healthGrid';
  * haut de la place laisserait, plus bas, un vide que rien n'explique.
  */
 export function MetricsSkeleton({ minHeight }: { minHeight?: number }) {
+  const t = useT();
   return (
-    <div role="status" aria-busy="true" aria-label="Chargement des métriques" style={minHeight === undefined ? undefined : { minHeight }} className="flex flex-col gap-6">
+    <div role="status" aria-busy="true" aria-label={t.metrics.metricsSkeleton.loading} style={minHeight === undefined ? undefined : { minHeight }} className="flex flex-col gap-6">
       <Skeleton className="h-96" />
       <div className="grid grid-cols-2 gap-3 @min-[36rem]:grid-cols-3 @min-[68rem]:grid-cols-6">
         {Array.from({ length: 6 }, (_, index) => (

@@ -1,14 +1,13 @@
 import { useMemo } from 'react';
 import type { MetricsLeadTimeBreakdown } from '../../shared/api';
+import { type DisplayFormat, useFormat, useLanguage, useT } from '../i18n';
 import { type BreakdownPart, describeBreakdown } from './breakdown';
 import { ChartCard, DataTable, Swatch } from './ChartParts';
 import { EmptyChart } from './CfdChart';
-import { formatDuration, formatPercent, spokenDuration } from './format';
 import { outlineOf } from './palette';
 import { DurationText, SpokenText } from './SpokenText';
-import { plural } from './Tiles';
 
-const percent = (share: number | null) => formatPercent(share, { precise: true });
+const percent = (format: DisplayFormat, share: number | null) => format.formatPercent(share, { precise: true });
 
 /** Les hachures d'une part : celles de la pastille de la légende (`Swatch`), pour que la barre et la légende se ressemblent. */
 const hatchOf = (color: string) => `repeating-linear-gradient(45deg, ${outlineOf(color)} 0 1.5px, transparent 1.5px 4px)`;
@@ -22,32 +21,33 @@ const hatchOf = (color: string) => `repeating-linear-gradient(45deg, ${outlineOf
  * « < 1 min » et se dit « moins d'une minute » (`SpokenText`) : un lecteur d'écran lirait le chevron tel quel.
  */
 export function BreakdownPanel({ breakdown }: { breakdown: MetricsLeadTimeBreakdown }) {
-  const view = useMemo(() => describeBreakdown(breakdown), [breakdown]);
+  const { language } = useLanguage();
+  const t = useT().metrics.leadTimeBreakdown;
+  const format = useFormat();
+  const view = useMemo(() => describeBreakdown(breakdown, language), [breakdown, language]);
   /** Une phrase écrite avec `formatDuration`, et la même dite avec `spokenDuration` : l'une pour l'écran, l'autre pour les lecteurs d'écran. */
   const said = (sentence: (duration: (ms: number | null) => string) => string) => (
-    <SpokenText written={sentence(formatDuration)} spoken={sentence((ms) => (ms === null ? formatDuration(null) : spokenDuration(ms)))} />
+    <SpokenText written={sentence(format.formatDuration)} spoken={sentence((ms) => (ms === null ? format.formatDuration(null) : format.spokenDuration(ms)))} />
   );
 
   return (
     <ChartCard
       className="h-full"
-      title="Décomposition du Lead Time"
+      title={t.title}
       description={
-        view.empty
-          ? 'Le Lead Time cumulé des Livraisons de la période, réparti en cinq parts qui s’additionnent.'
-          : said((duration) => `Le Lead Time cumulé de ${plural(view.deliveries, 'Livraison')} (${duration(view.total)}), réparti en cinq parts qui s’additionnent.`)
+        view.empty ? t.descriptionEmpty : said((duration) => t.description(format.formatCount(view.deliveries), view.deliveries, duration(view.total)))
       }
       data={view.empty ? undefined : <BreakdownTable parts={view.parts} total={view.total} />}
     >
       {view.empty ? (
         <EmptyChart>
-          {view.deliveries === 0 ? 'Aucune Livraison sur la période.' : 'Aucun Lead Time à décomposer : les Livraisons de la période ont toutes un Lead Time nul.'}
+          {view.deliveries === 0 ? t.noDeliveries : t.zeroLeadTime}
         </EmptyChart>
       ) : (
         <div className="flex min-w-0 flex-col gap-3">
           <div
             role="img"
-            aria-label={`Décomposition du Lead Time : ${view.parts.map((part) => `${part.label} ${percent(part.share)}`).join(', ')}.`}
+            aria-label={t.bar(view.parts.map((part) => `${part.label} ${percent(format, part.share)}`).join(', '))}
             className="flex h-8 w-full overflow-hidden rounded-md"
           >
             {view.parts
@@ -66,7 +66,7 @@ export function BreakdownPanel({ breakdown }: { breakdown: MetricsLeadTimeBreakd
               ))}
           </div>
 
-          <ul aria-label="Parts du Lead Time" className="grid gap-x-6 gap-y-1.5 @min-[36rem]:grid-cols-2">
+          <ul aria-label={t.partsList} className="grid gap-x-6 gap-y-1.5 @min-[36rem]:grid-cols-2">
             {view.parts.map((part) => (
               <PartRow key={part.key} part={part} />
             ))}
@@ -74,10 +74,16 @@ export function BreakdownPanel({ breakdown }: { breakdown: MetricsLeadTimeBreakd
 
           <p className="max-w-[90ch] text-micro leading-4 text-ink-3">
             {view.waited === 0
-              ? 'Aucune Livraison n’a attendu une dépendance avant de démarrer.'
-              : said(
-                  (duration) =>
-                    `${plural(view.waited, 'Livraison')} sur ${view.deliveries} ${view.waited > 1 ? 'ont' : 'a'} attendu une dépendance avant de démarrer : médiane ${duration(view.waits.median)}, P85 ${duration(view.waits.p85)}.`,
+              ? t.noneWaited
+              : said((duration) =>
+                  t.waited(
+                    format.formatCount(view.waited),
+                    view.waited,
+                    format.formatCount(view.deliveries),
+                    view.deliveries,
+                    duration(view.waits.median),
+                    duration(view.waits.p85),
+                  ),
                 )}
           </p>
         </div>
@@ -87,6 +93,7 @@ export function BreakdownPanel({ breakdown }: { breakdown: MetricsLeadTimeBreakd
 }
 
 function PartRow({ part }: { part: BreakdownPart }) {
+  const format = useFormat();
   return (
     <li className="flex min-w-0 flex-col gap-0.5 text-ui">
       <span className="flex min-w-0 items-center gap-2">
@@ -95,7 +102,7 @@ function PartRow({ part }: { part: BreakdownPart }) {
         <span className="tnum font-semibold text-ink">
           <SpokenText written={part.text} spoken={part.spoken} />
         </span>
-        <span className="tnum w-14 shrink-0 text-right text-ink-3">{percent(part.share)}</span>
+        <span className="tnum w-14 shrink-0 text-right text-ink-3">{percent(format, part.share)}</span>
       </span>
       <span className="pl-[18px] text-micro leading-4 text-ink-3">{part.description}</span>
     </li>
@@ -103,19 +110,21 @@ function PartRow({ part }: { part: BreakdownPart }) {
 }
 
 function BreakdownTable({ parts, total }: { parts: readonly BreakdownPart[]; total: number }) {
+  const t = useT().metrics.leadTimeBreakdown;
+  const format = useFormat();
   return (
     <DataTable
-      caption="Parts du Lead Time cumulé des Livraisons de la période"
+      caption={t.caption}
       head={
         <tr>
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Part
+            {t.partHeader}
           </th>
           <th scope="col" className="px-3 py-1.5 text-right font-medium">
-            Durée cumulée
+            {t.durationHeader}
           </th>
           <th scope="col" className="px-3 py-1.5 text-right font-medium">
-            Part du Lead Time
+            {t.shareHeader}
           </th>
         </tr>
       }
@@ -128,17 +137,17 @@ function BreakdownTable({ parts, total }: { parts: readonly BreakdownPart[]; tot
           <td className="whitespace-nowrap px-3 py-1 text-right">
             <SpokenText written={part.text} spoken={part.spoken} />
           </td>
-          <td className="px-3 py-1 text-right font-medium">{percent(part.share)}</td>
+          <td className="px-3 py-1 text-right font-medium">{percent(format, part.share)}</td>
         </tr>
       ))}
       <tr className="bg-well font-medium">
         <th scope="row" className="whitespace-nowrap px-3 py-1 text-left font-medium text-ink">
-          Lead Time cumulé
+          {t.total}
         </th>
         <td className="whitespace-nowrap px-3 py-1 text-right">
           <DurationText ms={total} />
         </td>
-        <td className="px-3 py-1 text-right">{percent(total > 0 ? 1 : null)}</td>
+        <td className="px-3 py-1 text-right">{percent(format, total > 0 ? 1 : null)}</td>
       </tr>
     </DataTable>
   );

@@ -2,6 +2,8 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { MetricsResponse } from '../../shared/api';
+import { LanguageProvider } from '../i18n';
+import { LANGUAGE_STORAGE_KEY } from '../i18n/language';
 import { TooltipProvider } from '../ui/Tip';
 import { describeComparison } from './comparison';
 import { HealthTiles } from './HealthTiles';
@@ -16,7 +18,7 @@ import { emptyHealthFixture, emptyMetricsFixture, healthFixture, metricsFixture,
 function renderTiles(data: MetricsResponse = metricsFixture()) {
   return render(
     <TooltipProvider>
-      <HealthTiles tiles={data.tiles} health={data.health} comparison={describeComparison(data)} />
+      <HealthTiles tiles={data.tiles} health={data.health} comparison={describeComparison(data, 'fr')} />
     </TooltipProvider>,
   );
 }
@@ -374,5 +376,29 @@ describe('HealthTiles : ce que mesure chaque tuile', () => {
 
     expect(new Set(explanations).size).toBe(5);
     expect(explanations[1]).toContain('Blocage'); // l'Efficacité du flux, c'est le Cycle Time hors Blocage
+  });
+});
+
+describe('en anglais', () => {
+  it('écrit les cinq tuiles et leurs légendes en anglais', () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    const data = metricsFixture();
+    render(
+      <LanguageProvider switchEnabled>
+        <TooltipProvider>
+          <HealthTiles tiles={data.tiles} health={data.health} comparison={describeComparison(data, 'en')} />
+        </TooltipProvider>
+      </LanguageProvider>,
+    );
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Flow health' })).toBeTruthy();
+    expect(screen.getAllByRole('article').map((article) => document.getElementById(article.getAttribute('aria-labelledby')!)?.textContent)).toEqual([
+      'Arrivals vs Throughput',
+      'Flow efficiency',
+      'Reopen rate',
+      'Drop rate',
+      'Stale ready',
+    ]);
+    expect(plain(tile('Arrivals vs Throughput').textContent)).toContain('20 Arrivals · 18 Deliveries');
   });
 });

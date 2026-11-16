@@ -2,6 +2,8 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { MetricsResponse } from '../../shared/api';
+import { LanguageProvider } from '../i18n';
+import { LANGUAGE_STORAGE_KEY } from '../i18n/language';
 import { TooltipProvider } from '../ui/Tip';
 import { describeComparison } from './comparison';
 import { emptyMetricsFixture, metricsFixture, plain, shownText, spokenText, trendOf } from './testing';
@@ -16,7 +18,7 @@ import { MetricTiles } from './Tiles';
 function renderTiles(data: MetricsResponse = metricsFixture()) {
   return render(
     <TooltipProvider>
-      <MetricTiles tiles={data.tiles} comparison={describeComparison(data)} />
+      <MetricTiles tiles={data.tiles} comparison={describeComparison(data, 'fr')} />
     </TooltipProvider>,
   );
 }
@@ -321,5 +323,26 @@ describe('MetricTiles : ce que mesure chaque tuile', () => {
     const tooltip = await screen.findByRole('tooltip');
     expect(plain(tooltip.textContent)).toContain('travail');
     expect(button.getAttribute('aria-describedby')).toBe(tooltip.id);
+  });
+});
+
+describe('en anglais', () => {
+  it('écrit les tuiles, leurs échantillons et le motif du Taux d’échec non significatif en anglais', () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    const data = metricsFixture();
+    render(
+      <LanguageProvider switchEnabled>
+        <TooltipProvider>
+          <MetricTiles tiles={data.tiles} comparison={describeComparison(data, 'en')} />
+        </TooltipProvider>
+      </LanguageProvider>,
+    );
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Key metrics' })).toBeTruthy();
+    expect(text(tile('Lead Time'))).toContain('18 Deliveries');
+    const failure = tile('Change failure rate');
+    expect(text(failure)).toContain('Not significant');
+    expect(text(failure)).toContain('Coverage too low: 19% of bugs have a recorded origin (minimum 50%).');
+    expect(within(tile('Throughput')).getByRole('button', { name: 'About Throughput' })).toBeTruthy();
   });
 });

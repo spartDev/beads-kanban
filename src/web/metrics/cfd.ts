@@ -1,5 +1,7 @@
 import type { MetricsCfdPoint } from '../../shared/api';
-import { formatCount, formatDay } from './format';
+import { CATALOGS } from '../i18n/catalog';
+import type { Language } from '../i18n/language';
+import { FORMATS } from './format';
 
 /**
  * Le CFD (diagramme de flux cumulé) empile les cinq colonnes du kanban, dont les noms sont repris tels quels. Terminé
@@ -10,19 +12,24 @@ export type FlowKey = 'done' | 'inProgress' | 'blocked' | 'ready' | 'backlog';
 
 export interface FlowSeries {
   key: FlowKey;
-  label: string;
   /** Jeton de couleur (metrics.css), décliné en clair et en sombre. */
   color: string;
 }
 
-/** De bas en haut de la pile. */
+/** De bas en haut de la pile. Les noms des colonnes sont dans la langue de l'interface : `flowSeries`. */
 export const FLOW_SERIES: readonly FlowSeries[] = [
-  { key: 'done', label: 'Terminé', color: 'var(--flow-done)' },
-  { key: 'inProgress', label: 'En cours', color: 'var(--flow-progress)' },
-  { key: 'blocked', label: 'Bloqué', color: 'var(--flow-blocked)' },
-  { key: 'ready', label: 'Prêt', color: 'var(--flow-ready)' },
-  { key: 'backlog', label: 'Backlog', color: 'var(--flow-backlog)' },
+  { key: 'done', color: 'var(--flow-done)' },
+  { key: 'inProgress', color: 'var(--flow-progress)' },
+  { key: 'blocked', color: 'var(--flow-blocked)' },
+  { key: 'ready', color: 'var(--flow-ready)' },
+  { key: 'backlog', color: 'var(--flow-backlog)' },
 ];
+
+/** Les colonnes de la pile, de bas en haut, nommées dans `language`. */
+export function flowSeries(language: Language): readonly (FlowSeries & { label: string })[] {
+  const labels = CATALOGS[language].metrics.cfd.columns;
+  return FLOW_SERIES.map((series) => ({ ...series, label: labels[series.key] }));
+}
 
 export interface CfdRow extends MetricsCfdPoint {
   /** Minuit UTC du jour (ms) : un jour civil se place sur l'axe sans dépendre du fuseau du navigateur. */
@@ -53,16 +60,20 @@ export function cfdMax(points: readonly MetricsCfdPoint[], keys: readonly FlowKe
   return points.reduce((max, point) => Math.max(max, keys.reduce((total, key) => total + point[key], 0)), 0);
 }
 
-/** Le texte qui tient lieu de dessin pour un lecteur d'écran : la période, et l'état du dernier jour. */
-export function cfdSummary(points: readonly MetricsCfdPoint[]): string {
+/** Le texte qui tient lieu de dessin pour un lecteur d'écran : la période, et l'état du dernier jour, dans `language`. */
+export function cfdSummary(points: readonly MetricsCfdPoint[], language: Language): string {
+  const text = CATALOGS[language].metrics.cfd;
+  const { formatCount, formatDay } = FORMATS[language];
   const first = points[0];
   const last = points.at(-1);
-  if (!first || !last) return 'Flux cumulé : aucun jour à montrer.';
+  if (!first || !last) return text.summaryEmpty;
   const sameYear = first.date.slice(0, 4) === last.date.slice(0, 4);
   const span =
     first.date === last.date
-      ? `le ${formatDay(last.date, { year: true })}`
-      : `du ${formatDay(first.date, { year: !sameYear })} au ${formatDay(last.date, { year: true })}`;
-  const state = FLOW_SERIES.map(({ key, label }) => `${formatCount(last[key])} ${label}`).join(', ');
-  return `Flux cumulé ${span}. Dernier jour : ${state}.`;
+      ? text.spanOne(formatDay(last.date, { year: true }))
+      : text.spanRange(formatDay(first.date, { year: !sameYear }), formatDay(last.date, { year: true }));
+  const state = flowSeries(language)
+    .map(({ key, label }) => `${formatCount(last[key])} ${label}`)
+    .join(', ');
+  return text.summary(span, state);
 }

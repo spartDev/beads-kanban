@@ -1,5 +1,6 @@
 import { startOfDay } from '../../domain/calendar';
-import { formatDay } from './format';
+import type { Language } from '../i18n/language';
+import { FORMATS } from './format';
 
 /**
  * Les échelles et graduations des graphiques, en fonctions pures : ce que d3 ne sait pas faire pour nous (des durées
@@ -153,9 +154,14 @@ export interface DayTick {
  * Les graduations de l'axe du temps d'une période : un jour sur n, régulièrement, au plus `maxLabels`, chacune au début de
  * son jour dans le fuseau des métriques (celui de la réponse, que le navigateur a demandé : jamais un fuseau lu ici). Les jours sont
  * ceux du calendrier et non des tranches de 24 h : après un changement d'heure, `début + n × 24 h` tomberait une heure avant ou après
- * le vrai minuit.
+ * le vrai minuit. Les étiquettes sont écrites dans `language`.
  */
-export function dayTicks({ from, days, timeZone }: { from: string; days: number; timeZone: string }, maxLabels: number): DayTick[] {
+export function dayTicks(
+  { from, days, timeZone }: { from: string; days: number; timeZone: string },
+  maxLabels: number,
+  language: Language,
+): DayTick[] {
+  const { formatDay } = FORMATS[language];
   return thinLabels(days, maxLabels).map((index) => {
     const day = addDays(from, index);
     return { index, time: startOfDay(day, timeZone), label: formatDay(day) };
