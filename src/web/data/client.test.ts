@@ -72,21 +72,21 @@ describe('apiGet', () => {
 
 describe('describeError', () => {
   it('distingue serveur injoignable, erreur serveur, introuvable et autres', () => {
-    expect(describeError(new ApiError('Serveur injoignable', 0)).title).toMatch(/injoignable/);
-    expect(describeError(new ApiError('boom', 500))).toEqual({ title: 'Le serveur a rencontré une erreur', detail: 'boom' });
-    expect(describeError(new ApiError('nope', 404)).title).toBe('Ressource introuvable');
-    expect(describeError(new ApiError('Interdit', 403))).toEqual({ title: 'Chargement impossible', detail: 'Interdit' });
-    expect(describeError(new Error('autre'))).toEqual({ title: 'Chargement impossible', detail: 'autre' });
+    expect(describeError(new ApiError('Serveur injoignable', 0), 'fr').title).toMatch(/injoignable/);
+    expect(describeError(new ApiError('boom', 500), 'fr')).toEqual({ title: 'Le serveur a rencontré une erreur', detail: 'boom' });
+    expect(describeError(new ApiError('nope', 404), 'fr').title).toBe('Ressource introuvable');
+    expect(describeError(new ApiError('Interdit', 403), 'fr')).toEqual({ title: 'Chargement impossible', detail: 'Interdit' });
+    expect(describeError(new Error('autre'), 'fr')).toEqual({ title: 'Chargement impossible', detail: 'autre' });
   });
 
   it('titre un 503 accompagné d’une raison « Projet illisible » et donne la raison', () => {
-    const described = describeError(new ApiError('Base Dolt verrouillée', 503, { reason: 'Base Dolt verrouillée' }));
+    const described = describeError(new ApiError('Base Dolt verrouillée', 503, { reason: 'Base Dolt verrouillée' }), 'fr');
 
     expect(described).toMatchObject({ title: 'Projet illisible', detail: 'Base Dolt verrouillée' });
   });
 
   it('garde le titre d’erreur serveur pour un 503 sans raison (passerelle, proxy…)', () => {
-    expect(describeError(new ApiError('Erreur HTTP 503', 503))).toEqual({
+    expect(describeError(new ApiError('Erreur HTTP 503', 503), 'fr')).toEqual({
       title: 'Le serveur a rencontré une erreur',
       detail: 'Erreur HTTP 503',
     });

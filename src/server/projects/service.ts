@@ -1,5 +1,6 @@
 import type { TicketHistory } from '../../domain/flow';
 import type { Issue, IssueDetail, Project, ProjectsResponse } from '../../shared/api';
+import type { ApiErrorDetail } from '../../shared/errors';
 import { ReadAborted } from '../abort';
 import type { Config } from '../config';
 import { type DoltClient, type DoltDatabase, DoltNotFoundError, DoltQueryError, withOptions } from '../dolt/client';
@@ -14,6 +15,10 @@ export class ProjectNotFoundError extends Error {
     super(`Projet inconnu : ${projectId}`);
     this.name = 'ProjectNotFoundError';
   }
+
+  get detail(): ApiErrorDetail {
+    return { code: 'project-not-found', params: { project: this.projectId } };
+  }
 }
 
 export class IssueNotFoundError extends Error {
@@ -23,6 +28,10 @@ export class IssueNotFoundError extends Error {
   ) {
     super(`Ticket inconnu dans ${projectId} : ${issueId}`);
     this.name = 'IssueNotFoundError';
+  }
+
+  get detail(): ApiErrorDetail {
+    return { code: 'issue-not-found', params: { project: this.projectId, issue: this.issueId } };
   }
 }
 

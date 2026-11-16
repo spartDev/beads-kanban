@@ -1,11 +1,15 @@
 import type { PeriodSpec } from '../../domain/calendar';
 import { canonicalTimeZone } from '../../domain/time-zone';
 import type { MetricsRangePreset } from '../../shared/api';
+import type { ApiErrorDetail } from '../../shared/errors';
 import type { MetricsQuery, SignalsQuery } from './service';
 
-/** La requête n'a pas la forme attendue : l'API répond 400 avec ce message. */
+/** La requête n'a pas la forme attendue : l'API répond 400 avec ce message, et son code pour l'interface (`detail`). */
 export class InvalidMetricsQueryError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly detail: ApiErrorDetail,
+  ) {
     super(message);
     this.name = 'InvalidMetricsQueryError';
   }
@@ -33,21 +37,23 @@ const DEFAULT_PRESET: MetricsRangePreset = '30d';
 export function parseMetricsQuery(query: Record<string, unknown>): MetricsQuery {
   for (const name of Object.keys(query)) {
     if (!PARAMETERS.includes(name)) {
-      throw new InvalidMetricsQueryError(`Paramètre inconnu : « ${name} » (attendus : ${PARAMETERS.join(', ')}).`);
+      throw unknownParameter(name, PARAMETERS);
     }
   }
 
   const projects = values(query, 'project');
-  if (projects.some((id) => id.trim() === '')) throw new InvalidMetricsQueryError('« project » ne peut pas être vide.');
+  if (projects.some((id) => id.trim() === '')) throw EMPTY_PROJECT();
 
   const [range, from, to] = [single(query, 'range'), single(query, 'from'), single(query, 'to')];
   if (range !== undefined && (from !== undefined || to !== undefined)) {
-    throw new InvalidMetricsQueryError('Choisissez « range » ou « from » et « to », pas les deux.');
+    throw new InvalidMetricsQueryError('Choisissez « range » ou « from » et « to », pas les deux.', { code: 'query-range-and-dates', params: {} });
   }
-  if ((from === undefined) !== (to === undefined)) throw new InvalidMetricsQueryError('« from » et « to » vont ensemble.');
+  if ((from === undefined) !== (to === undefined)) {
+    throw new InvalidMetricsQueryError('« from » et « to » vont ensemble.', { code: 'query-dates-together', params: {} });
+  }
 
   const requestedZone = single(query, 'timeZone');
-  if (requestedZone === '') throw new InvalidMetricsQueryError('« timeZone » ne peut pas être vide.');
+  if (requestedZone === '') throw EMPTY_TIME_ZONE();
   const timeZone = canonicalTimeZone(requestedZone);
 
   return { projects: [...new Set(projects)], period: periodOf(range, from, to), ...(timeZone === undefined ? {} : { timeZone }) };
@@ -55,17 +61,28 @@ export function parseMetricsQuery(query: Record<string, unknown>): MetricsQuery 
 
 const SIGNALS_PARAMETERS = ['project', 'timeZone'];
 
+function unknownParameter(name: string, expected: readonly string[]): InvalidMetricsQueryError {
+  return new InvalidMetricsQueryError(`Paramètre inconnu : « ${name} » (attendus : ${expected.join(', ')}).`, {
+    code: 'query-unknown-parameter',
+    params: { parameter: name, expected: [...expected] },
+  });
+}
+
+const EMPTY_PROJECT = () => new InvalidMetricsQueryError('« project » ne peut pas être vide.', { code: 'query-empty-project', params: {} });
+const EMPTY_TIME_ZONE = () =>
+  new InvalidMetricsQueryError('« timeZone » ne peut pas être vide.', { code: 'query-empty-time-zone', params: {} });
+
 /** Lit les paramètres de `GET /api/signals` : `project` (répétable ; aucun pour la Vue globale) et `timeZone`, comme `parseMetricsQuery`. */
 export function parseSignalsQuery(query: Record<string, unknown>): SignalsQuery {
   for (const name of Object.keys(query)) {
     if (!SIGNALS_PARAMETERS.includes(name)) {
-      throw new InvalidMetricsQueryError(`Paramètre inconnu : « ${name} » (attendus : ${SIGNALS_PARAMETERS.join(', ')}).`);
+      throw unknownParameter(name, SIGNALS_PARAMETERS);
     }
   }
   const projects = values(query, 'project');
-  if (projects.some((id) => id.trim() === '')) throw new InvalidMetricsQueryError('« project » ne peut pas être vide.');
+  if (projects.some((id) => id.trim() === '')) throw EMPTY_PROJECT();
   const requestedZone = single(query, 'timeZone');
-  if (requestedZone === '') throw new InvalidMetricsQueryError('« timeZone » ne peut pas être vide.');
+  if (requestedZone === '') throw EMPTY_TIME_ZONE();
   const timeZone = canonicalTimeZone(requestedZone);
   return { projects: [...new Set(projects)], ...(timeZone === undefined ? {} : { timeZone }) };
 }
@@ -75,7 +92,10 @@ function periodOf(range: string | undefined, from: string | undefined, to: strin
   if (range === undefined) return { range: DEFAULT_PRESET };
   const preset = PRESETS.find((candidate) => candidate === range);
   if (!preset) {
-    throw new InvalidMetricsQueryError(`« range » doit valoir ${PRESETS.slice(0, -1).join(', ')} ou ${PRESETS.at(-1)} : reçu « ${range} ».`);
+    throw new InvalidMetricsQueryError(`« range » doit valoir ${PRESETS.slice(0, -1).join(', ')} ou ${PRESETS.at(-1)} : reçu « ${range} ».`, {
+      code: 'query-invalid-range',
+      params: { received: range, expected: [...PRESETS] },
+    });
   }
   return { range: preset };
 }
@@ -85,7 +105,7 @@ function values(query: Record<string, unknown>, name: string): string[] {
   const raw = query[name];
   const list = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
   if (!list.every((value): value is string => typeof value === 'string')) {
-    throw new InvalidMetricsQueryError(`« ${name} » doit être un texte.`);
+    throw new InvalidMetricsQueryError(`« ${name} » doit être un texte.`, { code: 'query-not-text', params: { parameter: name } });
   }
   return list;
 }
@@ -93,6 +113,8 @@ function values(query: Record<string, unknown>, name: string): string[] {
 /** La valeur d'un paramètre qui ne se répète pas. */
 function single(query: Record<string, unknown>, name: string): string | undefined {
   const [value, ...others] = values(query, name);
-  if (others.length > 0) throw new InvalidMetricsQueryError(`« ${name} » ne peut être donné qu'une fois.`);
+  if (others.length > 0) {
+    throw new InvalidMetricsQueryError(`« ${name} » ne peut être donné qu'une fois.`, { code: 'query-repeated', params: { parameter: name } });
+  }
   return value;
 }

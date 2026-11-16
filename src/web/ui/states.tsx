@@ -1,6 +1,7 @@
 import { CircleAlert, RefreshCw, type LucideIcon } from 'lucide-react';
 import { useId, type MouseEvent, type ReactNode, type Ref } from 'react';
 import { describeError } from '../data/client';
+import { useLanguage } from '../i18n';
 import { cx } from '../lib/cx';
 import { isInvisibleText } from '../lib/invisibleText';
 import { keepFocusInZone } from '../lib/zoneFocus';
@@ -93,7 +94,7 @@ export function ErrorNotice({
   onRetry?: (event: MouseEvent<HTMLButtonElement>) => void;
   className?: string;
 }) {
-  const described = describeError(error);
+  const described = describeError(error, useLanguage().language);
   // Une cause précise (Projet illisible) est le meilleur titre ; sinon le titre de contexte passe devant la cause.
   const contextual = title !== undefined && !described.specific;
   return (

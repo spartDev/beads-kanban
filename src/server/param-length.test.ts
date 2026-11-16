@@ -171,7 +171,13 @@ describe.each([
     const res = await server(unknown).inject({ method: 'GET', url: `/api/projects/${enc(projectId)}/issues` });
 
     expect(res.statusCode).toBe(404);
-    expect(res.json()).toEqual({ statusCode: 404, error: 'Not Found', message: `Projet inconnu : ${projectId}` });
+    expect(res.json()).toEqual({
+      statusCode: 404,
+      error: 'Not Found',
+      message: `Projet inconnu : ${projectId}`,
+      code: 'project-not-found',
+      params: { project: projectId },
+    });
     expect(received).toEqual([]);
   });
 

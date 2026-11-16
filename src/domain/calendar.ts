@@ -1,4 +1,5 @@
 import type { MetricsBucketUnit, MetricsRange, MetricsRangePreset } from '../shared/api';
+import type { ApiErrorDetail } from '../shared/errors';
 import { lruMemo } from './lru';
 import { MAX_ZONE_FORMATTERS } from './time-zone';
 
@@ -66,9 +67,12 @@ export const MIN_CUSTOM_DAY: CivilDay = '1970-01-01';
 const PRESET_DAYS: Record<MetricsRangePreset, number> = { '7d': 7, '30d': 30, '90d': 90 };
 const DAY_MS = 86_400_000;
 
-/** Période ou plage refusée : l'appelant la rend à l'utilisateur telle quelle (400). */
+/** Période ou plage refusée : l'appelant la rend à l'utilisateur telle quelle (400), avec son code pour l'interface (`detail`). */
 export class InvalidPeriodError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly detail: ApiErrorDetail,
+  ) {
     super(message);
     this.name = 'InvalidPeriodError';
   }
@@ -144,15 +148,31 @@ export function resolvePeriod(spec: PeriodSpec, now: number, timeZone: string): 
       ? ([spec.range, addDays(today, 1 - PRESET_DAYS[spec.range]), today] as const)
       : (['custom', checkedDay(spec.from, 'from'), checkedDay(spec.to, 'to')] as const);
 
-  if (from > to) throw new InvalidPeriodError(`La plage commence après sa fin : « from » (${from}) doit être avant « to » (${to}).`);
-  if (to > today) throw new InvalidPeriodError(`« to » (${to}) est dans le futur : la plage ne peut pas dépasser aujourd'hui (${today}).`);
+  if (from > to) {
+    throw new InvalidPeriodError(`La plage commence après sa fin : « from » (${from}) doit être avant « to » (${to}).`, {
+      code: 'period-inverted',
+      params: { from, to },
+    });
+  }
+  if (to > today) {
+    throw new InvalidPeriodError(`« to » (${to}) est dans le futur : la plage ne peut pas dépasser aujourd'hui (${today}).`, {
+      code: 'period-in-future',
+      params: { to, today },
+    });
+  }
   // Avant de compter quoi que ce soit : `daysBetween` et `periodOf` se trompent sur les premières années (voir `MIN_CUSTOM_DAY`).
   if (range === 'custom' && from < MIN_CUSTOM_DAY) {
-    throw new InvalidPeriodError(`La plage doit commencer le 1er janvier 1970 ou après : « from » (${from}) est trop tôt.`);
+    throw new InvalidPeriodError(`La plage doit commencer le 1er janvier 1970 ou après : « from » (${from}) est trop tôt.`, {
+      code: 'period-too-early',
+      params: { from },
+    });
   }
   const days = daysBetween(from, to) + 1;
   if (days > MAX_PERIOD_DAYS) {
-    throw new InvalidPeriodError(`La plage est trop longue : ${days} jours, au plus ${MAX_PERIOD_DAYS}.`);
+    throw new InvalidPeriodError(`La plage est trop longue : ${days} jours, au plus ${MAX_PERIOD_DAYS}.`, {
+      code: 'period-too-long',
+      params: { days, max: MAX_PERIOD_DAYS },
+    });
   }
 
   const previousTo = addDays(from, -1);
@@ -229,7 +249,10 @@ function checkedDay(value: string, name: string): CivilDay {
     const real = utcMidnight(year, month, date);
     if (real.getUTCFullYear() === year && real.getUTCMonth() === month - 1 && real.getUTCDate() === date) return value;
   }
-  throw new InvalidPeriodError(`« ${name} » doit être un jour qui existe, au format AAAA-MM-JJ : reçu « ${value} ».`);
+  throw new InvalidPeriodError(`« ${name} » doit être un jour qui existe, au format AAAA-MM-JJ : reçu « ${value} ».`, {
+    code: 'period-invalid-day',
+    params: { parameter: name, received: value },
+  });
 }
 
 /**

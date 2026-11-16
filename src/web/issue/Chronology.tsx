@@ -1,6 +1,7 @@
 import { CircleAlert, RefreshCw } from 'lucide-react';
 import { Fragment, useId, type MouseEvent } from 'react';
 import { ApiError, describeError } from '../data/client';
+import { useLanguage } from '../i18n';
 import { useChronology, useTicketSignals } from '../data/hooks';
 import type { IssueBlockage, IssueBlockagePhase, IssueBlockagePhaseKind, IssueChronology, IssueTransition } from '../data/types';
 import { statusLabel } from '../design/issue-palette';
@@ -94,7 +95,7 @@ export function Chronology({ projectId, issueId }: { projectId: string; issueId:
  * qui l'est (trop long, base verrouillée). Le titre dit donc ce qui manque, et la cause suit.
  */
 function Unavailable({ error, onRetry }: { error: unknown; onRetry: (event: MouseEvent<HTMLButtonElement>) => void }) {
-  const described = describeError(error);
+  const described = describeError(error, useLanguage().language);
   return (
     <Notice
       tone="danger"

@@ -1,16 +1,8 @@
-/** Erreur d'appel à l'API. `status` vaut 0 quand le serveur est injoignable. */
-export class ApiError extends Error {
-  readonly status: number;
-  /** Pourquoi un Projet est illisible (503) ; absente des autres erreurs. */
-  readonly reason?: string;
+import { readApiErrorDetail } from '../../shared/errors';
+import type { Language } from '../i18n/language';
+import { ApiError, errorText } from './apiError';
 
-  constructor(message: string, status: number, options?: ErrorOptions & { reason?: string }) {
-    super(message, options);
-    this.name = 'ApiError';
-    this.status = status;
-    this.reason = options?.reason;
-  }
-}
+export { ApiError, errorText } from './apiError';
 
 export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   let res: Response;
@@ -29,15 +21,22 @@ async function readApiError(res: Response): Promise<ApiError> {
   try {
     const body: unknown = await res.json();
     if (body && typeof body === 'object') {
-      // `reason` (503) dit pourquoi un Projet est illisible : c'est le message le plus utile.
-      const { reason, message, error } = body as { reason?: unknown; message?: unknown; error?: unknown };
+      // `reason` (503) dit pourquoi un Projet est illisible : c'est le message le plus utile. `code` et `params` ne sont gardés que s'ils ont la
+      // forme que leur code demande : sinon, l'erreur s'écrit par son message.
+      const { reason, message, error, code, params } = body as Record<string, unknown>;
       const text = [reason, message, error].find((candidate): candidate is string => typeof candidate === 'string' && candidate !== '');
-      if (text) return new ApiError(text, res.status, { reason: typeof reason === 'string' && reason ? reason : undefined });
+      const detail = readApiErrorDetail(code, params);
+      if (text || detail) {
+        return new ApiError(text ?? `Erreur HTTP ${res.status}`, res.status, {
+          reason: typeof reason === 'string' && reason ? reason : undefined,
+          detail,
+        });
+      }
     }
   } catch {
     // Corps absent ou qui n'est pas du JSON : on retombe sur le code HTTP.
   }
-  return new ApiError(`Erreur HTTP ${res.status}`, res.status);
+  return new ApiError(`Erreur HTTP ${res.status}`, res.status, { bodyless: true });
 }
 
 export interface ErrorDescription {
@@ -47,8 +46,8 @@ export interface ErrorDescription {
   specific?: true;
 }
 
-/** Titre et détail affichables d'une erreur de chargement, en français. */
-export function describeError(error: unknown): ErrorDescription {
+/** Titre et détail affichables d'une erreur de chargement ; le détail est écrit dans `language` (`errorText`). */
+export function describeError(error: unknown, language: Language): ErrorDescription {
   if (error instanceof ApiError) {
     if (error.status === 0) {
       return {
@@ -61,13 +60,13 @@ export function describeError(error: unknown): ErrorDescription {
       return { title: 'Projet illisible', detail: error.reason, specific: true };
     }
     if (error.status >= 500) {
-      return { title: 'Le serveur a rencontré une erreur', detail: error.message };
+      return { title: 'Le serveur a rencontré une erreur', detail: errorText(error, language) };
     }
-    if (error.status === 404) return { title: 'Ressource introuvable', detail: error.message };
-    return { title: 'Chargement impossible', detail: error.message };
+    if (error.status === 404) return { title: 'Ressource introuvable', detail: errorText(error, language) };
+    return { title: 'Chargement impossible', detail: errorText(error, language) };
   }
   return {
     title: 'Chargement impossible',
-    detail: error instanceof Error ? error.message : undefined,
+    detail: errorText(error, language),
   };
 }

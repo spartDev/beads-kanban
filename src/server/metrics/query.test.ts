@@ -73,4 +73,22 @@ describe('parseMetricsQuery', () => {
     expect(() => parseMetricsQuery(query)).toThrow(InvalidMetricsQueryError);
     expect(() => parseMetricsQuery(query)).toThrow(fragment);
   });
+
+  // bdesk-ewr.6 : le code et les paramètres que l'API envoie avec le message (le parseur de requête de Fastify ne donne jamais d'objet : ce refus-là
+  // ne se voit qu'ici).
+  it.each([
+    ['un fuseau qui n’est pas un texte', { timeZone: { zone: 'UTC' } }, { code: 'query-not-text', params: { parameter: 'timeZone' } }],
+    ['un fuseau répété', { timeZone: ['UTC', 'Europe/Paris'] }, { code: 'query-repeated', params: { parameter: 'timeZone' } }],
+    ['« from » sans « to »', { from: '2026-10-01' }, { code: 'query-dates-together', params: {} }],
+  ])('donne son code à %s', (_name, query, detail) => {
+    let thrown: unknown;
+    try {
+      parseMetricsQuery(query);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(InvalidMetricsQueryError);
+    expect((thrown as InvalidMetricsQueryError).detail).toEqual(detail);
+  });
 });
