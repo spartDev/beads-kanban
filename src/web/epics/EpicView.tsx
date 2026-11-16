@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router';
 import { epicChildren, epicProgress, epicTree, groupByColumn } from '../../domain/epics';
 import type { Issue, Project } from '../data/types';
 import { statusLabel } from '../design/issue-palette';
+import { useT } from '../i18n';
 import { epicName } from '../kanban/epics';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useNow } from '../lib/useNow';
@@ -39,6 +40,7 @@ const LINK = '-my-0.5 min-h-[24px] py-0.5 font-medium text-accent hover:underlin
  */
 export function EpicView({ project, epic, issues }: { project: Project; epic: Issue; issues: readonly Issue[] }) {
   const now = useNow();
+  const words = useT().epics.epic;
   const [params, setParams] = useSearchParams();
   const view = parseView(params.get(VIEW_PARAM));
   // Le titre de la page et celui de l'onglet disent le nom de l'Epic (`epicName`) : son identifiant quand elle n'a pas de titre, jamais un titre vide
@@ -75,32 +77,32 @@ export function EpicView({ project, epic, issues }: { project: Project; epic: Is
       <div className="flex flex-col gap-2">
         <dl className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-ink-2">
           <div className="flex items-center gap-1.5">
-            <dt className="sr-only">Type</dt>
+            <dt className="sr-only">{words.type}</dt>
             <dd>
               <TypeBadge type="epic" />
             </dd>
           </div>
           <div className="flex items-center gap-1.5">
-            <dt className="sr-only">Identifiant</dt>
+            <dt className="sr-only">{words.id}</dt>
             <dd className="wrap-anywhere font-mono text-xs text-ink-3">{epic.id}</dd>
           </div>
           <div className="flex items-center gap-1.5">
-            <dt className="sr-only">Priorité</dt>
+            <dt className="sr-only">{words.priority}</dt>
             <dd>
               <PriorityBadge priority={epic.priority} />
             </dd>
           </div>
           <div className="flex items-center gap-1.5">
-            <dt className="sr-only">Statut</dt>
+            <dt className="sr-only">{words.status}</dt>
             <dd>{statusLabel(epic.status)}</dd>
           </div>
         </dl>
         <p className="flex flex-wrap gap-x-4 gap-y-1 max-md:flex-col max-[11rem]:gap-y-4">
           <Link to={paths.issue(project.id, epic.id)} className={LINK}>
-            Ouvrir le ticket
+            {words.openTicket}
           </Link>
           <Link to={paths.kanban(project.id, epic.id)} className={LINK}>
-            Voir au kanban
+            {words.seeOnKanban}
           </Link>
         </p>
       </div>
@@ -111,7 +113,7 @@ export function EpicView({ project, epic, issues }: { project: Project; epic: Is
       {children.length + nestedEpics.length > 0 ? (
         <section aria-labelledby="epic-children" className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <SectionTitle id="epic-children">Enfants</SectionTitle>
+            <SectionTitle id="epic-children">{words.children}</SectionTitle>
             <ViewSwitch value={view} onChange={setView} />
           </div>
           {view === 'tree' ? (

@@ -9,6 +9,7 @@ import { BackToEpics } from '../epics/BackToEpics';
 import { EpicList } from '../epics/EpicList';
 import { EpicView } from '../epics/EpicView';
 import { EPIC_PARAM } from '../epics/view';
+import { useT } from '../i18n';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useRetryFocus } from '../lib/useRetryFocus';
 import { paths } from '../paths';
@@ -32,16 +33,17 @@ export function EpicsPage() {
 function EpicsOverview({ project }: { project: Project }) {
   const issues = useIssues(project.id);
   const retry = useRetryFocus(issues);
-  useDocumentTitle('Epics', project.name);
+  const words = useT().epics.page;
+  useDocumentTitle(words.title, project.name);
 
   return (
-    <Page title="Epics" description={`L’avancement de chaque Epic de ${projectInSentence(project)} : les Livraisons parmi ses Enfants.`}>
+    <Page title={words.title} description={words.description(projectInSentence(project))}>
       {issues.data ? (
         <EpicList projectId={project.id} issues={issues.data} />
       ) : issues.isError ? (
-        <ErrorNotice error={issues.error} title="Impossible de charger les tickets" onRetry={retry} />
+        <ErrorNotice error={issues.error} title={words.loadFailed} onRetry={retry} />
       ) : (
-        <div role="status" aria-busy="true" aria-label="Chargement des Epics" className="flex flex-col gap-2">
+        <div role="status" aria-busy="true" aria-label={words.loadingList} className="flex flex-col gap-2">
           <Skeleton className="h-4 w-56" />
           <Skeleton className="h-16 w-full" />
           <Skeleton className="h-16 w-full" />
@@ -54,6 +56,7 @@ function EpicsOverview({ project }: { project: Project }) {
 function EpicDetail({ project, epicId }: { project: Project; epicId: string }) {
   const issues = useIssues(project.id);
   const retry = useRetryFocus(issues);
+  const words = useT().epics.page;
 
   if (issues.data) {
     const epic = issues.data.find((issue) => issue.id === epicId);
@@ -63,8 +66,8 @@ function EpicDetail({ project, epicId }: { project: Project; epicId: string }) {
   }
   if (issues.isError) {
     return (
-      <Page title="Epic indisponible">
-        <ErrorNotice error={issues.error} title="Impossible de charger les tickets" onRetry={retry} />
+      <Page title={words.unavailable}>
+        <ErrorNotice error={issues.error} title={words.loadFailed} onRetry={retry} />
       </Page>
     );
   }
@@ -73,9 +76,10 @@ function EpicDetail({ project, epicId }: { project: Project; epicId: string }) {
 
 /** La silhouette de la page : un titre, la barre d'avancement, deux cases de chiffres et quelques lignes d'Enfants. */
 function EpicSkeleton() {
+  const words = useT().epics.page;
   return (
     <Page title={null} loadingWidth="w-2/3">
-      <div role="status" aria-busy="true" aria-label="Chargement de l’Epic" className="flex flex-col gap-6">
+      <div role="status" aria-busy="true" aria-label={words.loadingEpic} className="flex flex-col gap-6">
         <div className="flex flex-col gap-3">
           <Skeleton className="h-5 w-56" />
           <Skeleton className="h-2 w-full" />
@@ -96,19 +100,20 @@ function EpicSkeleton() {
 }
 
 function NoSuchEpic({ project, epicId }: { project: Project; epicId: string }) {
-  useDocumentTitle('Epic introuvable', project.name);
+  const words = useT().epics.page;
+  useDocumentTitle(words.notFound, project.name);
   return (
-    <Page title="Epic introuvable" eyebrow={<BackToEpics projectId={project.id} />}>
+    <Page title={words.notFound} eyebrow={<BackToEpics projectId={project.id} />}>
       <Notice
         icon={SearchX}
-        title={`Aucune Epic « ${epicId} » dans ${projectInSentence(project)}`}
+        title={words.notFoundTitle(epicId, projectInSentence(project))}
         action={
           <Link to={paths.epics(project.id)} className="font-medium text-accent hover:underline">
-            Voir les Epics du Projet
+            {words.seeProjectEpics}
           </Link>
         }
       >
-        L’Epic a peut-être été supprimée, ou le lien vient d’un autre Projet.
+        {words.notFoundHint}
       </Notice>
     </Page>
   );
@@ -116,20 +121,22 @@ function NoSuchEpic({ project, epicId }: { project: Project; epicId: string }) {
 
 /** `?epic=` nomme un ticket qui n'est pas de type epic : on le dit, et on propose de l'ouvrir. */
 function NotAnEpic({ project, ticket }: { project: Project; ticket: Issue }) {
+  const t = useT();
+  const words = t.epics.page;
   useDocumentTitle(ticket.id, project.name);
   return (
-    <Page title="Ce n’est pas une Epic" eyebrow={<BackToEpics projectId={project.id} />}>
+    <Page title={words.notAnEpic} eyebrow={<BackToEpics projectId={project.id} />}>
       <Notice
         icon={FolderSearch}
-        title={`« ${ticket.id} » est de type ${typeMeta(ticket.type).label}`}
+        title={words.notAnEpicTitle(ticket.id, typeMeta(ticket.type).label)}
         action={
           <Link to={paths.issue(project.id, ticket.id)} className="font-medium text-accent hover:underline">
-            Ouvrir le ticket
+            {t.epics.epic.openTicket}
           </Link>
         }
       >
         <p>{ticketTitle(ticket)}</p>
-        <p>Seul un ticket de type epic regroupe des Enfants et a une page d’avancement.</p>
+        <p>{words.notAnEpicHint}</p>
       </Notice>
     </Page>
   );

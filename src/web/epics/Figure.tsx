@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { formatDuration, spokenDuration } from '../metrics/format';
+import { useFormat } from '../i18n';
 
 /** Une durée, courte pour les yeux (« 3 j 4 h ») et en toutes lettres pour les lecteurs d'écran (« 3 jours 4 heures »). */
 export function Duration({ ms }: { ms: number }) {
+  const { formatDuration, spokenDuration } = useFormat();
   return (
     <>
       <span aria-hidden="true">{formatDuration(ms)}</span>
