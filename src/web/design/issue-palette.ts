@@ -115,8 +115,19 @@ export function priorityMeta(priority: number, language: Language = 'fr'): Prior
   return meta[Number.isFinite(priority) && priority < 0 ? 0 : 4];
 }
 
-/** Les statuts que beads connaît (le catalogue y ajoute `unknown`, le statut vide). */
-const KNOWN_STATUSES = new Set(['open', 'in_progress', 'hooked', 'blocked', 'deferred', 'pinned', 'closed']);
+/** Un statut que beads connaît : une clé du catalogue (qui y ajoute `unknown`, le statut vide). */
+type KnownStatus = Exclude<keyof (typeof kanban)['fr']['statuses'], 'unknown'>;
+
+/** Les statuts que beads connaît ; le compilateur refuse un statut sans libellé dans le catalogue, comme un libellé sans statut ici. */
+const KNOWN_STATUSES: Readonly<Record<KnownStatus, true>> = {
+  open: true,
+  in_progress: true,
+  hooked: true,
+  blocked: true,
+  deferred: true,
+  pinned: true,
+  closed: true,
+};
 
 /**
  * Libellé d'un statut beads dans `language` ; un statut personnalisé s'affiche tel quel, un statut vide se dit « inconnu ». Le nom brut ne se
@@ -124,7 +135,7 @@ const KNOWN_STATUSES = new Set(['open', 'in_progress', 'hooked', 'blocked', 'def
  */
 export const statusLabel = (status: string, language: Language = 'fr'): string => {
   const labels = kanban[language].statuses;
-  if (KNOWN_STATUSES.has(status)) return labels[status as keyof typeof labels];
+  if (Object.hasOwn(KNOWN_STATUSES, status)) return labels[status as KnownStatus];
   return status.trim() === '' ? labels.unknown : status;
 };
 

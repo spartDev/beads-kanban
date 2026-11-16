@@ -149,6 +149,38 @@ describe('the Ticket panel, in English', () => {
     expect(within(timeline).getByText('Only the Blockage during work counts toward blocked time.')).toBeTruthy();
   });
 
+  it('tells a Dropped ticket in English: in its header and in its Timeline', async () => {
+    const base = { id: 'bdesk-2', title: 'Le ticket fermé', status: 'closed', closedAt: '2026-10-05T09:00:00Z', abandon: { cause: 'duplicate', of: 'bdesk-1' } } as const;
+    stubApi({
+      projects: projectsResponse,
+      issues: { bdesk: [issue(base), issue({ id: 'bdesk-1', title: 'Le ticket de référence', status: 'closed' })] },
+      details: {
+        'bdesk/bdesk-2': issueDetail({
+          ...base,
+          linked: { 'bdesk-1': { id: 'bdesk-1', title: 'Le ticket de référence', type: 'task', status: 'closed', priority: 2 } },
+        }),
+      },
+      chronologies: {
+        'bdesk/bdesk-2': chronology({
+          transitions: [
+            { status: 'open', at: '2026-10-01T09:00:00Z', duration: 4 * 24 * HOUR },
+            { status: 'closed', at: '2026-10-05T09:00:00Z', duration: null },
+          ],
+          outcome: { kind: 'abandoned', at: '2026-10-05T09:00:00Z', cause: 'duplicate' },
+        }),
+      },
+    });
+    renderApp('/p/bdesk/t/bdesk-2', { languageSwitch: true });
+    const dialog = await screen.findByRole('dialog', { name: /Le ticket fermé/ });
+
+    // La pastille « Abandon » de la ligne Statut vient du shell (`ui/IssueBadges`) : elle reste en français jusqu'à la migration du shell.
+    expect(within(dialog).getByRole('link', { name: 'bdesk-1' }).closest('p')?.textContent).toBe(
+      'Duplicate of bdesk-1 “Le ticket de référence”. Closed without being a Delivery.',
+    );
+    const timeline = await within(dialog).findByRole('region', { name: 'Timeline' });
+    expect(await within(timeline).findByText(/^Dropped \(duplicate\) on Oct 5, 2026/)).toBeTruthy();
+  });
+
   it('says a ticket is not found, in English, with a way back to the kanban', async () => {
     stubApi({ projects: projectsResponse, issues: { bdesk: [] } });
     renderApp('/p/bdesk/t/bdesk-404', { languageSwitch: true });

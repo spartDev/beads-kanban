@@ -125,6 +125,23 @@ describe('the kanban, in English', () => {
     expect(within(drawer).getByText('deferred')).toBeTruthy();
   });
 
+  it('says the “Paused” drawer is empty, in English, when no ticket is paused', async () => {
+    const { user } = await openBoard(TICKETS().filter((ticket) => ticket.status !== 'deferred'));
+
+    const toggle = screen.getByRole('button', { name: /^Paused/ });
+    expect(toggle.textContent).toContain('0 tickets');
+    await user.click(toggle);
+    expect(within(screen.getByRole('region', { name: 'Paused' })).getByText('No paused tickets')).toBeTruthy();
+  });
+
+  it('tells an Epic titled “All Epics” apart from the “All Epics” option', async () => {
+    await openBoard([...TICKETS(), issue({ id: 'bdesk-e2', title: 'All Epics', type: 'epic' })]);
+
+    const filter = screen.getByRole('combobox', { name: 'Epic' });
+    expect(within(filter).getByRole('option', { name: 'All Epics' }).getAttribute('value')).toBe('');
+    expect(within(filter).getByRole('option', { name: 'All Epics (bdesk-e2)' })).toBeTruthy();
+  });
+
   it('says so, in English, when every ticket is paused', async () => {
     await openBoard([issue({ id: 'bdesk-g1', title: 'Reporté', status: 'deferred' }), issue({ id: 'bdesk-g2', title: 'Épinglé', status: 'pinned' })]);
 
