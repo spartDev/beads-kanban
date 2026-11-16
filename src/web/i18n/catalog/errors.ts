@@ -8,8 +8,8 @@ import type { Zone } from './zone';
  * et les réponses d'erreur du serveur.
  *
  * Les paramètres sont des morceaux du message du serveur : un identifiant, une valeur reçue, un nom de paramètre de l'API, la raison d'un Projet
- * illisible. Aucun n'est traduit : la raison est une phrase française du serveur tant que ses causes n'ont pas leur code (bdesk-ewr.8), jamais le
- * texte de Dolt. Les nombres arrivent déjà formatés dans la langue (`errorText` les passe par `formatCount`).
+ * illisible. Aucun n'est traduit : la raison est une phrase française du serveur (un gabarit par classe de cause) tant que ses causes
+ * n'ont pas leur code (bdesk-ewr.8). Les nombres arrivent déjà formatés dans la langue (`errorText` les passe par `formatCount`).
  */
 
 /** Les paramètres tels que le catalogue les reçoit : les nombres déjà écrits. */

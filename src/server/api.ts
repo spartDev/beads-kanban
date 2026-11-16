@@ -119,8 +119,9 @@ function handleError(error: FastifyError, req: FastifyRequest, reply: FastifyRep
   }
   if (error instanceof ProjectUnreadableError) {
     req.log.warn(whereOf(req), clip(error.message));
-    // `reason` reste à sa place pour les clients qui la lisent ; elle est aussi le seul paramètre du code, telle quelle (une phrase française fixe
-    // par classe de cause, jamais le texte de Dolt : `stored-sql.ts`). L'interface ne la traduit pas encore (bdesk-ewr.8).
+    // `reason` reste à sa place pour les clients qui la lisent ; elle est aussi le seul paramètre du code, telle quelle : une phrase française du
+    // serveur, un gabarit par classe de cause qui peut porter un chemin, un délai, un nom ou une valeur de la base. L'interface ne la traduit pas
+    // encore (bdesk-ewr.8).
     return send(reply, 503, `Projet illisible : ${error.reason}`, { code: 'project-unreadable', params: { reason: error.reason } }, error.reason);
   }
   if (!(error instanceof Error)) {

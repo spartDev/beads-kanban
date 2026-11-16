@@ -146,7 +146,7 @@ describe('errorText', () => {
     expect(Object.keys(SENTENCES).sort()).toEqual(Object.keys(API_ERROR_PARAMS).sort());
   });
 
-  it('affiche la raison d’un Projet illisible telle que le serveur l’écrit, jamais le texte de Dolt (bdesk-ewr.8 la traduira)', () => {
+  it('affiche la raison d’un Projet illisible telle que le serveur l’écrit, en français (bdesk-ewr.8 la traduira)', () => {
     const reason = 'La base est tenue par un autre processus dolt : réessayez dans un instant.';
     const error = new ApiError(reason, 503, { reason, detail: { code: 'project-unreadable', params: { reason } } });
 

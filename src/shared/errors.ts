@@ -17,7 +17,7 @@
 export type ApiErrorParamKind = 'string' | 'number' | 'string[]';
 
 export const API_ERROR_PARAMS = {
-  /** 500 : une erreur que rien n'avait prévue. */
+  /** 500 (ou le code 4xx/5xx que porte l'erreur, quand son message ne se lit pas) : une erreur que rien n'avait prévue. */
   unexpected: {},
   /** 499 : le client a fermé sa connexion avant la réponse. */
   'request-aborted': {},
@@ -32,9 +32,9 @@ export const API_ERROR_PARAMS = {
   /** 404 : ticket inconnu dans un Projet. */
   'issue-not-found': { project: 'string', issue: 'string' },
   /**
-   * 503 : le Projet existe mais sa base ne se lit pas. `reason` est la raison telle que le serveur l'écrit : une phrase française fixe par classe de
-   * cause (le texte de Dolt n'est jamais repris, `stored-sql.ts`), que l'interface affiche telle quelle tant que ces causes n'ont pas leur code
-   * (bdesk-ewr.8).
+   * 503 : le Projet existe mais sa base ne se lit pas. `reason` est la raison telle que le serveur l'écrit : une phrase française, un gabarit par
+   * classe de cause qui peut porter un chemin, un délai, un nom ou une valeur de la base (le client vérifié, `stored-sql.ts`, ne reprend pas le
+   * texte de Dolt). L'interface l'affiche telle quelle tant que ces causes n'ont pas leur code et leurs paramètres (bdesk-ewr.8).
    */
   'project-unreadable': { reason: 'string' },
   /** 400 : un paramètre de requête que la route ne connaît pas. */

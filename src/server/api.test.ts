@@ -194,7 +194,7 @@ describe('API des Projets', () => {
         error: 'Service Unavailable',
         message: 'Projet illisible : Base Dolt absente de ce poste',
         code: 'project-unreadable',
-        params: { reason: 'Base Dolt absente de ce poste' }, // la raison brute, rien de plus que le message
+        params: { reason: 'Base Dolt absente de ce poste' }, // la raison seule, rien de plus que le message
         reason: 'Base Dolt absente de ce poste',
       });
     },
@@ -866,9 +866,12 @@ describe('API : codes d’erreur (bdesk-ewr.6)', () => {
     expectParamsWithinMessage(body);
   });
 
+  /** Une raison que le serveur écrit vraiment (`stored-sql.ts`, un verrou). */
+  const LOCKED = 'La base est tenue par un autre processus dolt : réessayez dans un instant.';
+
   it('503 pour un Projet illisible : la raison seule, comme le message, sans l’adresse demandée ni son `?token=`', async () => {
     const unreadable = async () => {
-      throw new ProjectUnreadableError('beads-desktop', 'database is locked');
+      throw new ProjectUnreadableError('beads-desktop', LOCKED);
     };
     const res = await ask('/api/projects/beads-desktop/issues?token=secret', serviceWith({ issues: unreadable }));
 
@@ -877,10 +880,10 @@ describe('API : codes d’erreur (bdesk-ewr.6)', () => {
     expect(body).toEqual({
       statusCode: 503,
       error: 'Service Unavailable',
-      message: 'Projet illisible : database is locked',
+      message: `Projet illisible : ${LOCKED}`,
       code: 'project-unreadable',
-      params: { reason: 'database is locked' },
-      reason: 'database is locked',
+      params: { reason: LOCKED },
+      reason: LOCKED,
     });
     expectParamsWithinMessage(body);
     expect(res.body).not.toContain('secret');
