@@ -1,13 +1,12 @@
 import { Group } from '@visx/group';
 import { useMemo, type PointerEvent } from 'react';
 import type { MetricsActivity } from '../../shared/api';
-import { type ActivityLevel, type ActivityView, describeActivity, hourSpan, slotLabel, WEEKDAYS } from './activity';
+import { useFormat, useLanguage, useT } from '../i18n';
+import { type ActivityLevel, type ActivityView, describeActivity, hourSpan, slotLabel, weekdaysIn } from './activity';
 import { ChartCard, ChartTooltip, DataTable, pointerIn, useActive } from './ChartParts';
 import { EmptyChart } from './CfdChart';
 import { AXIS_TEXT } from './axes';
-import { formatCount } from './format';
 import { outlineOf } from './palette';
-import { plural } from './Tiles';
 import { Skeleton } from '../ui/states';
 import { useElementWidth } from './useElementWidth';
 
@@ -33,6 +32,11 @@ interface Slot {
  */
 export function ActivityPlot({ view, width }: { view: ActivityView; width: number }) {
   const { active, frame, show, leave } = useActive<Slot>();
+  const t = useT().metrics.activityMap;
+  const format = useFormat();
+  const { language } = useLanguage();
+  const WEEKDAYS = weekdaysIn(language);
+  const transitions = (n: number) => t.transitions(format.formatCount(n), n);
   const innerWidth = Math.max(0, width - LABELS.left - LABELS.right);
   const cellWidth = innerWidth / COLUMNS;
   const pitch = Math.min(26, Math.max(14, Math.floor(cellWidth)));
@@ -54,10 +58,11 @@ export function ActivityPlot({ view, width }: { view: ActivityView; width: numbe
         width={width}
         height={height}
         role="img"
-        aria-label={
-          `Carte d’activité : ${plural(view.total, 'Transition')}` +
-          `${peak ? `, pic le ${WEEKDAYS[peak.weekday]?.name ?? ''} ${hourSpan(peak.hour)} (${plural(peak.count, 'Transition')})` : ''}.`
-        }
+        aria-label={t.plot(
+          transitions(view.total),
+          peak ? `${WEEKDAYS[peak.weekday]?.name ?? ''} ${hourSpan(peak.hour, language)}` : null,
+          peak ? transitions(peak.count) : '',
+        )}
         className="block overflow-visible"
       >
         <Group left={LABELS.left} top={LABELS.top}>
@@ -115,8 +120,8 @@ export function ActivityPlot({ view, width }: { view: ActivityView; width: numbe
       </svg>
       {active && hovered ? (
         <ChartTooltip pointer={active} bounds={{ width, height }}>
-          <p className="font-medium">{slotLabel(hovered.weekday, hovered.hour)}</p>
-          <p className="tnum">{hovered.count === 0 ? 'Aucune Transition' : plural(hovered.count, 'Transition')}</p>
+          <p className="font-medium">{slotLabel(hovered.weekday, hovered.hour, language)}</p>
+          <p className="tnum">{hovered.count === 0 ? t.noTransition : transitions(hovered.count)}</p>
         </ChartTooltip>
       ) : null}
     </div>
@@ -140,23 +145,26 @@ function ActivityFrame({ view }: { view: ActivityView }) {
 export function ActivityPanel({ activity, timeZone }: { activity: MetricsActivity; timeZone: string }) {
   const view = useMemo(() => describeActivity(activity), [activity]);
   const peak = view.peak;
+  const t = useT().metrics.activityMap;
+  const format = useFormat();
+  const { language } = useLanguage();
 
   return (
     <ChartCard
       className="h-full"
-      title="Carte d’activité"
+      title={t.title}
       description={
         (view.empty
-          ? `Les Transitions par jour de la semaine et par heure, dans le fuseau ${timeZone}.`
-          : `${plural(view.total, 'Transition')} par jour de la semaine et par heure, dans le fuseau ${timeZone}.` +
-            `${peak ? ` Pic : ${slotLabel(peak.weekday, peak.hour)} (${formatCount(peak.count)}).` : ''}`) +
+          ? t.descriptionEmpty(timeZone)
+          : t.description(t.transitions(format.formatCount(view.total), view.total), timeZone) +
+            (peak ? t.peak(slotLabel(peak.weekday, peak.hour, language), format.formatCount(peak.count)) : '')) +
         // Les comptes sont bruts : 30 jours comptent quatre ou cinq lundis, et la carte ne le corrige pas.
-        ' Comptes bruts, non rapportés au nombre de chaque jour de la semaine dans la période.'
+        t.rawCounts
       }
       legend={
         view.empty ? undefined : (
-          <ul aria-label="Légende de la carte d’activité" className="flex flex-wrap items-center gap-x-1.5 text-micro text-ink-2">
-            <li>Moins</li>
+          <ul aria-label={t.legend} className="flex flex-wrap items-center gap-x-1.5 text-micro text-ink-2">
+            <li>{t.less}</li>
             <li aria-hidden="true" className="inline-flex items-center gap-0.5">
               {([0, 1, 2, 3, 4] as const).map((level) => (
                 <span
@@ -167,13 +175,13 @@ export function ActivityPanel({ activity, timeZone }: { activity: MetricsActivit
                 />
               ))}
             </li>
-            <li>Plus</li>
+            <li>{t.more}</li>
           </ul>
         )
       }
       data={<ActivityTable view={view} />}
     >
-      {view.empty ? <EmptyChart>Aucune Transition sur cette période.</EmptyChart> : <ActivityFrame view={view} />}
+      {view.empty ? <EmptyChart>{t.empty}</EmptyChart> : <ActivityFrame view={view} />}
     </ChartCard>
   );
 }
@@ -184,21 +192,24 @@ export function ActivityPanel({ activity, timeZone }: { activity: MetricsActivit
  * lecteurs d'écran ; les totaux par heure et par jour terminent les lignes et les colonnes.
  */
 function ActivityTable({ view }: { view: ActivityView }) {
+  const t = useT().metrics.activityMap;
+  const format = useFormat();
+  const weekdays = weekdaysIn(useLanguage().language);
   return (
     <DataTable
-      caption="Transitions par jour de la semaine et par heure"
+      caption={t.caption}
       head={
         <tr>
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Heure
+            {t.hourHeader}
           </th>
-          {WEEKDAYS.map((day) => (
+          {weekdays.map((day) => (
             <th key={day.name} scope="col" aria-label={day.name} className="px-2 py-1.5 text-right font-medium">
               {day.short}
             </th>
           ))}
           <th scope="col" className="px-3 py-1.5 text-right font-medium">
-            Total
+            {t.total}
           </th>
         </tr>
       }
@@ -206,29 +217,29 @@ function ActivityTable({ view }: { view: ActivityView }) {
       {Array.from({ length: COLUMNS }, (_, hour) => (
         <tr key={hour}>
           <th scope="row" className="whitespace-nowrap px-3 py-1 text-left font-normal text-ink-2">
-            {hour}&nbsp;h
+            {t.hour(hour)}
           </th>
-          {WEEKDAYS.map((day, weekday) => {
+          {weekdays.map((day, weekday) => {
             const count = view.cells[weekday * COLUMNS + hour]?.count ?? 0;
             return (
               <td key={day.name} className={count === 0 ? 'px-2 py-1 text-right text-ink-3' : 'px-2 py-1 text-right'}>
-                {count}
+                {format.formatCount(count)}
               </td>
             );
           })}
-          <td className="px-3 py-1 text-right font-medium">{formatCount(view.byHour[hour] ?? 0)}</td>
+          <td className="px-3 py-1 text-right font-medium">{format.formatCount(view.byHour[hour] ?? 0)}</td>
         </tr>
       ))}
       <tr className="bg-well font-medium">
         <th scope="row" className="whitespace-nowrap px-3 py-1 text-left font-medium text-ink">
-          Total
+          {t.total}
         </th>
-        {WEEKDAYS.map((day, weekday) => (
+        {weekdays.map((day, weekday) => (
           <td key={day.name} className="px-2 py-1 text-right">
-            {formatCount(view.byWeekday[weekday] ?? 0)}
+            {format.formatCount(view.byWeekday[weekday] ?? 0)}
           </td>
         ))}
-        <td className="px-3 py-1 text-right">{formatCount(view.total)}</td>
+        <td className="px-3 py-1 text-right">{format.formatCount(view.total)}</td>
       </tr>
     </DataTable>
   );

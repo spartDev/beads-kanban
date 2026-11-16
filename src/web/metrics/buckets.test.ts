@@ -20,7 +20,7 @@ const WEEKS: MetricsBucket[] = [
 ];
 
 describe('normalizeBuckets : tranches hebdomadaires d’une période qui court encore', () => {
-  const views = normalizeBuckets(WEEKS, { unit: 'week', running: true, asOfTime: '20:00' });
+  const views = normalizeBuckets(WEEKS, { unit: 'week', running: true, asOfTime: '20:00' }, 'fr');
 
   it('garde les comptes bruts : leur somme est celle de la tuile Débit', () => {
     expect(views.map((view) => view.deliveries)).toEqual([0, 0, 4, 11, 12]);
@@ -70,7 +70,7 @@ describe('normalizeBuckets : tranches quotidiennes', () => {
   const days = [bucket('2026-11-01', '2026-11-01', 1, 0), bucket('2026-11-02', '2026-11-02', 1, 12)];
 
   it('ne signale que le jour en cours : un jour entier n’est pas tronqué', () => {
-    const [yesterday, today] = normalizeBuckets(days, { unit: 'day', running: true, asOfTime: '20:00' });
+    const [yesterday, today] = normalizeBuckets(days, { unit: 'day', running: true, asOfTime: '20:00' }, 'fr');
     expect(yesterday).toMatchObject({ fullDays: 1, truncated: false, running: false, partial: false, note: null });
     expect(today).toMatchObject({
       truncated: false,
@@ -83,14 +83,14 @@ describe('normalizeBuckets : tranches quotidiennes', () => {
   });
 
   it('ne signale rien quand la période est finie', () => {
-    const views = normalizeBuckets(days, { unit: 'day', running: false, asOfTime: '00:00' });
+    const views = normalizeBuckets(days, { unit: 'day', running: false, asOfTime: '00:00' }, 'fr');
     expect(views.every((view) => !view.partial && view.note === null)).toBe(true);
   });
 });
 
 describe('normalizeBuckets : cas limites', () => {
   it('dit « semaine en cours » sans compter les jours quand la semaine est pleine (aujourd’hui est dimanche)', () => {
-    const [view] = normalizeBuckets([bucket('2026-10-26', '2026-11-01', 7, 3)], { unit: 'week', running: true, asOfTime: '18:30' });
+    const [view] = normalizeBuckets([bucket('2026-10-26', '2026-11-01', 7, 3)], { unit: 'week', running: true, asOfTime: '18:30' }, 'fr');
     expect(view).toMatchObject({ truncated: false, running: true, partial: true, note: 'Semaine en cours, jusqu’à 18:30.' });
   });
 
@@ -99,7 +99,7 @@ describe('normalizeBuckets : cas limites', () => {
       unit: 'week',
       running: false,
       asOfTime: '00:00',
-    });
+    }, 'fr');
     expect(views[1]).toMatchObject({
       truncated: true,
       running: false,
@@ -109,7 +109,15 @@ describe('normalizeBuckets : cas limites', () => {
   });
 
   it('n’échoue pas sans tranche', () => {
-    expect(normalizeBuckets([], { unit: 'day', running: true, asOfTime: '20:00' })).toEqual([]);
+    expect(normalizeBuckets([], { unit: 'day', running: true, asOfTime: '20:00' }, 'fr')).toEqual([]);
     expect(totalDeliveries([])).toBe(0);
+  });
+});
+
+describe('en anglais', () => {
+  it('écrit le titre et la remarque d’une tranche en anglais', () => {
+    const [first, , , , last] = normalizeBuckets(WEEKS, { unit: 'week', running: true, asOfTime: '20:00' }, 'en');
+    expect(first).toMatchObject({ label: 'Aug 5', title: 'Wed, Aug 5 – Sun, Aug 9, 2026', note: 'Incomplete week: 5 days of 7 in the period.' });
+    expect(last).toMatchObject({ title: 'Mon, Nov 2, 2026', note: 'Current week: 1 day of 7, up to 20:00.' });
   });
 });

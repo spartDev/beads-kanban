@@ -1,12 +1,11 @@
 import { BLANK_CHAR, INVISIBLE_CHAR, SELECTOR_CHAR, SILENT_CHAR, isInvisibleText } from '../lib/invisibleText';
+import { CATALOGS } from '../i18n/catalog';
+import type { Language } from '../i18n/language';
 import type { Issue, Project } from './types';
 
 export const isReadable = (project: Project): boolean => project.status === 'ok';
 
 export const isEpic = (issue: Issue): boolean => issue.type === 'epic';
-
-/** Ce que l'interface écrit à la place du titre d'un ticket qui n'en a pas. */
-const UNTITLED = 'Sans titre';
 
 /**
  * Un titre qui ne dit rien : vide, fait d'espaces, ou fait de caractères qu'on ne voit pas (une base modifiée à la main, un copier-coller). La règle n'est pas écrite ici : c'est celle des textes
@@ -68,4 +67,5 @@ export const collapseSpaces = (text: string): string =>
  * ou guillemets vides (« Doublon de bdesk-zz1 «  » »). Pas l'identifiant : il est déjà là, et le dialogue du panneau, nommé par l'identifiant puis le titre, le dirait deux fois.
  * Là où une Epic est désignée sans son identifiant à côté (pastille, lien Parent, titre de sa page), c'est `epicName` : l'identifiant, justement.
  */
-export const ticketTitle = (issue: Pick<Issue, 'title'>): string => (isBlankTitle(issue.title) ? UNTITLED : collapseSpaces(issue.title));
+export const ticketTitle = (issue: Pick<Issue, 'title'>, language: Language = 'fr'): string =>
+  isBlankTitle(issue.title) ? CATALOGS[language].shell.common.untitled : collapseSpaces(issue.title);

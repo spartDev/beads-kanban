@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DIMENSION_LABELS, legendOf, projectColor, seriesOf, type SeriesContext } from './series';
+import { legendOf, projectColor, seriesOf, type SeriesContext } from './series';
 
 /**
  * Le découpage choisi colore le nuage de points et les âges : un type, une priorité ou un Projet a la même couleur
@@ -74,8 +74,3 @@ describe('legendOf : ce qui est à l’écran, sans doublon, dans un ordre stabl
   });
 });
 
-describe('DIMENSION_LABELS', () => {
-  it('nomme chaque découpage', () => {
-    expect(DIMENSION_LABELS).toEqual({ type: 'Type', priority: 'Priorité', project: 'Projet' });
-  });
-});

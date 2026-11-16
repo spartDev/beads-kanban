@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { withTimeZone } from '../test/timeZone';
+import { CATALOGS } from '../i18n';
+import { FORMATS } from '../metrics/format';
 import { beyondAYear, describeSpan, finishWindow } from './forecastText';
 
 const DAY = 86_400_000;
 const NBSP = ' ';
 /** La fourchette de `lo` à `hi` jours, dite à voix haute et écrite. */
-const span = (lo: number, hi: number) => describeSpan(lo * DAY, hi * DAY);
+const span = (lo: number, hi: number) => describeSpan(lo * DAY, hi * DAY, CATALOGS.fr.epics.span, FORMATS.fr);
+const finish = (from: number, to: number) => finishWindow(from, to, CATALOGS.fr.epics.span, FORMATS.fr);
 
 describe('describeSpan : une fourchette de durée, sans fausse précision', () => {
   describe('en jours, tant que la fin la plus lointaine est à moins de deux semaines', () => {
@@ -77,6 +80,10 @@ describe('describeSpan : une fourchette de durée, sans fausse précision', () =
     expect(span(365, 365).text).toBe('plus d’un an');
   });
 
+  it('groupe les milliers à la française : « 1 334 mois »', () => {
+    expect(span(200, 40_000).text).toBe(`6 à 1${NBSP}334${NBSP}mois`);
+  });
+
   it('ne produit jamais de décimale : une durée précise au dixième de jour serait une fausse précision', () => {
     for (const [lo, hi] of [[1.3, 2.7], [6.04, 9.99], [14.2, 20.1], [33.3, 77.7], [90.5, 200.2]] as const) {
       expect(span(lo, hi).text, `${lo}-${hi}`).not.toMatch(/[.,]\d/);
@@ -104,19 +111,19 @@ describe('finishWindow : les jours où la fin tombe, dans le fuseau du navigateu
     withTimeZone('Europe/Paris');
 
     it('écrit « entre le … et le … » avec l’année une fois, à la fin', () => {
-      expect(finishWindow(Date.UTC(2026, 10, 9, 10), Date.UTC(2026, 10, 12, 10))).toBe('entre le 9 nov. et le 12 nov. 2026');
+      expect(finish(Date.UTC(2026, 10, 9, 10), Date.UTC(2026, 10, 12, 10))).toBe('entre le 9 nov. et le 12 nov. 2026');
     });
 
     it('écrit l’année aux deux bouts quand la fourchette change d’année', () => {
-      expect(finishWindow(Date.UTC(2026, 11, 20, 10), Date.UTC(2027, 0, 8, 10))).toBe('entre le 20 déc. 2026 et le 8 janv. 2027');
+      expect(finish(Date.UTC(2026, 11, 20, 10), Date.UTC(2027, 0, 8, 10))).toBe('entre le 20 déc. 2026 et le 8 janv. 2027');
     });
 
     it('dit « le … » quand les deux bouts tombent le même jour', () => {
-      expect(finishWindow(Date.UTC(2026, 10, 9, 8), Date.UTC(2026, 10, 9, 20))).toBe('le 9 nov. 2026');
+      expect(finish(Date.UTC(2026, 10, 9, 8), Date.UTC(2026, 10, 9, 20))).toBe('le 9 nov. 2026');
     });
 
     it('lit les jours du calendrier local, pas ceux de l’UTC : 23 h 30 UTC est déjà le lendemain à Paris', () => {
-      expect(finishWindow(Date.UTC(2026, 10, 9, 23, 30), Date.UTC(2026, 10, 12, 10))).toBe('entre le 10 nov. et le 12 nov. 2026');
+      expect(finish(Date.UTC(2026, 10, 9, 23, 30), Date.UTC(2026, 10, 12, 10))).toBe('entre le 10 nov. et le 12 nov. 2026');
     });
   });
 
@@ -124,7 +131,35 @@ describe('finishWindow : les jours où la fin tombe, dans le fuseau du navigateu
     withTimeZone('Pacific/Auckland');
 
     it('lit le même instant un jour plus tard : UTC+13 en novembre', () => {
-      expect(finishWindow(Date.UTC(2026, 10, 9, 12), Date.UTC(2026, 10, 12, 12))).toBe('entre le 10 nov. et le 13 nov. 2026');
+      expect(finish(Date.UTC(2026, 10, 9, 12), Date.UTC(2026, 10, 12, 12))).toBe('entre le 10 nov. et le 13 nov. 2026');
+    });
+  });
+});
+
+describe('en anglais', () => {
+  const words = CATALOGS.en.epics.span;
+  const spanEn = (lo: number, hi: number) => describeSpan(lo * DAY, hi * DAY, words, FORMATS.en);
+
+  it('écrit la fourchette avec les mots et les nombres anglais', () => {
+    expect(spanEn(4.8, 8.1)).toEqual({ text: `4 to 9${NBSP}days`, spoken: 'between 4 and 9 days' });
+    expect(spanEn(0.4, 2.2)).toEqual({ text: `less than 3${NBSP}days`, spoken: 'less than 3 days' });
+    expect(spanEn(0.2, 0.9).text).toBe('less than a day');
+    expect(spanEn(14, 14)).toEqual({ text: `about 2${NBSP}weeks`, spoken: 'about 2 weeks' });
+    expect(spanEn(70, 120).text).toBe(`2 to 4${NBSP}months`);
+    expect(spanEn(400, 900).text).toBe('more than a year');
+  });
+
+  it('groupe les milliers à l’anglaise : « 1,334 months » et non « 1334 »', () => {
+    expect(spanEn(200, 40_000).text).toBe(`6 to 1,334${NBSP}months`);
+  });
+
+  describe('à Paris', () => {
+    withTimeZone('Europe/Paris');
+
+    it('écrit les jours de la fin à l’anglaise', () => {
+      expect(finishWindow(Date.UTC(2026, 10, 9, 10), Date.UTC(2026, 10, 12, 10), words, FORMATS.en)).toBe('between Nov 9 and Nov 12, 2026');
+      expect(finishWindow(Date.UTC(2026, 11, 20, 10), Date.UTC(2027, 0, 8, 10), words, FORMATS.en)).toBe('between Dec 20, 2026 and Jan 8, 2027');
+      expect(finishWindow(Date.UTC(2026, 10, 9, 8), Date.UTC(2026, 10, 9, 20), words, FORMATS.en)).toBe('on Nov 9, 2026');
     });
   });
 });

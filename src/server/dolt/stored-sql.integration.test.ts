@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { yieldToEventLoop } from '../../testing/event-loop';
 import { createProjectService, ProjectUnreadableError, type ProjectService } from '../projects/service';
 import { createDatabase, dolt, hasBinary, isolatedDoltEnv, type Scratch } from '../testing/dolt-fixture';
 import { scratchDir } from '../testing/scratch';
@@ -112,9 +113,9 @@ describe.skipIf(!hasBinary('dolt'))('une base qui porte du SQL (vue, colonne gé
     scratch.commit(1, 'base');
     hazard(scratch, db);
     scratches.set(name, scratch);
-    // Chaque Projet se bâtit par une dizaine de commandes `dolt` synchrones : rendre la main entre deux laisse le processus de vitest répondre à son parent (sous charge, sans cela,
-    // ses messages de suivi expirent : « Timeout calling onTaskUpdate »).
-    await new Promise((resolve) => setImmediate(resolve));
+    // Chaque Projet se bâtit par une dizaine de commandes `dolt` synchrones : rendre la main entre deux laisse le processus de vitest lire les réponses de son parent
+    // (sous charge, sans cela, ses messages de suivi expirent : « Timeout calling onTaskUpdate », bdesk-8g5, voir src/testing/event-loop.ts).
+    await yieldToEventLoop();
     return scratch;
   }
 
@@ -272,7 +273,7 @@ describe.skipIf(!hasBinary('dolt'))('une base qui porte du SQL (vue, colonne gé
       ['era-fold-i', `select commit_hash, type from ${anchorOf('era-fold-i')}.dolt_history_dependencies`],
     ];
     for (const [name, sql] of reads) {
-      await new Promise((resolve) => setImmediate(resolve));
+      await yieldToEventLoop();
       const before = new Set(outFiles(name));
       const csv = direct(name, sql);
       const files = outFiles(name).filter((file) => !before.has(file));

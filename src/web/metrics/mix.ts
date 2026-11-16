@@ -1,4 +1,6 @@
 import type { MetricsSlice } from '../../shared/api';
+import { CATALOGS } from '../i18n/catalog';
+import type { Language } from '../i18n/language';
 import { legendOf, type SeriesInfo } from './series';
 
 /**
@@ -34,25 +36,27 @@ export interface TypeMixView {
   empty: boolean;
 }
 
-const ROWS: readonly { key: MixKey; label: string; count: (slice: MetricsSlice) => number }[] = [
-  { key: 'arrivals', label: 'Arrivées', count: (slice) => slice.arrivals },
-  { key: 'deliveries', label: 'Livraisons', count: (slice) => slice.throughput },
-  { key: 'wip', label: 'En cours', count: (slice) => slice.wip },
+const ROWS: readonly { key: MixKey; count: (slice: MetricsSlice) => number }[] = [
+  { key: 'arrivals', count: (slice) => slice.arrivals },
+  { key: 'deliveries', count: (slice) => slice.throughput },
+  { key: 'wip', count: (slice) => slice.wip },
 ];
 
 /** Un type n'a ni Projet ni priorité qui compte ici : la légende des types ne lit que son identifiant. */
 const NO_CONTEXT = { projectName: (id: string) => id, projectHue: () => 0 };
 
-export function describeTypeMix(slices: readonly MetricsSlice[]): TypeMixView {
+/** Les libellés des types viennent du code couleur (`design/issue-palette.ts`) ; ceux des lignes, du catalogue. */
+export function describeTypeMix(slices: readonly MetricsSlice[], language: Language): TypeMixView {
+  const labels = CATALOGS[language].metrics.typeMix.rows;
   const ordered: SeriesInfo[] = legendOf('type', slices.map((slice) => ({ type: slice.key, priority: 0, project: '' })), NO_CONTEXT, []);
   const byType = new Map(slices.map((slice) => [slice.key, slice]));
 
-  const rows = ROWS.map(({ key, label, count }): MixRow => {
+  const rows = ROWS.map(({ key, count }): MixRow => {
     const counts = ordered.map((info) => ({ info, count: byType.get(info.key) ? count(byType.get(info.key) as MetricsSlice) : 0 }));
     const total = counts.reduce((sum, entry) => sum + entry.count, 0);
     return {
       key,
-      label,
+      label: labels[key],
       total,
       segments: counts.map(({ info, count: n }) => ({ type: info.key, label: info.label, color: info.color, count: n, share: total === 0 ? 0 : n / total })),
     };

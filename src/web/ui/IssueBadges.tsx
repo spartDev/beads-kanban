@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import type { IssueAbandon } from '../data/types';
 import { isIssueType, priorityMeta, typeMeta, type IssueType } from '../design/issue-palette';
+import { useLanguage, useT, type Language } from '../i18n';
+import { CATALOGS } from '../i18n/catalog';
 import { cx } from '../lib/cx';
 
 /** Un pictogramme par type : la forme porte l'information autant que la couleur. */
@@ -108,10 +110,11 @@ export function PriorityGlyph({
 /** Priorité : barres et code (`P1`) ; le libellé complet reste en infobulle et pour les lecteurs d'écran. */
 export function PriorityBadge({ priority, className }: { priority: number; className?: string }) {
   const meta = priorityMeta(priority);
+  const t = useT();
   return (
     <span
       className={cx('inline-flex items-center gap-1.5 text-ink-2', className)}
-      title={`Priorité ${meta.label}`}
+      title={t.shell.badges.priority(meta.label)}
     >
       <PriorityGlyph priority={priority} />
       <span className="tnum">{meta.code}</span>
@@ -120,9 +123,10 @@ export function PriorityBadge({ priority, className }: { priority: number; class
   );
 }
 
-/** Le motif d'un Abandon, dit comme la fin d'une phrase : « doublon de bdesk-12 », « remplacé par bdesk-12 ». */
-export function abandonReason({ cause, of }: IssueAbandon): string {
-  return cause === 'duplicate' ? `doublon de ${of}` : `remplacé par ${of}`;
+/** Le motif d'un Abandon, dit comme la fin d'une phrase : « doublon de bdesk-12 », « remplacé par bdesk-12 » (« duplicate of bdesk-12 »). */
+export function abandonReason({ cause, of }: IssueAbandon, language: Language = 'fr'): string {
+  const t = CATALOGS[language].shell.badges;
+  return cause === 'duplicate' ? t.duplicateOf(of) : t.supersededBy(of);
 }
 
 /**
@@ -141,18 +145,19 @@ export function AbandonBadge({
   /** Dire le motif aux lecteurs d'écran (par défaut) ; faux quand une phrase voisine le dit déjà. */
   withReason?: boolean;
 }) {
-  const reason = abandonReason(abandon);
+  const { language, t } = useLanguage();
+  const reason = abandonReason(abandon, language);
   return (
     <span
-      title={`Abandon : ${reason}`}
+      title={t.shell.badges.abandonTitle(reason)}
       className={cx(
         'inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed border-line-strong bg-well px-1.5 text-micro font-medium text-ink-2',
         className,
       )}
     >
       <ArchiveX size={11} aria-hidden="true" />
-      Abandon
-      {withReason ? <span className="sr-only"> : {reason}</span> : null}
+      {t.shell.badges.abandon}
+      {withReason ? <span className="sr-only">{t.shell.badges.abandonSpoken(reason)}</span> : null}
     </span>
   );
 }

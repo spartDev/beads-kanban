@@ -14,7 +14,8 @@ const stubDefaultApi = () => stubApi({ projects: projectsResponse, issues: { bde
 async function mount(languageSwitch?: boolean) {
   stubDefaultApi();
   const app = renderApp('/', { languageSwitch });
-  await screen.findByRole('navigation', { name: 'Navigation principale' });
+  // Le nom de la navigation suit la langue : un navigateur anglais la nomme en anglais.
+  await screen.findByRole('navigation', { name: /^(Navigation principale|Main navigation)$/ });
   return app;
 }
 
@@ -115,8 +116,8 @@ describe('sélecteur de langue', () => {
     const browser = await within(dialog).findByRole('option', { name: /Browser language/ });
     const english = within(dialog).getByRole('option', { name: /English/ });
     const french = within(dialog).getByRole('option', { name: /Français/ });
-    expect(within(english).queryByLabelText('Actif')).not.toBeNull();
-    expect(within(browser).queryByLabelText('Actif')).toBeNull();
+    expect(within(english).queryByLabelText('Active')).not.toBeNull();
+    expect(within(browser).queryByLabelText('Active')).toBeNull();
     expect(within(french).getByText('Français').getAttribute('lang')).toBe('fr');
   });
 

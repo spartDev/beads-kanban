@@ -29,7 +29,7 @@ const FINISHED: Windows = {
 };
 
 describe('describeComparison : période en cours', () => {
-  const comparison = describeComparison(RUNNING);
+  const comparison = describeComparison(RUNNING, 'fr');
 
   it('reconnaît une période qui court encore : `asOf` précède sa fin', () => {
     expect(comparison.running).toBe(true);
@@ -62,7 +62,7 @@ describe('describeComparison : période en cours', () => {
 });
 
 describe('describeComparison : période terminée', () => {
-  const comparison = describeComparison(FINISHED);
+  const comparison = describeComparison(FINISHED, 'fr');
 
   it('ne parle pas d’instant de mesure : la période est comptée en entier', () => {
     expect(comparison).toMatchObject({ running: false, currentUntil: null, previousUntil: null });
@@ -78,7 +78,7 @@ describe('describeComparison : période terminée', () => {
 
 describe('describeComparison : cas limites', () => {
   it('lit l’instant dans le fuseau de la réponse, pas celui du navigateur', () => {
-    const tokyo = describeComparison({ ...RUNNING, timeZone: 'Asia/Tokyo' });
+    const tokyo = describeComparison({ ...RUNNING, timeZone: 'Asia/Tokyo' }, 'fr');
     expect(tokyo.asOfTime).toBe('04:00');
     expect(tokyo.currentUntil).toBe('3 nov. à 04:00');
   });
@@ -88,8 +88,20 @@ describe('describeComparison : cas limites', () => {
       ...RUNNING,
       period: { ...RUNNING.period, from: '2026-11-02', days: 1 },
       previousPeriod: { ...RUNNING.previousPeriod, from: '2026-11-01', to: '2026-11-01', days: 1 },
-    });
+    }, 'fr');
     expect(oneDay.current).toBe('2 nov. 2026');
     expect(oneDay.previous).toBe('1 nov. 2026');
+  });
+});
+
+describe('en anglais', () => {
+  it('dit la comparaison d’une période en cours et d’une période finie', () => {
+    const running = describeComparison(RUNNING, 'en');
+    expect(running.currentUntil).toBe('Nov 2 at 20:00');
+    expect(running.summary).toBe(
+      'Period in progress (Oct 4 – Nov 2, 2026), counted up to Nov 2 at 20:00. Trends compare it with the previous period (Sep 4 – Oct 3, 2026) over the same elapsed time, that is up to Oct 3 at 21:00.',
+    );
+    const finished = describeComparison(FINISHED, 'en');
+    expect(finished.tooltip).toBe('Compared with the previous period of the same length: Sep 16 – Sep 30, 2026.');
   });
 });

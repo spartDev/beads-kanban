@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { yieldToEventLoop } from '../../testing/event-loop';
 import { dolt, hasBinary, isolatedDoltEnv, type Scratch } from '../testing/dolt-fixture';
 import { type SqlServer, startSqlServer } from '../testing/dolt-server';
 import { scratchDir } from '../testing/scratch';
@@ -110,7 +111,7 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)('m
     for (const name of SCENARIOS) {
       writeFileSync(join(outside, 'secret.txt'), `${CANARY}\n`);
       setup[name](beadsLikeDatabase(env, dbOf(name)), target(name));
-      await new Promise((resolve) => setImmediate(resolve)); // rendre la main entre deux bases (voir `stored-sql.integration.test.ts`)
+      await yieldToEventLoop(); // rendre la main entre deux bases (bdesk-8g5, voir src/testing/event-loop.ts)
     }
     // Le planificateur du serveur est arrêté : il lance les événements de lui-même, quoi que l'app lise, et pas de la même façon partout (mesuré avec Dolt 2.5.0 : toutes les
     // 30 secondes depuis le démarrage du serveur sous Linux, une fois au démarrage sous macOS). Laissé en marche, il écrivait dans `evlog` pendant les lectures de `ev` quand le

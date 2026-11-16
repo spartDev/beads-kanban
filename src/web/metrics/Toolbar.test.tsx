@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LanguageProvider, useLanguage } from '../i18n';
+import { LANGUAGE_STORAGE_KEY } from '../i18n/language';
 import type { PeriodChoice } from './params';
 import { MetricsToolbar, type MetricsToolbarProps } from './Toolbar';
 
@@ -307,6 +309,25 @@ describe('MetricsToolbar : la plage personnalisée', () => {
       expect(document.activeElement).toBe(field());
     });
 
+    it('une plage dite que le changement de jour rend valable ne fait pas dire chaque état de passage', () => {
+      const { rerender } = setup({ period: custom });
+      const to = screen.getByLabelText('Au');
+
+      type(to, '2026-11-03');
+      elapse(2_000);
+      expect(screen.getByRole('alert').textContent).toBe('La plage dépasse aujourd’hui (2026-11-03 > 2026-11-02).');
+
+      type(field(), '0002-10-01');
+      rerender({ period: custom, today: '2026-11-03' });
+      for (const typed of ['0020-10-01', '0202-10-01']) {
+        type(field(), typed);
+        elapse(250);
+        expect(screen.queryByRole('alert'), typed).toBeNull();
+      }
+      elapse(1_000);
+      expect(screen.getByRole('alert').textContent).toBe('La plage doit commencer le 1er janvier 1970 ou après : 0202-10-01 est trop tôt.');
+    });
+
     it('signale une plage refusée une fois la saisie posée, une seule fois', () => {
       setup({ period: custom });
       const heard = listenToAnnouncements();
@@ -601,5 +622,76 @@ describe('MetricsToolbar : actualiser', () => {
 
     expect(screen.queryByText('Calcul en cours')).toBeNull();
     expect(screen.queryByText(/^Calculé à/)).toBeNull();
+  });
+});
+
+describe('en anglais', () => {
+  it('nomme les réglages, l’heure du calcul et les jours de la plage personnalisée en anglais', () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    render(
+      <LanguageProvider switchEnabled>
+        <MetricsToolbar
+          scope="global"
+          period={{ kind: 'custom', from: '2026-10-01', to: '2026-10-15' }}
+          by="project"
+          today={TODAY}
+          computed={{ at: '2026-11-02T19:00:15.242Z', timeZone: 'Europe/Paris' }}
+          fetching={false}
+          onPeriodChange={vi.fn()}
+          onDimensionChange={vi.fn()}
+          onRefresh={vi.fn()}
+        />
+      </LanguageProvider>,
+    );
+
+    const period = screen.getByRole('group', { name: 'Period' });
+    expect(within(period).getAllByRole('radio').map((radio) => radio.closest('label')?.textContent)).toEqual(['7 days', '30 days', '90 days', 'Custom']);
+    const by = screen.getByRole('group', { name: 'Break down by' });
+    expect(within(by).getAllByRole('radio').map((radio) => radio.closest('label')?.textContent)).toEqual(['Type', 'Priority', 'Project']);
+    expect(screen.getByText('Calculated at 20:00').getAttribute('title')).toBe('Time zone Europe/Paris');
+    expect(screen.getByRole('button', { name: 'Refresh metrics' })).toBeTruthy();
+    const range = screen.getByRole('group', { name: 'Custom range' });
+    expect(within(range).getByLabelText('From')).toBeTruthy();
+    expect(within(range).getByLabelText('To')).toBeTruthy();
+  });
+
+  it('redit dans la nouvelle langue une plage refusée déjà annoncée, sans attendre', () => {
+    vi.useFakeTimers();
+    try {
+      window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'fr');
+      function Switch() {
+        const { setPreference } = useLanguage();
+        return <button type="button" onClick={() => setPreference('en')}>en</button>;
+      }
+      render(
+        <LanguageProvider switchEnabled>
+          <Switch />
+          <MetricsToolbar
+            scope="project"
+            period={{ kind: 'custom', from: '2026-10-01', to: '2026-10-15' }}
+            by="type"
+            today={TODAY}
+            fetching={false}
+            onPeriodChange={vi.fn()}
+            onDimensionChange={vi.fn()}
+            onRefresh={vi.fn()}
+          />
+        </LanguageProvider>,
+      );
+
+      fireEvent.change(screen.getByLabelText('Du'), { target: { value: '2026-10-20' } });
+      act(() => void vi.advanceTimersByTime(2_000));
+      expect(screen.getByRole('alert').textContent).toBe('La plage commence après sa fin (2026-10-20 > 2026-10-15).');
+
+      fireEvent.click(screen.getByRole('button', { name: 'en' }));
+      expect(screen.getByRole('alert').textContent).toBe('The range starts after its end (2026-10-20 > 2026-10-15).');
+
+      // Une frappe aussitôt après : l'erreur de passage attend la fin de la saisie, comme sans changement de langue.
+      fireEvent.change(screen.getByLabelText('From'), { target: { value: '0002-10-20' } });
+      act(() => void vi.advanceTimersByTime(250));
+      expect(screen.getByRole('alert').textContent).toBe('The range starts after its end (2026-10-20 > 2026-10-15).');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

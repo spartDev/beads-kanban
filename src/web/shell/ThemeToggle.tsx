@@ -1,5 +1,6 @@
+import { useT } from '../i18n';
 import { cx } from '../lib/cx';
-import { THEME_OPTIONS } from '../theme/options';
+import { themeOptions } from '../theme/options';
 import { useTheme } from '../theme/ThemeProvider';
 import { Tip } from '../ui/Tip';
 
@@ -10,13 +11,14 @@ import { Tip } from '../ui/Tip';
 export function ThemeToggle({ className, tone = 'page' }: { className?: string; tone?: 'page' | 'side' }) {
   const side = tone === 'side';
   const { preference, setPreference } = useTheme();
+  const t = useT();
   return (
     <div
       role="group"
-      aria-label="Thème"
+      aria-label={t.shell.theme.group}
       className={cx('inline-flex items-center gap-0.5 rounded-lg border p-0.5', side ? 'border-side-line bg-side-hover' : 'border-line bg-well', className)}
     >
-      {THEME_OPTIONS.map(({ value, label, icon: Icon }) => {
+      {themeOptions(t).map(({ value, label, icon: Icon }) => {
         const active = preference === value;
         return (
           <Tip key={value} label={label}>

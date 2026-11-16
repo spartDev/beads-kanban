@@ -1,28 +1,30 @@
 import { ChevronDown, ChevronRight, LayoutGrid, Search } from 'lucide-react';
 import { Link, useLocation } from 'react-router';
 import { useProjects } from '../data/hooks';
+import { useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { paths, sectionPath } from '../paths';
 import { BrandMark } from '../ui/Brand';
 import { ProjectTile } from '../ui/ProjectTile';
 import { Tip } from '../ui/Tip';
-import { sectionLabel, useRouteInfo } from './navigation';
+import { useRouteInfo } from './navigation';
 import { usePalette } from './OverlayProvider';
 import { ThemeToggle } from './ThemeToggle';
 
 /** Bandeau du haut : fil d'Ariane sur desktop ; sélecteur de Projet, recherche et thème sur mobile. */
 export function TopBar() {
   const { openPalette } = usePalette();
+  const t = useT();
 
   return (
     <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b border-line bg-canvas/85 px-3 backdrop-blur-md md:h-11 md:px-5">
       <MobileSwitcher />
       <Breadcrumb />
       <div className="ml-auto flex items-center gap-2 md:hidden">
-        <Tip label="Rechercher" side="bottom">
+        <Tip label={t.shell.layout.search} side="bottom">
           <button
             type="button"
-            aria-label="Rechercher"
+            aria-label={t.shell.layout.search}
             onClick={(event) => openPalette('all', event.currentTarget)}
             className="grid size-8 place-items-center rounded-lg border border-line bg-panel text-ink-2 transition-colors hover:text-ink"
           >
@@ -49,7 +51,8 @@ function MobileSwitcher() {
   const { openPalette } = usePalette();
   const { pathname } = useLocation();
   const { projectId, project } = useCurrentProject();
-  const label = projectId ? (project?.name ?? projectId) : pathname === '/' ? 'Vue globale' : 'beads-desktop';
+  const t = useT();
+  const label = projectId ? (project?.name ?? projectId) : pathname === '/' ? t.shell.overview.title : 'beads-desktop';
 
   return (
     <button
@@ -62,7 +65,7 @@ function MobileSwitcher() {
       {project ? <ProjectTile project={project} size={20} /> : <BrandMark size={20} />}
       <span className="truncate">{label}</span>
       {/* Le nom accessible commence par le texte visible (WCAG 2.5.3) ; un aria-label qui le remplacerait ferait échouer axe. */}
-      <span className="sr-only">, changer de Projet</span>
+      <span className="sr-only">{t.shell.layout.switchProject}</span>
       <ChevronDown size={14} strokeWidth={2} aria-hidden="true" className="shrink-0 text-ink-3" />
     </button>
   );
@@ -73,10 +76,11 @@ function Breadcrumb() {
   const { pathname } = useLocation();
   const { section, issueId } = useRouteInfo();
   const { projectId, project } = useCurrentProject();
+  const t = useT();
   if (!projectId && pathname !== '/') return null;
 
   return (
-    <nav aria-label="Fil d'Ariane" className="hidden min-w-0 items-center gap-1.5 text-ui md:flex">
+    <nav aria-label={t.shell.layout.breadcrumb} className="hidden min-w-0 items-center gap-1.5 text-ui md:flex">
       {projectId ? (
         <>
           <Link
@@ -92,7 +96,7 @@ function Breadcrumb() {
               {section === 'issue' ? (
                 <>
                   <Link to={paths.kanban(projectId)} className="font-medium text-ink-2 transition-colors hover:text-ink">
-                    Kanban
+                    {t.shell.sections.kanban}
                   </Link>
                   <Separator />
                   {/* Tronqué quand la place manque : le texte entier est en infobulle (la souris) et dans son nom accessible. Ce n'est pas un arrêt de tabulation (le nom de la page, `aria-current`), et le panneau du ticket, qui a le focus et recouvre la
@@ -107,7 +111,7 @@ function Breadcrumb() {
                   aria-current="page"
                   className="font-semibold text-ink"
                 >
-                  {sectionLabel(section)}
+                  {t.shell.sections[section]}
                 </Link>
               )}
             </>
@@ -116,7 +120,7 @@ function Breadcrumb() {
       ) : (
         <span className="inline-flex items-center gap-2 font-semibold text-ink">
           <LayoutGrid size={15} strokeWidth={1.8} aria-hidden="true" className="text-ink-3" />
-          Vue globale
+          {t.shell.overview.title}
         </span>
       )}
     </nav>

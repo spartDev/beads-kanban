@@ -4,15 +4,15 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import type { MetricsInProgressTicket } from '../../shared/api';
 import { ticketTitle } from '../data/helpers';
+import { useFormat, useT } from '../i18n';
 import { paths } from '../paths';
 import { Button } from '../ui/Button';
 import { TypeGlyph } from '../ui/IssueBadges';
 import { ChartCard, Legend } from './ChartParts';
 import { EmptyChart } from './CfdChart';
-import { formatCount, formatDuration, spokenDuration } from './format';
 import { outlineOf } from './palette';
 import type { Dimension } from './params';
-import { DIMENSION_LABELS, legendOf, seriesOf, type SeriesContext } from './series';
+import { legendOf, seriesOf, type SeriesContext } from './series';
 import { SpokenText } from './SpokenText';
 
 /** Combien de tickets montrer avant « Afficher les autres » : un WIP raisonnable tient en entier. */
@@ -37,6 +37,9 @@ export interface AgePanelProps {
  */
 export function AgePanel({ tickets, dimension, ctx, projectOrder, median, p85, showProject }: AgePanelProps) {
   const [expanded, setExpanded] = useState(false);
+  const t = useT();
+  const format = useFormat();
+  const text = t.metrics.ageChart;
   const series = useMemo(() => legendOf(dimension, tickets, ctx, projectOrder), [dimension, tickets, ctx, projectOrder]);
 
   const references = [median, p85].filter((value): value is number => value !== null);
@@ -48,16 +51,16 @@ export function AgePanel({ tickets, dimension, ctx, projectOrder, median, p85, s
 
   return (
     <ChartCard
-      title="Âge des tickets en cours"
-      description={`Depuis leur premier passage en statut de travail, du plus ancien au plus récent. ${formatCount(tickets.length)} ${tickets.length > 1 ? 'tickets' : 'ticket'} en cours.`}
+      title={text.title}
+      description={text.description(format.formatCount(tickets.length), tickets.length)}
       legend={
         tickets.length === 0 ? undefined : (
           <div className="flex flex-col gap-1">
-            <Legend label={`Couleurs : ${DIMENSION_LABELS[dimension].toLowerCase()}`} items={series} />
+            <Legend label={t.metrics.chartSeries.colors(t.metrics.chartSeries.dimensions[dimension].toLowerCase())} items={series} />
             {references.length > 0 ? (
-              <ul aria-label="Repères" className="flex flex-wrap gap-x-4 gap-y-1 text-micro text-ink-2">
-                {median !== null ? <Marker label={`Médiane du Cycle Time ${formatDuration(median)}`} spoken={`Médiane du Cycle Time ${spokenDuration(median)}`} /> : null}
-                {p85 !== null ? <Marker label={`P85 ${formatDuration(p85)}`} spoken={`P85 ${spokenDuration(p85)}`} dotted /> : null}
+              <ul aria-label={text.markers} className="flex flex-wrap gap-x-4 gap-y-1 text-micro text-ink-2">
+                {median !== null ? <Marker label={text.median(format.formatDuration(median))} spoken={text.median(format.spokenDuration(median))} /> : null}
+                {p85 !== null ? <Marker label={text.p85(format.formatDuration(p85))} spoken={text.p85(format.spokenDuration(p85))} dotted /> : null}
               </ul>
             ) : null}
           </div>
@@ -65,10 +68,10 @@ export function AgePanel({ tickets, dimension, ctx, projectOrder, median, p85, s
       }
     >
       {tickets.length === 0 ? (
-        <EmptyChart>Aucun ticket en cours.</EmptyChart>
+        <EmptyChart>{text.empty}</EmptyChart>
       ) : (
         <>
-          <ol aria-label="Tickets en cours, du plus ancien au plus récent" className="flex flex-col gap-3">
+          <ol aria-label={text.list} className="flex flex-col gap-3">
             {shown.map((ticket) => {
               const color = seriesOf(dimension, ticket, ctx).color;
               const beyond = p85 !== null && ticket.age > p85;
@@ -82,7 +85,7 @@ export function AgePanel({ tickets, dimension, ctx, projectOrder, median, p85, s
                       <TypeGlyph type={ticket.type} />
                       <span className="min-w-0 flex-1 truncate font-medium text-ink group-hover/age:underline">{ticketTitle(ticket)}</span>
                       <span className="tnum shrink-0 font-semibold text-ink">
-                        <SpokenText written={formatDuration(ticket.age)} spoken={spokenDuration(ticket.age)} spelledOut />
+                        <SpokenText written={format.formatDuration(ticket.age)} spoken={format.spokenDuration(ticket.age)} spelledOut />
                       </span>
                     </span>
                     <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 pl-[22px] text-micro text-ink-3">
@@ -91,11 +94,11 @@ export function AgePanel({ tickets, dimension, ctx, projectOrder, median, p85, s
                       {ticket.blocked ? (
                         <span className="inline-flex items-center gap-1 text-danger">
                           <CircleAlert size={11} aria-hidden="true" />
-                          Bloqué
+                          {text.blocked}
                         </span>
                       ) : null}
-                      {ticket.status === 'hooked' ? <span>Agent</span> : null}
-                      {beyond ? <span className="text-ink-2">au-delà du P85</span> : null}
+                      {ticket.status === 'hooked' ? <span>{text.agent}</span> : null}
+                      {beyond ? <span className="text-ink-2">{text.beyondP85}</span> : null}
                     </span>
                     <span aria-hidden="true" className="relative block h-2 rounded-full bg-press">
                       <span
@@ -113,7 +116,7 @@ export function AgePanel({ tickets, dimension, ctx, projectOrder, median, p85, s
           </ol>
           {tickets.length > VISIBLE_AGES ? (
             <Button variant="ghost" className="self-start" aria-expanded={expanded} onClick={() => setExpanded((open) => !open)}>
-              {expanded ? 'Réduire la liste' : `Afficher les ${hidden} autres`}
+              {expanded ? t.metrics.chartParts.collapse : t.metrics.chartParts.showMore(format.formatCount(hidden))}
             </Button>
           ) : null}
         </>

@@ -84,6 +84,9 @@ const STATES: [string, string, () => Promise<unknown>][] = [
   ['les métriques du Projet', '/p/blanc/metrics', () => screen.findByRole('heading', { level: 2, name: 'Indicateurs' })],
   ['la Vue globale', '/', () => screen.findByRole('table', { name: 'Métriques de la période par projet' })],
   ['la porte d’un Projet illisible', '/p/vide/kanban', () => screen.findByText('Ce Projet est illisible')],
+  // La description de la page passe par le catalogue (`signalsPage.projectDescription`) : « Ce qui mérite d’être regardé maintenant dans ce Projet ».
+  ['la page « À regarder » d’un Projet', '/p/blanc/signals', () => screen.findByRole('status', { name: 'Rien à regarder' })],
+  ['la page « À regarder » de la Vue globale', '/signals', () => screen.findByRole('status', { name: 'Rien à regarder' })],
 ];
 
 /** Les états d'un Projet qui n'a aucun ticket : les avis qu'on lui écrit quand il n'a rien à montrer (relecture finale : l'un d'eux, `Aucun ticket dans ce Projet`, n'était monté par aucun essai). */

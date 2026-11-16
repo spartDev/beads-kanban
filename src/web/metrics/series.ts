@@ -29,8 +29,6 @@ export interface SeriesSubject {
   project: string;
 }
 
-export const DIMENSION_LABELS: Record<Dimension, string> = { type: 'Type', priority: 'Priorité', project: 'Projet' };
-
 /**
  * Couleur d'un Projet : la clarté et la saturation viennent des jetons `--series-l` et `--series-c`, qui changent avec
  * le thème (metrics.css) ; la teinte est celle de sa pastille.

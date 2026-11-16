@@ -1,4 +1,6 @@
-import { formatDuration, spokenDuration } from './format';
+import { CATALOGS } from '../i18n/catalog';
+import type { Language } from '../i18n/language';
+import { FORMATS } from './format';
 
 /**
  * L'âge d'un Prêt dans la liste « Prêts qui stagnent », écrit pour qu'on lise de quel côté du seuil de stagnation il tombe.
@@ -11,7 +13,6 @@ import { formatDuration, spokenDuration } from './format';
  * Sous un jour, les durées restent celles de `formatDuration` et de `spokenDuration` (heures et minutes).
  */
 
-const NBSP = ' ';
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
@@ -22,17 +23,20 @@ function split(age: number, threshold: number): { days: number; hours: number } 
   return { days: Math.floor(hours / 24), hours: hours % 24 };
 }
 
-/** « 14 j 10 h », « 14 j », « 5 h », « 12 min » : l'âge d'un Prêt, `threshold` étant l'âge au-delà duquel il stagne (ms). */
-export function formatReadyAge(age: number, threshold: number): string {
+/** « 14 j 10 h », « 14 j », « 5 h », « 12 min » : l'âge d'un Prêt, `threshold` étant l'âge au-delà duquel il stagne (ms), écrit dans `language`. */
+export function formatReadyAge(age: number, threshold: number, language: Language): string {
+  const { formatDuration } = FORMATS[language];
   if (!(age >= DAY)) return formatDuration(age);
   const { days, hours } = split(age, threshold);
-  return hours === 0 ? `${days}${NBSP}j` : `${days}${NBSP}j${NBSP}${hours}${NBSP}h`;
+  return CATALOGS[language].metrics.readyAge.written(String(days), hours === 0 ? null : String(hours));
 }
 
 /** L'âge tel qu'on le dit, pour les lecteurs d'écran : « 14 jours 10 heures », « 1 jour », « 5 heures ». */
-export function spokenReadyAge(age: number, threshold: number): string {
+export function spokenReadyAge(age: number, threshold: number, language: Language): string {
+  const { spokenDuration } = FORMATS[language];
   if (!(age >= DAY)) return spokenDuration(age);
   const { days, hours } = split(age, threshold);
-  const unit = (count: number, singular: string) => `${count} ${singular}${count >= 2 ? 's' : ''}`;
-  return hours === 0 ? unit(days, 'jour') : `${unit(days, 'jour')} ${unit(hours, 'heure')}`;
+  const text = CATALOGS[language].metrics.readyAge;
+  const spokenDays = text.spokenDays(String(days), days);
+  return hours === 0 ? spokenDays : `${spokenDays} ${text.spokenHours(String(hours), hours)}`;
 }

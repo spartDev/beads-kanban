@@ -94,7 +94,8 @@ export function ErrorNotice({
   onRetry?: (event: MouseEvent<HTMLButtonElement>) => void;
   className?: string;
 }) {
-  const described = describeError(error, useLanguage().language);
+  const { language, t } = useLanguage();
+  const described = describeError(error, language);
   // Une cause précise (Projet illisible) est le meilleur titre ; sinon le titre de contexte passe devant la cause.
   const contextual = title !== undefined && !described.specific;
   return (
@@ -108,7 +109,7 @@ export function ErrorNotice({
         onRetry ? (
           <Button onClick={onRetry}>
             <RefreshCw size={14} aria-hidden="true" />
-            Réessayer
+            {t.shell.common.retry}
           </Button>
         ) : null
       }

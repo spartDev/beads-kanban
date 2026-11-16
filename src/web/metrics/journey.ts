@@ -1,4 +1,6 @@
 import type { MetricsCfdPoint, MetricsHealth, MetricsTiles } from '../../shared/api';
+import { CATALOGS } from '../i18n/catalog';
+import type { Language } from '../i18n/language';
 
 /**
  * Le parcours d'un ticket (bdesk-bxq.3) : ce qui entre (les Arrivées), les trois états qu'un ticket traverse (Backlog, Prêt, En cours) et ce qui sort (les Livraisons).
@@ -54,7 +56,11 @@ export interface JourneyView {
   empty: boolean;
 }
 
-export function describeJourney({ tiles, health, cfd }: { tiles: Pick<MetricsTiles, 'arrivals' | 'throughput'>; health: Pick<MetricsHealth, 'leadTimeBreakdown' | 'readyAges'>; cfd: readonly MetricsCfdPoint[] }): JourneyView {
+export function describeJourney(
+  { tiles, health, cfd }: { tiles: Pick<MetricsTiles, 'arrivals' | 'throughput'>; health: Pick<MetricsHealth, 'leadTimeBreakdown' | 'readyAges'>; cfd: readonly MetricsCfdPoint[] },
+  language: Language,
+): JourneyView {
+  const texts = CATALOGS[language].metrics.journeyStages;
   const breakdown = health.leadTimeBreakdown;
   const empty = breakdown.deliveries === 0 || breakdown.total === 0;
   const share = (duration: number): number | null => (empty ? null : duration / breakdown.total);
@@ -63,9 +69,9 @@ export function describeJourney({ tiles, health, cfd }: { tiles: Pick<MetricsTil
   const working = breakdown.work + breakdown.blocked;
 
   const stages = [
-    { key: 'backlog', label: 'Backlog', doing: 'à attendre une dépendance', duration: breakdown.dependencyWait, share: share(breakdown.dependencyWait), stock: last ? last.backlog : null },
-    { key: 'ready', label: 'Prêt', doing: 'à attendre d’être démarré', duration: breakdown.readyWait, share: share(breakdown.readyWait), stock: last ? last.ready : null },
-    { key: 'work', label: 'En cours', doing: 'au travail', duration: working, share: share(working), stock: last ? last.inProgress + last.blocked : null },
+    { key: 'backlog', label: texts.backlog, doing: texts.backlogDoing, duration: breakdown.dependencyWait, share: share(breakdown.dependencyWait), stock: last ? last.backlog : null },
+    { key: 'ready', label: texts.ready, doing: texts.readyDoing, duration: breakdown.readyWait, share: share(breakdown.readyWait), stock: last ? last.ready : null },
+    { key: 'work', label: texts.work, doing: texts.workDoing, duration: working, share: share(working), stock: last ? last.inProgress + last.blocked : null },
   ] as const satisfies readonly JourneyStage[];
 
   return {

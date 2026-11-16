@@ -60,8 +60,6 @@ const fr = {
   client: {
     /** Le serveur ne répond pas (connexion refusée, réseau). */
     unreachable: 'Serveur injoignable',
-    /** Une réponse d'erreur sans corps lisible : seul son code HTTP la décrit. */
-    httpStatus: (status: string) => `Erreur HTTP ${status}`,
   },
 };
 
@@ -91,7 +89,6 @@ const en: typeof fr = {
   },
   client: {
     unreachable: 'Server unreachable',
-    httpStatus: (status: string) => `HTTP error ${status}`,
   },
 };
 

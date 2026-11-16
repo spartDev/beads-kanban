@@ -27,7 +27,7 @@ import {
 
 const TODAY = '2026-11-02';
 const parse = (search: string, scope: 'project' | 'global' = 'project') =>
-  parseMetricsParams(new URLSearchParams(search), scope, TODAY);
+  parseMetricsParams(new URLSearchParams(search), scope, TODAY, 'fr');
 
 describe('MAX_CUSTOM_DAYS', () => {
   it('est la limite du serveur : au-delà il répond 400', () => {
@@ -290,47 +290,47 @@ describe('lastDays et checkRange : la plage du sélecteur', () => {
   });
 
   it('checkRange rend la plage, ou la raison pour laquelle le serveur la refuserait', () => {
-    expect(checkRange('2026-10-01', '2026-10-15', TODAY)).toEqual({ kind: 'custom', from: '2026-10-01', to: '2026-10-15' });
-    expect(checkRange('2026-10-15', '2026-10-01', TODAY)).toContain('commence après sa fin');
-    expect(checkRange('2026-10-15', '2026-11-03', TODAY)).toContain('dépasse aujourd’hui');
-    expect(checkRange('2024-01-01', '2026-10-01', TODAY)).toContain('366');
-    expect(checkRange('2026-02-30', '2026-03-01', TODAY)).toContain('AAAA-MM-JJ');
-    expect(checkRange(null, '2026-03-01', TODAY)).toContain('« from » et « to »');
+    expect(checkRange('2026-10-01', '2026-10-15', TODAY, 'fr')).toEqual({ kind: 'custom', from: '2026-10-01', to: '2026-10-15' });
+    expect(checkRange('2026-10-15', '2026-10-01', TODAY, 'fr')).toContain('commence après sa fin');
+    expect(checkRange('2026-10-15', '2026-11-03', TODAY, 'fr')).toContain('dépasse aujourd’hui');
+    expect(checkRange('2024-01-01', '2026-10-01', TODAY, 'fr')).toContain('366');
+    expect(checkRange('2026-02-30', '2026-03-01', TODAY, 'fr')).toContain('AAAA-MM-JJ');
+    expect(checkRange(null, '2026-03-01', TODAY, 'fr')).toContain('« from » et « to »');
   });
 
   describe('la borne basse : le 1er janvier 1970', () => {
     const tooEarly = (from: string) => `La plage doit commencer le 1er janvier 1970 ou après : ${from} est trop tôt.`;
 
     it('checkRange accepte une plage qui commence le 1er janvier 1970, bord compris', () => {
-      expect(checkRange('1970-01-01', '1970-01-31', TODAY)).toEqual({ kind: 'custom', from: '1970-01-01', to: '1970-01-31' });
-      expect(checkRange(MIN_CUSTOM_DAY, MIN_CUSTOM_DAY, TODAY)).toEqual({ kind: 'custom', from: '1970-01-01', to: '1970-01-01' });
+      expect(checkRange('1970-01-01', '1970-01-31', TODAY, 'fr')).toEqual({ kind: 'custom', from: '1970-01-01', to: '1970-01-31' });
+      expect(checkRange(MIN_CUSTOM_DAY, MIN_CUSTOM_DAY, TODAY, 'fr')).toEqual({ kind: 'custom', from: '1970-01-01', to: '1970-01-01' });
     });
 
     it.each(['1969-12-31', '1900-01-01', '0999-12-31', '0101-01-01', '0100-01-01', '0099-12-31', '0020-01-01', '0004-02-29', '0001-01-01', '0000-01-01'])(
       'checkRange refuse une plage qui commence le %s, et le dit',
       (from) => {
-        expect(checkRange(from, '1970-01-31', TODAY)).toBe(tooEarly(from));
+        expect(checkRange(from, '1970-01-31', TODAY, 'fr')).toBe(tooEarly(from));
         // Une plage courte, tout entière dans ces années-là : même message, et non « ce jour n'existe pas ».
-        expect(checkRange(from, from, TODAY)).toBe(tooEarly(from));
+        expect(checkRange(from, from, TODAY, 'fr')).toBe(tooEarly(from));
       },
     );
 
     it('checkRange juge le début avant de compter les jours : une plage trop ancienne n’est jamais dite « trop longue »', () => {
-      expect(checkRange('0020-12-12', TODAY, TODAY)).toBe(tooEarly('0020-12-12'));
-      expect(checkRange('0002-12-12', '2026-11-02', TODAY)).toBe(tooEarly('0002-12-12'));
+      expect(checkRange('0020-12-12', TODAY, TODAY, 'fr')).toBe(tooEarly('0020-12-12'));
+      expect(checkRange('0002-12-12', '2026-11-02', TODAY, 'fr')).toBe(tooEarly('0002-12-12'));
       // Passé la borne, la longueur compte comme avant.
-      expect(checkRange('1970-01-01', TODAY, TODAY)).toMatch(/^La plage est trop longue : \d+ jours, au plus 366\.$/);
+      expect(checkRange('1970-01-01', TODAY, TODAY, 'fr')).toMatch(/^La plage est trop longue : \d+ jours, au plus 366\.$/);
     });
 
     it('checkRange dit d’abord qu’une plage est à l’envers ou dans le futur, avant de parler de la borne basse', () => {
-      expect(checkRange('0020-01-31', '0020-01-01', TODAY)).toContain('commence après sa fin');
-      expect(checkRange('0020-01-01', '2026-11-03', TODAY)).toContain('dépasse aujourd’hui');
+      expect(checkRange('0020-01-31', '0020-01-01', TODAY, 'fr')).toContain('commence après sa fin');
+      expect(checkRange('0020-01-01', '2026-11-03', TODAY, 'fr')).toContain('dépasse aujourd’hui');
     });
 
     it('checkRange vérifie toujours qu’un jour existe dans les années 0 à 99 : le 29 février de l’an 4 existe, pas celui de l’an 100', () => {
-      expect(checkRange('0004-02-29', '0004-03-01', TODAY)).toBe(tooEarly('0004-02-29'));
-      expect(checkRange('0100-02-29', '0100-03-01', TODAY)).toContain('n’est pas un jour');
-      expect(checkRange('0020-02-30', '0020-03-01', TODAY)).toContain('n’est pas un jour');
+      expect(checkRange('0004-02-29', '0004-03-01', TODAY, 'fr')).toBe(tooEarly('0004-02-29'));
+      expect(checkRange('0100-02-29', '0100-03-01', TODAY, 'fr')).toContain('n’est pas un jour');
+      expect(checkRange('0020-02-30', '0020-03-01', TODAY, 'fr')).toContain('n’est pas un jour');
     });
   });
 });
@@ -406,7 +406,7 @@ describe('checkRange et le serveur (resolvePeriod) disent la même chose', () =>
   ];
 
   it.each(GRID)('%s → %s : même verdict, pour la même raison', (from, to) => {
-    const page = checkRange(from, to, TODAY);
+    const page = checkRange(from, to, TODAY, 'fr');
     const server = serverSays(from, to);
 
     expect(typeof page === 'string', `la page ${typeof page === 'string' ? `refuse (${page})` : 'accepte'}, le serveur ${server === null ? 'accepte' : `refuse (${server})`}`).toBe(server !== null);
@@ -418,7 +418,26 @@ describe('checkRange et le serveur (resolvePeriod) disent la même chose', () =>
 
   it('dit la règle de la borne basse avec les mêmes mots que le serveur', () => {
     const rule = 'La plage doit commencer le 1er janvier 1970 ou après';
-    expect(checkRange('0020-01-01', '0020-01-31', TODAY)).toContain(rule);
+    expect(checkRange('0020-01-01', '0020-01-31', TODAY, 'fr')).toContain(rule);
     expect(serverSays('0020-01-01', '0020-01-31')).toContain(rule);
+  });
+});
+
+describe('en anglais', () => {
+  it('dit ce que l’adresse demandait et ce que la page affiche à la place', () => {
+    const parsed = parseMetricsParams(new URLSearchParams('range=12d&by=project'), 'project', TODAY, 'en');
+    expect(parsed.notices).toEqual([
+      'The period “12d” does not exist (7d, 30d or 90d). The last 30 days are shown.',
+      'The breakdown by Project only exists in the Overview. Breakdown by type shown.',
+    ]);
+    expect(parseMetricsParams(new URLSearchParams('by=status'), 'global', TODAY, 'en').notices).toEqual([
+      'The breakdown “status” does not exist (type, priority, project). Breakdown by Project shown.',
+    ]);
+  });
+
+  it('refuse une plage personnalisée avec les mêmes raisons', () => {
+    expect(checkRange('2026-10-15', '2026-10-01', TODAY, 'en')).toBe('The range starts after its end (2026-10-15 > 2026-10-01).');
+    expect(checkRange('1969-12-31', '1970-01-31', TODAY, 'en')).toBe('The range must start on or after January 1, 1970: 1969-12-31 is too early.');
+    expect(checkRange('2025-11-01', '2026-11-02', TODAY, 'en')).toBe('The range is too long: 367 days, at most 366.');
   });
 });

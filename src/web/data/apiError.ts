@@ -10,20 +10,20 @@ export class ApiError extends Error {
   readonly reason?: string;
   /** Le code et les paramètres que le serveur a envoyés, quand ils ont la forme attendue : de quoi écrire l'erreur dans la langue affichée. */
   readonly detail?: ApiErrorDetail;
-  /** La réponse n'avait pas de corps lisible : le message ne dit que le code HTTP. */
-  readonly bodyless?: true;
+  /** La réponse ne disait rien d'autre que son code HTTP : le message est un repli, que l'interface écrit dans sa langue (`errorText`). */
+  readonly bare?: true;
 
   constructor(
     message: string,
     status: number,
-    options?: ErrorOptions & { reason?: string; detail?: ApiErrorDetail; bodyless?: true },
+    options?: ErrorOptions & { reason?: string; detail?: ApiErrorDetail; bare?: true },
   ) {
     super(message, options);
     this.name = 'ApiError';
     this.status = status;
     this.reason = options?.reason;
     this.detail = options?.detail;
-    this.bodyless = options?.bodyless;
+    if (options?.bare) this.bare = true;
   }
 }
 
@@ -41,7 +41,7 @@ export function errorText(error: unknown, language: Language): string | undefine
     const { client, api } = CATALOGS[language].errors;
     if (error.status === 0) return client.unreachable;
     if (error.detail) return apiSentence(error.detail, api, language);
-    if (error.bodyless) return client.httpStatus(String(error.status));
+    if (error.bare) return CATALOGS[language].shell.loadErrors.http(error.status);
   }
   return error.message;
 }

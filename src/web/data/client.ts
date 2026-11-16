@@ -1,4 +1,5 @@
 import { readApiErrorDetail } from '../../shared/errors';
+import { CATALOGS } from '../i18n/catalog';
 import type { Language } from '../i18n/language';
 import { ApiError, errorText } from './apiError';
 
@@ -36,7 +37,7 @@ async function readApiError(res: Response): Promise<ApiError> {
   } catch {
     // Corps absent ou qui n'est pas du JSON : on retombe sur le code HTTP.
   }
-  return new ApiError(`Erreur HTTP ${res.status}`, res.status, { bodyless: true });
+  return new ApiError(`Erreur HTTP ${res.status}`, res.status, { bare: true });
 }
 
 export interface ErrorDescription {
@@ -46,27 +47,27 @@ export interface ErrorDescription {
   specific?: true;
 }
 
-/** Titre et détail affichables d'une erreur de chargement ; le détail est écrit dans `language` (`errorText`). */
+/**
+ * Titre et détail affichables d'une erreur de chargement, dans la langue de l'interface. Le détail passe par `errorText` : la phrase du catalogue pour une
+ * erreur que l'API a codée, sinon le message tel que le serveur l'envoie (une raison de Projet illisible, le message d'une erreur), qui n'est pas traduit.
+ */
 export function describeError(error: unknown, language: Language): ErrorDescription {
+  const t = CATALOGS[language].shell.loadErrors;
   if (error instanceof ApiError) {
     if (error.status === 0) {
-      return {
-        title: 'Le serveur beads-desktop est injoignable',
-        detail: 'Vérifiez que la commande beads-desktop tourne toujours, puis réessayez.',
-      };
+      return { title: t.unreachable, detail: t.unreachableDetail };
     }
     // Un 503 avec raison, c'est un Projet que le serveur n'arrive pas à lire (base verrouillée, absente…).
     if (error.status === 503 && error.reason) {
-      return { title: 'Projet illisible', detail: error.reason, specific: true };
+      return { title: t.unreadableProject, detail: error.reason, specific: true };
     }
-    if (error.status >= 500) {
-      return { title: 'Le serveur a rencontré une erreur', detail: errorText(error, language) };
-    }
-    if (error.status === 404) return { title: 'Ressource introuvable', detail: errorText(error, language) };
-    return { title: 'Chargement impossible', detail: errorText(error, language) };
+    const detail = errorText(error, language);
+    if (error.status >= 500) return { title: t.serverError, detail };
+    if (error.status === 404) return { title: t.notFound, detail };
+    return { title: t.failed, detail };
   }
   return {
-    title: 'Chargement impossible',
+    title: t.failed,
     detail: errorText(error, language),
   };
 }

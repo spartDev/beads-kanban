@@ -1,6 +1,7 @@
 import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { yieldToEventLoop } from '../../testing/event-loop';
 import { dolt, hasBinary, isolatedDoltEnv, type Scratch } from '../testing/dolt-fixture';
 import { type SqlServer, startSqlServer } from '../testing/dolt-server';
 import { scratchDir } from '../testing/scratch';
@@ -131,11 +132,17 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)(
       writeFileSync(join(outside, 'secret.txt'), `${CANARY}\n`);
       folder = mode === 'embedded' ? join(root, 'dbs') : join(root, 'srv', '.beads', 'dolt');
       mkdirSync(folder, { recursive: true });
+      // Rendre la main entre deux bases, et entre la base et son scénario (bdesk-8g5, voir src/testing/event-loop.ts) : créer l'index `sleep(8)` de `sleep` et de
+      // `head` coûte à lui seul 32 s (mesuré avec Dolt 2.5.0, sur deux tickets).
       for (const name of SCENARIOS) {
-        setup[name](beadsLikeDatabase(env, dbOf(name)), secretOf(name));
-        await new Promise((resolve) => setImmediate(resolve)); // rendre la main entre deux bases (voir stored-sql.integration.test.ts)
+        const db = beadsLikeDatabase(env, dbOf(name));
+        await yieldToEventLoop();
+        setup[name](db, secretOf(name));
+        await yieldToEventLoop();
       }
-      setupEra(beadsLikeDatabase(env, dbOf('era')), secretOf('era'));
+      const era = beadsLikeDatabase(env, dbOf('era'));
+      await yieldToEventLoop();
+      setupEra(era, secretOf('era'));
       if (mode === 'server') server = await startSqlServer(env, folder, { databaseDir: dbOf('oracle') });
     }, 600_000);
 

@@ -1,14 +1,13 @@
 import { useId, type ReactNode } from 'react';
 import type { MetricsHealth, MetricsTiles } from '../../shared/api';
+import { useFormat, useLanguage, useT } from '../i18n';
 import { balanceOf } from './balance';
 import { SectionHeading } from './ChartParts';
 import type { Comparison } from './comparison';
-import { formatCount, formatDuration, formatPercent, formatSigned } from './format';
 import { HEALTH_GRID, HEALTH_SPANS } from './healthGrid';
-import { METRIC_HELP } from './metricHelp';
 import { DurationText, SpokenText } from './SpokenText';
+import { Tile, Trend, Value } from './Tiles';
 import { formatEfficiency, MEASURES, spokenEfficiency } from './trend';
-import { plural, Tile, Trend, Value } from './Tiles';
 
 /**
  * Les cinq tuiles de la santé du flux, sous celles des indicateurs : Arrivées vs Débit, Efficacité du flux, Taux de
@@ -17,9 +16,10 @@ import { plural, Tile, Trend, Value } from './Tiles';
  */
 export function HealthTiles({ tiles, health, comparison }: { tiles: Pick<MetricsTiles, 'arrivals' | 'throughput'>; health: MetricsHealth; comparison: Comparison }) {
   const titleId = useId();
+  const t = useT();
   return (
     <section aria-labelledby={titleId} className="flex min-w-0 flex-col gap-3">
-      <SectionHeading id={titleId}>Santé du flux</SectionHeading>
+      <SectionHeading id={titleId}>{t.metrics.healthTiles.heading}</SectionHeading>
       <div className={HEALTH_GRID}>
         <BalanceTile tiles={tiles} comparison={comparison} className={HEALTH_SPANS[0]} />
         <EfficiencyTile efficiency={health.efficiency} comparison={comparison} className={HEALTH_SPANS[1]} />
@@ -38,15 +38,19 @@ function Detail({ children }: { children: ReactNode }) {
 
 function BalanceTile({ tiles, comparison, className }: { tiles: Pick<MetricsTiles, 'arrivals' | 'throughput'>; comparison: Comparison; className: string }) {
   const balance = balanceOf(tiles);
+  const t = useT();
+  const { formatCount, formatSigned } = useFormat();
+  const { language } = useLanguage();
+  const texts = t.metrics.healthTiles;
   return (
-    <Tile title="Arrivées vs Débit" help={METRIC_HELP.balance} className={className}>
-      <Value caption="Arrivées moins Débit">{formatSigned(balance.net)}</Value>
+    <Tile title={texts.balance} help={t.metrics.metricHelp.balance} className={className}>
+      <Value caption={texts.balanceCaption}>{formatSigned(balance.net)}</Value>
       <Detail>
         <p className="tnum">
-          {plural(balance.arrivals, 'Arrivée')} · {plural(balance.throughput, 'Livraison')}
+          {texts.arrivals(balance.arrivals, formatCount(balance.arrivals))} · {t.metrics.tiles.deliveries(balance.throughput, formatCount(balance.throughput))}
         </p>
       </Detail>
-      <Trend trend={balance.trend} measure={MEASURES.balance} comparison={comparison} />
+      <Trend trend={balance.trend} measure={MEASURES[language].balance} comparison={comparison} />
     </Tile>
   );
 }
@@ -59,28 +63,35 @@ function BalanceTile({ tiles, comparison, className }: { tiles: Pick<MetricsTile
  */
 function EfficiencyTile({ efficiency, comparison, className }: { efficiency: MetricsHealth['efficiency']; comparison: Comparison; className: string }) {
   const defined = efficiency.ratio !== null;
+  const t = useT();
+  const { formatCount } = useFormat();
+  const { language } = useLanguage();
+  const texts = t.metrics.healthTiles;
+  const deliveries = (n: number) => t.metrics.tiles.deliveries(n, formatCount(n));
   return (
-    <Tile title="Efficacité du flux" help={METRIC_HELP.efficiency} sample={plural(efficiency.n, 'Livraison')} className={className}>
-      <Value muted={!defined} caption={defined ? 'du Cycle Time hors Blocage' : 'Aucune Livraison démarrée sur la période.'}>
-        <SpokenText written={formatEfficiency(efficiency.ratio)} spoken={spokenEfficiency(efficiency.ratio)} />
+    <Tile title={texts.efficiency} help={t.metrics.metricHelp.efficiency} sample={deliveries(efficiency.n)} className={className}>
+      <Value muted={!defined} caption={defined ? texts.efficiencyCaption : t.metrics.tiles.noStartedDeliveries}>
+        <SpokenText written={formatEfficiency(efficiency.ratio, language)} spoken={spokenEfficiency(efficiency.ratio, language)} />
       </Value>
       {defined ? (
         <>
-          <Trend trend={efficiency.trend} measure={MEASURES.efficiency} comparison={comparison} />
+          <Trend trend={efficiency.trend} measure={MEASURES[language].efficiency} comparison={comparison} />
           <Detail>
             {efficiency.blockedTime > 0 ? (
               <>
                 <p className="tnum">
-                  Blocage : <DurationText ms={efficiency.blockedTime} /> sur <DurationText ms={efficiency.cycleTime} /> de Cycle Time
+                  {texts.blockedLead}
+                  <DurationText ms={efficiency.blockedTime} />
+                  {texts.blockedOf}
+                  <DurationText ms={efficiency.cycleTime} />
+                  {texts.blockedTail}
                 </p>
-                <p className="tnum">{plural(efficiency.blockedDeliveries, 'Livraison')} avec du Blocage</p>
+                <p className="tnum">{texts.deliveriesWithBlockage(deliveries(efficiency.blockedDeliveries))}</p>
               </>
             ) : (
-              <p>Aucun Blocage pendant le travail.</p>
+              <p>{texts.noBlockage}</p>
             )}
-            <p>
-              Souvent proche de 100&nbsp;% : un ticket est démarré une fois débloqué. L’attente d’une dépendance se lit dans la Décomposition du Lead Time (Attente de dépendance).
-            </p>
+            <p>{texts.efficiencyNote}</p>
           </Detail>
         </>
       ) : null}
@@ -90,23 +101,33 @@ function EfficiencyTile({ efficiency, comparison, className }: { efficiency: Met
 
 function ReopeningTile({ reopening, comparison, className }: { reopening: MetricsHealth['reopening']; comparison: Comparison; className: string }) {
   const defined = reopening.rate !== null;
-  const followed = reopening.closures > 1 ? 'suivies' : 'suivie'; // l'accord se fait avec les clôtures : « 0 sur 1 clôture suivie »
+  const t = useT();
+  const { formatCount, formatPercent } = useFormat();
+  const { language } = useLanguage();
+  const texts = t.metrics.healthTiles;
+  const closures = texts.closures(reopening.closures, formatCount(reopening.closures));
   return (
-    <Tile title="Taux de Réouverture" help={METRIC_HELP.reopening} sample={plural(reopening.closures, 'clôture')} className={className}>
-      <Value
-        muted={!defined}
-        caption={defined ? `${formatCount(reopening.reopened)} sur ${plural(reopening.closures, 'clôture')} ${followed} d’une Réouverture` : 'Aucune clôture sur la période.'}
-      >
+    <Tile title={texts.reopening} help={t.metrics.metricHelp.reopening} sample={closures} className={className}>
+      <Value muted={!defined} caption={defined ? texts.reopenedOf(formatCount(reopening.reopened), reopening.closures, closures) : texts.noClosures}>
         {formatPercent(reopening.rate, { precise: true })}
       </Value>
-      {defined ? <Trend trend={reopening.trend} measure={MEASURES.rate} comparison={comparison} /> : null}
+      {defined ? <Trend trend={reopening.trend} measure={MEASURES[language].rate} comparison={comparison} /> : null}
     </Tile>
   );
 }
 
 /** « 1 doublon, 1 remplacé » : les causes des Abandons, sans celles qui sont à zéro. */
-function causes({ duplicates, superseded }: { duplicates: number; superseded: number }): string {
-  return [duplicates > 0 ? plural(duplicates, 'doublon') : '', superseded > 0 ? plural(superseded, 'remplacé') : ''].filter(Boolean).join(', ');
+function Causes({ duplicates, superseded }: { duplicates: number; superseded: number }) {
+  const t = useT();
+  const { formatCount } = useFormat();
+  const texts = t.metrics.healthTiles;
+  return (
+    <p>
+      {[duplicates > 0 ? texts.duplicates(duplicates, formatCount(duplicates)) : '', superseded > 0 ? texts.superseded(superseded, formatCount(superseded)) : '']
+        .filter(Boolean)
+        .join(texts.causesSeparator)}
+    </p>
+  );
 }
 
 /**
@@ -115,19 +136,21 @@ function causes({ duplicates, superseded }: { duplicates: number; superseded: nu
  */
 function AbandonmentTile({ abandonment, comparison, className }: { abandonment: MetricsHealth['abandonment']; comparison: Comparison; className: string }) {
   const defined = abandonment.rate !== null;
+  const t = useT();
+  const { formatCount, formatPercent } = useFormat();
+  const { language } = useLanguage();
+  const texts = t.metrics.healthTiles;
+  const closed = texts.closedTickets(abandonment.closed, formatCount(abandonment.closed));
   return (
-    <Tile title="Taux d’abandon" help={METRIC_HELP.abandonment} sample={plural(abandonment.closed, 'ticket fermé', 'tickets fermés')} className={className}>
-      <Value
-        muted={!defined}
-        caption={defined ? `${formatCount(abandonment.abandoned)} sur ${plural(abandonment.closed, 'ticket fermé', 'tickets fermés')}` : 'Aucun ticket fermé sur la période.'}
-      >
+    <Tile title={texts.abandonment} help={t.metrics.metricHelp.abandonment} sample={closed} className={className}>
+      <Value muted={!defined} caption={defined ? texts.droppedOf(formatCount(abandonment.abandoned), closed) : texts.noClosedTickets}>
         {formatPercent(abandonment.rate, { precise: true })}
       </Value>
-      {defined ? <Trend trend={abandonment.trend} measure={MEASURES.abandonment} comparison={comparison} /> : null}
+      {defined ? <Trend trend={abandonment.trend} measure={MEASURES[language].abandonment} comparison={comparison} /> : null}
       {defined ? (
         <Detail>
-          {abandonment.abandoned > 0 ? <p>{causes(abandonment)}</p> : null}
-          <p>Seuls les liens duplicates et supersedes sont reconnus : un ticket fermé «&nbsp;Duplicate: …&nbsp;» sans lien compte comme une Livraison.</p>
+          {abandonment.abandoned > 0 ? <Causes duplicates={abandonment.duplicates} superseded={abandonment.superseded} /> : null}
+          <p>{texts.abandonmentNote}</p>
         </Detail>
       ) : null}
     </Tile>
@@ -136,12 +159,17 @@ function AbandonmentTile({ abandonment, comparison, className }: { abandonment: 
 
 function ReadyTile({ ready, comparison, className }: { ready: MetricsHealth['readyAges']; comparison: Comparison; className: string }) {
   const any = ready.tickets.length > 0;
+  const t = useT();
+  const { formatCount, formatDuration } = useFormat();
+  const { language } = useLanguage();
+  const texts = t.metrics.healthTiles;
+  const tickets = texts.readyTickets(ready.tickets.length, formatCount(ready.tickets.length));
   return (
-    <Tile title="Prêts qui stagnent" help={METRIC_HELP.ready} sample={plural(ready.tickets.length, 'Prêt')} className={className}>
-      <Value muted={!any} caption={any ? `sur ${plural(ready.tickets.length, 'Prêt')}, depuis plus de ${formatDuration(ready.stagnantAfter)}` : 'Aucun ticket Prêt.'}>
+    <Tile title={texts.ready} help={t.metrics.metricHelp.ready} sample={tickets} className={className}>
+      <Value muted={!any} caption={any ? texts.staleOf(tickets, formatDuration(ready.stagnantAfter)) : texts.noReady}>
         {formatCount(ready.stagnant)}
       </Value>
-      {any ? <Trend trend={ready.trend} measure={MEASURES.fewer} comparison={comparison} /> : null}
+      {any ? <Trend trend={ready.trend} measure={MEASURES[language].fewer} comparison={comparison} /> : null}
     </Tile>
   );
 }

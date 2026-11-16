@@ -1,5 +1,8 @@
 import { MIN_CUSTOM_DAY } from '../../domain/calendar';
 import type { MetricsRangePreset } from '../../shared/api';
+import { CATALOGS } from '../i18n/catalog';
+import type { Language } from '../i18n/language';
+import { FORMATS } from './format';
 import { addDays } from './scales';
 
 /**
@@ -130,7 +133,7 @@ export function withDimension(params: URLSearchParams, by: Dimension, scope: Sco
 export interface ParsedMetricsParams {
   period: PeriodChoice;
   by: Dimension;
-  /** Ce que l'adresse demandait et que la page ne peut pas servir, en français. Vide quand tout est compris. */
+  /** Ce que l'adresse demandait et que la page ne peut pas servir, dans la langue de l'interface. Vide quand tout est compris. */
   notices: string[];
 }
 
@@ -138,38 +141,37 @@ export interface ParsedMetricsParams {
  * Lit l'adresse. `today` est le jour d'aujourd'hui (AAAA-MM-JJ) dans le fuseau de l'utilisateur : une plage ne peut pas
  * le dépasser, et le serveur la refuserait. Une plage valide l'emporte sur `range` quand l'adresse donne les deux.
  */
-export function parseMetricsParams(params: URLSearchParams, scope: Scope, today: string): ParsedMetricsParams {
+export function parseMetricsParams(params: URLSearchParams, scope: Scope, today: string, language: Language): ParsedMetricsParams {
+  const texts = CATALOGS[language].metrics.metricsParams;
   const problems: string[] = [];
 
   const range = params.get(RANGE);
   const preset = range === null ? undefined : PRESETS.find((candidate) => candidate === range);
-  if (range !== null && preset === undefined) problems.push(`La période « ${range} » n’existe pas (7d, 30d ou 90d).`);
+  if (range !== null && preset === undefined) problems.push(texts.unknownRange(range));
 
   let custom: PeriodChoice | undefined;
   if (params.has(FROM) || params.has(TO)) {
-    const checked = checkRange(params.get(FROM), params.get(TO), today);
+    const checked = checkRange(params.get(FROM), params.get(TO), today, language);
     if (typeof checked === 'string') problems.push(checked);
     else custom = checked;
   }
 
   const period: PeriodChoice = custom ?? (preset ? { kind: 'preset', range: preset } : DEFAULT_PERIOD);
-  const fallback = period.kind === 'custom' ? 'La plage personnalisée est affichée.' : `Les ${PRESET_DAYS[period.range]} derniers jours sont affichés.`;
+  const fallback = period.kind === 'custom' ? texts.customShown : texts.presetShown(FORMATS[language].formatCount(PRESET_DAYS[period.range]));
   const notices = problems.map((problem) => `${problem} ${fallback}`);
 
   const by = params.get(BY);
   let dimension = defaultDimension(scope);
   if (by !== null) {
     const found = dimensionsOf(scope).find((candidate) => candidate === by);
-    const shown = `Découpage par ${LABELS[dimension]} affiché.`;
+    const shown = texts.dimensionShown(texts.dimensionNames[dimension]);
     if (found) dimension = found;
-    else if (by === 'project') notices.push(`Le découpage par Projet n’existe qu’en Vue globale. ${shown}`);
-    else notices.push(`Le découpage « ${by} » n’existe pas (${dimensionsOf(scope).join(', ')}). ${shown}`);
+    else if (by === 'project') notices.push(texts.projectOnlyInOverview(shown));
+    else notices.push(texts.unknownDimension(by, dimensionsOf(scope).join(', '), shown));
   }
 
   return { period, by: dimension, notices };
 }
-
-const LABELS: Record<Dimension, string> = { type: 'type', priority: 'priorité', project: 'Projet' };
 
 /** Les `days` derniers jours jusqu'à `today` compris : la plage d'un préréglage, écrite en jours. */
 export function lastDays(today: string, days: number): { from: string; to: string } {
@@ -181,13 +183,15 @@ export function lastDays(today: string, days: number): { from: string; to: strin
  * d'avant le 1er janvier 1970, ou trop longue. Les mêmes refus que `resolvePeriod` (le serveur), dans le même ordre : les
  * bornes d'abord, la durée ensuite.
  */
-export function checkRange(from: string | null, to: string | null, today: string): PeriodChoice | string {
-  if (from === null || to === null) return 'Une plage personnalisée a besoin de « from » et « to » ensemble.';
-  for (const value of [from, to]) if (!isCivilDay(value)) return `« ${value} » n’est pas un jour (AAAA-MM-JJ).`;
-  if (from > to) return `La plage commence après sa fin (${from} > ${to}).`;
-  if (to > today) return `La plage dépasse aujourd’hui (${to} > ${today}).`;
-  if (from < MIN_CUSTOM_DAY) return `La plage doit commencer le 1er janvier 1970 ou après : ${from} est trop tôt.`;
+export function checkRange(from: string | null, to: string | null, today: string, language: Language): PeriodChoice | string {
+  const texts = CATALOGS[language].metrics.metricsParams;
+  if (from === null || to === null) return texts.missingBound;
+  for (const value of [from, to]) if (!isCivilDay(value)) return texts.notADay(value);
+  if (from > to) return texts.reversed(from, to);
+  if (to > today) return texts.future(to, today);
+  if (from < MIN_CUSTOM_DAY) return texts.tooEarly(from);
   const days = spanInDays(from, to);
-  if (days > MAX_CUSTOM_DAYS) return `La plage est trop longue : ${days} jours, au plus ${MAX_CUSTOM_DAYS}.`;
+  // Les jours s'écrivent sans séparateur de milliers, comme le serveur les écrit (`resolvePeriod`) : la page et l'API disent le même nombre.
+  if (days > MAX_CUSTOM_DAYS) return texts.tooLong(String(days), String(MAX_CUSTOM_DAYS));
   return { kind: 'custom', from, to };
 }

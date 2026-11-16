@@ -1,5 +1,7 @@
 import type { MetricsBucket, MetricsBucketUnit } from '../../shared/api';
-import { formatDay } from './format';
+import { CATALOGS } from '../i18n/catalog';
+import type { Language } from '../i18n/language';
+import { FORMATS } from './format';
 
 /**
  * Une tranche de l'histogramme du Débit, prête à dessiner. Les comptes restent bruts : leur somme est celle de la tuile
@@ -35,8 +37,10 @@ const FULL_DAYS = { day: 1, week: 7 } as const;
 export function normalizeBuckets(
   buckets: readonly MetricsBucket[],
   { unit, running, asOfTime }: { unit: MetricsBucketUnit; running: boolean; asOfTime: string },
+  language: Language,
 ): BucketView[] {
   const fullDays = FULL_DAYS[unit];
+  const { formatDay } = FORMATS[language];
   return buckets.map((bucket, index) => {
     const truncated = bucket.days < fullDays;
     const current = running && index === buckets.length - 1;
@@ -51,24 +55,26 @@ export function normalizeBuckets(
       partial: truncated || current,
       perDay: bucket.days > 0 ? bucket.deliveries / bucket.days : 0,
       label: formatDay(bucket.from),
-      title: titleOf(bucket),
-      note: noteOf(unit, bucket.days, truncated, current, asOfTime),
+      title: titleOf(bucket, language),
+      note: noteOf(unit, bucket.days, truncated, current, asOfTime, language),
     };
   });
 }
 
-/** Le jour (« lun. 2 nov. 2026 »), ou les deux bornes de la tranche (« mer. 5 août – dim. 9 août 2026 »). */
-function titleOf({ from, to }: MetricsBucket): string {
+/** Le jour (« lun. 2 nov. 2026 »), ou les deux bornes de la tranche (« mer. 5 août – dim. 9 août 2026 »), écrits dans `language`. */
+function titleOf({ from, to }: MetricsBucket, language: Language): string {
+  const { formatDay } = FORMATS[language];
   if (from === to) return formatDay(from, { weekday: true, year: true });
   const crossesYears = from.slice(0, 4) !== to.slice(0, 4);
   return `${formatDay(from, { weekday: true, year: crossesYears })} – ${formatDay(to, { weekday: true, year: true })}`;
 }
 
-function noteOf(unit: MetricsBucketUnit, days: number, truncated: boolean, running: boolean, asOfTime: string): string | null {
-  if (unit === 'day') return running ? `Jour en cours, jusqu’à ${asOfTime}.` : null;
-  const covered = `${days} ${days > 1 ? 'jours' : 'jour'} sur 7`;
-  if (truncated) return running ? `Semaine en cours : ${covered}, jusqu’à ${asOfTime}.` : `Semaine incomplète : ${covered} dans la période.`;
-  return running ? `Semaine en cours, jusqu’à ${asOfTime}.` : null;
+function noteOf(unit: MetricsBucketUnit, days: number, truncated: boolean, running: boolean, asOfTime: string, language: Language): string | null {
+  const text = CATALOGS[language].metrics.buckets;
+  if (unit === 'day') return running ? text.dayRunning(asOfTime) : null;
+  const covered = text.covered(FORMATS[language].formatCount(days), days);
+  if (truncated) return running ? text.weekRunningTruncated(covered, asOfTime) : text.weekTruncated(covered);
+  return running ? text.weekRunning(asOfTime) : null;
 }
 
 /** Somme des Livraisons des tranches : celle de la tuile Débit. */

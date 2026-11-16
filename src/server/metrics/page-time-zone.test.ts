@@ -95,8 +95,8 @@ describe('la page et le serveur (en UTC) comptent « aujourd’hui » dans le m�
 
   it.each(cases)('%s à %s : la plage qui finit aujourd’hui, que la page accepte, est acceptée ; celle qui finit demain, qu’elle refuse, est refusée', async (zone, instant) => {
     const { timeZone, today } = browserAt(instant, zone);
-    const endsToday = checkRange(addDays(today, -13), today, today);
-    const endsTomorrow = checkRange(addDays(today, -12), addDays(today, 1), today);
+    const endsToday = checkRange(addDays(today, -13), today, today, 'fr');
+    const endsTomorrow = checkRange(addDays(today, -12), addDays(today, 1), today, 'fr');
     if (typeof endsToday === 'string') throw new Error(`la page refuse une plage qui finit aujourd’hui : ${endsToday}`);
     expect(typeof endsTomorrow, 'la page refuse la plage qui finit demain').toBe('string');
 
@@ -111,7 +111,7 @@ describe('la page et le serveur (en UTC) comptent « aujourd’hui » dans le m�
 
   it('à 00:30 à Paris, la plage de la page est refusée (400) quand le serveur ne reçoit pas le fuseau du navigateur : la panne de départ', async () => {
     const { today } = browserAt('2026-11-04T23:30:00Z', 'Europe/Paris');
-    const endsToday = checkRange('2026-10-30', today, today);
+    const endsToday = checkRange('2026-10-30', today, today, 'fr');
     expect(endsToday).toEqual({ kind: 'custom', from: '2026-10-30', to: '2026-11-05' }); // la page l'accepte
 
     const withoutZone = await app.inject({ method: 'GET', url: '/api/metrics?from=2026-10-30&to=2026-11-05' }); // ce que la page envoyait

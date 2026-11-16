@@ -2,6 +2,7 @@ import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { MetricsResponse } from '../../shared/api';
+import { yieldToEventLoop } from '../../testing/event-loop';
 import { createDoltClient } from '../dolt/client';
 import { createProjectService } from '../projects/service';
 import { buildServer } from '../server';
@@ -77,7 +78,7 @@ describe.skipIf(!hasBinary('dolt'))('santé du flux sur une vraie base Dolt', ()
   /** Les services de Paris et d'UTC, dont l'horloge se règle : le Projet « delta » (changement d'heure) y est lu à l'instant voulu. */
   let getAt: (timeZone: 'Europe/Paris' | 'UTC', now: string, query: string) => Promise<{ status: number; body: MetricsResponse }>;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     const root = realpathSync(scratchDir('bdesk-health-'));
     const beads = join(root, 'gamma', '.beads');
     mkdirSync(beads, { recursive: true });
@@ -87,6 +88,7 @@ describe.skipIf(!hasBinary('dolt'))('santé du flux sur une vraie base Dolt', ()
     for (const [day, statements] of GAMMA) {
       base.sql(statements.join(';\n'));
       base.commit(day, `jour ${day}`);
+      await yieldToEventLoop(); // rendre la main entre deux jours : trois commandes `dolt` synchrones chacun (bdesk-8g5, voir src/testing/event-loop.ts)
     }
 
     // Projet « delta » : un seul ticket, créé (donc Prêt) le mardi 20 octobre à 12:00 à Paris (10:00Z, heure d'été), avant le passage à l'heure d'hiver du 25.

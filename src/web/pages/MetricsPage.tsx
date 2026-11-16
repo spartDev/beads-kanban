@@ -1,4 +1,5 @@
 import { projectInSentence } from '../data/projectNames';
+import { useT } from '../i18n';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { LazyMetricsView } from '../metrics/LazyMetricsView';
 import { Page } from './Page';
@@ -11,10 +12,11 @@ import { useProject } from './ProjectGate';
  */
 export function MetricsPage() {
   const project = useProject();
-  useDocumentTitle('Métriques', project.name);
+  const texts = useT().metrics.metricsPage;
+  useDocumentTitle(texts.title, project.name);
 
   return (
-    <Page title="Métriques" description={`Le flux de livraison de ${projectInSentence(project)}, mesuré depuis l’historique Dolt, comparé à la période précédente.`} wide>
+    <Page title={texts.title} description={texts.description(projectInSentence(project))} wide>
       <LazyMetricsView scope={{ kind: 'project', project }} />
     </Page>
   );

@@ -1,4 +1,6 @@
 import type { MetricsActivity } from '../../shared/api';
+import { CATALOGS } from '../i18n/catalog';
+import type { Language } from '../i18n/language';
 
 /**
  * Carte d'activité : l'API donne les Transitions de la période par jour de la semaine (le lundi d'abord, comme les tranches
@@ -6,23 +8,18 @@ import type { MetricsActivity } from '../../shared/api';
  * de chaque case, le pic, et les totaux du tableau.
  */
 
-const NBSP = '\u00a0';
+/** Les jours de la semaine, du lundi au dimanche : le nom en toutes lettres et son abréviation. */
+export const weekdaysIn = (language: Language) => CATALOGS[language].metrics.activityMap.weekdays;
 
-export const WEEKDAYS = [
-  { name: 'lundi', short: 'lun.' },
-  { name: 'mardi', short: 'mar.' },
-  { name: 'mercredi', short: 'mer.' },
-  { name: 'jeudi', short: 'jeu.' },
-  { name: 'vendredi', short: 'ven.' },
-  { name: 'samedi', short: 'sam.' },
-  { name: 'dimanche', short: 'dim.' },
-] as const;
+/** « de 14 h à 15 h » (« from 14:00 to 15:00 ») : l'heure entière d'une case. */
+export const hourSpan = (hour: number, language: Language): string => CATALOGS[language].metrics.activityMap.hourSpan(hour, hour + 1);
 
-/** « de 14 h à 15 h » : l'heure entière d'une case, avec des espaces insécables pour que « 14 h » ne se coupe pas. */
-export const hourSpan = (hour: number): string => `de ${hour}${NBSP}h à ${hour + 1}${NBSP}h`;
-
-/** « jeudi, de 14 h à 15 h » : le créneau d'une case. */
-export const slotLabel = (weekday: number, hour: number): string => `${WEEKDAYS[weekday]?.name ?? ''}, ${hourSpan(hour)}`;
+/** « jeudi, de 14 h à 15 h » (« Thursday, from 14:00 to 15:00 ») : le créneau d'une case, de même forme dans les deux langues. */
+export const slotLabel = (weekday: number, hour: number, language: Language): string => {
+  // `WEEKDAYS[weekday]?.name` est la lecture qu'autorise l'exception de `data/projectSentences.test.ts` (un jour, pas un Projet).
+  const WEEKDAYS = weekdaysIn(language);
+  return `${WEEKDAYS[weekday]?.name ?? ''}, ${hourSpan(hour, language)}`;
+};
 
 /** Niveau d'une case : 0 sans Transition, de 1 à 4 selon sa part du maximum, par quarts. */
 export type ActivityLevel = 0 | 1 | 2 | 3 | 4;
