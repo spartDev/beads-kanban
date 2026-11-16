@@ -149,3 +149,79 @@ describe('les dates écrites suivent le fuseau courant, pas celui du chargement 
     });
   });
 });
+
+describe('en anglais : les mêmes seuils, écrits à la main', () => {
+  const ageEn = (iso: string, now = NOW) => formatAge(iso, now, 'en');
+
+  it('compte en minutes puis en heures écoulées sous 24 h', () => {
+    expect(ageEn(before(0))).toBe('just now');
+    expect(ageEn(new Date(NOW + 5 * MIN).toISOString())).toBe('just now');
+    expect(ageEn(before(MIN))).toBe('1 min ago');
+    expect(ageEn(before(45 * MIN))).toBe('45 min ago');
+    expect(ageEn(before(HOUR))).toBe('1 hr ago');
+    expect(ageEn(before(23 * HOUR))).toBe('23 hr ago');
+  });
+
+  it('passe aux jours calendaires au-delà de 24 h, comme en français', () => {
+    expect(ageEn(at(2026, 10, 22, 14))).toBe('yesterday');
+    expect(ageEn(at(2026, 10, 21, 23, 59))).toBe('2 days ago');
+    expect(ageEn(at(2026, 10, 10, 0))).toBe('13 days ago');
+    // Le jour de 25 h : une clôture de 00:00:30 est d'aujourd'hui à 23:59.
+    expect(ageEn(at(2026, 10, 25, 0, 0, 30), Date.parse(at(2026, 10, 25, 23, 59)))).toBe('today');
+  });
+
+  it('compte en semaines de 14 à 29 jours, puis donne la date, mois devant', () => {
+    expect(ageEn(before(14 * DAY))).toBe('2 wk ago');
+    expect(ageEn(before(29 * DAY))).toBe('4 wk ago');
+    expect(ageEn('2026-09-05T12:00:00Z')).toBe('Sep 5');
+    expect(ageEn('2025-10-05T12:00:00Z')).toBe('Oct 5, 2025');
+  });
+
+  it('compte encore en semaines au 29e jour calendaire, et donne la date dès le 30e', () => {
+    expect(ageEn(at(2026, 9, 24, 23, 59))).toBe('4 wk ago');
+    expect(ageEn(at(2026, 9, 23, 23, 59))).toBe('Sep 23');
+  });
+
+  it('tronque, n’arrondit pas : 1 min 59 s est « 1 min », 23 h 59 « 23 hr », 20 jours « 2 wk »', () => {
+    expect(ageEn(before(MIN + 59_000))).toBe('1 min ago');
+    expect(ageEn(before(23 * HOUR + 59 * MIN))).toBe('23 hr ago');
+    expect(ageEn(before(20 * DAY))).toBe('2 wk ago');
+  });
+
+  it('écrit le jour du calendrier local, pas celui d’UTC (Paris)', () => {
+    expect(ageEn('2026-09-05T23:30:00Z')).toBe('Sep 6');
+    expect(ageEn('2025-12-31T23:30:00Z')).toBe('Jan 1');
+    expect(ageEn('2024-12-31T23:30:00Z')).toBe('Jan 1, 2025');
+    expect(formatDateTime('2026-12-31T23:30:00Z', 'en')).toBe('January 1, 2027 at 00:30');
+  });
+
+  it('nomme chaque mois, dans l’ordre', () => {
+    const months = Array.from({ length: 12 }, (_, index) => formatDateTime(at(2026, index + 1, 2, 9, 5), 'en'));
+    expect(months).toEqual(
+      ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map(
+        (month) => `${month} 2, 2026 at 09:05`,
+      ),
+    );
+    expect(Array.from({ length: 12 }, (_, index) => ageEn(at(2025, index + 1, 2, 12)))).toEqual(
+      ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month) => `${month} 2, 2025`),
+    );
+  });
+
+  it('écrit la date complète de l’infobulle, l’heure sur 24 h', () => {
+    expect(formatDateTime('2026-10-05T12:00:00Z', 'en')).toBe('October 5, 2026 at 14:00');
+    expect(formatDateTime('2026-10-05T22:05:00Z', 'en')).toBe('October 6, 2026 at 00:05');
+  });
+
+  it('ne dit rien d’une date illisible', () => {
+    expect(ageEn('n’importe quoi')).toBe('');
+    expect(formatDateTime('n’importe quoi', 'en')).toBe('');
+  });
+});
+
+describe('en anglais, dans un fuseau décalé d’une demi-heure (Kolkata) : les minutes sont celles du fuseau', () => {
+  withTimeZone('Asia/Kolkata');
+
+  it('écrit 17:30 pour midi UTC', () => {
+    expect(formatDateTime('2026-10-05T12:00:00Z', 'en')).toBe('October 5, 2026 at 17:30');
+  });
+});

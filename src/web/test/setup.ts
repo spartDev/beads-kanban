@@ -1,5 +1,6 @@
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach } from 'vitest';
+import { setBrowserLanguages } from './languages';
 import { installMatchMedia } from './matchMedia';
 
 // jsdom n'implémente ni ResizeObserver ni scrollIntoView, dont cmdk et Radix se servent.
@@ -41,6 +42,9 @@ beforeEach(() => {
   installMatchMedia(false);
   window.localStorage.clear();
   document.documentElement.removeAttribute('data-theme');
+  // La suite est en français (ADR 0006) : un navigateur français, même une fois le sélecteur de langue activé.
+  setBrowserLanguages(['fr-FR', 'fr']);
+  document.documentElement.lang = 'fr';
 });
 
 afterEach(() => {

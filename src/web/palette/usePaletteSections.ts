@@ -1,10 +1,12 @@
 import { useQueries, type UseQueryResult } from '@tanstack/react-query';
-import { Keyboard, LayoutGrid, type LucideIcon } from 'lucide-react';
+import { Keyboard, Languages, LayoutGrid, type LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { isBlankTitle, isEpic, isReadable, ticketTitle } from '../data/helpers';
 import { issuesQuery, useProjects } from '../data/hooks';
 import type { Issue, IssuesResponse, Project } from '../data/types';
 import { typeMeta } from '../design/issue-palette';
+import { useLanguage } from '../i18n';
+import { languageOptions } from '../i18n/options';
 import { paths, sectionPath } from '../paths';
 import { SECTIONS, useRouteInfo, useTabsProject } from '../shell/navigation';
 import { useShortcutsHelp, type PaletteMode } from '../shell/OverlayProvider';
@@ -34,6 +36,8 @@ export interface ScopedIssue {
 export interface CommandEntry {
   value: string;
   label: string;
+  /** La langue du libellé quand ce n'est pas forcément celle de la page (un nom de langue : « English »). */
+  lang?: string;
   /** Contexte affiché à côté du libellé (le Projet visé par un onglet). */
   hint?: string;
   keywords?: readonly string[];
@@ -155,6 +159,7 @@ function usePaletteCommands(go: (to: string) => void, close: () => void) {
   const tabsProject = useTabsProject();
   const { preference, setPreference } = useTheme();
   const { show: showHelp } = useShortcutsHelp();
+  const language = useLanguage();
 
   return useMemo<{ navigation: CommandEntry[]; actions: CommandEntry[] }>(() => {
     const navigation: CommandEntry[] = [
@@ -193,6 +198,23 @@ function usePaletteCommands(go: (to: string) => void, close: () => void) {
           },
         }),
       ),
+      // Les langues, une fois le sélecteur activé : les mêmes positions que `LanguageToggle`.
+      ...(language.switchEnabled
+        ? languageOptions(language.t).map(
+            (option): CommandEntry => ({
+              value: `action:language-${option.value}`,
+              label: option.label,
+              lang: option.labelLanguage,
+              keywords: language.t.shell.language.keywords,
+              icon: 'icon' in option.mark ? option.mark.icon : Languages,
+              active: language.preference === option.value,
+              run: () => {
+                language.setPreference(option.value);
+                close();
+              },
+            }),
+          )
+        : []),
       {
         value: 'action:shortcuts',
         label: 'Raccourcis clavier',
@@ -204,7 +226,7 @@ function usePaletteCommands(go: (to: string) => void, close: () => void) {
       },
     ];
     return { navigation, actions };
-  }, [go, close, tabsProject, preference, setPreference, showHelp]);
+  }, [go, close, tabsProject, preference, setPreference, showHelp, language]);
 }
 
 /**

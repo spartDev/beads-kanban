@@ -192,7 +192,7 @@ export function CommandRow({ command }: { command: CommandEntry }) {
     <Command.Item value={command.value} onSelect={command.run} className={itemClass}>
       <Bead />
       <Icon size={16} strokeWidth={1.8} aria-hidden="true" className="shrink-0 text-ink-3 group-data-[selected=true]/item:text-ink-2" />
-      <span className="min-w-0 truncate">{command.label}</span>
+      <span lang={command.lang} className="min-w-0 truncate">{command.label}</span>
       {command.hint ? <span className={cx('min-w-0 flex-1 truncate text-xs', dim)}>{command.hint}</span> : <span className="flex-1" />}
       {command.active ? <Check size={14} strokeWidth={2.2} aria-label="Actif" className="shrink-0 text-accent" /> : null}
       {command.shortcut ? (
