@@ -1,8 +1,5 @@
 import { cx } from '../lib/cx';
 
-/** Le nom d'un nombre accordé : « 1 Livraison », « 2 Livraisons » (zéro est singulier en français). */
-export const counted = (count: number, singular: string, plural = `${singular}s`): string => `${count} ${count > 1 ? plural : singular}`;
-
 /**
  * La barre d'avancement d'une Epic : ses Livraisons parmi les Enfants à livrer, en nombre. `total` n'est jamais nul (sans Enfant
  * à livrer il n'y a rien à mesurer, et les pages le disent au lieu de dessiner une barre vide). La valeur dite aux lecteurs d'écran

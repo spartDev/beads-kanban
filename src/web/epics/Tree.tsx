@@ -1,5 +1,6 @@
 import type { EpicProgress, TreeNode } from '../../domain/epics';
 import type { Issue } from '../data/types';
+import { useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { ChildRow } from './ChildRow';
 
@@ -25,8 +26,9 @@ export function Tree({
   progressOf: (epicId: string) => EpicProgress;
   depth?: number;
 }) {
+  const treeList = useT().epics.children.treeList;
   return (
-    <ul aria-label={depth === 0 ? 'Arborescence' : undefined} className={cx('flex flex-col', depth > 0 && depth <= MAX_INDENT && 'ml-2.5 border-l border-line pl-2')}>
+    <ul aria-label={depth === 0 ? treeList : undefined} className={cx('flex flex-col', depth > 0 && depth <= MAX_INDENT && 'ml-2.5 border-l border-line pl-2')}>
       {nodes.map(({ ticket, children }) => (
         <li key={ticket.id} className="min-w-0">
           <ChildRow
