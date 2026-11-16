@@ -17,7 +17,10 @@
 export type ApiErrorParamKind = 'string' | 'number' | 'string[]';
 
 export const API_ERROR_PARAMS = {
-  /** 500 (ou le code 4xx/5xx que porte l'erreur, quand son message n'est pas un texte non vide) : une erreur que rien n'avait prévue. */
+  /**
+   * Le message générique « Erreur inattendue. » : une valeur levée qui n'est pas une `Error`, un message qui n'est pas un texte non vide (500, ou le
+   * 4xx/5xx que porte l'erreur), ou le filet du gestionnaire. Une erreur imprévue dont le message se lit part sans code.
+   */
   unexpected: {},
   /** 499 : le client a fermé sa connexion avant la réponse. */
   'request-aborted': {},

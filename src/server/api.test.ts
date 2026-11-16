@@ -817,6 +817,7 @@ describe('API : codes d’erreur (bdesk-ewr.6)', () => {
     ['une plage d’avant 1970', '/api/metrics?from=1969-12-31&to=1970-01-15', 'period-too-early', { from: '1969-12-31' }],
     ['une plage trop longue', '/api/metrics?from=2025-01-01&to=2026-10-23', 'period-too-long', { days: 661, max: 366 }],
     ['un jour qui n’existe pas', '/api/metrics?from=2026-02-30&to=2026-03-02', 'period-invalid-day', { parameter: 'from', received: '2026-02-30' }],
+    ['un « to » qui n’existe pas', '/api/metrics?from=2026-03-01&to=2026-02-30', 'period-invalid-day', { parameter: 'to', received: '2026-02-30' }],
   ])('400 pour %s : message français, code et paramètres', async (_name, url, code, params) => {
     const res = await ask(url);
 
@@ -1307,7 +1308,7 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
    * bdesk-38k.52 (relecture, B1) : « Fastify ne reprend jamais la main » ne tient que si le gestionnaire ne lève pas. Or il lisait des accesseurs
    * de l'erreur (`Object.entries`, `cause`) et mettait son message tel quel dans le corps JSON : un accesseur qui lève, un message `BigInt` ou
    * circulaire (que `JSON.stringify` refuse) faisaient échouer le gestionnaire ou la réponse, et le gestionnaire par défaut de Fastify écrivait alors
-   * l'adresse demandée avec sa requête (`?token=…` mesuré sur un vrai serveur). Le corps ne reçoit que le message qui est un texte, la lecture de
+   * l'adresse demandée avec sa requête (`?token=…` mesuré sur un vrai serveur). Le corps ne reçoit que le message qui est un texte non vide, la lecture de
    * l'erreur est gardée propriété par propriété, et un filet autour de tout le gestionnaire écrit une ligne fixe et répond un 500 générique.
    */
   describe('un gestionnaire qui ne lève jamais (bdesk-38k.52)', () => {
