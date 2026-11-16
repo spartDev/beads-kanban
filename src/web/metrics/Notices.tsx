@@ -3,7 +3,7 @@ import { useId } from 'react';
 import type { MetricsUnreadableProject } from '../../shared/api';
 import { projectLabel } from '../data/projectNames';
 import type { Written } from '../data/types';
-import { useFormat, useT } from '../i18n';
+import { useFormat, useLanguage, useT } from '../i18n';
 import { Notice } from '../ui/states';
 
 /** Ce que l'adresse demandait et que la page ne sert pas : dit, au lieu d'afficher en silence d'autres chiffres. */
@@ -64,7 +64,9 @@ export function UnreadableProjects({ projects }: { projects: readonly Written<Me
         <ul className="mt-1 flex flex-col gap-1 text-ink-2">
           {projects.map((project) => (
             <li key={project.id}>
-              <strong className="font-medium text-ink">{projectLabel(project, projects)}</strong>
+              <strong className="font-medium text-ink">
+                <ProjectName project={project} among={projects} />
+              </strong>
               {texts.reasonSeparator}
               {project.reason}
             </li>
@@ -73,4 +75,14 @@ export function UnreadableProjects({ projects }: { projects: readonly Written<Me
       </div>
     </div>
   );
+}
+
+/**
+ * Le Projet d'une ligne de l'avis, comme `projectLabel` le nomme dans la langue affichée : un libellé que sa raison suit, rendu seul (comme `ProjectName` de la page « À regarder »), et non le nom d'un Projet
+ * au milieu d'une phrase, que seules `projectInSentence` et `projectList` écrivent. Les gardes ne lisent pas à travers ce composant : `data/projectSentences.test.ts` épingle donc sa seule lecture du nom,
+ * `projectLabel` avec la langue, et `unreadableProjects.test.tsx` ce que la ligne écrit.
+ */
+function ProjectName({ project, among }: { project: Written<MetricsUnreadableProject>; among: readonly Written<MetricsUnreadableProject>[] }) {
+  const { language } = useLanguage();
+  return <>{projectLabel(project, among, language)}</>;
 }

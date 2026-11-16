@@ -1,6 +1,7 @@
 import { ticketTitle } from '../data/helpers';
 import type { IssueDetail } from '../data/types';
 import { statusLabel } from '../design/issue-palette';
+import { useLanguage, useT } from '../i18n';
 import { TypeGlyph } from '../ui/IssueBadges';
 import { IssueLink } from './IssueLink';
 import { type RelationGroup, groupRelations } from './relationGroups';
@@ -13,10 +14,12 @@ import { Section } from './Section';
  * personne) ; un ticket hors du Projet n'est pas un lien, il n'y a rien à ouvrir.
  */
 export function Relations({ issue, projectId }: { issue: IssueDetail; projectId: string }) {
-  const groups = groupRelations(issue);
+  const { language } = useLanguage();
+  const t = useT();
+  const groups = groupRelations(issue, language);
   if (groups.length === 0) return null;
   return (
-    <Section title="Relations">
+    <Section title={t.kanban.relations.title}>
       <div className="flex flex-col gap-3">
         {groups.map((group) => (
           <Group key={group.id} group={group} projectId={projectId} held={issue.status !== 'closed'} />
@@ -27,6 +30,8 @@ export function Relations({ issue, projectId }: { issue: IssueDetail; projectId:
 }
 
 function Group({ group, projectId, held }: { group: RelationGroup; projectId: string; held: boolean }) {
+  const { language } = useLanguage();
+  const { relations } = useT().kanban;
   return (
     <div className="flex flex-col gap-1">
       <h4 className="text-xs font-medium text-ink-3">{group.label}</h4>
@@ -45,19 +50,19 @@ function Group({ group, projectId, held }: { group: RelationGroup; projectId: st
                 <span className="max-w-full shrink-0 wrap-anywhere font-mono text-xs text-ink-3">{id}</span>{' '}
                 {/* Le titre passe à la ligne, sous l'identifiant, quand la place manque : jamais rogné. */}
                 <span className="min-w-0 flex-1 basis-40 wrap-anywhere text-ink">{ticketTitle(ref)}</span>{' '}
-                <span className="shrink-0 text-xs text-ink-3">{statusLabel(ref.status)}</span>
+                <span className="shrink-0 text-xs text-ink-3">{statusLabel(ref.status, language)}</span>
                 {/* Un ticket « bloqué par » qui n'est pas fermé retient encore celui-ci, s'il n'est pas fermé lui-même. */}
                 {held && group.id === 'blocked-by' && ref.status !== 'closed' ? (
                   <>
                     {' '}
-                    <span className="shrink-0 rounded-full bg-danger-soft px-1.5 text-xs text-danger">Bloque encore</span>
+                    <span className="shrink-0 rounded-full bg-danger-soft px-1.5 text-xs text-danger">{relations.stillBlocking}</span>
                   </>
                 ) : null}
               </IssueLink>
             ) : (
               <span className="flex min-w-0 items-baseline gap-2 py-1">
                 <span className="min-w-0 break-all font-mono text-xs text-ink-2">{id}</span>{' '}
-                <span className="shrink-0 text-xs text-ink-3">hors du Projet</span>
+                <span className="shrink-0 text-xs text-ink-3">{relations.outsideProject}</span>
               </span>
             )}
           </li>

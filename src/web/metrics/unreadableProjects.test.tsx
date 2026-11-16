@@ -2,6 +2,8 @@ import { render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withProjectNames } from '../data/projectNames';
 import type { Project } from '../data/types';
+import { LanguageProvider } from '../i18n';
+import { LANGUAGE_STORAGE_KEY } from '../i18n/language';
 import { withAsyncTimeout } from '../test/asyncTimeout';
 import { bdeskIssues } from '../test/fixtures';
 import { renderApp } from '../test/render';
@@ -81,6 +83,21 @@ describe('l’avis des Projets illisibles, un composant', () => {
     render(<UnreadableProjects projects={withProjectNames([entry('un', 'Un Projet sans nom', 'verrou'), entry('blanc', BLANK, 'verrou')])} />);
 
     expect(await textOf('2 Projets illisibles, absents de ces chiffres')).toBe('2 Projets illisibles, absents de ces chiffres« Un Projet sans nom » : verrouUn Projet sans nom : verrou');
+  });
+});
+
+describe('l’avis des Projets illisibles, en anglais', () => {
+  it('nomme le Projet sans nom et met les autres entre guillemets, dans la langue affichée', async () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    render(
+      <LanguageProvider switchEnabled>
+        <UnreadableProjects projects={withProjectNames([entry('st', 'Sans titre', 'lock'), entry('blanc', BLANK, 'lock')], 'en')} />
+      </LanguageProvider>,
+    );
+
+    expect(await textOf('2 unreadable Projects, left out of these figures')).toBe(
+      '2 unreadable Projects, left out of these figures“Sans titre”: lockAn unnamed project: lock',
+    );
   });
 });
 

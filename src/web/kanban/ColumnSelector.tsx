@@ -1,6 +1,7 @@
+import { useFormat, useLanguage, useT } from '../i18n';
 import { cx } from '../lib/cx';
 import type { Board, ColumnId } from './columns';
-import { COLUMNS, ticketNoun } from './meta';
+import { columnsIn, ticketNoun } from './meta';
 
 /**
  * Mobile : le sélecteur de colonne. Une seule colonne est affichée à la fois ; chaque bouton annonce le nombre de
@@ -17,13 +18,16 @@ export function ColumnSelector({
   current: ColumnId;
   onSelect: (column: ColumnId) => void;
 }) {
+  const { language } = useLanguage();
+  const t = useT();
+  const format = useFormat();
   return (
     <div
       data-column-selector
       className="sticky top-12 z-10 -mx-4 bg-panel px-4 py-1.5 md:top-11 md:-mx-5 md:px-5 @min-[60rem]:hidden"
     >
-      <div role="group" aria-label="Colonne affichée" className="grid grid-cols-5 gap-0.5 rounded-lg border border-line bg-well p-0.5">
-        {COLUMNS.map(({ id, label }) => {
+      <div role="group" aria-label={t.kanban.board.columnSelector} className="grid grid-cols-5 gap-0.5 rounded-lg border border-line bg-well p-0.5">
+        {columnsIn(language).map(({ id, label }) => {
           const count = board.columns[id].length;
           const active = id === current;
           return (
@@ -39,8 +43,8 @@ export function ColumnSelector({
             >
               <span className="text-center wrap-anywhere">{label}</span>
               <span className="tnum text-xs font-semibold">
-                {count}
-                <span className="sr-only"> {ticketNoun(count)}</span>
+                {format.formatCount(count)}
+                <span className="sr-only"> {ticketNoun(count, language)}</span>
               </span>
             </button>
           );

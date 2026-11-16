@@ -1,5 +1,6 @@
 import { ImageIcon, Square, SquareCheckBig } from 'lucide-react';
 import { createContext, type ReactNode, use, useMemo, useRef } from 'react';
+import { useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { useScrollFocusable } from '../lib/useOverflow';
 import { type Align, type Block, type Inline, parseMarkdown } from './parse';
@@ -21,6 +22,7 @@ function Inlines({ nodes }: { nodes: Inline[] }) {
 }
 
 function InlineNode({ inline }: { inline: Inline }): ReactNode {
+  const { markdown } = useT().kanban;
   switch (inline.type) {
     case 'text':
       return inline.value;
@@ -61,7 +63,7 @@ function InlineNode({ inline }: { inline: Inline }): ReactNode {
       const href = safeHref(inline.src);
       const label = inline.alt || inline.src;
       return href ? (
-        <a href={href} target="_blank" rel="noopener noreferrer" title="Image distante, non chargée" className={cx(LINK, 'inline-flex items-baseline gap-1 wrap-anywhere')}>
+        <a href={href} target="_blank" rel="noopener noreferrer" title={markdown.remoteImage} className={cx(LINK, 'inline-flex items-baseline gap-1 wrap-anywhere')}>
           <ImageIcon size={12} aria-hidden="true" className="shrink-0 self-center" />
           {label}
         </a>
@@ -133,6 +135,7 @@ function Blocks({ blocks, tight = false }: { blocks: Block[]; tight?: boolean })
 }
 
 function BlockNode({ block, tight }: { block: Block; tight: boolean }): ReactNode {
+  const { markdown } = useT().kanban;
   switch (block.type) {
     case 'paragraph':
       // Dans une liste serrée, le texte d'un item n'est pas un paragraphe à part.
@@ -179,7 +182,7 @@ function BlockNode({ block, tight }: { block: Block; tight: boolean }): ReactNod
                   ) : (
                     <Square size={14} aria-hidden="true" className="mt-[3px] shrink-0 text-ink-3" />
                   )}
-                  <span className="sr-only">{item.checked ? 'Fait :' : 'À faire :'}</span>
+                  <span className="sr-only">{item.checked ? markdown.done : markdown.todo}</span>
                 </>
               )}
               {item.checked === null ? (

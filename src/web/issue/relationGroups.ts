@@ -1,4 +1,6 @@
 import type { IssueDetail, IssueRef } from '../data/types';
+import { kanban } from '../i18n/catalog/kanban';
+import type { Language } from '../i18n/language';
 
 export interface RelationItem {
   id: string;
@@ -18,20 +20,22 @@ export interface RelationGroup {
  * `blocks` : le ticket qui dépend est bloqué par sa cible ; `discovered-from` : le ticket qui dépend a été découvert en
  * travaillant sur sa cible.
  */
-const KINDS: readonly { id: string; label: string; direction: 'to' | 'from'; types: readonly string[] }[] = [
-  { id: 'parent', label: 'Parent', direction: 'to', types: ['parent-child'] },
-  { id: 'children', label: 'Enfants', direction: 'from', types: ['parent-child'] },
-  { id: 'blocked-by', label: 'Bloqué par', direction: 'to', types: ['blocks'] },
-  { id: 'blocks', label: 'Bloque', direction: 'from', types: ['blocks'] },
+type KindLabel = Exclude<keyof (typeof kanban)['fr']['relations']['kinds'], 'dependsOn' | 'dependedOnBy'>;
+
+const KINDS: readonly { id: string; label: KindLabel; direction: 'to' | 'from'; types: readonly string[] }[] = [
+  { id: 'parent', label: 'parent', direction: 'to', types: ['parent-child'] },
+  { id: 'children', label: 'children', direction: 'from', types: ['parent-child'] },
+  { id: 'blocked-by', label: 'blockedBy', direction: 'to', types: ['blocks'] },
+  { id: 'blocks', label: 'blocks', direction: 'from', types: ['blocks'] },
   // Un lien « lié à » n'a pas de sens : les deux tickets se valent, quel que soit celui qui l'a posé.
-  { id: 'related', label: 'Lié à', direction: 'to', types: ['relates-to', 'related'] },
-  { id: 'discovered-from', label: 'Découvert à partir de', direction: 'to', types: ['discovered-from'] },
-  { id: 'origin-of', label: 'À l’origine de', direction: 'from', types: ['discovered-from'] },
-  { id: 'duplicate-of', label: 'Doublon de', direction: 'to', types: ['duplicates'] },
-  { id: 'duplicates', label: 'A pour doublons', direction: 'from', types: ['duplicates'] },
+  { id: 'related', label: 'related', direction: 'to', types: ['relates-to', 'related'] },
+  { id: 'discovered-from', label: 'discoveredFrom', direction: 'to', types: ['discovered-from'] },
+  { id: 'origin-of', label: 'originOf', direction: 'from', types: ['discovered-from'] },
+  { id: 'duplicate-of', label: 'duplicateOf', direction: 'to', types: ['duplicates'] },
+  { id: 'duplicates', label: 'duplicates', direction: 'from', types: ['duplicates'] },
   // Posé sur le ticket abandonné, le lien `supersedes` a pour cible celui qui le remplace : sortant, le ticket est remplacé par sa cible.
-  { id: 'superseded-by', label: 'Remplacé par', direction: 'to', types: ['supersedes'] },
-  { id: 'supersedes', label: 'Remplace', direction: 'from', types: ['supersedes'] },
+  { id: 'superseded-by', label: 'supersededBy', direction: 'to', types: ['supersedes'] },
+  { id: 'supersedes', label: 'supersedes', direction: 'from', types: ['supersedes'] },
 ];
 
 const KNOWN_TYPES = new Set(KINDS.flatMap((kind) => kind.types));
@@ -39,9 +43,13 @@ const KNOWN_TYPES = new Set(KINDS.flatMap((kind) => kind.types));
 /**
  * Les relations d'un ticket, groupées par genre (parent, enfants, bloqué par, bloque, lié à, découvert à partir de…), avec
  * le ticket lié de chacune. Un genre sans relation n'y figure pas. Une relation que beads connaît et pas nous garde son
- * nom de type, après les autres.
+ * nom de type, après les autres. Les genres sont nommés dans `language`.
  */
-export function groupRelations({ dependencies, dependents, linked }: Pick<IssueDetail, 'dependencies' | 'dependents' | 'linked'>): RelationGroup[] {
+export function groupRelations(
+  { dependencies, dependents, linked }: Pick<IssueDetail, 'dependencies' | 'dependents' | 'linked'>,
+  language: Language = 'fr',
+): RelationGroup[] {
+  const labels = kanban[language].relations.kinds;
   const item = (id: string): RelationItem => ({ id, ref: linked[id] });
   const unique = (ids: string[]) => [...new Set(ids)];
 
@@ -51,15 +59,15 @@ export function groupRelations({ dependencies, dependents, linked }: Pick<IssueD
     const out = dependencies.filter((d) => types.includes(d.type)).map((d) => d.to);
     const incoming = dependents.filter((d) => types.includes(d.type)).map((d) => d.from);
     const ids = both ? [...out, ...incoming] : direction === 'to' ? out : incoming;
-    return { id, label, items: unique(ids).map(item) };
+    return { id, label: labels[label], items: unique(ids).map(item) };
   });
 
   const otherTypes = (types: string[]) => [...new Set(types.filter((type) => !KNOWN_TYPES.has(type)))].sort();
   for (const type of otherTypes(dependencies.map((d) => d.type))) {
-    groups.push({ id: `out:${type}`, label: `Dépend de (${type})`, items: unique(dependencies.filter((d) => d.type === type).map((d) => d.to)).map(item) });
+    groups.push({ id: `out:${type}`, label: labels.dependsOn(type), items: unique(dependencies.filter((d) => d.type === type).map((d) => d.to)).map(item) });
   }
   for (const type of otherTypes(dependents.map((d) => d.type))) {
-    groups.push({ id: `in:${type}`, label: `Dont dépendent (${type})`, items: unique(dependents.filter((d) => d.type === type).map((d) => d.from)).map(item) });
+    groups.push({ id: `in:${type}`, label: labels.dependedOnBy(type), items: unique(dependents.filter((d) => d.type === type).map((d) => d.from)).map(item) });
   }
 
   return groups.filter((group) => group.items.length > 0);

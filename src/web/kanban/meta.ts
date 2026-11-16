@@ -1,5 +1,8 @@
 import { Ban, Circle, CircleCheck, CircleDashed, Contrast, type LucideIcon } from 'lucide-react';
+import { kanban } from '../i18n/catalog/kanban';
+import type { Language } from '../i18n/language';
 import { localDateFormat } from '../lib/localDay';
+import { FORMATS } from '../metrics/format';
 import { COLUMN_IDS, type ColumnId } from './columns';
 
 export interface ColumnMeta {
@@ -18,92 +21,92 @@ export interface ColumnMeta {
   empty: (doneDays: number) => string;
 }
 
-/** « 1 jour », « 14 jours » : un seul est au singulier. */
-export const daysLabel = (days: number): string => `${days} ${days > 1 ? 'jours' : 'jour'}`;
+/** « 1 jour », « 14 jours » : un seul est au singulier (« 1 day », « 14 days »). */
+export const daysLabel = (days: number, language: Language = 'fr'): string => kanban[language].board.days(days);
 
 /** « mardi 13 octobre », dans le fuseau du navigateur à l'instant écrit (voir `localDateFormat`). */
 const weekdayAndDay = localDateFormat({ weekday: 'long', day: 'numeric', month: 'long' });
 
-const noTicket = () => 'Aucun ticket';
+/**
+ * Le premier jour de la fenêtre de Terminé, écrit dans `language` : « mardi 13 octobre », « Tue, Oct 13 ». Le jour est celui du calendrier du
+ * navigateur à l'instant écrit, comme `localDateFormat` le lit ; l'anglais passe par les formateurs de la langue (`formatDay`).
+ */
+function firstDay(since: number, language: Language): string {
+  if (language === 'fr') return weekdayAndDay(since);
+  const date = new Date(since);
+  const day = `${String(date.getFullYear()).padStart(4, '0')}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  return FORMATS[language].formatDay(day, { weekday: true });
+}
 
-export const COLUMN_META: Record<ColumnId, ColumnMeta> = {
-  backlog: {
-    id: 'backlog',
-    label: 'Backlog',
-    icon: CircleDashed,
-    hint: () => 'Ouvert, en Blocage',
-    rule: () => 'Ticket ouvert en Blocage : il dépend d’au moins un ticket qui n’est pas fermé.',
+const columnMetaIn = (language: Language): Record<ColumnId, ColumnMeta> => {
+  const { columns } = kanban[language];
+  const noTicket = () => columns.empty;
+  const plain = (id: Exclude<ColumnId, 'done'>, icon: LucideIcon): ColumnMeta => ({
+    id,
+    label: columns[id].label,
+    icon,
+    hint: () => columns[id].hint,
+    rule: () => columns[id].rule,
     empty: noTicket,
-  },
-  ready: {
-    id: 'ready',
-    label: 'Prêt',
-    icon: Circle,
-    hint: () => 'Ouvert, hors Blocage',
-    rule: () => 'Ticket ouvert dont aucune dépendance n’est en suspens (le « ready » de beads).',
-    empty: noTicket,
-  },
-  inProgress: {
-    id: 'inProgress',
-    label: 'En cours',
-    icon: Contrast,
-    hint: () => 'En cours, hors Blocage',
-    rule: () => 'Ticket en cours ou rattaché à un agent, sans dépendance en suspens.',
-    empty: noTicket,
-  },
-  blocked: {
-    id: 'blocked',
-    label: 'Bloqué',
-    icon: Ban,
-    hint: () => 'Blocage ou statut bloqué',
-    rule: () =>
-      'Ticket au statut bloqué, ou en cours (ou rattaché à un agent) mais en Blocage : il dépend d’un ticket qui n’est pas fermé.',
-    empty: noTicket,
-  },
-  done: {
-    id: 'done',
-    label: 'Terminé',
-    icon: CircleCheck,
-    // Des jours calendaires, aujourd'hui compris (voir `doneSince`) : une seule journée se dit « aujourd'hui ».
-    hint: (days) => (days === 1 ? 'Fermé aujourd’hui' : `Fermé ces ${days} derniers jours`),
-    rule: (days, since) => {
-      const window = days === 1 ? 'aujourd’hui' : `ces ${days} derniers jours, aujourd’hui compris`;
-      const from = since === undefined ? '' : `, soit depuis le ${weekdayAndDay(since)} à minuit`;
-      return `Ticket fermé ${window}${from} (jours calendaires, heure de votre navigateur).`;
+  });
+  return {
+    backlog: plain('backlog', CircleDashed),
+    ready: plain('ready', Circle),
+    inProgress: plain('inProgress', Contrast),
+    blocked: plain('blocked', Ban),
+    done: {
+      id: 'done',
+      label: columns.done.label,
+      icon: CircleCheck,
+      hint: (days) => columns.done.hint(days),
+      rule: (days, since) => columns.done.rule(days, since === undefined ? undefined : firstDay(since, language)),
+      empty: (days) => columns.done.empty(days),
     },
-    empty: (days) => (days === 1 ? 'Aucun ticket fermé aujourd’hui' : `Aucun ticket fermé ces ${days} derniers jours`),
-  },
+  };
 };
 
-/** Les colonnes dans l'ordre du flux. */
-export const COLUMNS: readonly ColumnMeta[] = COLUMN_IDS.map((id) => COLUMN_META[id]);
+const COLUMN_META_BY_LANGUAGE: Record<Language, Record<ColumnId, ColumnMeta>> = { fr: columnMetaIn('fr'), en: columnMetaIn('en') };
 
-/** « ticket » ou « tickets » : zéro est singulier en français. */
-export const ticketNoun = (count: number): string => (count > 1 ? 'tickets' : 'ticket');
+/** Les colonnes, nommées en français ; `columnMeta(language)` pour une autre langue. */
+export const COLUMN_META: Record<ColumnId, ColumnMeta> = COLUMN_META_BY_LANGUAGE.fr;
+
+/** Les colonnes nommées dans `language`, par identifiant. */
+export const columnMeta = (language: Language = 'fr'): Record<ColumnId, ColumnMeta> => COLUMN_META_BY_LANGUAGE[language];
+
+const COLUMNS_BY_LANGUAGE: Record<Language, readonly ColumnMeta[]> = {
+  fr: COLUMN_IDS.map((id) => COLUMN_META_BY_LANGUAGE.fr[id]),
+  en: COLUMN_IDS.map((id) => COLUMN_META_BY_LANGUAGE.en[id]),
+};
+
+/** Les colonnes dans l'ordre du flux, nommées en français ; `columnsIn(language)` pour une autre langue. */
+export const COLUMNS: readonly ColumnMeta[] = COLUMNS_BY_LANGUAGE.fr;
+
+/** Les colonnes dans l'ordre du flux, nommées dans `language`. */
+export const columnsIn = (language: Language = 'fr'): readonly ColumnMeta[] => COLUMNS_BY_LANGUAGE[language];
+
+/** Le nom du tiroir « En pause » (« Paused »). */
+export const pausedLabel = (language: Language = 'fr'): string => kanban[language].columns.paused;
+
+/** « ticket » ou « tickets » : zéro est singulier en français, pluriel en anglais. */
+export const ticketNoun = (count: number, language: Language = 'fr'): string => kanban[language].board.ticketNoun(count);
 
 /** « 1 ticket », « 2 tickets ». */
-export const countLabel = (count: number): string => `${count} ${ticketNoun(count)}`;
+export const countLabel = (count: number, language: Language = 'fr'): string =>
+  kanban[language].board.count(FORMATS[language].formatCount(count), count);
 
 /** Tickets fermés avant la fenêtre de Terminé, dont la date de clôture est connue. */
-export const closedEarlierLabel = (count: number): string =>
-  `${count} ${count > 1 ? 'autres fermés' : 'autre fermé'} plus tôt`;
+export const closedEarlierLabel = (count: number, language: Language = 'fr'): string =>
+  kanban[language].board.closedEarlier(FORMATS[language].formatCount(count), count);
 
 /** Tickets fermés sans date de clôture : on ne sait pas s'ils sont plus anciens que la fenêtre, on ne le prétend pas. */
-export const closedUndatedLabel = (count: number): string =>
-  `${count} ${count > 1 ? 'fermés' : 'fermé'} sans date de clôture`;
+export const closedUndatedLabel = (count: number, language: Language = 'fr'): string =>
+  kanban[language].board.closedUndated(FORMATS[language].formatCount(count), count);
 
 /**
  * L'état vide d'un tableau dont tous les tickets sont en pause : aucune colonne n'a de carte, et on dit pourquoi et où ils
  * sont. Accordé au nombre (un seul ticket, ou plusieurs).
  */
-export function onlyPausedNotice(count: number): { title: string; detail: string } {
-  return count > 1
-    ? {
-        title: `Les ${count} tickets du tableau sont tous en pause`,
-        detail: 'Reportés, épinglés ou d’un statut inconnu, ils ne sont dans aucune colonne : ils attendent dans le tiroir « En pause ».',
-      }
-    : {
-        title: 'Le seul ticket du tableau est en pause',
-        detail: 'Reporté, épinglé ou d’un statut inconnu, il n’est dans aucune colonne : il attend dans le tiroir « En pause ».',
-      };
+export function onlyPausedNotice(count: number, language: Language = 'fr'): { title: string; detail: string } {
+  const { onlyPaused } = kanban[language].board;
+  return { title: onlyPaused.title(FORMATS[language].formatCount(count), count), detail: onlyPaused.detail(count) };
 }

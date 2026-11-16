@@ -1,3 +1,6 @@
+import { kanban } from '../i18n/catalog/kanban';
+import type { Language } from '../i18n/language';
+
 /**
  * Code couleur fixe des tickets : un seul module, partagé par les cartes, les badges et (plus tard)
  * les graphiques. Les valeurs vivent dans styles.css (tokens `--type-*` et `--prio-*`, déclinés en
@@ -26,6 +29,7 @@ export type IssueType = (typeof ISSUE_TYPES)[number];
 export interface TypeMeta {
   /** Valeur beads (`bug`, `epic`…) ; le type inconnu garde sa valeur brute. */
   type: string;
+  /** Le nom du type dans la langue demandée (`typeMeta(type, language)`) ; un type personnalisé garde sa valeur brute. */
   label: string;
   /** Nom du token CSS (`--type-bug`). */
   token: string;
@@ -40,24 +44,23 @@ const typeEntry = (type: string, label: string): TypeMeta => ({
   color: `var(--type-${type})`,
 });
 
-export const TYPE_META: Record<IssueType, TypeMeta> = {
-  bug: typeEntry('bug', 'Bug'),
-  feature: typeEntry('feature', 'Fonctionnalité'),
-  task: typeEntry('task', 'Tâche'),
-  chore: typeEntry('chore', 'Maintenance'),
-  epic: typeEntry('epic', 'Epic'),
-  decision: typeEntry('decision', 'Décision'),
-  spike: typeEntry('spike', 'Spike'),
-  story: typeEntry('story', 'Story'),
-  milestone: typeEntry('milestone', 'Jalon'),
+const typeMetaIn = (language: Language): Record<IssueType, TypeMeta> => {
+  const labels = kanban[language].types;
+  return Object.fromEntries(ISSUE_TYPES.map((type) => [type, typeEntry(type, labels[type])])) as Record<IssueType, TypeMeta>;
 };
+
+/** Les types, nommés dans chaque langue (catalogue `kanban.types`). */
+const TYPE_META_BY_LANGUAGE: Record<Language, Record<IssueType, TypeMeta>> = { fr: typeMetaIn('fr'), en: typeMetaIn('en') };
+
+/** Les types nommés en français ; `typeMeta(type, language)` pour une autre langue. */
+export const TYPE_META: Record<IssueType, TypeMeta> = TYPE_META_BY_LANGUAGE.fr;
 
 export const isIssueType = (value: string): value is IssueType =>
   Object.hasOwn(TYPE_META, value);
 
-/** Métadonnées d'un type ; un type personnalisé de beads reçoit la couleur neutre. */
-export function typeMeta(type: string): TypeMeta {
-  return isIssueType(type) ? TYPE_META[type] : { ...typeEntry('other', type), type };
+/** Métadonnées d'un type, nommé dans `language` ; un type personnalisé de beads reçoit la couleur neutre et garde son nom brut. */
+export function typeMeta(type: string, language: Language = 'fr'): TypeMeta {
+  return isIssueType(type) ? TYPE_META_BY_LANGUAGE[language][type] : { ...typeEntry('other', type), type };
 }
 
 export const PRIORITIES = [0, 1, 2, 3, 4] as const;
@@ -68,6 +71,7 @@ export interface PriorityMeta {
   priority: Priority;
   /** `P0` à `P4`, comme dans la CLI bd. */
   code: string;
+  /** Le nom de la priorité dans la langue demandée (`priorityMeta(priority, language)`). */
   label: string;
   token: string;
   color: string;
@@ -81,13 +85,16 @@ const priorityEntry = (priority: Priority, label: string): PriorityMeta => ({
   color: `var(--prio-${priority})`,
 });
 
-export const PRIORITY_META: Record<Priority, PriorityMeta> = {
-  0: priorityEntry(0, 'Critique'),
-  1: priorityEntry(1, 'Haute'),
-  2: priorityEntry(2, 'Moyenne'),
-  3: priorityEntry(3, 'Basse'),
-  4: priorityEntry(4, 'Minimale'),
+const priorityMetaIn = (language: Language): Record<Priority, PriorityMeta> => {
+  const labels = kanban[language].priorities;
+  return Object.fromEntries(PRIORITIES.map((priority) => [priority, priorityEntry(priority, labels[priority])])) as Record<Priority, PriorityMeta>;
 };
+
+/** Les priorités, nommées dans chaque langue (catalogue `kanban.priorities`). */
+const PRIORITY_META_BY_LANGUAGE: Record<Language, Record<Priority, PriorityMeta>> = { fr: priorityMetaIn('fr'), en: priorityMetaIn('en') };
+
+/** Les priorités nommées en français ; `priorityMeta(priority, language)` pour une autre langue. */
+export const PRIORITY_META: Record<Priority, PriorityMeta> = PRIORITY_META_BY_LANGUAGE.fr;
 
 /** Accepte `1`, `'1'` ou `'P1'` ; renvoie null pour toute autre valeur. */
 export function parsePriority(value: unknown): Priority | null {
@@ -100,26 +107,37 @@ export function parsePriority(value: unknown): Priority | null {
   return (PRIORITIES as readonly number[]).includes(n) ? (n as Priority) : null;
 }
 
-/** Métadonnées d'une priorité ; une valeur hors 0–4 est ramenée à la plus proche. */
-export function priorityMeta(priority: number): PriorityMeta {
+/** Métadonnées d'une priorité, nommée dans `language` ; une valeur hors 0–4 est ramenée à la plus proche. */
+export function priorityMeta(priority: number, language: Language = 'fr'): PriorityMeta {
+  const meta = PRIORITY_META_BY_LANGUAGE[language];
   const parsed = parsePriority(priority);
-  if (parsed !== null) return PRIORITY_META[parsed];
-  return PRIORITY_META[Number.isFinite(priority) && priority < 0 ? 0 : 4];
+  if (parsed !== null) return meta[parsed];
+  return meta[Number.isFinite(priority) && priority < 0 ? 0 : 4];
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  open: 'ouvert',
-  in_progress: 'en cours',
-  hooked: 'rattaché à un agent',
-  blocked: 'statut bloqué',
-  deferred: 'reporté',
-  pinned: 'épinglé',
-  closed: 'fermé',
+/** Un statut que beads connaît : une clé du catalogue (qui y ajoute `unknown`, le statut vide). */
+type KnownStatus = Exclude<keyof (typeof kanban)['fr']['statuses'], 'unknown'>;
+
+/** Les statuts que beads connaît ; le compilateur refuse un statut sans libellé dans le catalogue, comme un libellé sans statut ici. */
+const KNOWN_STATUSES: Readonly<Record<KnownStatus, true>> = {
+  open: true,
+  in_progress: true,
+  hooked: true,
+  blocked: true,
+  deferred: true,
+  pinned: true,
+  closed: true,
 };
 
-/** Libellé d'un statut beads ; un statut personnalisé s'affiche tel quel, un statut vide se dit « inconnu ». */
-export const statusLabel = (status: string): string =>
-  STATUS_LABELS[status] ?? (status.trim() === '' ? 'inconnu' : status);
+/**
+ * Libellé d'un statut beads dans `language` ; un statut personnalisé s'affiche tel quel, un statut vide se dit « inconnu ». Le nom brut ne se
+ * cherche pas dans le catalogue au-delà des statuts connus : un statut personnalisé qui s'appellerait `unknown` ou `toString` reste son nom.
+ */
+export const statusLabel = (status: string, language: Language = 'fr'): string => {
+  const labels = kanban[language].statuses;
+  if (Object.hasOwn(KNOWN_STATUSES, status)) return labels[status as KnownStatus];
+  return status.trim() === '' ? labels.unknown : status;
+};
 
 /**
  * Couleur résolue d'un token (`--type-bug`) pour le thème courant, quand `var()` ne peut pas servir
