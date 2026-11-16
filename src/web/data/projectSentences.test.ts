@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { nameReads, type SentenceKind } from '../test/projectNameReads';
+import { CATALOGS } from '../i18n/catalog';
+import { CATALOG_TEXT_METHODS, nameReads, type SentenceKind } from '../test/projectNameReads';
 
 /**
  * Aucune phrase de l'interface n'écrit le nom d'un Projet telle quelle (bdesk-38k.73). Un Projet dont le dossier n'a pas de nom qu'on voie s'écrit « Sans titre » (bdesk-38k.65), et « Les tickets de Sans titre » se
@@ -61,6 +62,26 @@ const REFUSED: [string, SentenceKind, string][] = [
   ['un nom en gras entre deux textes du catalogue', 'texte JSX', 'const text = useT().shell.signalsPage;\nconst el = <p>{text.before}<strong>{project.name}</strong>{text.after}</p>;'],
   ['un nom dans un `<Link>`, après une phrase du catalogue', 'texte JSX', 'const t = useT();\nconst el = <p>{t.shell.notFound.hintBefore}<Link to={x}>{project.name}</Link></p>;'],
   ['des noms en gras que rend un `.map`, après un texte du catalogue', 'liste', 'const t = useT();\nconst el = <p>{t.shell.signalsPage.separator}{failed.map((p) => <strong key={p.id}>{p.name}</strong>)}</p>;'],
+  ['un nom en gras après un texte du catalogue choisi par une condition', 'texte JSX', 'const text = useT().shell.palette;\nconst el = <p>{n >= 2 ? text.many : text.one}<strong>{project.name}</strong></p>;'],
+  ['un nom en gras après une raison ou un texte du catalogue', 'texte JSX', 'const t = useT();\nconst el = <p>{project.reason ?? t.shell.common.unreadable}<strong>{project.name}</strong></p>;'],
+  ['un nom en gras après un gabarit qui porte un texte du catalogue', 'texte JSX', 'const text = useT().shell.palette;\nconst el = <p>{`${text.before} `}<strong>{project.name}</strong></p>;'],
+  ['un nom en gras après un texte du catalogue nettoyé', 'texte JSX', 'const text = useT().shell.palette;\nconst el = <p>{text.before.trim()} <strong>{project.name}</strong></p>;'],
+  ['un nom en gras après un texte du catalogue remplacé', 'texte JSX', 'const text = useT().shell.palette;\nconst el = <p>{text.before.replace(\'x\', \'y\')}<strong>{project.name}</strong></p>;'],
+  ['un nom en gras après un texte du catalogue choisi, puis nettoyé', 'texte JSX', 'const text = useT().shell.palette;\nconst el = <p>{(n >= 2 ? text.many : text.one).trim()}<strong>{project.name}</strong></p>;'],
+  ['un nom en gras après un texte du catalogue montré ou non', 'texte JSX', 'const text = useT().shell.palette;\nconst el = <p>{show ? text.before : null}<strong>{project.name}</strong></p>;'],
+  ['un nom en gras après un texte du catalogue caché ou non', 'texte JSX', 'const text = useT().shell.palette;\nconst el = <p>{hide ? null : text.before}<strong>{project.name}</strong></p>;'],
+  ['un nom en gras après une raison, à défaut un texte du catalogue', 'texte JSX', 'const t = useT();\nconst el = <p>{project.reason || t.shell.common.unreadable}<strong>{project.name}</strong></p>;'],
+  ['un nom en gras après un texte du catalogue sous condition', 'texte JSX', 'const text = useT().shell.palette;\nconst el = <p>{show && text.before}<strong>{project.name}</strong></p>;'],
+  ['un nom en gras après un texte du catalogue suivi d’une raison', 'texte JSX', 'const t = useT();\nconst el = <p>{t.shell.common.unreadableBecause + reason}<strong>{project.name}</strong></p>;'],
+  ['un nom en gras après une phrase du catalogue', 'texte JSX', 'const text = useT().shell.palette;\nconst el = <p>{text.results(c, n)}<strong>{project.name}</strong></p>;'],
+  ['un nom en gras après un texte du catalogue prolongé', 'texte JSX', 'const text = useT().shell.palette;\nconst el = <p>{text.before.concat(\' \')}<strong>{project.name}</strong></p>;'],
+  ['un nom en gras après des mots du catalogue joints', 'texte JSX', 'const text = useT().shell.palette;\nconst el = <p>{text.words.join(\', \')} <strong>{project.name}</strong></p>;'],
+  ['un nom en gras après un texte du catalogue passé à `String`', 'texte JSX', 'const text = useT().shell.palette;\nconst el = <p>{String(text.before)}<strong>{project.name}</strong></p>;'],
+  ['un nom en gras après une variable qui garde un texte du catalogue choisi', 'texte JSX', 'const text = useT().shell.palette;\nconst label = n >= 2 ? text.many : text.one;\nconst el = <p>{label}<strong>{project.name}</strong></p>;'],
+  ['un nom en gras après une variable qui garde une phrase du catalogue', 'texte JSX', 'const text = useT().shell.palette;\nconst label = text.results(c, n);\nconst el = <p>{label}<strong>{project.name}</strong></p>;'],
+  ['un nom confié à une fonction du catalogue choisie par une condition', 'catalogue', 'const text = useT().shell.palette;\nconst s = (n >= 2 ? text.many : text.one)(project.name);'],
+  ['un nom confié à une fonction du catalogue gardée dans une variable choisie', 'catalogue', 'const text = useT().shell.palette;\nconst say = n >= 2 ? text.many : text.one;\nconst s = say(project.name);'],
+  ['un nom confié à une partie du catalogue dont le nom est repris ailleurs par le catalogue entier', 'catalogue', 'const a = () => { const t = CATALOGS[language].shell.badges; return t.duplicateOf(project.name); };\nconst b = () => { const { language, t } = useLanguage(); return t; };'],
   ['un nom confié à une partie du catalogue reçue en paramètre', 'catalogue', "const say = (text: Messages['shell']['signalsPage']) => text.projectDescription(project.name);"],
   ['du texte JSX à côté du nom', 'texte JSX', '<p>Les tickets de {project.name}, en colonnes.</p>'],
   ['une alerte écrite en JSX', 'texte JSX', '<p role="alert">Tickets indisponibles : {project.name}.</p>'],
@@ -165,6 +186,7 @@ const ACCEPTED: [string, string][] = [
   ['un nom en argument d’une fonction qui n’est pas du catalogue', 'const text = format;\nconst s = text.label(project.name);'],
   ['un `t` qui n’est pas le catalogue, en paramètre', 'const found = tickets.filter((t) => t.labels.includes(project.name));'],
   ['un `t` qui n’est pas le catalogue, en variable', 'const t = new Map();\nt.set(project.id, project.name);'],
+  ['un badge sous une condition lue dans le catalogue, à côté d’un nom en gras', 'const t = useT();\nconst el = <li><strong>{project.name}</strong>{t.shell.palette.overviewKeywords.some((k) => k === query) && <Badge />}</li>;'],
   ['une méthode de chaîne sur un texte du catalogue', 'const t = useT();\nconst order = t.shell.common.untitled.localeCompare(project.name);'],
   ['une méthode de tableau sur des mots-clés du catalogue', 'const t = useT();\nconst found = t.shell.palette.overviewKeywords.includes(project.name);'],
   ['le catalogue sans zone, appelé sur le nom', 'const t = useT();\nconst s = t.toString(project.name);'],
@@ -222,6 +244,15 @@ describe('la garde des phrases sait lire ce qu’elle garde', () => {
 
   it.each(ACCEPTED)('accepte %s', (_form, source) => {
     expect(sentencesIn(source)).toEqual([]);
+  });
+
+  it('n’exempte aucune fonction du catalogue : aucune ne s’appelle comme une méthode de chaîne ou de tableau', () => {
+    const functions = (value: unknown): string[] =>
+      value && typeof value === 'object' ? Object.entries(value).flatMap(([key, child]) => (typeof child === 'function' ? [key] : functions(child))) : [];
+    const names = Object.values(CATALOGS).flatMap(functions);
+
+    expect(names.length).toBeGreaterThan(0);
+    expect(names.filter((name) => CATALOG_TEXT_METHODS.has(name))).toEqual([]);
   });
 
   it.each(LIMITS)('ne lit pas %s : une limite écrite en tête de ce fichier', (_form, source) => {

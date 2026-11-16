@@ -61,6 +61,12 @@ const INLINE_TAGS = new Set(
  * laissé passer `<p>Voir les tickets de <Link to={x}>{nom}</Link>, en colonnes.</p>`.
  */
 const isInlineTag = (tag: string): boolean => !/^[a-z]/.test(tag) || /[.-]/.test(tag) || INLINE_TAGS.has(tag);
+/**
+ * Les méthodes d'une chaîne ou d'un tableau qui peuvent recevoir un nom en argument : appelées sur un texte du catalogue (`t.shell.common.untitled.localeCompare(…)`,
+ * `keywords.includes(…)`), elles n'en font pas une phrase. Aucune fonction du catalogue ne doit porter l'un de ces noms (`projectSentences.test.ts` le vérifie).
+ */
+export const CATALOG_TEXT_METHODS = new Set(['localeCompare', 'includes', 'indexOf', 'lastIndexOf', 'startsWith', 'endsWith', 'concat', 'join', 'replace', 'replaceAll', 'split']);
+
 /** Les méthodes de chaîne qui rendent encore le nom, entier ou en partie, transformé ou non (`.toString()` le rend tel quel ; `.split(…)` en rend les mots, dont on prend un). */
 const STRING_METHODS_THAT_KEEP_THE_NAME = new Set([
   'toString',
@@ -140,7 +146,8 @@ export function nameReads(source: string, fileName = 'x.tsx'): NameRead[] {
   const bind = (name: ts.BindingName, kind: CatalogKind | undefined): void => {
     if (!kind) return;
     if (ts.isIdentifier(name)) {
-      catalogRoots.set(name.text, kind);
+      // Les racines valent pour tout le fichier : un nom lié ailleurs à une partie le reste (`const t = CATALOGS[l].shell.badges` puis, dans une autre fonction, `const { t } = useLanguage()`).
+      if (catalogRoots.get(name.text) !== 'part') catalogRoots.set(name.text, kind);
       return;
     }
     for (const element of name.elements) {
@@ -153,7 +160,8 @@ export function nameReads(source: string, fileName = 'x.tsx'): NameRead[] {
     }
   };
   const collectCatalogRoots = (node: ts.Node): void => {
-    if (ts.isVariableDeclaration(node) && node.initializer) bind(node.name, catalogOf(node.initializer));
+    // Une variable qui garde un texte du catalogue, même choisi ou transformé (`const label = n >= 2 ? text.many : text.one`), en est une partie.
+    if (ts.isVariableDeclaration(node) && node.initializer) bind(node.name, catalogOf(node.initializer) ?? (readsCatalog(node.initializer) ? 'part' : undefined));
     if (ts.isParameter(node) && node.type) {
       const type = node.type.getText(file).replace(/\s+/g, '');
       if (type === 'Messages') bind(node.name, 'messages');
@@ -161,33 +169,47 @@ export function nameReads(source: string, fileName = 'x.tsx'): NameRead[] {
     }
     ts.forEachChild(node, collectCatalogRoots);
   };
-  // Deux passes : une racine tirée d'une autre déclarée plus bas dans le fichier.
-  collectCatalogRoots(file);
-  collectCatalogRoots(file);
-
-  /** Les méthodes d'une chaîne ou d'un tableau : appelées sur un texte du catalogue (`t.shell.common.untitled.localeCompare(…)`), elles n'en font pas une phrase. */
-  const BUILT_IN_METHODS = new Set(['localeCompare', 'includes', 'indexOf', 'lastIndexOf', 'startsWith', 'endsWith', 'concat', 'some', 'every', 'find', 'findIndex', 'filter', 'map', 'flatMap', 'join', 'replace', 'replaceAll', 'split', 'at', 'toLowerCase', 'toUpperCase', 'trim']);
-
   /** Un appel à une fonction du catalogue : `t.shell.….f(…)`, `text.f(…)`, `useT().shell.….f(…)`, `CATALOGS[l].shell.….f(…)`, `projectDescription(…)` déstructurée. */
   const isCatalogCall = (call: ts.CallExpression): boolean => {
     const callee = call.expression;
     if (ts.isIdentifier(callee)) return catalogRoots.get(callee.text) === 'part';
-    if (ts.isPropertyAccessExpression(callee) && BUILT_IN_METHODS.has(callee.name.text)) return false;
+    const target = unwrap(callee);
+    if (ts.isConditionalExpression(target) || ts.isBinaryExpression(target)) return readsCatalog(target as ts.Expression);
+    if (ts.isPropertyAccessExpression(callee) && CATALOG_TEXT_METHODS.has(callee.name.text)) return false;
     if (!ts.isPropertyAccessExpression(callee) && !ts.isElementAccessExpression(callee)) return false;
     return catalogOf(callee) === 'part';
   };
 
-  /** Une expression qui se lit comme du texte du catalogue : un texte (`{text.before}`) ou une phrase (`{text.f(…)}`). */
+  /**
+   * Une expression qui se lit comme du texte du catalogue : un texte (`{text.before}`), une phrase (`{text.f(…)}`), et ce qui en garde un : une branche d'une condition,
+   * `??`, `||`, `+`, le côté droit de `&&` (le gauche n'est qu'une condition), un gabarit qui en porte un, `String(…)`, une méthode de chaîne appelée dessus
+   * (`{text.before.trim()}`, `.concat(…)`, `.join(…)`), un élément pris dans le texte rendu (`{text.f(…)[0]}`).
+   */
   const readsCatalog = (expression: ts.Expression): boolean => {
-    let current: ts.Expression = expression;
-    while (ts.isParenthesizedExpression(current) || ts.isNonNullExpression(current) || ts.isAsExpression(current)) current = current.expression;
-    if (ts.isCallExpression(current)) return isCatalogCall(current);
+    const current = unwrap(expression) as ts.Expression;
+    if (ts.isConditionalExpression(current)) return readsCatalog(current.whenTrue) || readsCatalog(current.whenFalse);
+    if (ts.isBinaryExpression(current) && current.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) return readsCatalog(current.right);
+    if (ts.isBinaryExpression(current) && [ts.SyntaxKind.QuestionQuestionToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.PlusToken].includes(current.operatorToken.kind))
+      return readsCatalog(current.left) || readsCatalog(current.right);
+    if (ts.isElementAccessExpression(current) && !ts.isStringLiteralLike(current.argumentExpression) && readsCatalog(current.expression)) return true;
+    if (ts.isTemplateExpression(current)) return current.templateSpans.some((span) => readsCatalog(span.expression));
+    if (ts.isCallExpression(current)) {
+      const callee = current.expression;
+      if (ts.isIdentifier(callee) && callee.text === 'String' && current.arguments[0]) return readsCatalog(current.arguments[0]);
+      if (ts.isPropertyAccessExpression(callee) && (STRING_METHODS_THAT_KEEP_THE_NAME.has(callee.name.text) || callee.name.text === 'concat' || callee.name.text === 'join') && readsCatalog(callee.expression))
+        return true;
+      return isCatalogCall(current);
+    }
     return catalogOf(current) === 'part';
   };
 
   /** L'expression sans ce qui l'enveloppe sans la changer : parenthèses, `!`, `as`, `<T>`, `satisfies`. */
   const unwrap = (node: ts.Node): ts.Node =>
     ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node) || ts.isAsExpression(node) || ts.isTypeAssertionExpression(node) || ts.isSatisfiesExpression(node) ? unwrap(node.expression) : node;
+
+  // Deux passes : une racine tirée d'une autre déclarée plus bas dans le fichier. Après `unwrap` et `readsCatalog`, dont elles se servent.
+  collectCatalogRoots(file);
+  collectCatalogRoots(file);
 
   /** Un identifiant qui est lu, et non déclaré ni écrit comme clé ou comme propriété. */
   const isReference = (id: ts.Identifier): boolean => {
