@@ -13,6 +13,7 @@ import { Skeleton } from '../ui/states';
 import { Tip } from '../ui/Tip';
 import { SECTIONS, useRouteInfo } from './navigation';
 import { usePalette, useShortcutsHelp } from './OverlayProvider';
+import { LanguageToggle } from './LanguageToggle';
 import { ThemeToggle } from './ThemeToggle';
 
 /**
@@ -73,6 +74,8 @@ export function Sidebar() {
         <ProjectList />
       </nav>
 
+      {/* Rien tant que le sélecteur de langue n'est pas activé : la barre reste telle qu'avant. */}
+      <LanguageToggle tone="side" className="mx-0.5" />
       <div className="flex items-center justify-between px-0.5">
         <ThemeToggle tone="side" />
         <Tip label="Raccourcis clavier" shortcut="?" side="top">

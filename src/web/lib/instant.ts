@@ -1,13 +1,24 @@
 import { FALLBACK_TIME_ZONE, isKnownTimeZone } from '../../domain/time-zone';
+import type { Language } from '../i18n/language';
 import { localDateFormat } from './localDay';
+import { clockTime, ENGLISH_MONTHS } from './relativeTime';
 
 // Une date et une heure du fuseau du navigateur, recalculées à chaque appel (voir `localDateFormat`).
 const medium = localDateFormat({ dateStyle: 'medium', timeStyle: 'short' });
 
-/** Un instant ISO 8601 écrit dans le fuseau du navigateur : « 5 oct. 2026, 12:00 » ; vide s'il est illisible. */
-export function formatInstant(iso: string): string {
+/** Un écrivain par langue ; l'anglais est écrit à la main (ADR 0006), avec les champs du calendrier local. */
+const INSTANT_WRITERS: Record<Language, (date: Date) => string> = {
+  fr: (date) => medium(date),
+  en: (date) => `${ENGLISH_MONTHS[date.getMonth()]?.slice(0, 3) ?? ''} ${date.getDate()}, ${date.getFullYear()}, ${clockTime(date)}`,
+};
+
+/**
+ * Un instant ISO 8601 écrit dans le fuseau du navigateur : « 5 oct. 2026, 12:00 » (en anglais « Oct 5, 2026, 12:00 ») ; vide s'il est
+ * illisible.
+ */
+export function formatInstant(iso: string, language: Language = 'fr'): string {
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? '' : medium(date);
+  return Number.isNaN(date.getTime()) ? '' : INSTANT_WRITERS[language](date);
 }
 
 /**

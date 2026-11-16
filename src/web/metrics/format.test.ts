@@ -5,6 +5,7 @@ import {
   formatDay,
   formatDayRange,
   formatDecimal,
+  FORMATS,
   formatDuration,
   formatPercent,
   formatPoints,
@@ -221,5 +222,72 @@ describe('tidy : la typographie d’une phrase du serveur', () => {
   it('ne touche à rien d’autre', () => {
     expect(tidy('Trop peu de bugs pour conclure : 3 (minimum 5).')).toBe('Trop peu de bugs pour conclure : 3 (minimum 5).');
     expect(tidy('100 % sûr, mais pas 5 pour cent')).toBe(`100${NBSP}% sûr, mais pas 5 pour cent`);
+  });
+});
+
+describe('FORMATS.en : conventions américaines, heures sur 24 h', () => {
+  const en = FORMATS.en;
+
+  it('écrit les nombres avec un point décimal et une virgule des milliers', () => {
+    expect(en.formatDecimal(3.45)).toBe('3.5');
+    expect(en.formatDecimal(10)).toBe('10');
+    expect(en.formatDecimal(-2.5)).toBe('−2.5');
+    expect(en.formatCount(1234567)).toBe('1,234,567');
+    expect(en.formatCount(-1234)).toBe('−1,234');
+    expect(en.formatSigned(1234)).toBe('+1,234');
+    expect(en.formatSigned(-1234.56, 1)).toBe('−1,234.6');
+    expect(en.formatSigned(0.04, 1)).toBe('0');
+  });
+
+  it('écrit les durées en min, h et d', () => {
+    expect(en.formatDuration(29_999)).toBe(`< 1${NBSP}min`);
+    expect(en.formatDuration(44 * MIN)).toBe(`44${NBSP}min`);
+    expect(en.formatDuration(HOUR)).toBe(`1${NBSP}h`);
+    expect(en.formatDuration(HOUR + 5 * MIN)).toBe(`1${NBSP}h${NBSP}5${NBSP}min`);
+    expect(en.formatDuration(3.44 * DAY)).toBe(`3.4${NBSP}d`);
+    expect(en.formatDuration(12.6 * DAY)).toBe(`13${NBSP}d`);
+    expect(en.formatSignedDuration(-2 * HOUR)).toBe(`−2${NBSP}h`);
+    expect(en.formatSignedDuration(10_000)).toBe(`0${NBSP}min`);
+  });
+
+  it('dit les durées en toutes lettres, au singulier pour 1 exactement', () => {
+    expect(en.spokenDuration(0)).toBe('less than a minute');
+    expect(en.spokenDuration(MIN)).toBe('1 minute');
+    expect(en.spokenDuration(2 * HOUR + MIN)).toBe('2 hours 1 minute');
+    expect(en.spokenDuration(DAY)).toBe('1 day');
+    expect(en.spokenDuration(1.5 * DAY)).toBe('1.5 days');
+    expect(en.spokenDuration(Number.NaN)).toBe('unknown duration');
+  });
+
+  it('colle « % » au nombre et écrit les points', () => {
+    expect(en.formatPercent(0.19)).toBe('19%');
+    expect(en.formatPercent(0.016)).toBe('1.6%');
+    expect(en.formatPercent(0.125, { precise: true })).toBe('12.5%');
+    expect(en.formatPoints(-0.095)).toBe(`−9.5${NBSP}pts`);
+    expect(en.spokenPoints(0.01)).toBe('1 point');
+    expect(en.spokenPoints(0.095)).toBe('9.5 points');
+  });
+
+  it('écrit les jours mois devant, avec l’année après une virgule', () => {
+    expect(en.formatDay('2026-10-04')).toBe('Oct 4');
+    expect(en.formatDay('2026-10-04', { year: true })).toBe('Oct 4, 2026');
+    expect(en.formatDay('2026-10-04', { weekday: true })).toBe('Sun, Oct 4');
+    expect(en.formatDay('2026-10-04', { weekday: true, year: true })).toBe('Sun, Oct 4, 2026');
+    expect(en.formatDayRange('2026-10-04', '2026-11-02')).toBe('Oct 4 – Nov 2, 2026');
+    expect(en.formatDayRange('2025-12-28', '2026-01-03')).toBe('Dec 28, 2025 – Jan 3, 2026');
+    expect(en.formatDayRange('2026-10-04', '2026-10-04')).toBe('Oct 4, 2026');
+  });
+
+  it('nomme chaque mois et chaque jour de la semaine, dans l’ordre', () => {
+    const months = Array.from({ length: 12 }, (_, index) => en.formatDay(`2026-${String(index + 1).padStart(2, '0')}-01`));
+    expect(months).toEqual(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month) => `${month} 1`));
+    // Du dimanche 4 au samedi 10 octobre 2026.
+    const weekdays = Array.from({ length: 7 }, (_, index) => en.formatDay(`2026-10-${String(4 + index).padStart(2, '0')}`, { weekday: true }));
+    expect(weekdays.map((day) => day.split(',')[0])).toEqual(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']);
+  });
+
+  it('les exports nommés sont les formateurs français', () => {
+    expect(formatDecimal).toBe(FORMATS.fr.formatDecimal);
+    expect(FORMATS.fr.formatCount(1234)).toBe(`1${NBSP}234`);
   });
 });

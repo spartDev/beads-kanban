@@ -18,9 +18,12 @@ export function Tip({
   label,
   shortcut,
   side = 'top',
+  lang,
   children,
 }: {
   label: string;
+  /** La langue du libellé quand ce n'est pas forcément celle de la page (un nom de langue : « English »). */
+  lang?: string;
   shortcut?: string;
   side?: 'top' | 'right' | 'bottom' | 'left';
   children: ReactElement;
@@ -43,7 +46,7 @@ export function Tip({
           collisionPadding={8}
           className="z-[60] flex max-w-72 items-center gap-2 rounded-md border border-line-strong bg-float px-2 py-1 text-xs text-ink shadow-float"
         >
-          <span>{label}</span>
+          <span lang={lang}>{label}</span>
           {shortcut ? <ShortcutKeys keys={shortcut} /> : null}
         </Tooltip.Content>
       </Tooltip.Portal>

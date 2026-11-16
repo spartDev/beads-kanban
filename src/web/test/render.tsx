@@ -6,6 +6,7 @@ import { vi } from 'vitest';
 import { createMemoryRouter, type InitialEntry, RouterProvider } from 'react-router';
 import { epicOf } from '../../domain/epics';
 import type { ApiSignal, Issue, IssueChronology, IssueDetail, IssueEpic, IssueRef, ProjectsResponse } from '../data/types';
+import { LanguageProvider } from '../i18n';
 import { routes } from '../routes';
 import { ThemeProvider } from '../theme/ThemeProvider';
 import { chronology as defaultChronology, issueDetail } from './fixtures';
@@ -149,16 +150,22 @@ export function failRequests(fetchMock: ReturnType<typeof stubApi>, match: (url:
 /**
  * Monte l'application entière (routes, thème, données) sur une URL, ou sur une entrée d'historique (`{ pathname, state }`) : comme un rechargement, qui retrouve l'état que
  * le navigateur garde avec l'entrée (la navigation est alors un `POP`). `strict` : dans `StrictMode`, où le développement la monte (rendus et effets joués deux fois).
+ * `languageSwitch` : le sélecteur de langue activé ou non, quel que soit `LANGUAGE_SWITCH_ENABLED` (par défaut, sa valeur).
  */
-export function renderApp(initialPath: InitialEntry = '/', { strict = false }: { strict?: boolean } = {}) {
+export function renderApp(
+  initialPath: InitialEntry = '/',
+  { strict = false, languageSwitch }: { strict?: boolean; languageSwitch?: boolean } = {},
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter(routes, { initialEntries: [initialPath] });
   const user = userEvent.setup();
   const app = (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <RouterProvider router={router} />
-      </ThemeProvider>
+      <LanguageProvider switchEnabled={languageSwitch}>
+        <ThemeProvider>
+          <RouterProvider router={router} />
+        </ThemeProvider>
+      </LanguageProvider>
     </QueryClientProvider>
   );
   const view = render(strict ? <StrictMode>{app}</StrictMode> : app);
