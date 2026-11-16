@@ -79,7 +79,8 @@ export function UnreadableProjects({ projects }: { projects: readonly Written<Me
 
 /**
  * Le Projet d'une ligne de l'avis, comme `projectLabel` le nomme dans la langue affichée : un libellé que sa raison suit, rendu seul (comme `ProjectName` de la page « À regarder »), et non le nom d'un Projet
- * au milieu d'une phrase, que seules `projectInSentence` et `projectList` écrivent (`data/projectSentences.test.ts`).
+ * au milieu d'une phrase, que seules `projectInSentence` et `projectList` écrivent. Les gardes ne lisent pas à travers ce composant : `data/projectSentences.test.ts` épingle donc sa seule lecture du nom,
+ * `projectLabel` avec la langue, et `unreadableProjects.test.tsx` ce que la ligne écrit.
  */
 function ProjectName({ project, among }: { project: Written<MetricsUnreadableProject>; among: readonly Written<MetricsUnreadableProject>[] }) {
   const { language } = useLanguage();

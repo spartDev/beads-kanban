@@ -305,6 +305,14 @@ describe('les phrases du code de l’interface', () => {
     expect(own.filter((read) => read.inSentence)).toEqual([]);
   });
 
+  // L'avis « Projets illisibles » des métriques rend le nom de chaque ligne seul, par un composant que les gardes ne lisent pas au-delà : sa seule lecture est épinglée, `projectLabel` dans la langue affichée.
+  // Un `project.name` à sa place, ou la langue oubliée, la change.
+  it('lit le nom d’une ligne de l’avis des Projets illisibles par `projectLabel`, dans la langue affichée, et nulle part ailleurs', () => {
+    expect(reads.filter((read) => read.file === 'src/web/metrics/Notices.tsx').map(({ text, inSentence }) => ({ text, inSentence }))).toEqual([
+      { text: 'projectLabel(project, among, language)', inSentence: undefined },
+    ]);
+  });
+
   it.each(ALLOWED)('garde l’exception de $file ($read : $why) tant qu’elle sert', ({ file, read }) => {
     expect(reads.some((candidate) => candidate.file === file && candidate.text === read && candidate.inSentence)).toBe(true);
   });
