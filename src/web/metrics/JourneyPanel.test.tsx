@@ -17,7 +17,7 @@ function renderJourney(data: MetricsResponse = metricsFixture(), signalsHref = '
   return render(
     <MemoryRouter>
       <TooltipProvider>
-        <JourneyPanel tiles={data.tiles} health={data.health} cfd={data.cfd} comparison={describeComparison(data)} signalsHref={signalsHref} />
+        <JourneyPanel tiles={data.tiles} health={data.health} cfd={data.cfd} comparison={describeComparison(data, 'fr')} signalsHref={signalsHref} />
       </TooltipProvider>
     </MemoryRouter>,
   );

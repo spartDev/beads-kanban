@@ -1,5 +1,6 @@
 import { RefreshCw } from 'lucide-react';
 import { useEffect, useId, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useFormat, useLanguage, useT } from '../i18n';
 import { cx } from '../lib/cx';
 import {
   checkRange,
@@ -12,7 +13,6 @@ import {
   type PeriodChoice,
   type Scope,
 } from './params';
-import { DIMENSION_LABELS } from './series';
 import { formatTime } from './format';
 
 interface Option<T extends string> {
@@ -43,11 +43,6 @@ function Segmented<T extends string>({ legend, name, options, value, onChange }:
   );
 }
 
-const PERIOD_OPTIONS: readonly Option<string>[] = [
-  ...PRESETS.map((range) => ({ value: range, label: `${PRESET_DAYS[range]} jours` })),
-  { value: 'custom', label: 'Personnalisée' },
-];
-
 export interface MetricsToolbarProps {
   scope: Scope;
   period: PeriodChoice;
@@ -71,8 +66,6 @@ export interface MetricsToolbarProps {
   report?: ReactNode;
 }
 
-const BUSY_TEXT = 'Calcul en cours';
-
 /**
  * Ce que la barre dit du calcul : l'heure du dernier (« Calculé à 20:00 », l'infobulle dit le fuseau), ou « Calcul en cours » tant que les chiffres affichés sont ceux de la période précédente.
  * Chacun des deux réserve la largeur de l'autre (bdesk-38k.80, relecture B1). Remplacé tel quel, le texte changeait la largeur du groupe de droite, qui passe à la ligne à quelques largeurs de
@@ -82,21 +75,29 @@ const BUSY_TEXT = 'Calcul en cours';
  * est le plus étroit des deux : la largeur au repos reste celle d'avant, à toute largeur de fenêtre.
  */
 function ComputedAt({ computed, provisional }: { computed: { at: string; timeZone: string }; provisional: boolean }) {
-  const computedAt = `Calculé à ${formatTime(computed.at, computed.timeZone)}`;
+  const texts = useT().metrics.metricsToolbar;
+  const computedAt = texts.computedAt(formatTime(computed.at, computed.timeZone));
   return (
     <span
-      title={`Fuseau ${computed.timeZone}`}
-      data-reserve={provisional ? computedAt : BUSY_TEXT}
+      title={texts.timeZone(computed.timeZone)}
+      data-reserve={provisional ? computedAt : texts.busy}
       className="tnum after:invisible after:block after:h-0 after:overflow-hidden after:content-[attr(data-reserve)]"
     >
-      {provisional ? BUSY_TEXT : computedAt}
+      {provisional ? texts.busy : computedAt}
     </span>
   );
 }
 
 /** Les réglages de la page : période, découpage, et le bouton qui recalcule (les métriques ne sont pas en direct). */
 export function MetricsToolbar({ scope, period, by, today, displayed, computed, provisional, fetching, onPeriodChange, onDimensionChange, onRefresh, report }: MetricsToolbarProps) {
+  const t = useT();
+  const texts = t.metrics.metricsToolbar;
+  const format = useFormat();
   const periodValue = period.kind === 'custom' ? 'custom' : period.range;
+  const periodOptions: readonly Option<string>[] = [
+    ...PRESETS.map((range) => ({ value: range, label: texts.presetDays(format.formatCount(PRESET_DAYS[range])) })),
+    { value: 'custom', label: texts.custom },
+  ];
 
   const choosePeriod = (value: string) => {
     if (value === 'custom') {
@@ -112,11 +113,11 @@ export function MetricsToolbar({ scope, period, by, today, displayed, computed, 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
-        <Segmented legend="Période" name="metrics-period" options={PERIOD_OPTIONS} value={periodValue} onChange={choosePeriod} />
+        <Segmented legend={texts.period} name="metrics-period" options={periodOptions} value={periodValue} onChange={choosePeriod} />
         <Segmented
-          legend="Découper par"
+          legend={texts.splitBy}
           name="metrics-by"
-          options={dimensionsOf(scope).map((value) => ({ value, label: DIMENSION_LABELS[value] }))}
+          options={dimensionsOf(scope).map((value) => ({ value, label: t.metrics.chartSeries.dimensions[value] }))}
           value={by}
           onChange={onDimensionChange}
         />
@@ -126,8 +127,8 @@ export function MetricsToolbar({ scope, period, by, today, displayed, computed, 
           <button
             type="button"
             onClick={onRefresh}
-            aria-label="Actualiser les métriques"
-            title="Actualiser les métriques"
+            aria-label={texts.refresh}
+            title={texts.refresh}
             className="grid size-9 place-items-center rounded-xl border border-line bg-panel text-ink-2 transition-colors hover:text-ink"
           >
             <RefreshCw size={14} aria-hidden="true" className={cx(fetching && 'animate-spin motion-reduce:animate-none')} />
@@ -164,10 +165,13 @@ const ANNOUNCE_DELAY_MS = 800;
  * page et la frappe suivante serait perdue. Pour le 12, « 1 » donne déjà une date valable (le 1er) : c'est elle qui restait.
  */
 function CustomRange({ from, to, today, onApply }: { from: string; to: string; today: string; onApply: (period: PeriodChoice) => void }) {
+  const texts = useT().metrics.metricsToolbar;
+  const { language } = useLanguage();
   const [draft, setDraft] = useState({ from, to });
   const [address, setAddress] = useState({ from, to });
-  // La dernière erreur dite. Entre deux annonces, `error` change à chaque chiffre mais `told` garde son texte : rien ne bouge à l'écran.
-  const [told, setTold] = useState<string | null>(null);
+  // La plage de la dernière erreur dite. Entre deux annonces, `error` change à chaque chiffre mais `told` garde sa plage : rien ne bouge à
+  // l'écran. Le texte s'écrit au rendu, dans la langue affichée : un changement de langue redit la même erreur, traduite, sans attendre.
+  const [told, setTold] = useState<{ from: string; to: string } | null>(null);
   const errorId = useId();
 
   if (address.from !== from || address.to !== to) {
@@ -177,7 +181,7 @@ function CustomRange({ from, to, today, onApply }: { from: string; to: string; t
 
   // Incomplète (un champ vidé en cours de saisie) : on attend, sans reproche. Sinon la raison que donnerait le serveur.
   const complete = draft.from !== '' && draft.to !== '';
-  const checked = complete ? checkRange(draft.from, draft.to, today) : null;
+  const checked = complete ? checkRange(draft.from, draft.to, today, language) : null;
   const error = typeof checked === 'string' ? checked : null;
 
   // Plus d'erreur : on oublie la dernière dite, sinon la prochaine, un état de passage peut-être, s'afficherait sans attendre.
@@ -185,15 +189,17 @@ function CustomRange({ from, to, today, onApply }: { from: string; to: string; t
 
   useEffect(() => {
     if (error === null) return undefined;
-    const timer = setTimeout(() => setTold(error), ANNOUNCE_DELAY_MS);
+    const timer = setTimeout(() => setTold({ from: draft.from, to: draft.to }), ANNOUNCE_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [error]);
+  }, [error, draft.from, draft.to]);
 
-  const announced = error === null ? null : told;
+  const toldText = told === null ? null : checkRange(told.from, told.to, today, language);
+  // Une plage dite qui n'est plus refusée (le jour a changé) ne dit plus rien : l'erreur courante attend le silence, comme toute autre.
+  const announced = error === null || typeof toldText !== 'string' ? null : toldText;
   // Aucun jour d'avant `MIN_CUSTOM_DAY` n'est offert, et « Au » ne commence pas avant « Du » non plus.
   const earliestEnd = draft.from > MIN_CUSTOM_DAY ? draft.from : MIN_CUSTOM_DAY;
   const tellNow = () => {
-    if (error !== null) setTold(error);
+    if (error !== null) setTold({ from: draft.from, to: draft.to });
   };
   const tellOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') tellNow();
@@ -202,15 +208,15 @@ function CustomRange({ from, to, today, onApply }: { from: string; to: string; t
   const change = (next: { from: string; to: string }) => {
     setDraft(next);
     if (next.from === '' || next.to === '') return;
-    const result = checkRange(next.from, next.to, today);
+    const result = checkRange(next.from, next.to, today, language);
     if (typeof result !== 'string' && (next.from !== from || next.to !== to)) onApply(result);
   };
 
   return (
-    <div role="group" aria-label="Plage personnalisée" className="flex flex-col gap-1.5">
+    <div role="group" aria-label={texts.customRange} className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-micro text-ink-3">
-          Du
+          {texts.from}
           <input
             type="date"
             value={draft.from}
@@ -225,7 +231,7 @@ function CustomRange({ from, to, today, onApply }: { from: string; to: string; t
           />
         </label>
         <label className="flex flex-col gap-1 text-micro text-ink-3">
-          Au
+          {texts.to}
           <input
             type="date"
             value={draft.to}

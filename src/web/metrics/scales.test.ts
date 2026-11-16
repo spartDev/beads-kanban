@@ -133,18 +133,18 @@ describe('dayTicks : les graduations de l\u2019axe du temps d\u2019une période'
   const start = Date.UTC(2026, 9, 26, 23); // minuit à Paris le 27 octobre, heure d'hiver
 
   it('place une graduation par jour quand la place suffit, au début de chaque jour', () => {
-    const ticks = dayTicks(period, 10);
+    const ticks = dayTicks(period, 10, 'fr');
     expect(ticks.map((tick) => tick.label)).toEqual(['27 oct.', '28 oct.', '29 oct.', '30 oct.', '31 oct.', '1 nov.', '2 nov.']);
     expect(ticks[0]).toMatchObject({ index: 0, time: start });
     expect(ticks[1]?.time).toBe(start + DAY);
   });
 
   it('saute des jours, régulièrement, quand la place manque', () => {
-    expect(dayTicks(period, 4).map((tick) => tick.label)).toEqual(['27 oct.', '29 oct.', '31 oct.', '2 nov.']);
+    expect(dayTicks(period, 4, 'fr').map((tick) => tick.label)).toEqual(['27 oct.', '29 oct.', '31 oct.', '2 nov.']);
   });
 
   it('après le passage à l\u2019heure d\u2019hiver (25 octobre 2026), place chaque jour à son vrai minuit : un jour de 25 h ne décale pas les suivants d\u2019une heure', () => {
-    const ticks = dayTicks({ from: '2026-10-22', days: 7, timeZone: 'Europe/Paris' }, 10);
+    const ticks = dayTicks({ from: '2026-10-22', days: 7, timeZone: 'Europe/Paris' }, 10, 'fr');
     expect(ticks.map((tick) => new Date(tick.time).toISOString())).toEqual([
       '2026-10-21T22:00:00.000Z', // 22 oct., minuit heure d'été (UTC+2)
       '2026-10-22T22:00:00.000Z',
@@ -157,7 +157,7 @@ describe('dayTicks : les graduations de l\u2019axe du temps d\u2019une période'
   });
 
   it('après le passage à l\u2019heure d\u2019été (29 mars 2026), de même : un jour de 23 h ne décale pas les suivants d\u2019une heure', () => {
-    const ticks = dayTicks({ from: '2026-03-26', days: 7, timeZone: 'Europe/Paris' }, 10);
+    const ticks = dayTicks({ from: '2026-03-26', days: 7, timeZone: 'Europe/Paris' }, 10, 'fr');
     expect(ticks.map((tick) => new Date(tick.time).toISOString())).toEqual([
       '2026-03-25T23:00:00.000Z', // 26 mars, minuit heure d'hiver (UTC+1)
       '2026-03-26T23:00:00.000Z',
@@ -170,7 +170,7 @@ describe('dayTicks : les graduations de l\u2019axe du temps d\u2019une période'
   });
 
   it('lit le fuseau des métriques, pas celui du navigateur : à Los Angeles, un minuit tombe à 07:00 ou 08:00 UTC', () => {
-    const ticks = dayTicks({ from: '2026-10-30', days: 5, timeZone: 'America/Los_Angeles' }, 10);
+    const ticks = dayTicks({ from: '2026-10-30', days: 5, timeZone: 'America/Los_Angeles' }, 10, 'fr');
     expect(ticks.map((tick) => new Date(tick.time).toISOString())).toEqual([
       '2026-10-30T07:00:00.000Z', // heure d'été (UTC−7)
       '2026-10-31T07:00:00.000Z',
@@ -196,7 +196,7 @@ describe('dayTicks : les graduations de l\u2019axe du temps d\u2019une période'
     ];
 
     it.each(cases)('%s, %s, %i jours', (timeZone, from, days) => {
-      const ticks = dayTicks({ from, days, timeZone }, days);
+      const ticks = dayTicks({ from, days, timeZone }, days, 'fr');
       expect(ticks).toHaveLength(days);
       for (const tick of ticks) {
         const day = addDays(from, tick.index);

@@ -1,4 +1,5 @@
 import { createContext, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react';
+import { useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { Skeleton } from '../ui/states';
 import { outlineOf } from './palette';
@@ -61,6 +62,7 @@ export function ChartCard({
   children: ReactNode;
 }) {
   const titleId = useId();
+  const t = useT();
   return (
     <section aria-labelledby={titleId} className={cx('flex min-w-0 flex-col gap-3 rounded-xl border border-line bg-panel p-4 @md:p-5', className)}>
       <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
@@ -90,9 +92,9 @@ export function ChartCard({
             <span aria-hidden="true" className="inline-block text-ink-3 transition-transform group-open:rotate-90">
               ›
             </span>
-            Données du graphique
+            {t.metrics.chartParts.dataToggle}
           </summary>
-          <div className="mt-2 max-h-72 overflow-auto rounded-md border border-line" tabIndex={0} role="region" aria-label={`Données : ${title}`}>
+          <div className="mt-2 max-h-72 overflow-auto rounded-md border border-line" tabIndex={0} role="region" aria-label={t.metrics.chartParts.dataRegion(title)}>
             {data}
           </div>
         </details>

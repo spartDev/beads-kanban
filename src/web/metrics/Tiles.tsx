@@ -2,11 +2,11 @@ import { ArrowDown, ArrowUp, Info, Minus, TriangleAlert, type LucideIcon } from 
 import { useId, type ReactNode } from 'react';
 import type { MetricsDurationTile, MetricsFailureRateTile, MetricsTiles, MetricsTrend, MetricsWipTile } from '../../shared/api';
 import { cx } from '../lib/cx';
+import { useFormat, useLanguage, useT } from '../i18n';
 import { Tip } from '../ui/Tip';
 import { SectionHeading } from './ChartParts';
 import type { Comparison } from './comparison';
-import { METRIC_HELP } from './metricHelp';
-import { formatCount, formatDecimal, formatPercent, tidy } from './format';
+import { failureRateReason } from './failureReason';
 import { DurationText, SpokenText } from './SpokenText';
 import { describeTrend, MEASURES, type Measure, type TrendDirection, type TrendTone } from './trend';
 
@@ -15,8 +15,6 @@ const TONE_CLASSES: Record<TrendTone, string> = { good: 'text-(--good)', bad: 't
 
 const lowerFirst = (sentence: string) => sentence.charAt(0).toLowerCase() + sentence.slice(1);
 
-export const plural = (count: number, singular: string, many = `${singular}s`) => `${formatCount(count)} ${count > 1 ? many : singular}`;
-
 /**
  * Les six tuiles de la page : Débit, Lead Time, Cycle Time, Taux d'échec, Temps de rétablissement, WIP. Chacune donne
  * sa valeur, la taille de l'échantillon, et sa tendance par rapport à la période précédente. Une tuile qui ne peut rien
@@ -24,34 +22,38 @@ export const plural = (count: number, singular: string, many = `${singular}s`) =
  */
 export function MetricTiles({ tiles, comparison }: { tiles: MetricsTiles; comparison: Comparison }) {
   const titleId = useId();
+  const t = useT();
+  const { formatCount } = useFormat();
+  const texts = t.metrics.tiles;
+  const help = t.metrics.metricHelp;
   return (
     <section aria-labelledby={titleId} className="flex flex-col gap-3">
-      <SectionHeading id={titleId}>Indicateurs</SectionHeading>
+      <SectionHeading id={titleId}>{texts.heading}</SectionHeading>
       <div className="grid grid-cols-2 gap-3 @min-[36rem]:grid-cols-3 @min-[68rem]:grid-cols-6">
         <ThroughputTile tile={tiles.throughput} comparison={comparison} />
         <DurationTile
-          title="Lead Time"
-          help={METRIC_HELP.leadTime}
+          title={texts.leadTime}
+          help={help.leadTime}
           tile={tiles.leadTime}
-          sample={plural(tiles.leadTime.n, 'Livraison')}
-          empty="Aucune Livraison sur la période."
+          sample={texts.deliveries(tiles.leadTime.n, formatCount(tiles.leadTime.n))}
+          empty={texts.noDeliveries}
           comparison={comparison}
         />
         <DurationTile
-          title="Cycle Time"
-          help={METRIC_HELP.cycleTime}
+          title={texts.cycleTime}
+          help={help.cycleTime}
           tile={tiles.cycleTime}
-          sample={plural(tiles.cycleTime.n, 'Livraison')}
-          empty="Aucune Livraison démarrée sur la période."
+          sample={texts.deliveries(tiles.cycleTime.n, formatCount(tiles.cycleTime.n))}
+          empty={texts.noStartedDeliveries}
           comparison={comparison}
         />
         <FailureRateTile tile={tiles.failureRate} comparison={comparison} />
         <DurationTile
-          title="Temps de rétablissement"
-          help={METRIC_HELP.recoveryTime}
+          title={texts.recoveryTime}
+          help={help.recoveryTime}
           tile={tiles.recoveryTime}
-          sample={plural(tiles.recoveryTime.n, 'bug critique', 'bugs critiques')}
-          empty="Aucun bug critique (P0 ou P1) livré sur la période."
+          sample={texts.criticalBugs(tiles.recoveryTime.n, formatCount(tiles.recoveryTime.n))}
+          empty={texts.noCriticalBugs}
           comparison={comparison}
         />
         <WipTile tile={tiles.wip} comparison={comparison} />
@@ -107,11 +109,12 @@ export function Tile({
 
 /** L'icône info d'une tuile : au survol ou au focus clavier, une infobulle dit ce que mesure la tuile et à quoi elle sert. */
 function MetricHelp({ title, help }: { title: string; help: string }) {
+  const t = useT();
   return (
     <Tip label={help} side="bottom">
       <button
         type="button"
-        aria-label={`À propos de ${title}`}
+        aria-label={t.metrics.tileFrame.about(title)}
         className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm text-ink-3 hover:text-ink-2"
       >
         <Info size={13} aria-hidden="true" />
@@ -138,17 +141,20 @@ export function Value({ children, caption, muted = false }: { children: ReactNod
  * infobulle rappelle à quoi la valeur est comparée.
  */
 export function Trend({ trend, measure, comparison, label, hasValue = true }: { trend: MetricsTrend; measure: Measure; comparison: Comparison; label?: string; hasValue?: boolean }) {
+  const t = useT();
+  const texts = t.metrics.tileFrame;
   const view = describeTrend(trend, measure);
   if (view.direction === 'none') {
     // « Avant : < 1 min » : l'écran écrit le chevron (comme la puce), les lecteurs d'écran entendent « moins d'une minute » (comme la phrase).
     if (trend.previous !== null) {
       return (
         <p className="text-micro text-ink-3 tnum">
-          Avant : <SpokenText written={measure.format(trend.previous)} spoken={measure.speak(trend.previous)} />
+          {texts.before}
+          <SpokenText written={measure.format(trend.previous)} spoken={measure.speak(trend.previous)} />
         </p>
       );
     }
-    return hasValue ? <p className="text-micro text-ink-3">Pas de période précédente à comparer.</p> : null;
+    return hasValue ? <p className="text-micro text-ink-3">{texts.noPrevious}</p> : null;
   }
   const Icon = TREND_ICONS[view.direction];
   return (
@@ -161,22 +167,25 @@ export function Trend({ trend, measure, comparison, label, hasValue = true }: { 
       >
         <span aria-hidden="true" className="inline-flex items-center gap-0.5 font-bold">
           <Icon size={12} strokeWidth={2.25} />
-          {view.direction === 'flat' ? 'stable' : view.delta}
+          {view.direction === 'flat' ? texts.flat : view.delta}
         </span>
         <span aria-hidden="true" className="font-normal text-ink-3">
-          avant {view.previous}
+          {texts.previous(view.previous ?? '')}
         </span>
-        <span className="sr-only">{label ? `${label} : ${lowerFirst(view.sentence)}` : view.sentence}</span>
+        <span className="sr-only">{label ? texts.labelled(label, lowerFirst(view.sentence)) : view.sentence}</span>
       </span>
     </Tip>
   );
 }
 
 function ThroughputTile({ tile, comparison }: { tile: MetricsTiles['throughput']; comparison: Comparison }) {
+  const t = useT();
+  const format = useFormat();
+  const { language } = useLanguage();
   return (
-    <Tile title="Débit" help={METRIC_HELP.throughput}>
-      <Value caption="Livraisons sur la période">{formatCount(tile.total)}</Value>
-      <Trend trend={tile.trend} measure={MEASURES.count} comparison={comparison} />
+    <Tile title={t.metrics.tiles.throughput} help={t.metrics.metricHelp.throughput}>
+      <Value caption={t.metrics.tiles.deliveriesInPeriod}>{format.formatCount(tile.total)}</Value>
+      <Trend trend={tile.trend} measure={MEASURES[language].count} comparison={comparison} />
     </Tile>
   );
 }
@@ -188,24 +197,27 @@ function ThroughputTile({ tile, comparison }: { tile: MetricsTiles['throughput']
 function DurationTile({ title, help, tile, sample, empty, comparison }: { title: string; help?: string; tile: MetricsDurationTile; sample: string; empty: string; comparison: Comparison }) {
   const defined = tile.n > 0 && tile.median !== null;
   const nothingBefore = tile.trend.median.previous === null && tile.trend.p85.previous === null;
+  const t = useT();
+  const texts = t.metrics.tiles;
+  const measure = MEASURES[useLanguage().language].duration;
   return (
     <Tile title={title} help={help} sample={sample}>
       <div className="flex flex-col gap-1">
-        <Value muted={!defined} caption={defined ? 'médiane' : empty}>
+        <Value muted={!defined} caption={defined ? texts.median : empty}>
           <DurationText ms={tile.median} />
         </Value>
-        <Trend trend={tile.trend.median} measure={MEASURES.duration} comparison={comparison} label="Médiane" hasValue={defined && !nothingBefore} />
+        <Trend trend={tile.trend.median} measure={measure} comparison={comparison} label={texts.medianLabel} hasValue={defined && !nothingBefore} />
       </div>
       {defined ? (
         <div className="flex flex-col gap-1 border-t border-line pt-2">
           <p className="flex items-baseline gap-1.5">
-            <span className="text-micro text-ink-3">P85</span>
+            <span className="text-micro text-ink-3">{texts.p85}</span>
             <span data-p85="" className="tnum text-base font-bold leading-6 text-ink">
               <DurationText ms={tile.p85} />
             </span>
           </p>
-          <Trend trend={tile.trend.p85} measure={MEASURES.duration} comparison={comparison} label="P85" hasValue={!nothingBefore} />
-          {nothingBefore ? <p className="text-micro text-ink-3">Pas de période précédente à comparer.</p> : null}
+          <Trend trend={tile.trend.p85} measure={measure} comparison={comparison} label={texts.p85} hasValue={!nothingBefore} />
+          {nothingBefore ? <p className="text-micro text-ink-3">{t.metrics.tileFrame.noPrevious}</p> : null}
         </div>
       ) : null}
     </Tile>
@@ -218,18 +230,25 @@ function DurationTile({ title, help, tile, sample, empty, comparison }: { title:
  * veut le recouper.
  */
 function FailureRateTile({ tile, comparison }: { tile: MetricsFailureRateTile; comparison: Comparison }) {
-  const sample = plural(tile.deliveries, 'Livraison');
-  const observed = tile.rate === null ? null : `Observé : ${formatPercent(tile.rate, { precise: true })} (${tile.failed} sur ${tile.deliveries})`;
+  const t = useT();
+  const { formatCount, formatPercent } = useFormat();
+  const { language } = useLanguage();
+  const texts = t.metrics.tiles;
+  const [failed, deliveries] = [formatCount(tile.failed), formatCount(tile.deliveries)];
+  const sample = texts.deliveries(tile.deliveries, deliveries);
+  const observed = tile.rate === null ? null : texts.observed(formatPercent(tile.rate, { precise: true }), failed, deliveries);
 
   if (!tile.significant) {
+    // Le motif est écrit dans la langue de l'interface à partir des codes de l'API : celui du serveur (`tile.reason`) est en français.
+    const reason = failureRateReason(tile, language);
     return (
-      <Tile title="Taux d’échec" help={METRIC_HELP.failureRate} sample={sample} indicative>
+      <Tile title={texts.failureRate} help={t.metrics.metricHelp.failureRate} sample={sample} indicative>
         <div className="flex flex-col gap-1">
           <p className="flex items-center gap-1.5 text-base font-bold leading-9 text-ink-2">
             <TriangleAlert size={15} aria-hidden="true" className="shrink-0 text-ink-3" />
-            Non significatif
+            {texts.notSignificant}
           </p>
-          {tile.reason ? <p className="text-micro leading-4 text-ink-2">{tidy(tile.reason)}</p> : null}
+          {reason ? <p className="text-micro leading-4 text-ink-2">{reason}</p> : null}
           {observed ? <p className="text-micro text-ink-3 tnum">{observed}</p> : null}
         </div>
       </Tile>
@@ -238,28 +257,32 @@ function FailureRateTile({ tile, comparison }: { tile: MetricsFailureRateTile; c
 
   const defined = tile.rate !== null;
   return (
-    <Tile title="Taux d’échec" help={METRIC_HELP.failureRate} sample={sample}>
-      <Value muted={!defined} caption={defined ? `${tile.failed} sur ${tile.deliveries} en échec` : 'Aucune Livraison sur la période.'}>
+    <Tile title={texts.failureRate} help={t.metrics.metricHelp.failureRate} sample={sample}>
+      <Value muted={!defined} caption={defined ? texts.failedOf(failed, deliveries) : texts.noDeliveries}>
         {formatPercent(tile.rate, { precise: true })}
       </Value>
-      <Trend trend={tile.trend} measure={MEASURES.rate} comparison={comparison} hasValue={defined} />
-      <p className="text-micro text-ink-3 tnum">Couverture {formatPercent(tile.coverage.ratio)}</p>
+      <Trend trend={tile.trend} measure={MEASURES[language].rate} comparison={comparison} hasValue={defined} />
+      <p className="text-micro text-ink-3 tnum">{texts.coverage(formatPercent(tile.coverage.ratio))}</p>
     </Tile>
   );
 }
 
 function WipTile({ tile, comparison }: { tile: MetricsWipTile; comparison: Comparison }) {
+  const t = useT();
+  const { formatCount, formatDecimal } = useFormat();
+  const { language } = useLanguage();
+  const texts = t.metrics.tiles;
   return (
-    <Tile title="WIP" help={METRIC_HELP.wip}>
-      <Value caption={comparison.running ? `en cours à ${comparison.asOfTime}` : 'en cours à la fin de la période'}>{formatCount(tile.current)}</Value>
+    <Tile title={texts.wip} help={t.metrics.metricHelp.wip}>
+      <Value caption={comparison.running ? texts.wipAt(comparison.asOfTime) : texts.wipAtEnd}>{formatCount(tile.current)}</Value>
       <div className="flex flex-col gap-1 border-t border-line pt-2">
         <p className="flex items-baseline gap-1.5">
-          <span className="text-micro text-ink-3">moyenne</span>
+          <span className="text-micro text-ink-3">{texts.average}</span>
           <span data-average="" className="tnum text-base font-bold leading-6 text-ink">
             {formatDecimal(tile.average, 1)}
           </span>
         </p>
-        <Trend trend={tile.trend} measure={MEASURES.average} comparison={comparison} label="Moyenne" />
+        <Trend trend={tile.trend} measure={MEASURES[language].average} comparison={comparison} label={texts.averageLabel} />
       </div>
     </Tile>
   );

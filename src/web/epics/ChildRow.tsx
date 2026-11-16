@@ -4,27 +4,29 @@ import type { EpicProgress } from '../../domain/epics';
 import { ticketTitle } from '../data/helpers';
 import type { Issue } from '../data/types';
 import { typeMeta } from '../design/issue-palette';
+import { useFormat, useT, type DisplayFormat, type Messages } from '../i18n';
 import { COLUMN_META } from '../kanban/meta';
-import { formatAge, formatDateTime } from '../lib/relativeTime';
 import { paths } from '../paths';
 import { AbandonBadge, PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
 
 /** Combien d'identifiants bloquants la ligne nomme avant de compter le reste. */
 const NAMED_BLOCKERS = 2;
 
+type Words = Messages['epics']['children'];
+
 /** La colonne d'un ticket écrite pour une ligne, ou « En pause ». */
-export function columnLabel(issue: Pick<Issue, 'status' | 'blockedBy'>): string {
+function columnLabel(issue: Pick<Issue, 'status' | 'blockedBy'>, words: Words): string {
   const column = columnFor(issue.status, issue.blockedBy.length > 0);
-  return column === null ? 'En pause' : COLUMN_META[column].label;
+  return column === null ? words.paused : COLUMN_META[column].label;
 }
 
 /** Ce qui retient un ticket qui n'est pas fermé : les tickets dont il dépend, ou le seul statut bloqué ; rien sinon. */
-function holdingBack(issue: Issue): string | null {
+function holdingBack(issue: Issue, words: Words, { formatCount }: Pick<DisplayFormat, 'formatCount'>): string | null {
   if (issue.status === 'closed') return null;
   const ids = issue.blockedBy;
-  if (ids.length === 0) return issue.status === 'blocked' ? 'Statut bloqué' : null;
+  if (ids.length === 0) return issue.status === 'blocked' ? words.statusBlocked : null;
   const named = ids.slice(0, NAMED_BLOCKERS).join(', ');
-  return `Attend ${named}${ids.length > NAMED_BLOCKERS ? ` +${ids.length - NAMED_BLOCKERS}` : ''}`;
+  return `${words.waitingFor(named)}${ids.length > NAMED_BLOCKERS ? ` +${formatCount(ids.length - NAMED_BLOCKERS)}` : ''}`;
 }
 
 /**
@@ -56,8 +58,11 @@ export function ChildRow({
   /** L'avancement de l'Epic imbriquée que la ligne représente. */
   nested?: EpicProgress;
 }) {
-  const reason = holdingBack(issue);
-  const closedAge = issue.status === 'closed' && issue.closedAt ? formatAge(issue.closedAt, now) : '';
+  const t = useT();
+  const format = useFormat();
+  const words = t.epics.children;
+  const reason = holdingBack(issue, words, format);
+  const closedAge = issue.status === 'closed' && issue.closedAt ? format.formatAge(issue.closedAt, now) : '';
   const isEpic = issue.type === 'epic';
 
   return (
@@ -76,17 +81,19 @@ export function ChildRow({
       <span className="flex max-w-full shrink-0 flex-wrap items-baseline gap-x-2 text-xs text-ink-3">
         {nested ? (
           <span className="tnum">
-            {nested.total === 0 ? 'Aucun Enfant' : `${nested.delivered} sur ${nested.total}`}
-            {nested.total === 0 ? null : <span className="sr-only"> Livraisons</span>}
+            {nested.total === 0
+              ? t.epics.progress.noChildren
+              : t.epics.progress.deliveredOf(format.formatCount(nested.delivered), format.formatCount(nested.total))}
+            {nested.total === 0 ? null : <span className="sr-only"> {t.epics.progress.deliveriesSpoken}</span>}
           </span>
         ) : null}
         {reason ? <span className="wrap-anywhere">{reason}</span> : null}
         {issue.assignee ? <span className="wrap-anywhere">{issue.assignee}</span> : null}
-        {showColumn && !isEpic ? <span className="sm:w-14">{columnLabel(issue)}</span> : null}
+        {showColumn && !isEpic ? <span className="sm:w-14">{columnLabel(issue, words)}</span> : null}
         {isEpic ? null : <PriorityBadge priority={issue.priority} className="text-xs sm:w-8" />}
         {closedAge && issue.closedAt ? (
-          <time dateTime={issue.closedAt} title={formatDateTime(issue.closedAt)} className="sm:w-[4.5rem] sm:text-right">
-            <span className="sr-only">Fermé </span>
+          <time dateTime={issue.closedAt} title={format.formatDateTime(issue.closedAt)} className="sm:w-[4.5rem] sm:text-right">
+            <span className="sr-only">{`${words.closed} `}</span>
             {closedAge}
           </time>
         ) : showColumn ? (

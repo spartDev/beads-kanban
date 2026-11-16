@@ -1,5 +1,7 @@
 import type { MetricsResponse } from '../../shared/api';
-import { dayInZone, formatDay, formatDayRange, formatTime } from './format';
+import { CATALOGS } from '../i18n/catalog';
+import type { Language } from '../i18n/language';
+import { dayInZone, FORMATS, formatTime } from './format';
 
 /**
  * Comment les tendances comparent les périodes. Une période qui court encore n'est pas finie : elle est comptée de son
@@ -29,11 +31,13 @@ export function describeComparison({
   asOf,
   previousAsOf,
   timeZone,
-}: Pick<MetricsResponse, 'period' | 'previousPeriod' | 'asOf' | 'previousAsOf' | 'timeZone'>): Comparison {
+}: Pick<MetricsResponse, 'period' | 'previousPeriod' | 'asOf' | 'previousAsOf' | 'timeZone'>, language: Language): Comparison {
+  const { formatDay, formatDayRange } = FORMATS[language];
+  const texts = CATALOGS[language].metrics.comparison;
   const running = Date.parse(asOf) < Date.parse(period.end);
   const current = formatDayRange(period.from, period.to);
   const previous = formatDayRange(previousPeriod.from, previousPeriod.to);
-  const until = (instant: string) => `${formatDay(dayInZone(instant, timeZone))} à ${formatTime(instant, timeZone)}`;
+  const until = (instant: string) => texts.at(formatDay(dayInZone(instant, timeZone)), formatTime(instant, timeZone));
 
   if (!running) {
     return {
@@ -43,8 +47,8 @@ export function describeComparison({
       previous,
       currentUntil: null,
       previousUntil: null,
-      summary: `Période terminée (${current}). Les tendances la comparent à la période précédente de même durée (${previous}).`,
-      tooltip: `Comparé à la période précédente de même durée : ${previous}.`,
+      summary: texts.finishedSummary(current, previous),
+      tooltip: texts.finishedTooltip(previous),
     };
   }
 
@@ -56,12 +60,7 @@ export function describeComparison({
     previous,
     currentUntil,
     previousUntil,
-    summary:
-      `Période en cours (${current}), comptée jusqu’au ${currentUntil}. ` +
-      `Les tendances la comparent à la période précédente (${previous}) à durée écoulée égale, ` +
-      `c’est-à-dire jusqu’au ${previousUntil}.`,
-    tooltip:
-      `Comparé à la période précédente à durée écoulée égale, jusqu’au ${previousUntil}. ` +
-      `La période en cours n’est pas finie : elle est comptée jusqu’au ${currentUntil}.`,
+    summary: texts.runningSummary(current, currentUntil, previous, previousUntil),
+    tooltip: texts.runningTooltip(currentUntil, previousUntil),
   };
 }

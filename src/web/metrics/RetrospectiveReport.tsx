@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronRight, ClipboardCopy, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { signalsQuery } from '../data/hooks';
+import { useLanguage, useT } from '../i18n';
 import { browserTimeZone } from '../lib/instant';
 import type { NamedMetricsResponse } from './api';
 import { buildRetrospective, type RetrospectiveSignals } from './retrospective';
@@ -15,6 +16,7 @@ const FEEDBACK_MS = 2_500;
  */
 export function useRetrospective({ projectId, scopeName, metrics }: { projectId: string | undefined; scopeName: string; metrics: NamedMetricsResponse | undefined }) {
   const client = useQueryClient();
+  const { language } = useLanguage();
   return useCallback(async (): Promise<string | undefined> => {
     if (!metrics) return undefined;
     let signals: RetrospectiveSignals;
@@ -23,8 +25,8 @@ export function useRetrospective({ projectId, scopeName, metrics }: { projectId:
     } catch {
       signals = { status: 'error' };
     }
-    return buildRetrospective({ scopeName, metrics, signals });
-  }, [client, projectId, scopeName, metrics]);
+    return buildRetrospective({ scopeName, metrics, signals, language });
+  }, [client, projectId, scopeName, metrics, language]);
 }
 
 /**
@@ -46,6 +48,7 @@ type CopyState = 'idle' | 'copying' | 'copied' | 'failed';
  * un lecteur d'écran ; si le navigateur refuse la copie, l'aperçu (`RetrospectivePreview`) permet de la faire à la main.
  */
 export function CopyRetrospectiveButton({ build, disabled }: { build: () => Promise<string | undefined>; disabled: boolean }) {
+  const texts = useT().metrics.retrospectiveReport;
   const [state, setState] = useState<CopyState>('idle');
 
   useEffect(() => {
@@ -70,7 +73,7 @@ export function CopyRetrospectiveButton({ build, disabled }: { build: () => Prom
   };
 
   const Icon = state === 'copied' ? Check : state === 'failed' ? TriangleAlert : ClipboardCopy;
-  const label = state === 'copied' ? 'Rapport copié' : state === 'failed' ? 'Copie impossible' : 'Copier le rapport';
+  const label = state === 'copied' ? texts.copied : state === 'failed' ? texts.failed : texts.copy;
 
   return (
     <>
@@ -78,14 +81,14 @@ export function CopyRetrospectiveButton({ build, disabled }: { build: () => Prom
         type="button"
         onClick={() => void copy()}
         disabled={disabled || state === 'copying'}
-        title="Copier le rapport de rétrospective de la période, en markdown"
+        title={texts.copyTitle}
         className="inline-flex h-9 items-center gap-2 rounded-xl border border-line bg-panel px-3 text-ui font-semibold text-ink transition-colors hover:border-line-strong disabled:opacity-60"
       >
         <Icon size={14} aria-hidden="true" className={state === 'failed' ? 'text-danger' : undefined} />
         {label}
       </button>
       <span aria-live="polite" className="sr-only">
-        {state === 'copied' ? 'Rapport de rétrospective copié dans le presse-papiers.' : state === 'failed' ? 'Copie impossible : le rapport est dans l’aperçu, à copier à la main.' : ''}
+        {state === 'copied' ? texts.copiedAnnounce : state === 'failed' ? texts.failedAnnounce : ''}
       </span>
     </>
   );
@@ -93,6 +96,7 @@ export function CopyRetrospectiveButton({ build, disabled }: { build: () => Prom
 
 /** L'aperçu du rapport, replié : il se construit à l'ouverture, avec les Signaux du moment, et se reconstruit quand les chiffres changent. */
 export function RetrospectivePreview({ build }: { build: () => Promise<string | undefined> }) {
+  const texts = useT().metrics.retrospectiveReport;
   const [open, setOpen] = useState(false);
   const [text, setText] = useState<string | undefined>(undefined);
 
@@ -111,10 +115,10 @@ export function RetrospectivePreview({ build }: { build: () => Promise<string | 
     <details className="group text-micro" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary className="-my-1 flex cursor-pointer list-none items-center gap-1 py-1 font-medium text-ink-2 hover:text-ink [&::-webkit-details-marker]:hidden">
         <ChevronRight size={14} aria-hidden="true" className="text-ink-3 transition-transform group-open:rotate-90" />
-        Aperçu du rapport de rétrospective
+        {texts.preview}
       </summary>
-      <div className="mt-2 max-h-96 overflow-auto rounded-md border border-line bg-well" tabIndex={0} role="region" aria-label="Rapport de rétrospective (markdown)">
-        <pre className="w-max min-w-full p-3 font-mono text-xs leading-5 whitespace-pre text-ink">{text ?? 'Préparation du rapport…'}</pre>
+      <div className="mt-2 max-h-96 overflow-auto rounded-md border border-line bg-well" tabIndex={0} role="region" aria-label={texts.previewRegion}>
+        <pre className="w-max min-w-full p-3 font-mono text-xs leading-5 whitespace-pre text-ink">{text ?? texts.preparing}</pre>
       </div>
     </details>
   );

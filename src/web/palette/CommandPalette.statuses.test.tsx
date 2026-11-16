@@ -51,7 +51,7 @@ describe('les régions de statut de la palette', () => {
 
     const empty = await within(dialog).findByRole('status', { name: SEARCH_STATE });
     expect(empty.textContent).toBe('Aucun résultat pour « zzzzzz ».');
-    expect(within(dialog).getByRole('status', { name: RESULT_COUNT }).textContent).toBe('0 résultats');
+    expect(within(dialog).getByRole('status', { name: RESULT_COUNT }).textContent).toBe('0 résultat');
     expect(within(dialog).queryAllByRole('status', { name: '' })).toEqual([]);
   });
 
@@ -76,7 +76,8 @@ describe('les régions de statut de la palette', () => {
 
     const statuses = within(dialog).getAllByRole('status');
     expect(statuses.map((status) => status.getAttribute('aria-label'))).toEqual([RESULT_COUNT]);
-    expect(statuses[0]?.textContent).toMatch(/^\d+ résultats$/);
+    // Un seul ticket : singulier sous 2, comme tout le français de l'interface.
+    expect(statuses[0]?.textContent).toBe('1 résultat');
   });
 
   it('sans saisie, le décompte est vide mais nommé : une région vide n’a rien d’anonyme', async () => {

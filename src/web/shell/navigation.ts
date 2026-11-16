@@ -7,9 +7,9 @@ import type { Project } from '../data/types';
 import { readStorage, writeStorage } from '../lib/storage';
 import { parsePath, sectionPath, type ProjectSection, type RouteInfo } from '../paths';
 
+/** Un onglet d'un Projet. Son nom est dans le catalogue : `t.shell.sections[id]`. */
 export interface SectionDefinition {
   id: ProjectSection;
-  label: string;
   icon: LucideIcon;
   /** Séquence « g puis… » qui y mène. */
   shortcut: string;
@@ -17,14 +17,11 @@ export interface SectionDefinition {
 
 /** Les onglets d'un Projet, dans l'ordre d'affichage. */
 export const SECTIONS: readonly SectionDefinition[] = [
-  { id: 'kanban', label: 'Kanban', icon: Columns3, shortcut: 'g k' },
-  { id: 'signals', label: 'À regarder', icon: Eye, shortcut: 'g a' },
-  { id: 'epics', label: 'Epics', icon: Layers, shortcut: 'g e' },
-  { id: 'metrics', label: 'Métriques', icon: ChartNoAxesColumn, shortcut: 'g m' },
+  { id: 'kanban', icon: Columns3, shortcut: 'g k' },
+  { id: 'signals', icon: Eye, shortcut: 'g a' },
+  { id: 'epics', icon: Layers, shortcut: 'g e' },
+  { id: 'metrics', icon: ChartNoAxesColumn, shortcut: 'g m' },
 ];
-
-export const sectionLabel = (section: ProjectSection): string =>
-  SECTIONS.find((candidate) => candidate.id === section)?.label ?? section;
 
 /** Ce que désigne l'URL courante : Projet, section, ticket. */
 export function useRouteInfo(): RouteInfo {

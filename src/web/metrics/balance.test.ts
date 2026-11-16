@@ -33,7 +33,7 @@ describe('balanceOf : l’écart Arrivées–Débit de la période', () => {
 });
 
 describe('describeBalance : les tranches de la période, avec leur écart et son cumul', () => {
-  const rows = describeBalance(metricsFixture().buckets, { unit: 'day', running: true, asOfTime: '20:00' });
+  const rows = describeBalance(metricsFixture().buckets, { unit: 'day', running: true, asOfTime: '20:00' }, 'fr');
 
   it('garde une ligne par tranche, avec les Arrivées et les Livraisons telles que l’API les donne', () => {
     // Fixture : Livraisons 2 2 0 0 2 0 12, Arrivées 1 3 0 2 1 5 8.
@@ -59,7 +59,7 @@ describe('describeBalance : les tranches de la période, avec leur écart et son
   });
 
   it('signale les semaines tronquées aux bords de la période, sans corriger les comptes', () => {
-    const weeks = describeBalance(weeklyMetricsFixture().buckets, { unit: 'week', running: true, asOfTime: '20:00' });
+    const weeks = describeBalance(weeklyMetricsFixture().buckets, { unit: 'week', running: true, asOfTime: '20:00' }, 'fr');
 
     expect(weeks.map((row) => [row.days, row.arrivals, row.deliveries])).toEqual([
       [5, 1, 0],
@@ -73,6 +73,6 @@ describe('describeBalance : les tranches de la période, avec leur écart et son
   });
 
   it('ne rend rien sans tranche', () => {
-    expect(describeBalance([] as MetricsBucket[], { unit: 'day', running: false, asOfTime: '00:00' })).toEqual([]);
+    expect(describeBalance([] as MetricsBucket[], { unit: 'day', running: false, asOfTime: '00:00' }, 'fr')).toEqual([]);
   });
 });

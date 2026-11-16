@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router';
 import { isKnownTimeZone } from '../../domain/time-zone';
 import type { MetricsResponse } from '../../shared/api';
 import { useProjects } from '../data/hooks';
+import { useLanguage, useT } from '../i18n';
 import { browserTimeZone } from '../lib/instant';
 import { useDelayed } from '../lib/useDelayed';
 import { useRetryFocus } from '../lib/useRetryFocus';
@@ -68,6 +69,8 @@ const NO_SCROLL_ANCHORING = { overflowAnchor: 'none' } as const;
  */
 export function MetricsView({ scope }: { scope: MetricsScope }) {
   const kind: Scope = scope.kind;
+  const texts = useT().metrics.metricsView;
+  const { language } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
   // Le fuseau du navigateur, celui de l'utilisateur, est la seule source des jours de la page : « aujourd'hui », que les plages ne peuvent pas
   // dépasser, et les jours que le serveur compte pour elle (`timeZone` de la requête, bdesk-38k.48). Un autre fuseau côté serveur ferait refuser
@@ -86,7 +89,7 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
   const elsewhere = lastAnswer !== undefined && !lastAnswer.honoured ? lastAnswer : undefined;
   const counted = elsewhere !== undefined && isKnownTimeZone(elsewhere.counted) ? elsewhere.counted : asked;
   const today = todayIn(counted);
-  const { period, by, notices } = useMemo(() => parseMetricsParams(searchParams, kind, today), [searchParams, kind, today]);
+  const { period, by, notices } = useMemo(() => parseMetricsParams(searchParams, kind, today, language), [searchParams, kind, today, language]);
 
   const query = useMetrics({ project: scope.kind === 'project' ? scope.project.id : undefined, period, timeZone: asked });
   // Les chiffres gardés (`isPlaceholderData`) sont ceux de la période précédente : tant qu'ils le sont, et que l'attente se remarque, l'écran le dit.
@@ -103,7 +106,7 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
   // chiffres gardés sont ceux de la précédente, et le rapport porterait le titre de l'une avec les chiffres de l'autre.
   const report = useRetrospective({
     projectId: scope.kind === 'project' ? scope.project.id : undefined,
-    scopeName: scope.kind === 'project' ? scope.project.name : 'Vue globale',
+    scopeName: scope.kind === 'project' ? scope.project.name : texts.overview,
     metrics: query.isPlaceholderData ? undefined : data,
   });
 
@@ -139,7 +142,7 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
 
       {/* Un recalcul qui garde les chiffres à l'écran n'a pas d'autre signal pour un lecteur d'écran. */}
       <p aria-live="polite" className="sr-only">
-        {query.isFetching && data ? 'Calcul des métriques en cours…' : ''}
+        {query.isFetching && data ? texts.computing : ''}
       </p>
 
       {/* L'avis suit la dernière réponse du serveur, pas les chiffres affichés : pendant que la période suivante se calcule, les chiffres gardés sont encore ceux de la
@@ -162,7 +165,7 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
           </div>
         </div>
       ) : query.isError ? (
-        <ErrorNotice error={query.error} title="Impossible de calculer les métriques" onRetry={retry} />
+        <ErrorNotice error={query.error} title={texts.errorTitle} onRetry={retry} />
       ) : (
         <MetricsSkeleton minHeight={place.height} />
       )}
@@ -183,10 +186,12 @@ function Content({
   projectHref: (id: string) => string;
   signalsHref: string;
 }) {
-  const comparison = useMemo(() => describeComparison(data), [data]);
+  const texts = useT().metrics.metricsView;
+  const { language } = useLanguage();
+  const comparison = useMemo(() => describeComparison(data, language), [data, language]);
   const view = useMemo(
-    () => describeSlices({ slices: data.slices[by], dimension: by, tiles: data.tiles, ctx, projectHref }),
-    [data, by, ctx, projectHref],
+    () => describeSlices({ slices: data.slices[by], dimension: by, tiles: data.tiles, ctx, projectHref }, language),
+    [data, by, ctx, projectHref, language],
   );
   const projectOrder = useMemo(() => data.projects.map((project) => project.id), [data.projects]);
   const span = useMemo(
@@ -203,8 +208,8 @@ function Content({
       {data.unreadable.length > 0 ? <UnreadableProjects projects={data.unreadable} /> : null}
 
       {data.projects.length === 0 ? (
-        <Notice icon={FolderSearch} title="Aucun Projet n’a pu être mesuré">
-          Les métriques se calculent depuis l’historique Dolt d’un Projet lisible. Réessayez quand sa base sera de nouveau accessible.
+        <Notice icon={FolderSearch} title={texts.noProjectTitle}>
+          {texts.noProjectBody}
         </Notice>
       ) : (
         <>
@@ -215,7 +220,7 @@ function Content({
           <LongTrendPanel trend={data.longTrend} />
 
           <section aria-labelledby={chartsId} className="flex min-w-0 flex-col gap-3">
-            <SectionHeading id={chartsId}>Graphiques</SectionHeading>
+            <SectionHeading id={chartsId}>{texts.chartsHeading}</SectionHeading>
             <div className="grid min-w-0 gap-3 @min-[56rem]:grid-cols-2">
               <div className="min-w-0 @min-[56rem]:col-span-2">
                 <CfdPanel points={data.cfd} />
@@ -245,7 +250,7 @@ function Content({
           <HealthTiles tiles={data.tiles} health={data.health} comparison={comparison} />
 
           <section aria-labelledby={flowId} className="flex min-w-0 flex-col gap-3">
-            <SectionHeading id={flowId}>Analyse du flux</SectionHeading>
+            <SectionHeading id={flowId}>{texts.flowHeading}</SectionHeading>
             <div className="grid min-w-0 gap-3 @min-[56rem]:grid-cols-2">
               <div className="min-w-0">
                 <BalancePanel buckets={data.buckets} unit={data.bucket} running={comparison.running} asOfTime={comparison.asOfTime} />
@@ -267,7 +272,7 @@ function Content({
                   projectOrder={projectOrder}
                   showProject={showProject}
                   timeZone={data.timeZone}
-                  moment={comparison.running ? `à ${comparison.asOfTime}` : 'à la fin de la période'}
+                  moment={comparison.running ? texts.momentAt(comparison.asOfTime) : texts.momentEnd}
                 />
               </div>
               <div className="min-w-0 @min-[56rem]:col-span-2">

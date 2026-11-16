@@ -1,14 +1,20 @@
+import { CATALOGS } from '../i18n/catalog';
+import type { Language } from '../i18n/language';
+
 /** Erreur d'appel à l'API. `status` vaut 0 quand le serveur est injoignable. */
 export class ApiError extends Error {
   readonly status: number;
   /** Pourquoi un Projet est illisible (503) ; absente des autres erreurs. */
   readonly reason?: string;
+  /** La réponse ne disait rien d'autre que son code HTTP : le message est un repli, que l'interface écrit dans sa langue (`describeError`). */
+  readonly bare?: true;
 
-  constructor(message: string, status: number, options?: ErrorOptions & { reason?: string }) {
+  constructor(message: string, status: number, options?: ErrorOptions & { reason?: string; bare?: true }) {
     super(message, options);
     this.name = 'ApiError';
     this.status = status;
     this.reason = options?.reason;
+    if (options?.bare) this.bare = true;
   }
 }
 
@@ -37,7 +43,7 @@ async function readApiError(res: Response): Promise<ApiError> {
   } catch {
     // Corps absent ou qui n'est pas du JSON : on retombe sur le code HTTP.
   }
-  return new ApiError(`Erreur HTTP ${res.status}`, res.status);
+  return new ApiError(`Erreur HTTP ${res.status}`, res.status, { bare: true });
 }
 
 export interface ErrorDescription {
@@ -47,27 +53,27 @@ export interface ErrorDescription {
   specific?: true;
 }
 
-/** Titre et détail affichables d'une erreur de chargement, en français. */
-export function describeError(error: unknown): ErrorDescription {
+/**
+ * Titre et détail affichables d'une erreur de chargement, dans la langue de l'interface. Le message que le serveur envoie (une raison de Dolt, le
+ * message d'une erreur) est écrit tel quel : il n'est pas traduit.
+ */
+export function describeError(error: unknown, language: Language = 'fr'): ErrorDescription {
+  const t = CATALOGS[language].shell.loadErrors;
   if (error instanceof ApiError) {
     if (error.status === 0) {
-      return {
-        title: 'Le serveur beads-desktop est injoignable',
-        detail: 'Vérifiez que la commande beads-desktop tourne toujours, puis réessayez.',
-      };
+      return { title: t.unreachable, detail: t.unreachableDetail };
     }
     // Un 503 avec raison, c'est un Projet que le serveur n'arrive pas à lire (base verrouillée, absente…).
     if (error.status === 503 && error.reason) {
-      return { title: 'Projet illisible', detail: error.reason, specific: true };
+      return { title: t.unreadableProject, detail: error.reason, specific: true };
     }
-    if (error.status >= 500) {
-      return { title: 'Le serveur a rencontré une erreur', detail: error.message };
-    }
-    if (error.status === 404) return { title: 'Ressource introuvable', detail: error.message };
-    return { title: 'Chargement impossible', detail: error.message };
+    const detail = error.bare ? t.http(error.status) : error.message;
+    if (error.status >= 500) return { title: t.serverError, detail };
+    if (error.status === 404) return { title: t.notFound, detail };
+    return { title: t.failed, detail };
   }
   return {
-    title: 'Chargement impossible',
+    title: t.failed,
     detail: error instanceof Error ? error.message : undefined,
   };
 }

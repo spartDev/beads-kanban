@@ -2,6 +2,7 @@ import { ChevronRight, FolderSearch, TriangleAlert } from 'lucide-react';
 import { Link } from 'react-router';
 import { useProjects } from '../data/hooks';
 import type { Project } from '../data/types';
+import { useFormat, useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useRetryFocus } from '../lib/useRetryFocus';
@@ -11,34 +12,38 @@ import { ProjectTile } from '../ui/ProjectTile';
 import { ErrorNotice, Notice, Skeleton } from '../ui/states';
 import { Page, SectionTitle } from './Page';
 
-const MODE_LABELS: Record<Project['mode'], string> = {
-  embedded: 'Dolt embarqué',
-  server: 'Dolt serveur',
-};
-
 export function GlobalPage() {
-  useDocumentTitle('Vue globale');
+  const t = useT();
+  const format = useFormat();
+  const text = t.shell.overview;
+  useDocumentTitle(text.title);
   const projects = useProjects();
   const retry = useRetryFocus(projects);
+  const ignored = projects.data?.ignored.length ?? 0;
 
   return (
-    <Page title="Vue globale" description="Les métriques de flux de tous les Projets suivis, recalculées sur l’ensemble de leurs tickets, puis la liste des Projets." wide>
+    <Page title={text.title} description={text.description} wide>
       <LazyMetricsView scope={{ kind: 'global' }} />
 
       {/* Une zone de focus : « Réessayer » ne perd pas le focus quand le squelette remplace l'avis d'erreur (voir `ErrorNotice`). Sans contour : le focus y est transitoire. */}
       <section aria-labelledby="projects-title" data-focus-zone="" className="flex flex-col gap-3 outline-none">
-        <SectionTitle id="projects-title">Projets suivis</SectionTitle>
+        <SectionTitle id="projects-title">{text.projects}</SectionTitle>
 
         {/* Un rafraîchissement raté garde la liste affichée : l'erreur n'a la parole que faute de données. */}
         {projects.data ? (
           projects.data.projects.length === 0 ? (
-            <Notice icon={FolderSearch} title="Aucun Projet trouvé">
+            <Notice icon={FolderSearch} title={text.none}>
               <p>
-                beads-desktop scanne <code>~/Developer</code> à la recherche de workspaces beads stockés en Dolt.
+                {text.scanBefore}
+                <code>~/Developer</code>
+                {text.scanAfter}
               </p>
               <p className="mt-1.5">
-                Pour scanner d’autres dossiers, listez-les dans la clé <code>roots</code> de{' '}
-                <code>~/.config/beads-desktop/config.json</code>, puis relancez la commande.
+                {text.configBefore}
+                <code>roots</code>
+                {text.configBetween}
+                <code>~/.config/beads-desktop/config.json</code>
+                {text.configAfter}
               </p>
             </Notice>
           ) : (
@@ -51,9 +56,9 @@ export function GlobalPage() {
             </ul>
           )
         ) : projects.isError ? (
-          <ErrorNotice error={projects.error} title="Impossible de charger les Projets" onRetry={retry} />
+          <ErrorNotice error={projects.error} title={text.loadFailed} onRetry={retry} />
         ) : (
-          <div role="status" aria-busy="true" aria-label="Chargement des Projets" className="flex flex-col gap-2">
+          <div role="status" aria-busy="true" aria-label={text.loading} className="flex flex-col gap-2">
             <Skeleton className="h-12" />
             <Skeleton className="h-12" />
             <Skeleton className="h-12" />
@@ -61,11 +66,11 @@ export function GlobalPage() {
         )}
       </section>
 
-      {projects.data && projects.data.ignored.length > 0 ? (
+      {projects.data && ignored > 0 ? (
         <details className="group rounded-xl border border-line bg-panel">
           <summary className="flex cursor-default list-none items-center gap-2 px-4 py-3 font-medium text-ink-2 hover:text-ink [&::-webkit-details-marker]:hidden">
             <ChevronRight size={14} aria-hidden="true" className="text-ink-3 transition-transform group-open:rotate-90" />
-            {projects.data.ignored.length} {projects.data.ignored.length > 1 ? 'dossiers ignorés' : 'dossier ignoré'}
+            {text.ignored(format.formatCount(ignored), ignored)}
           </summary>
           <ul className="divide-y divide-line border-t border-line">
             {projects.data.ignored.map((folder) => (
@@ -82,6 +87,7 @@ export function GlobalPage() {
 }
 
 function ProjectRow({ project }: { project: Project }) {
+  const t = useT();
   const readable = project.status === 'ok';
   const body = (
     <>
@@ -97,13 +103,13 @@ function ProjectRow({ project }: { project: Project }) {
           <span className="mt-0.5 flex items-start gap-1.5 text-ink-2">
             <TriangleAlert size={13} aria-hidden="true" className="mt-0.5 shrink-0 text-danger" />
             <span>
-              <span className="sr-only">Illisible : </span>
-              {project.reason ?? 'Illisible'}
+              <span className="sr-only">{t.shell.common.unreadableBecause}</span>
+              {project.reason ?? t.shell.common.unreadable}
             </span>
           </span>
         )}
       </span>
-      <span className="hidden shrink-0 text-xs text-ink-3 sm:inline">{MODE_LABELS[project.mode]}</span>
+      <span className="hidden shrink-0 text-xs text-ink-3 sm:inline">{t.shell.overview.modes[project.mode]}</span>
       {readable ? <ChevronRight size={14} aria-hidden="true" className="shrink-0 text-ink-3" /> : null}
     </>
   );

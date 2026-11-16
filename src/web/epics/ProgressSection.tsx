@@ -1,14 +1,19 @@
 import type { EpicGroup, EpicProgress } from '../../domain/epics';
 import { EPIC_GROUPS } from '../../domain/epics';
 import type { Issue } from '../data/types';
-import { formatPercent } from '../metrics/format';
+import { useFormat, useT, type DisplayFormat, type Messages } from '../i18n';
 import { SectionTitle } from '../pages/Page';
-import { groupMeta } from './ByColumn';
-import { counted, ProgressBar } from './ProgressBar';
+import { useGroupMeta } from './ByColumn';
+import { ProgressBar } from './ProgressBar';
 
 /** « 2 Livraisons sur 5 Enfants » : la phrase qui dit l'avancement, aux yeux comme aux lecteurs d'écran. */
-export function progressSentence({ delivered, total }: Pick<EpicProgress, 'delivered' | 'total'>): string {
-  return `${counted(delivered, 'Livraison')} sur ${counted(total, 'Enfant')}`;
+export function progressSentence(
+  { delivered, total }: Pick<EpicProgress, 'delivered' | 'total'>,
+  t: Messages,
+  { formatCount }: Pick<DisplayFormat, 'formatCount'>,
+): string {
+  const { counted, progress } = t.epics;
+  return progress.sentence(counted.deliveries(delivered, formatCount(delivered)), counted.children(total, formatCount(total)));
 }
 
 /**
@@ -17,40 +22,44 @@ export function progressSentence({ delivered, total }: Pick<EpicProgress, 'deliv
  * la section le dit au lieu d'afficher 0 %.
  */
 export function ProgressSection({ progress, groups }: { progress: EpicProgress; groups: Record<EpicGroup, Issue[]> }) {
+  const t = useT();
+  const format = useFormat();
+  const groupMeta = useGroupMeta();
+  const { counted, progress: words } = t.epics;
   const { delivered, total, ratio, abandoned, children } = progress;
+  const droppedCount = format.formatCount(abandoned);
+  const sentence = progressSentence(progress, t, format);
   return (
     <section aria-labelledby="epic-progress" className="flex flex-col gap-3">
-      <SectionTitle id="epic-progress">Avancement</SectionTitle>
+      <SectionTitle id="epic-progress">{words.title}</SectionTitle>
 
       {ratio === null ? (
         <p className="text-ink-2">
-          {children === 0
-            ? 'Aucun Enfant : cette Epic ne regroupe encore aucun ticket.'
-            : `Aucun Enfant à livrer : ${counted(abandoned, 'Enfant')} ${abandoned > 1 ? 'sont des Abandons' : 'est un Abandon'}.`}
+          {children === 0 ? words.noChildrenSentence : words.nothingToDeliver(abandoned, counted.children(abandoned, droppedCount))}
         </p>
       ) : (
         <>
           <p className="flex flex-wrap items-baseline gap-x-2">
-            <span className="tnum text-[1.1875rem] font-bold text-ink">{progressSentence(progress)}</span>
-            <span className="tnum text-ink-2">{formatPercent(ratio)}</span>
+            <span className="tnum text-[1.1875rem] font-bold text-ink">{sentence}</span>
+            <span className="tnum text-ink-2">{format.formatPercent(ratio)}</span>
           </p>
-          <ProgressBar delivered={delivered} total={total} label="Avancement de l’Epic" valueText={progressSentence(progress)} />
+          <ProgressBar delivered={delivered} total={total} label={words.bar} valueText={sentence} />
         </>
       )}
 
       {children > 0 ? (
-        <ul aria-label="Enfants par colonne" className="flex flex-wrap gap-1.5">
+        <ul aria-label={words.byColumn} className="flex flex-wrap gap-1.5">
           {EPIC_GROUPS.filter((group) => groups[group].length > 0).map((group) => {
             const { label, icon: Icon } = groupMeta(group);
             return (
               <li key={group} className="inline-flex items-center gap-1.5 rounded-full border border-line px-2 text-xs leading-5 text-ink-2">
                 <Icon size={11} strokeWidth={2} aria-hidden="true" className="shrink-0 text-ink-3" />
-                {label} <span className="tnum font-medium text-ink">{groups[group].length}</span>
+                {label} <span className="tnum font-medium text-ink">{format.formatCount(groups[group].length)}</span>
                 {/* Les Abandons sont fermés : tous dans Terminé, où la section des Enfants les compte aussi. */}
                 {group === 'done' && abandoned > 0 ? (
                   <>
                     {' '}
-                    <span className="text-ink-3">dont {counted(abandoned, 'Abandon')}</span>
+                    <span className="text-ink-3">{words.including(counted.dropped(abandoned, droppedCount))}</span>
                   </>
                 ) : null}
               </li>
@@ -59,13 +68,7 @@ export function ProgressSection({ progress, groups }: { progress: EpicProgress; 
         </ul>
       ) : null}
 
-      {abandoned > 0 ? (
-        <p className="text-xs text-ink-3">
-          {abandoned > 1
-            ? `${abandoned} Abandons (doublons ou remplacés) ne sont comptés ni parmi les Livraisons ni parmi les Enfants à livrer.`
-            : `${abandoned} Abandon (doublon ou remplacé) n’est compté ni parmi les Livraisons ni parmi les Enfants à livrer.`}
-        </p>
-      ) : null}
+      {abandoned > 0 ? <p className="text-xs text-ink-3">{words.droppedNote(abandoned, droppedCount)}</p> : null}
     </section>
   );
 }

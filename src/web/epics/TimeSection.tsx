@@ -10,22 +10,22 @@ import {
   youngEpicAge,
 } from '../../domain/epics';
 import type { Issue } from '../data/types';
-import { formatInstant } from '../lib/instant';
+import { useFormat, useT, type DisplayFormat, type Messages } from '../i18n';
 import { SectionTitle } from '../pages/Page';
 import { Duration, Figure, FigureNote } from './Figure';
 import { beyondAYear, describeSpan, finishWindow } from './forecastText';
-import { counted } from './ProgressBar';
 
 /**
  * Ce que la phrase ajoute pour une Epic de moins de 7 jours (`age`, son âge) : la fenêtre du Débit ne descend pas sous 7 jours, elle
  * remonte donc avant sa création. Sans cela, « 3 Livraisons sur les 7 derniers jours » surprend sur une Epic créée il y a 13 h.
  */
 function YoungEpic({ age }: { age: number }) {
+  const words = useT().epics.time;
   return (
     <>
-      {' (l’Epic n’a que '}
+      {words.youngEpicStart}
       <Duration ms={age} />
-      {' : la mesure remonte avant sa création)'}
+      {words.youngEpicEnd}
     </>
   );
 }
@@ -35,20 +35,23 @@ function hiddenSentence(
   reason: ForecastHiddenReason,
   { deliveries, needed, days }: { deliveries: number; needed: number; days: number },
   age: number | null,
+  t: Messages,
+  { formatCount }: Pick<DisplayFormat, 'formatCount'>,
 ): ReactNode {
+  const words = t.epics.time;
   switch (reason) {
     case 'epic-closed':
-      return 'Epic fermée : il n’y a plus de fin à prévoir.';
+      return words.epicClosed;
     case 'no-children':
-      return 'Aucun Enfant à livrer.';
+      return words.noChildren;
     case 'all-delivered':
-      return 'Tous les Enfants sont livrés ou abandonnés : l’Epic peut être fermée.';
+      return words.allDelivered;
     case 'low-throughput':
       return (
         <>
-          {`Pas assez de Débit : ${counted(deliveries, 'Livraison')} sur les ${Math.round(days)} derniers jours`}
+          {words.lowThroughput(t.epics.counted.deliveries(deliveries, formatCount(deliveries)), formatCount(Math.round(days)))}
           {age === null ? null : <YoungEpic age={age} />}
-          {`, il en faut au moins ${needed}.`}
+          {words.lowThroughputEnd(formatCount(needed))}
         </>
       );
   }
@@ -61,15 +64,17 @@ function hiddenSentence(
  * colonnes `created_at` et `closed_at`), sans attendre la lecture de l'historique du Projet.
  */
 function LeadTimeFigure({ epic, now }: { epic: Issue; now: number }) {
+  const words = useT().epics.time;
+  const { formatInstant } = useFormat();
   const created = Date.parse(epic.createdAt);
   const closed = epic.status === 'closed' && epic.closedAt ? Date.parse(epic.closedAt) : Number.NaN;
   const known = !Number.isNaN(created) && !Number.isNaN(closed);
 
   if (known) {
     return (
-      <Figure label="Lead Time" value={<Duration ms={Math.max(0, closed - created)} />}>
+      <Figure label={words.leadTime} value={<Duration ms={Math.max(0, closed - created)} />}>
         <FigureNote>
-          créée le <time dateTime={epic.createdAt}>{formatInstant(epic.createdAt)}</time> · fermée le{' '}
+          {words.createdOn} <time dateTime={epic.createdAt}>{formatInstant(epic.createdAt)}</time> · {words.closedOn}{' '}
           <time dateTime={epic.closedAt ?? undefined}>{formatInstant(epic.closedAt ?? '')}</time>
         </FigureNote>
       </Figure>
@@ -77,21 +82,21 @@ function LeadTimeFigure({ epic, now }: { epic: Issue; now: number }) {
   }
   return (
     <Figure
-      label="Lead Time"
+      label={words.leadTime}
       value={
         <>
           <span aria-hidden="true">—</span>
-          <span className="sr-only">Indéfini</span>
+          <span className="sr-only">{words.undefined}</span>
         </>
       }
     >
       <FigureNote>
         {epic.status === 'closed' ? (
-          'sans date de clôture'
+          words.noCloseDate
         ) : (
           <>
-            pas encore fermée · ouverte depuis{' '}
-            {Number.isNaN(created) ? 'une date inconnue' : <Duration ms={Math.max(0, now - created)} />}
+            {words.openSince}{' '}
+            {Number.isNaN(created) ? words.unknownDate : <Duration ms={Math.max(0, now - created)} />}
           </>
         )}
       </FigureNote>
@@ -100,17 +105,20 @@ function LeadTimeFigure({ epic, now }: { epic: Issue; now: number }) {
 }
 
 function ForecastFigure({ forecast, age }: { forecast: Forecast; age: number | null }) {
+  const t = useT();
+  const format = useFormat();
+  const { time: words, counted, span } = t.epics;
   if (forecast.kind === 'hidden') {
     return (
-      <Figure label="Prévision de fin" value={<span className="text-ink-2">Masquée</span>}>
-        <FigureNote>{hiddenSentence(forecast.reason, forecast, age)}</FigureNote>
+      <Figure label={words.forecast} value={<span className="text-ink-2">{words.hidden}</span>}>
+        <FigureNote>{hiddenSentence(forecast.reason, forecast, age, t, format)}</FigureNote>
       </Figure>
     );
   }
-  const { text, spoken } = describeSpan(forecast.fastest, forecast.slowest);
+  const { text, spoken } = describeSpan(forecast.fastest, forecast.slowest, span, format);
   return (
     <Figure
-      label="Prévision de fin"
+      label={words.forecast}
       value={
         <>
           <span aria-hidden="true">{text}</span>
@@ -119,11 +127,11 @@ function ForecastFigure({ forecast, age }: { forecast: Forecast; age: number | n
       }
     >
       {/* « Plus d'un an » ne se date pas : aucun jour n'est écrit. */}
-      {beyondAYear(forecast.fastest) ? null : <FigureNote>Fin estimée {finishWindow(forecast.from, forecast.to)}</FigureNote>}
+      {beyondAYear(forecast.fastest) ? null : <FigureNote>{words.estimatedEnd(finishWindow(forecast.from, forecast.to, span, format))}</FigureNote>}
       <FigureNote>
-        {`Au rythme de ${counted(forecast.deliveries, 'Livraison')} en ${Math.round(forecast.days)} jours`}
+        {words.pace(counted.deliveries(forecast.deliveries, format.formatCount(forecast.deliveries)), format.formatCount(Math.round(forecast.days)))}
         {age === null ? null : <YoungEpic age={age} />}
-        {`, pour ${counted(forecast.remaining, 'Enfant')} ${forecast.remaining > 1 ? 'restants' : 'restant'}.`}
+        {words.paceEnd(forecast.remaining, counted.children(forecast.remaining, format.formatCount(forecast.remaining)))}
       </FigureNote>
     </Figure>
   );
@@ -138,20 +146,18 @@ function ForecastFigure({ forecast, age }: { forecast: Forecast; age: number | n
 export function TimeSection({ epic, kids, now }: { epic: Issue; kids: readonly EpicTicket[]; now: number }) {
   const forecast = forecastEnd(epic, kids, now);
   const age = youngEpicAge(epic.createdAt, now);
+  const words = useT().epics.time;
+  const { formatCount } = useFormat();
   return (
     <section aria-labelledby="epic-time" className="flex flex-col gap-3">
-      <SectionTitle id="epic-time">Lead Time et prévision</SectionTitle>
+      <SectionTitle id="epic-time">{words.title}</SectionTitle>
       <dl className="grid gap-2 sm:grid-cols-2">
         <LeadTimeFigure epic={epic} now={now} />
         <ForecastFigure forecast={forecast} age={age} />
       </dl>
       <p className="max-w-[72ch] text-xs leading-5 text-ink-3">
-        <strong className="font-medium text-ink-2">Méthode.</strong> Le Débit récent de l’Epic (ses Livraisons des {RECENT_DAYS} derniers
-        jours, ou depuis sa création si elle est plus récente, mais jamais sur moins de {MIN_WINDOW_DAYS} jours : la mesure d’une Epic
-        de moins de {MIN_WINDOW_DAYS} jours remonte donc avant sa création) donne un rythme, appliqué aux Enfants qui restent à livrer :
-        ceux en pause comptent, les Abandons non. La fourchette tient compte du hasard d’un petit nombre de
-        Livraisons (plus ou moins la racine de leur nombre). Elle suppose que le rythme se maintient et qu’aucun Enfant n’est ajouté ; ce
-        n’est pas un engagement. Sous {MIN_DELIVERIES} Livraisons récentes, elle est masquée.
+        <strong className="font-medium text-ink-2">{words.methodTitle}</strong>{' '}
+        {words.method(formatCount(RECENT_DAYS), formatCount(MIN_WINDOW_DAYS), formatCount(MIN_DELIVERIES))}
       </p>
     </section>
   );

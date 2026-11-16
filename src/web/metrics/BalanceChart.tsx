@@ -5,14 +5,13 @@ import { scaleLinear } from '@visx/scale';
 import { LinePath } from '@visx/shape';
 import { useMemo, type PointerEvent } from 'react';
 import type { MetricsBucket, MetricsBucketUnit } from '../../shared/api';
+import { useFormat, useLanguage, useT, type DisplayFormat, type Messages } from '../i18n';
 import { type BalanceRow, describeBalance } from './balance';
 import { ChartCard, ChartFrame, ChartTooltip, DataTable, pointerIn, useActive } from './ChartParts';
 import { EmptyChart } from './CfdChart';
 import { AXIS_TEXT } from './axes';
-import { formatCount, formatSigned } from './format';
 import { outlineOf } from './palette';
 import { bandIndexAt, integerTicks, thinLabels } from './scales';
-import { plural } from './Tiles';
 
 const MARGIN = { top: 12, right: 14, bottom: 24, left: 34 };
 const ARRIVALS = 'var(--flow-ready)';
@@ -27,6 +26,10 @@ const totalsOf = (rows: readonly BalanceRow[]) => {
   return { arrivals, deliveries, net: arrivals - deliveries };
 };
 
+/** « 3 Arrivées », « 1 Livraison » : un compte et son nom, accordé. */
+const arrivalsText = (count: number, t: Messages, format: DisplayFormat) => t.metrics.balanceChart.arrivals(format.formatCount(count), count);
+const deliveriesText = (count: number, t: Messages, format: DisplayFormat) => t.metrics.chartParts.deliveries(format.formatCount(count), count);
+
 /**
  * Les courbes cumulées, à la largeur donnée. L'axe horizontal compte les bornes des tranches : de 0, au début de la période,
  * aux totaux, à la fin de la dernière tranche (maintenant, si la période court encore). Les Arrivées sont en tirets et
@@ -35,6 +38,9 @@ const totalsOf = (rows: readonly BalanceRow[]) => {
  */
 export function BalancePlot({ rows, width, height }: { rows: readonly BalanceRow[]; width: number; height: number }) {
   const { active, frame, show, leave } = useActive<number>();
+  const t = useT();
+  const format = useFormat();
+  const text = t.metrics.balanceChart;
   const innerWidth = Math.max(0, width - MARGIN.left - MARGIN.right);
   const innerHeight = Math.max(0, height - MARGIN.top - MARGIN.bottom);
   const count = rows.length;
@@ -65,7 +71,12 @@ export function BalancePlot({ rows, width, height }: { rows: readonly BalanceRow
         width={width}
         height={height}
         role="img"
-        aria-label={`Arrivées et Débit cumulés : ${plural(totals.arrivals, 'Arrivée')} et ${plural(totals.deliveries, 'Livraison')} sur ${count} ${count > 1 ? 'tranches' : 'tranche'}, écart ${formatSigned(totals.net)}.`}
+        aria-label={text.ariaLabel(
+          arrivalsText(totals.arrivals, t, format),
+          deliveriesText(totals.deliveries, t, format),
+          t.metrics.chartParts.buckets(format.formatCount(count), count),
+          format.formatSigned(totals.net),
+        )}
         className="block overflow-visible"
       >
         <Group left={MARGIN.left} top={MARGIN.top}>
@@ -100,7 +111,7 @@ export function BalancePlot({ rows, width, height }: { rows: readonly BalanceRow
             tickValues={yTicks}
             hideAxisLine
             hideTicks
-            tickFormat={(value) => formatCount(Number(value))}
+            tickFormat={(value) => format.formatCount(Number(value))}
             tickLabelProps={() => ({ ...AXIS_TEXT, textAnchor: 'end', dx: '-0.5em', dy: '0.33em' })}
           />
           <AxisBottom
@@ -127,11 +138,9 @@ export function BalancePlot({ rows, width, height }: { rows: readonly BalanceRow
       {active && row ? (
         <ChartTooltip pointer={active} bounds={{ width, height }}>
           <p className="font-medium">{row.title}</p>
-          <p className="tnum">
-            Arrivées {formatCount(row.arrivals)} · Livraisons {formatCount(row.deliveries)}
-          </p>
+          <p className="tnum">{text.counts(format.formatCount(row.arrivals), format.formatCount(row.deliveries))}</p>
           <p className="tnum text-ink-2">
-            Cumul : {plural(row.cumulativeArrivals, 'Arrivée')}, {plural(row.cumulativeDeliveries, 'Livraison')}
+            {text.cumulative(arrivalsText(row.cumulativeArrivals, t, format), deliveriesText(row.cumulativeDeliveries, t, format))}
           </p>
           {row.note ? <p className="text-ink-2">{row.note}</p> : null}
         </ChartTooltip>
@@ -167,31 +176,40 @@ export function BalancePanel({
   running: boolean;
   asOfTime: string;
 }) {
-  const rows = useMemo(() => describeBalance(buckets, { unit, running, asOfTime }), [buckets, unit, running, asOfTime]);
+  const t = useT();
+  const format = useFormat();
+  const { language } = useLanguage();
+  const text = t.metrics.balanceChart;
+  const rows = useMemo(() => describeBalance(buckets, { unit, running, asOfTime }, language), [buckets, unit, running, asOfTime, language]);
   const totals = totalsOf(rows);
   const empty = totals.arrivals === 0 && totals.deliveries === 0;
 
   return (
     <ChartCard
       className="h-full"
-      title="Arrivées et Débit cumulés"
-      description={`${plural(totals.arrivals, 'Arrivée')} et ${plural(totals.deliveries, 'Livraison')} sur la période, cumulées par ${unit === 'day' ? 'jour' : 'semaine (du lundi au dimanche)'}. L’écart est de ${formatSigned(totals.net)}.`}
+      title={text.title}
+      description={text.description(
+        arrivalsText(totals.arrivals, t, format),
+        deliveriesText(totals.deliveries, t, format),
+        t.metrics.chartParts.unit[unit],
+        format.formatSigned(totals.net),
+      )}
       legend={
-        <ul aria-label="Légende des Arrivées et du Débit" className="flex flex-wrap gap-x-4 gap-y-1 text-micro text-ink-2">
+        <ul aria-label={text.legend} className="flex flex-wrap gap-x-4 gap-y-1 text-micro text-ink-2">
           <li className="inline-flex items-center gap-1.5">
             <LineSample color={ARRIVALS} dashed round />
-            Arrivées
+            {text.arrivalsLabel}
           </li>
           <li className="inline-flex items-center gap-1.5">
             <LineSample color={DELIVERIES} />
-            Livraisons
+            {text.deliveriesLabel}
           </li>
         </ul>
       }
       data={<BalanceTable rows={rows} />}
     >
       {empty ? (
-        <EmptyChart>Aucune Arrivée ni Livraison sur cette période.</EmptyChart>
+        <EmptyChart>{text.empty}</EmptyChart>
       ) : (
         <ChartFrame height={260}>{({ width, height }) => <BalancePlot rows={rows} width={width} height={height} />}</ChartFrame>
       )}
@@ -200,14 +218,25 @@ export function BalancePanel({
 }
 
 function BalanceTable({ rows }: { rows: readonly BalanceRow[] }) {
-  const numeric = ['Arrivées', 'Livraisons', 'Écart', 'Arrivées cumulées', 'Livraisons cumulées', 'Écart cumulé'];
+  const t = useT();
+  const format = useFormat();
+  const text = t.metrics.balanceChart;
+  const columns = t.metrics.chartParts;
+  const numeric = [
+    text.arrivalsColumn,
+    columns.deliveriesColumn,
+    text.netColumn,
+    text.cumulativeArrivalsColumn,
+    text.cumulativeDeliveriesColumn,
+    text.cumulativeNetColumn,
+  ];
   return (
     <DataTable
-      caption="Arrivées et Livraisons de chaque tranche, et leur cumul"
+      caption={text.caption}
       head={
         <tr>
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Tranche
+            {columns.bucketColumn}
           </th>
           {numeric.map((label) => (
             <th key={label} scope="col" className="px-3 py-1.5 text-right font-medium">
@@ -215,7 +244,7 @@ function BalanceTable({ rows }: { rows: readonly BalanceRow[] }) {
             </th>
           ))}
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Remarque
+            {columns.noteColumn}
           </th>
         </tr>
       }
@@ -225,12 +254,12 @@ function BalanceTable({ rows }: { rows: readonly BalanceRow[] }) {
           <th scope="row" className="whitespace-nowrap px-3 py-1 text-left font-normal text-ink-2">
             {row.title}
           </th>
-          <td className="px-3 py-1 text-right">{formatCount(row.arrivals)}</td>
-          <td className="px-3 py-1 text-right">{formatCount(row.deliveries)}</td>
-          <td className="px-3 py-1 text-right font-medium">{formatSigned(row.net)}</td>
-          <td className="px-3 py-1 text-right">{formatCount(row.cumulativeArrivals)}</td>
-          <td className="px-3 py-1 text-right">{formatCount(row.cumulativeDeliveries)}</td>
-          <td className="px-3 py-1 text-right font-medium">{formatSigned(row.cumulativeNet)}</td>
+          <td className="px-3 py-1 text-right">{format.formatCount(row.arrivals)}</td>
+          <td className="px-3 py-1 text-right">{format.formatCount(row.deliveries)}</td>
+          <td className="px-3 py-1 text-right font-medium">{format.formatSigned(row.net)}</td>
+          <td className="px-3 py-1 text-right">{format.formatCount(row.cumulativeArrivals)}</td>
+          <td className="px-3 py-1 text-right">{format.formatCount(row.cumulativeDeliveries)}</td>
+          <td className="px-3 py-1 text-right font-medium">{format.formatSigned(row.cumulativeNet)}</td>
           <td className="px-3 py-1 text-ink-2">{row.note ?? ''}</td>
         </tr>
       ))}

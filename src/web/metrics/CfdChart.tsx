@@ -6,22 +6,24 @@ import { scaleLinear } from '@visx/scale';
 import { AreaStack, LinePath } from '@visx/shape';
 import { useContext, useMemo, useState } from 'react';
 import type { MetricsCfdPoint } from '../../shared/api';
+import { useFormat, useLanguage, useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { Button } from '../ui/Button';
-import { cfdMax, cfdSummary, FLOW_SERIES, stackKeys, toCfdRows, type CfdRow, type FlowKey } from './cfd';
+import { cfdMax, cfdSummary, FLOW_SERIES, flowSeries, stackKeys, toCfdRows, type CfdRow, type FlowKey } from './cfd';
 import { ChartCard, ChartFrame, ChartTitleId, ChartTooltip, DataTable, Legend, pointerIn, Swatch, useActive } from './ChartParts';
 import { AXIS_TEXT } from './axes';
-import { formatCount, formatDay } from './format';
 import { outlineOf } from './palette';
 import { indexAt, integerTicks, thinLabels } from './scales';
 
 const DAY = 86_400_000;
 const MARGIN = { top: 10, right: 14, bottom: 24, left: 36 };
 const COLORS = Object.fromEntries(FLOW_SERIES.map(({ key, color }) => [key, color])) as Record<FlowKey, string>;
-const LABELS = Object.fromEntries(FLOW_SERIES.map(({ key, label }) => [key, label])) as Record<FlowKey, string>;
 
-/** Du haut de la pile vers le bas : l'ordre dans lequel l'œil lit les bandes, pour la légende et l'infobulle. */
-const TOP_DOWN = [...FLOW_SERIES].reverse();
+/** Du haut de la pile vers le bas, nommées dans la langue : l'ordre dans lequel l'œil lit les bandes, pour la légende et l'infobulle. */
+function useTopDown() {
+  const { language } = useLanguage();
+  return [...flowSeries(language)].reverse();
+}
 
 /**
  * Le diagramme de flux cumulé, à la largeur donnée. Chaque jour, une pile : Terminé en bas, puis le travail en cours
@@ -29,6 +31,9 @@ const TOP_DOWN = [...FLOW_SERIES].reverse();
  */
 export function CfdPlot({ rows, keys, width, height }: { rows: readonly CfdRow[]; keys: readonly FlowKey[]; width: number; height: number }) {
   const { active, frame, show, leave } = useActive<number>();
+  const format = useFormat();
+  const { language } = useLanguage();
+  const topDown = useTopDown();
   const innerWidth = Math.max(0, width - MARGIN.left - MARGIN.right);
   const innerHeight = Math.max(0, height - MARGIN.top - MARGIN.bottom);
 
@@ -38,13 +43,13 @@ export function CfdPlot({ rows, keys, width, height }: { rows: readonly CfdRow[]
   const yTicks = integerTicks(cfdMax(rows, keys), Math.max(2, Math.floor(innerHeight / 38)));
   const y = scaleLinear({ domain: [0, yTicks.at(-1) ?? 1], range: [innerHeight, 0] });
   const xTicks = thinLabels(rows.length, Math.max(2, Math.floor(innerWidth / 62)));
-  const labelAt = new Map(xTicks.map((index) => [rows[index]?.time ?? 0, formatDay(rows[index]?.date ?? '1970-01-01')]));
+  const labelAt = new Map(xTicks.map((index) => [rows[index]?.time ?? 0, format.formatDay(rows[index]?.date ?? '1970-01-01')]));
 
   const row = active ? rows[active.value] : undefined;
 
   return (
     <div ref={frame} className="relative">
-      <svg width={width} height={height} role="img" aria-label={cfdSummary(rows)} className="block overflow-visible">
+      <svg width={width} height={height} role="img" aria-label={cfdSummary(rows, language)} className="block overflow-visible">
         <Group left={MARGIN.left} top={MARGIN.top}>
           <GridRows scale={y} width={innerWidth} tickValues={yTicks} stroke="var(--line)" />
           <AreaStack<CfdRow, FlowKey>
@@ -78,7 +83,7 @@ export function CfdPlot({ rows, keys, width, height }: { rows: readonly CfdRow[]
             tickValues={yTicks}
             hideAxisLine
             hideTicks
-            tickFormat={(value) => formatCount(Number(value))}
+            tickFormat={(value) => format.formatCount(Number(value))}
             tickLabelProps={() => ({ ...AXIS_TEXT, textAnchor: 'end', dx: '-0.5em', dy: '0.33em' })}
           />
           <AxisBottom
@@ -113,13 +118,13 @@ export function CfdPlot({ rows, keys, width, height }: { rows: readonly CfdRow[]
       </svg>
       {active && row ? (
         <ChartTooltip pointer={active} bounds={{ width, height }}>
-          <p className="font-medium">{formatDay(row.date, { weekday: true, year: true })}</p>
+          <p className="font-medium">{format.formatDay(row.date, { weekday: true, year: true })}</p>
           <ul className="flex flex-col gap-0.5">
-            {TOP_DOWN.filter(({ key }) => keys.includes(key)).map(({ key, label, color }) => (
+            {topDown.filter(({ key }) => keys.includes(key)).map(({ key, label, color }) => (
               <li key={key} className="flex items-center gap-1.5">
                 <Swatch color={color} />
                 <span className="text-ink-2">{label}</span>
-                <span className="tnum ml-auto pl-3 font-medium">{formatCount(row[key])}</span>
+                <span className="tnum ml-auto pl-3 font-medium">{format.formatCount(row[key])}</span>
               </li>
             ))}
           </ul>
@@ -136,11 +141,13 @@ export function CfdPanel({ points }: { points: readonly MetricsCfdPoint[] }) {
   const rows = useMemo(() => toCfdRows(points), [points]);
   const keys = stackKeys(hideDone);
   const empty = rows.every((row) => row.total === 0);
+  const text = useT().metrics.cfd;
+  const topDown = useTopDown();
 
   return (
     <ChartCard
-      title="Flux cumulé"
-      description="Tickets dans chaque colonne du kanban à la fin de chaque jour. L’épaisseur des bandes En cours et Bloqué est le travail en cours."
+      title={text.title}
+      description={text.description}
       actions={
         // Le bouton se range à droite de sa ligne, qu'il soit à côté du titre, où `justify-between` le mettait
         // déjà, ou seul sur la sienne. À gauche, la barre du haut, collante, le recouvrait quand on défile avec le
@@ -150,14 +157,14 @@ export function CfdPanel({ points }: { points: readonly MetricsCfdPoint[] }) {
         // recherche et de thème. Sans condition de largeur : où l'en-tête passe à la ligne dépend de la police et
         // de l'espacement du texte, la place du bouton n'en dépend pas (cfdButton.test.tsx).
         <Button aria-pressed={hideDone} onClick={() => setHideDone((hidden) => !hidden)} className={cx('shrink-0 px-2.5 text-xs ml-auto', hideDone && 'bg-press')}>
-          Masquer Terminé
+          {text.hideDone}
         </Button>
       }
-      legend={<Legend label="Colonnes du flux" items={TOP_DOWN.filter(({ key }) => keys.includes(key))} />}
+      legend={<Legend label={text.legend} items={topDown.filter(({ key }) => keys.includes(key))} />}
       data={<CfdTable rows={rows} />}
     >
       {empty ? (
-        <EmptyChart>Aucun ticket sur cette période.</EmptyChart>
+        <EmptyChart>{text.empty}</EmptyChart>
       ) : (
         <ChartFrame height={260}>{({ width, height }) => <CfdPlot rows={rows} keys={keys} width={width} height={height} />}</ChartFrame>
       )}
@@ -168,21 +175,23 @@ export function CfdPanel({ points }: { points: readonly MetricsCfdPoint[] }) {
 function CfdTable({ rows }: { rows: readonly CfdRow[] }) {
   // Les colonnes du kanban, de gauche à droite.
   const columns: FlowKey[] = ['backlog', 'ready', 'inProgress', 'blocked', 'done'];
+  const text = useT().metrics.cfd;
+  const format = useFormat();
   return (
     <DataTable
-      caption="Tickets par colonne du kanban à la fin de chaque jour"
+      caption={text.caption}
       head={
         <tr>
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Jour
+            {text.dayColumn}
           </th>
           {columns.map((key) => (
             <th key={key} scope="col" className="px-3 py-1.5 text-right font-medium">
-              {LABELS[key]}
+              {text.columns[key]}
             </th>
           ))}
           <th scope="col" className="px-3 py-1.5 text-right font-medium">
-            Total
+            {text.totalColumn}
           </th>
         </tr>
       }
@@ -190,14 +199,14 @@ function CfdTable({ rows }: { rows: readonly CfdRow[] }) {
       {rows.map((row) => (
         <tr key={row.date}>
           <th scope="row" className="whitespace-nowrap px-3 py-1 text-left font-normal text-ink-2">
-            {formatDay(row.date, { year: true })}
+            {format.formatDay(row.date, { year: true })}
           </th>
           {columns.map((key) => (
             <td key={key} className="px-3 py-1 text-right">
-              {formatCount(row[key])}
+              {format.formatCount(row[key])}
             </td>
           ))}
-          <td className="px-3 py-1 text-right font-medium">{formatCount(row.total)}</td>
+          <td className="px-3 py-1 text-right font-medium">{format.formatCount(row.total)}</td>
         </tr>
       ))}
     </DataTable>

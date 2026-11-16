@@ -3,12 +3,14 @@ import { useId } from 'react';
 import type { MetricsUnreadableProject } from '../../shared/api';
 import { projectLabel } from '../data/projectNames';
 import type { Written } from '../data/types';
+import { useFormat, useT } from '../i18n';
 import { Notice } from '../ui/states';
 
 /** Ce que l'adresse demandait et que la page ne sert pas : dit, au lieu d'afficher en silence d'autres chiffres. */
 export function AddressNotices({ notices }: { notices: readonly string[] }) {
+  const t = useT();
   return (
-    <Notice icon={Info} title={notices.length > 1 ? 'Réglages de l’adresse ignorés' : 'Réglage de l’adresse ignoré'}>
+    <Notice icon={Info} title={t.metrics.notices.ignoredSettings(notices.length)}>
       <ul className="flex flex-col gap-1">
         {notices.map((notice) => (
           <li key={notice}>{notice}</li>
@@ -32,9 +34,10 @@ export function AddressNotices({ notices }: { notices: readonly string[] }) {
  * il ne dit rien du nouveau tant que le serveur n'a pas répondu, et les chiffres de l'ancien ne restent pas à l'écran sans lui : le squelette les remplace jusqu'à la réponse.
  */
 export function ZoneNotice({ asked, counted }: { asked: string; counted: string }) {
+  const t = useT();
   return (
-    <Notice icon={Info} title={`Le serveur ne connaît pas votre fuseau, ${asked}`}>
-      Les jours, les semaines et les heures des métriques sont comptés en {counted}, le fuseau du serveur.
+    <Notice icon={Info} title={t.metrics.notices.zoneTitle(asked)}>
+      {t.metrics.notices.zoneBody(counted)}
     </Notice>
   );
 }
@@ -48,17 +51,22 @@ export function ZoneNotice({ asked, counted }: { asked: string; counted: string 
  */
 export function UnreadableProjects({ projects }: { projects: readonly Written<MetricsUnreadableProject>[] }) {
   const titleId = useId();
+  const t = useT();
+  const { formatCount } = useFormat();
+  const texts = t.metrics.notices;
   return (
     <div role="status" aria-labelledby={titleId} className="flex gap-3 rounded-lg border border-dashed border-line-strong p-4">
       <TriangleAlert size={16} strokeWidth={2} aria-hidden="true" className="mt-0.5 shrink-0 text-danger" />
       <div className="min-w-0 wrap-anywhere">
         <p id={titleId} className="font-medium text-ink">
-          {projects.length > 1 ? `${projects.length} Projets illisibles, absents de ces chiffres` : 'Un Projet illisible, absent de ces chiffres'}
+          {texts.unreadable(projects.length, formatCount(projects.length))}
         </p>
         <ul className="mt-1 flex flex-col gap-1 text-ink-2">
           {projects.map((project) => (
             <li key={project.id}>
-              <strong className="font-medium text-ink">{projectLabel(project, projects)}</strong> : {project.reason}
+              <strong className="font-medium text-ink">{projectLabel(project, projects)}</strong>
+              {texts.reasonSeparator}
+              {project.reason}
             </li>
           ))}
         </ul>

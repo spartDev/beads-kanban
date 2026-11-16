@@ -1,5 +1,6 @@
 import { LayoutGrid, type LucideIcon } from 'lucide-react';
 import { Link, useLocation } from 'react-router';
+import { useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { paths, sectionPath } from '../paths';
 import { SECTIONS, useRouteInfo, useTabsProject } from './navigation';
@@ -12,22 +13,23 @@ export function TabBar() {
   const { pathname } = useLocation();
   const { projectId, section } = useRouteInfo();
   const project = useTabsProject();
+  const t = useT();
 
   return (
     <nav
-      aria-label="Onglets"
+      aria-label={t.shell.layout.tabs}
       className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-canvas/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
     >
       <ul className="grid grid-cols-5">
         <li>
-          <Tab to={paths.global()} icon={LayoutGrid} label="Vue globale" current={pathname === '/'} />
+          <Tab to={paths.global()} icon={LayoutGrid} label={t.shell.overview.title} current={pathname === '/'} />
         </li>
-        {SECTIONS.map(({ id, label, icon }) => (
+        {SECTIONS.map(({ id, icon }) => (
           <li key={id}>
             <Tab
               to={project ? sectionPath(id, project.id) : undefined}
               icon={icon}
-              label={label}
+              label={t.shell.sections[id]}
               current={project?.id === projectId && (section === id || (id === 'kanban' && section === 'issue'))}
             />
           </li>

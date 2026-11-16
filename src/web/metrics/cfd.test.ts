@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MetricsCfdPoint } from '../../shared/api';
-import { cfdMax, cfdSummary, cfdTotal, FLOW_SERIES, stackKeys, toCfdRows } from './cfd';
+import { cfdMax, cfdSummary, cfdTotal, FLOW_SERIES, flowSeries, stackKeys, toCfdRows } from './cfd';
 
 /**
  * Le CFD empile les cinq colonnes du kanban. Terminé est en bas : c'est lui qui monte sans cesse, et l'écart entre
@@ -25,7 +25,7 @@ const POINTS = [
 describe('FLOW_SERIES', () => {
   it('range les colonnes de bas en haut : Terminé, En cours, Bloqué, Prêt, Backlog', () => {
     expect(FLOW_SERIES.map((series) => series.key)).toEqual(['done', 'inProgress', 'blocked', 'ready', 'backlog']);
-    expect(FLOW_SERIES.map((series) => series.label)).toEqual(['Terminé', 'En cours', 'Bloqué', 'Prêt', 'Backlog']);
+    expect(flowSeries('fr').map((series) => series.label)).toEqual(['Terminé', 'En cours', 'Bloqué', 'Prêt', 'Backlog']);
   });
 
   it('colore chaque colonne avec son jeton de styles', () => {
@@ -74,12 +74,22 @@ describe('stackKeys et cfdMax', () => {
 
 describe('cfdSummary : le texte qui remplace le dessin pour un lecteur d’écran', () => {
   it('dit la période et l’état du dernier jour', () => {
-    expect(cfdSummary(POINTS)).toBe(
+    expect(cfdSummary(POINTS, 'fr')).toBe(
       'Flux cumulé du 31 oct. au 2 nov. 2026. Dernier jour : 170 Terminé, 11 En cours, 0 Bloqué, 33 Prêt, 5 Backlog.',
     );
   });
 
   it('dit qu’il n’y a rien à montrer', () => {
-    expect(cfdSummary([])).toBe('Flux cumulé : aucun jour à montrer.');
+    expect(cfdSummary([], 'fr')).toBe('Flux cumulé : aucun jour à montrer.');
+  });
+});
+
+describe('en anglais', () => {
+  it('nomme les colonnes et dit le résumé du dessin en anglais', () => {
+    expect(flowSeries('en').map((series) => series.label)).toEqual(['Done', 'In progress', 'Blocked', 'Ready', 'Backlog']);
+    expect(cfdSummary(POINTS, 'en')).toBe(
+      'Cumulative flow from Oct 31 to Nov 2, 2026. Last day: 170 Done, 11 In progress, 0 Blocked, 33 Ready, 5 Backlog.',
+    );
+    expect(cfdSummary([], 'en')).toBe('Cumulative flow: no days to show.');
   });
 });

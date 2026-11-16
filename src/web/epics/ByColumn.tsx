@@ -3,13 +3,14 @@ import { EPIC_GROUPS, type EpicGroup, type EpicProgress } from '../../domain/epi
 import type { Issue } from '../data/types';
 import { compareClosed, compareIssues } from '../kanban/columns';
 import { COLUMN_META, ticketNoun } from '../kanban/meta';
+import { useFormat, useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { ChildRow } from './ChildRow';
-import { counted } from './ProgressBar';
 
 /** Le titre et le pictogramme d'un groupe : ceux de la colonne du kanban, plus « En pause ». */
-export function groupMeta(group: EpicGroup): { label: string; icon: LucideIcon } {
-  return group === 'paused' ? { label: 'En pause', icon: CirclePause } : COLUMN_META[group];
+export function useGroupMeta(): (group: EpicGroup) => { label: string; icon: LucideIcon } {
+  const paused = useT().epics.children.paused;
+  return (group) => (group === 'paused' ? { label: paused, icon: CirclePause } : COLUMN_META[group]);
 }
 
 const idOf = (group: EpicGroup, part: 'title' | 'count') => `epic-group-${group}-${part}`;
@@ -32,6 +33,9 @@ export function ByColumn({
   now: number;
   progressOf: (epicId: string) => EpicProgress;
 }) {
+  const t = useT();
+  const { formatCount } = useFormat();
+  const groupMeta = useGroupMeta();
   // Les titres d'une colonne commencent au même endroit : l'identifiant a la largeur du plus long de la page.
   const idChars = [...EPIC_GROUPS.flatMap((group) => groups[group]), ...nestedEpics].reduce((longest, { id }) => Math.max(longest, id.length), 0);
   return (
@@ -53,10 +57,12 @@ export function ByColumn({
               <Icon size={14} strokeWidth={2} aria-hidden="true" className={cx('shrink-0', group === 'blocked' ? 'text-danger' : 'text-ink-3')} />
               <span id={idOf(group, 'title')}>{label}</span>
               <span id={idOf(group, 'count')} className="tnum text-xs font-normal text-ink-2">
-                {issues.length}
+                {formatCount(issues.length)}
                 <span className="sr-only"> {ticketNoun(issues.length)}</span>
               </span>
-              {abandons > 0 ? <span className="text-xs font-normal text-ink-3">dont {counted(abandons, 'Abandon')}</span> : null}
+              {abandons > 0 ? (
+                <span className="text-xs font-normal text-ink-3">{t.epics.progress.including(t.epics.counted.dropped(abandons, formatCount(abandons)))}</span>
+              ) : null}
             </h3>
             <ul className="flex flex-col">
               {issues.map((issue) => (
@@ -73,8 +79,8 @@ export function ByColumn({
         <section aria-labelledby="epic-nested-title" className="flex flex-col gap-1">
           <h3 className="flex items-center gap-2 text-ui font-semibold text-ink">
             <Layers size={14} strokeWidth={2} aria-hidden="true" className="shrink-0 text-ink-3" />
-            <span id="epic-nested-title">Epics imbriquées</span>
-            <span className="tnum text-xs font-normal text-ink-2">{nestedEpics.length}</span>
+            <span id="epic-nested-title">{t.epics.children.nestedEpics}</span>
+            <span className="tnum text-xs font-normal text-ink-2">{formatCount(nestedEpics.length)}</span>
           </h3>
           <ul className="flex flex-col">
             {nestedEpics.map((epic) => (
