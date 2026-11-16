@@ -75,7 +75,8 @@ describe('counts of 1,000 and more that grouping.test.tsx does not render', () =
     return render(
       <LanguageProvider switchEnabled={switchEnabled}>
         <MemoryRouter>
-          <ByColumn groups={groupByColumn(children)} nestedEpics={[nested]} projectId="bdesk" now={Date.parse(NOW)} progressOf={() => epicProgress(children)} />
+          {/* Les groupes : les seuls Enfants prêts (les mille lignes de Terminé ne sont pas lues) ; l'Epic imbriquée et la prévision gardent tout. */}
+          <ByColumn groups={groupByColumn(opened(1000))} nestedEpics={[nested]} projectId="bdesk" now={Date.parse(NOW)} progressOf={() => epicProgress(children)} />
           <TimeSection epic={EPIC} kids={children} now={Date.parse(NOW)} />
         </MemoryRouter>
       </LanguageProvider>,
@@ -122,11 +123,12 @@ describe('English that english.test.tsx does not read', () => {
     expect(forecast().textContent).toContain('Epic closed: there is no end left to forecast.');
   });
 
-  it('why the forecast is hidden: all delivered, or no Children to deliver', async () => {
-    const first = await openEnglish('/p/bdesk/epics?epic=bdesk-e1', [EPIC, closedChild('bdesk-a', 3)]);
+  it('why the forecast is hidden: all delivered', async () => {
+    await openEnglish('/p/bdesk/epics?epic=bdesk-e1', [EPIC, closedChild('bdesk-a', 3)]);
     expect(forecast().textContent).toContain('All Children are Delivered or Dropped: the Epic can be closed.');
-    first.unmount();
+  });
 
+  it('why the forecast is hidden: no Children to deliver', async () => {
     await openEnglish('/p/bdesk/epics?epic=bdesk-e1', [EPIC]);
     expect(forecast().textContent).toContain('No Children to deliver.');
   });
