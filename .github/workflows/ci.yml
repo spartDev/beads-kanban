@@ -19,7 +19,9 @@ jobs:
   verify:
     name: Typecheck, lint, build, tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # L'étape « pnpm test » fait jusqu'à trois passes. Une passe dure environ 12 min sur ubuntu-latest (706 s le 16 novembre 2026), la préparation
+    # environ 1 min : à 30 min, le job était annulé pendant la troisième passe, avant qu'elle ait pu réussir (PR #5). 45 min laissent de la marge.
+    timeout-minutes: 45
     env:
       # Version de dolt épinglée = celle de `dolt version` sur la machine de développement. L'archive est la release officielle
       # (https://github.com/dolthub/dolt/releases), celle que télécharge aussi son install.sh ; son empreinte SHA-256 est vérifiée avant usage.
