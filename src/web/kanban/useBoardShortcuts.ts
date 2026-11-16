@@ -1,8 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
+import { useT } from '../i18n';
 import { useShortcuts } from '../shortcuts/ShortcutsProvider';
 import { COLUMN_IDS, type ColumnId, type Lane } from './columns';
-
-const GROUP = 'Kanban';
 
 /** Les identifiants des cartes de chaque colonne, dans l'ordre où elles s'affichent. */
 export type Lanes = Record<Lane, readonly string[]>;
@@ -90,6 +89,8 @@ export function useBoardShortcuts({
   column: ColumnId;
   onColumn: (column: ColumnId) => void;
 }) {
+  const { shortcuts: labels } = useT().kanban;
+  const group = labels.group;
   // Sur mobile, la colonne visée n'est affichée qu'une fois l'adresse à jour : le focus attend ce rendu.
   const pending = useRef<{ id: string; column: ColumnId } | null>(null);
 
@@ -157,11 +158,11 @@ export function useBoardShortcuts({
   };
 
   useShortcuts([
-    { id: 'kanban.next', keys: 'j', label: 'Ticket suivant', group: GROUP, run: () => step(1) },
-    { id: 'kanban.previous', keys: 'k', label: 'Ticket précédent', group: GROUP, run: () => step(-1) },
-    { id: 'kanban.column.previous', keys: 'h', alternateKeys: ['arrowleft'], label: 'Colonne précédente', group: GROUP, run: () => moveColumn(-1) },
-    { id: 'kanban.column.next', keys: 'l', alternateKeys: ['arrowright'], label: 'Colonne suivante', group: GROUP, run: () => moveColumn(1) },
-    { id: 'kanban.open', keys: 'enter', label: 'Ouvrir le ticket sélectionné', group: GROUP, run: openSelected },
-    { id: 'kanban.deselect', keys: 'escape', label: 'Désélectionner le ticket', group: GROUP, when: hasSelection, run: deselect },
+    { id: 'kanban.next', keys: 'j', label: labels.next, group, run: () => step(1) },
+    { id: 'kanban.previous', keys: 'k', label: labels.previous, group, run: () => step(-1) },
+    { id: 'kanban.column.previous', keys: 'h', alternateKeys: ['arrowleft'], label: labels.previousColumn, group, run: () => moveColumn(-1) },
+    { id: 'kanban.column.next', keys: 'l', alternateKeys: ['arrowright'], label: labels.nextColumn, group, run: () => moveColumn(1) },
+    { id: 'kanban.open', keys: 'enter', label: labels.open, group, run: openSelected },
+    { id: 'kanban.deselect', keys: 'escape', label: labels.deselect, group, when: hasSelection, run: deselect },
   ]);
 }

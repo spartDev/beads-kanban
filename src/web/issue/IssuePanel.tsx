@@ -5,6 +5,7 @@ import { ApiError } from '../data/client';
 import { ticketTitle } from '../data/helpers';
 import { useIssue } from '../data/hooks';
 import { projectInSentence } from '../data/projectNames';
+import { useT } from '../i18n';
 import { focusCardOrZone, panelOpener } from '../kanban/boardFocus';
 import { focusElement, focusIsAdrift } from '../lib/focus';
 import { inertOutside } from '../lib/inert';
@@ -15,7 +16,7 @@ import { useProject } from '../pages/ProjectGate';
 import { usePalette, useShortcutsHelp } from '../shell/OverlayProvider';
 import { useShortcut } from '../shortcuts/ShortcutsProvider';
 import { Button } from '../ui/Button';
-import { Kbd } from '../ui/Kbd';
+import { ShortcutKeys } from '../ui/Kbd';
 import { ErrorNotice, Notice, Skeleton } from '../ui/states';
 import { Chronology } from './Chronology';
 import { Comments } from './Comments';
@@ -69,7 +70,8 @@ export function IssuePanel() {
   const failed = !loading && !gone && !issue;
   // Ce que montre le corps du panneau : il change d'un coup, quand l'état change.
   const bodyState = gone ? 'gone' : issue ? 'issue' : loading ? 'loading' : 'failed';
-  const { close, destination } = useClosePanel(project.id);
+  const { close, back } = useClosePanel(project.id);
+  const t = useT();
   const palette = usePalette();
   const help = useShortcutsHelp();
 
@@ -148,8 +150,8 @@ export function IssuePanel() {
   useShortcut({
     id: 'issue.close',
     keys: 'escape',
-    label: 'Fermer le ticket',
-    group: 'Ticket',
+    label: t.kanban.panel.shortcuts.close,
+    group: t.kanban.panel.shortcuts.group,
     // Le focus est dans le panneau, une boîte de dialogue : sans cela le registre se tairait.
     allowInInput: true,
     // Le panneau est posé sur le tableau : Échap le ferme avant de désélectionner une carte, que le tableau ait enregistré son
@@ -190,18 +192,18 @@ export function IssuePanel() {
               tabIndex={-1}
               className="mt-0.5 w-fit max-w-full wrap-anywhere rounded-sm text-[1.1875rem] font-bold leading-7 tracking-[-0.01em] text-ink focus-visible:outline-offset-1"
             >
-              {gone ? 'Ticket introuvable' : issue ? ticketTitle(issue) : 'Ticket indisponible'}
+              {gone ? t.kanban.panel.notFound : issue ? ticketTitle(issue) : t.kanban.panel.unavailable}
             </h2>
           )}
         </div>
         <div className="-mr-1.5 -mt-0.5 flex shrink-0 items-center gap-1">
           {/* À côté du bouton, pas dedans : le texte visible d'un bouton doit figurer dans son nom (WCAG 2.5.3), et celui-ci n'en a pas. */}
           <span aria-hidden="true" className="max-md:hidden">
-            <Kbd>Échap</Kbd>
+            <ShortcutKeys keys="escape" />
           </span>
           <button
             type="button"
-            aria-label="Fermer le panneau"
+            aria-label={t.kanban.panel.close}
             onClick={close}
             className="inline-flex size-8 items-center justify-center rounded-md text-ink-3 transition-colors hover:bg-hover hover:text-ink"
           >
@@ -214,7 +216,7 @@ export function IssuePanel() {
         ref={bodyRef}
         data-panel-body
         role={focusable ? 'region' : undefined}
-        aria-label={focusable ? 'Contenu du ticket' : undefined}
+        aria-label={focusable ? t.kanban.panel.content : undefined}
         tabIndex={focusable ? 0 : undefined}
         // Le contour reste à l'intérieur : le panneau rogne ce qui le dépasse.
         className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain px-4 py-4 focus-visible:-outline-offset-2"
@@ -225,11 +227,11 @@ export function IssuePanel() {
           {gone ? (
             <Notice
               icon={SearchX}
-              title={`Aucun ticket « ${issueId} » dans ${projectInSentence(project)}`}
-              action={<Button onClick={close}>Retour {destination}</Button>}
+              title={t.kanban.panel.gone.title(issueId, projectInSentence(project))}
+              action={<Button onClick={close}>{back}</Button>}
             >
-              <p>L’identifiant est peut-être celui d’un autre Projet : la palette (⌘K) peut chercher dans tous les Projets.</p>
-              <p className="mt-1">Le ticket n’est peut-être pas encore enregistré par bd ; dans ce cas, il s’affichera ici dès qu’il le sera.</p>
+              <p>{t.kanban.panel.gone.otherProject}</p>
+              <p className="mt-1">{t.kanban.panel.gone.notRecorded}</p>
             </Notice>
           ) : issue ? (
             <>
@@ -240,12 +242,12 @@ export function IssuePanel() {
               <Comments comments={issue.comments} />
             </>
           ) : loading ? (
-            <div role="status" aria-busy="true" aria-label="Chargement du ticket" className="flex flex-col gap-3">
+            <div role="status" aria-busy="true" aria-label={t.kanban.panel.loading} className="flex flex-col gap-3">
               <Skeleton className="h-4 w-48" />
               <Skeleton className="h-4 w-32" />
             </div>
           ) : (
-            <ErrorNotice error={query.error} title="Impossible de charger le ticket" onRetry={retry} />
+            <ErrorNotice error={query.error} title={t.kanban.panel.loadError} onRetry={retry} />
           )}
         </div>
       </div>

@@ -73,3 +73,27 @@ describe('statusLabel', () => {
     expect(statusLabel('   ')).toBe('inconnu');
   });
 });
+
+describe('les libellés, dans chaque langue', () => {
+  it('nomment types, priorités et statuts en anglais, et les gardent en français par défaut', () => {
+    expect(ISSUE_TYPES.map((type) => typeMeta(type, 'en').label)).toEqual([
+      'Bug', 'Feature', 'Task', 'Chore', 'Epic', 'Decision', 'Spike', 'Story', 'Milestone',
+    ]);
+    expect(typeMeta('task').label).toBe('Tâche');
+    expect(PRIORITIES.map((priority) => priorityMeta(priority, 'en').label)).toEqual(['Critical', 'High', 'Medium', 'Low', 'Minimal']);
+    expect(priorityMeta(2).label).toBe('Moyenne');
+    expect(['open', 'in_progress', 'hooked', 'blocked', 'deferred', 'pinned', 'closed', ''].map((status) => statusLabel(status, 'en'))).toEqual([
+      'open', 'in progress', 'hooked to an agent', 'blocked status', 'deferred', 'pinned', 'closed', 'unknown',
+    ]);
+    expect(statusLabel('hooked')).toBe('rattaché à un agent');
+  });
+
+  it('laisse tel quel un type ou un statut personnalisé, même s’il s’appelle comme une propriété d’objet ou une clé du catalogue', () => {
+    for (const language of ['fr', 'en'] as const) {
+      for (const name of ['review', 'constructor', 'toString', '__proto__', 'unknown']) {
+        expect(statusLabel(name, language)).toBe(name);
+        expect(typeMeta(name, language).label).toBe(name);
+      }
+    }
+  });
+});

@@ -1,7 +1,8 @@
 import { Layers } from 'lucide-react';
 import { useMemo } from 'react';
 import type { Issue } from '../data/types';
-import { ALL_EPICS, epicLabels } from './epics';
+import { useT } from '../i18n';
+import { epicLabels } from './epics';
 
 const SELECT_ID = 'kanban-epic-filter';
 
@@ -22,7 +23,9 @@ export function EpicFilter({
   value: string;
   onChange: (epicId: string | null) => void;
 }) {
-  const labels = useMemo(() => epicLabels([...open, ...closed]), [open, closed]);
+  const t = useT();
+  const all = t.kanban.epicFilter.all;
+  const labels = useMemo(() => epicLabels([...open, ...closed], [all]), [open, closed, all]);
   const options = (epics: readonly Issue[]) =>
     epics.map((epic) => (
       <option key={epic.id} value={epic.id}>
@@ -34,7 +37,7 @@ export function EpicFilter({
     <div className="flex min-w-0 basis-full items-center gap-2 sm:basis-auto sm:flex-none">
       <label htmlFor={SELECT_ID} className="flex shrink-0 items-center gap-1.5 text-ui font-medium text-ink-2">
         <Layers size={14} aria-hidden="true" className="text-ink-3" />
-        Epic
+        {t.kanban.epicFilter.label}
       </label>
       <select
         id={SELECT_ID}
@@ -42,11 +45,11 @@ export function EpicFilter({
         onChange={(event) => onChange(event.target.value || null)}
         className="h-8 min-w-0 flex-1 rounded-md border border-line-strong bg-panel pl-2 pr-1 text-ui text-ink sm:w-80 sm:flex-none"
       >
-        <option value="">{ALL_EPICS}</option>
+        <option value="">{all}</option>
         {closed.length > 0 ? (
           <>
-            {open.length > 0 ? <optgroup label="Epics ouvertes">{options(open)}</optgroup> : null}
-            <optgroup label="Epics fermées">{options(closed)}</optgroup>
+            {open.length > 0 ? <optgroup label={t.kanban.epicFilter.open}>{options(open)}</optgroup> : null}
+            <optgroup label={t.kanban.epicFilter.closed}>{options(closed)}</optgroup>
           </>
         ) : (
           options(open)

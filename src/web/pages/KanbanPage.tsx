@@ -5,6 +5,7 @@ import { useIssues } from '../data/hooks';
 import { projectInSentence } from '../data/projectNames';
 import { Board } from '../kanban/Board';
 import { BoardSkeleton } from '../kanban/BoardSkeleton';
+import { useT } from '../i18n';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useRetryFocus } from '../lib/useRetryFocus';
 import { paths } from '../paths';
@@ -21,14 +22,16 @@ export function KanbanPage() {
   const project = useProject();
   const issues = useIssues(project.id);
   const retry = useRetryFocus(issues);
-  useDocumentTitle('Kanban', project.name);
+  const { page } = useT().kanban;
+  useDocumentTitle(page.title, project.name);
 
   return (
-    <Page title="Kanban" description={`Les tickets de ${projectInSentence(project)}, en colonnes, en lecture seule.`} wide>
+    <Page title={page.title} description={page.description(projectInSentence(project))} wide>
       {issues.data ? (
         issues.data.length === 0 ? (
-          <Notice icon={Inbox} title="Aucun ticket dans ce Projet">
-            Créez-en un avec <code>bd create</code> : il apparaîtra ici dans quelques secondes.
+          <Notice icon={Inbox} title={page.empty.title}>
+            {page.empty.before} <code>bd create</code>
+            {page.empty.after}
           </Notice>
         ) : (
           // `key` : un autre Projet est un autre tableau, qui choisit sa propre colonne d'ouverture sur mobile.
@@ -38,17 +41,17 @@ export function KanbanPage() {
         issues.error instanceof ApiError && issues.error.status === 404 ? (
           <Notice
             icon={FolderSearch}
-            title="Ce Projet n’est plus disponible"
+            title={page.gone.title}
             action={
               <Link to={paths.global()} className="font-medium text-accent hover:underline">
-                Voir les Projets suivis
+                {page.gone.link}
               </Link>
             }
           >
-            Il a peut-être été masqué dans la configuration, ou son dossier a été déplacé.
+            {page.gone.detail}
           </Notice>
         ) : (
-          <ErrorNotice error={issues.error} title="Impossible de charger les tickets" onRetry={retry} />
+          <ErrorNotice error={issues.error} title={page.loadError} onRetry={retry} />
         )
       ) : (
         <BoardSkeleton />
