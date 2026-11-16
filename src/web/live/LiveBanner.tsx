@@ -1,5 +1,6 @@
 import { RefreshCw, WifiOff } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { useT } from '../i18n';
 import { focusTitleWhenReady, keepFocusInZone, locationOf, zoneOf } from '../lib/zoneFocus';
 import type { LiveStatus } from './useLiveUpdates';
 
@@ -25,6 +26,7 @@ export function LiveBanner({
   graceMs?: number;
 }) {
   const lost = status === 'lost';
+  const t = useT();
   const [graceOver, setGraceOver] = useState(false);
   // Ce que « Reconnecter » demande, tant que l'issue n'est pas arrivée : la zone d'où il a été pressé, la page qu'elle montrait alors, et le numéro de l'essai qu'il a lancé.
   const asked = useRef<{ zone: HTMLElement; page: string | null; attempt: number } | null>(null);
@@ -65,7 +67,7 @@ export function LiveBanner({
         <div ref={keepFocusInZone} className="flex items-center gap-2 border-b border-line bg-well px-4 py-1.5 text-xs text-ink-2">
           <WifiOff size={13} aria-hidden="true" className="shrink-0 text-ink-3" />
           <p className="min-w-0 flex-1 wrap-anywhere">
-            Mises à jour en direct interrompues : reconnexion en cours. Ce qui est affiché peut ne plus être à jour.
+            {t.shell.live.lost}
           </p>
           <button
             type="button"
@@ -78,7 +80,7 @@ export function LiveBanner({
             className="inline-flex shrink-0 items-center gap-1.5 font-medium text-ink hover:underline"
           >
             <RefreshCw size={12} aria-hidden="true" />
-            Reconnecter
+            {t.shell.live.reconnect}
           </button>
         </div>
       ) : null}

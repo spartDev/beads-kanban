@@ -5,12 +5,12 @@ import { isBlankTitle, isEpic, isReadable, ticketTitle } from '../data/helpers';
 import { issuesQuery, useProjects } from '../data/hooks';
 import type { Issue, IssuesResponse, Project } from '../data/types';
 import { typeMeta } from '../design/issue-palette';
-import { useLanguage } from '../i18n';
+import { useLanguage, type Language } from '../i18n';
 import { languageOptions } from '../i18n/options';
 import { paths, sectionPath } from '../paths';
 import { SECTIONS, useRouteInfo, useTabsProject } from '../shell/navigation';
 import { useShortcutsHelp, type PaletteMode } from '../shell/OverlayProvider';
-import { THEME_OPTIONS } from '../theme/options';
+import { themeOptions } from '../theme/options';
 import { useTheme } from '../theme/ThemeProvider';
 import { normalize, rank, type Searchable } from './search';
 
@@ -95,12 +95,14 @@ const describeProject = (project: Project): Searchable => ({
   keywords: [project.id],
 });
 
-// On cherche ce qu'on a écrit (le titre brut) et ce que la ligne affiche : un ticket sans titre y est « Sans titre » (`ticketTitle`), et « Sans titre » le trouve.
-const describeIssue = ({ issue }: ScopedIssue): Searchable => ({
-  id: issue.id,
-  text: issue.title,
-  keywords: [issue.type, typeMeta(issue.type).label, ...(isBlankTitle(issue.title) ? [ticketTitle(issue)] : [])],
-});
+// On cherche ce qu'on a écrit (le titre brut) et ce que la ligne affiche : un ticket sans titre y est « Sans titre » (`ticketTitle`, dans la langue affichée), et « Sans titre » le trouve.
+const issueDescriber =
+  (language: Language) =>
+  ({ issue }: ScopedIssue): Searchable => ({
+    id: issue.id,
+    text: issue.title,
+    keywords: [issue.type, typeMeta(issue.type).label, ...(isBlankTitle(issue.title) ? [ticketTitle(issue, language)] : [])],
+  });
 
 const describeCommand = (command: CommandEntry): Searchable => ({
   text: command.label,
@@ -160,13 +162,14 @@ function usePaletteCommands(go: (to: string) => void, close: () => void) {
   const { preference, setPreference } = useTheme();
   const { show: showHelp } = useShortcutsHelp();
   const language = useLanguage();
+  const { t } = language;
 
   return useMemo<{ navigation: CommandEntry[]; actions: CommandEntry[] }>(() => {
     const navigation: CommandEntry[] = [
       {
         value: 'nav:global',
-        label: 'Vue globale',
-        keywords: ['accueil', 'tous les projets'],
+        label: t.shell.overview.title,
+        keywords: t.shell.palette.overviewKeywords,
         icon: LayoutGrid,
         shortcut: 'g v',
         run: () => go(paths.global()),
@@ -175,7 +178,7 @@ function usePaletteCommands(go: (to: string) => void, close: () => void) {
         ? SECTIONS.map(
             (section): CommandEntry => ({
               value: `nav:${section.id}`,
-              label: section.label,
+              label: t.shell.sections[section.id],
               hint: tabsProject.name,
               icon: section.icon,
               shortcut: section.shortcut,
@@ -185,11 +188,11 @@ function usePaletteCommands(go: (to: string) => void, close: () => void) {
         : []),
     ];
     const actions: CommandEntry[] = [
-      ...THEME_OPTIONS.map(
+      ...themeOptions(t).map(
         (theme): CommandEntry => ({
           value: `action:theme-${theme.value}`,
           label: theme.label,
-          keywords: ['apparence', 'mode', 'couleurs', 'clair', 'sombre', 'dark', 'light'],
+          keywords: t.shell.theme.keywords,
           icon: theme.icon,
           active: preference === theme.value,
           run: () => {
@@ -217,8 +220,8 @@ function usePaletteCommands(go: (to: string) => void, close: () => void) {
         : []),
       {
         value: 'action:shortcuts',
-        label: 'Raccourcis clavier',
-        keywords: ['aide', 'touches'],
+        label: t.shell.layout.shortcuts,
+        keywords: t.shell.palette.shortcutsKeywords,
         icon: Keyboard,
         shortcut: '?',
         // L'aide prend la place de la palette : deux boîtes de dialogue ne s'empilent pas.
@@ -226,7 +229,7 @@ function usePaletteCommands(go: (to: string) => void, close: () => void) {
       },
     ];
     return { navigation, actions };
-  }, [go, close, tabsProject, preference, setPreference, showHelp, language]);
+  }, [go, close, tabsProject, preference, setPreference, showHelp, language, t]);
 }
 
 /**
@@ -250,6 +253,9 @@ export function usePaletteSections({
   const route = useRouteInfo();
   const projectsQuery = useProjects();
   const commands = usePaletteCommands(go, close);
+  const { language, t } = useLanguage();
+  const headings = t.shell.palette.headings;
+  const describeIssue = useMemo(() => issueDescriber(language), [language]);
   const search = query.trim();
 
   const allProjects = useMemo(() => projectsQuery.data?.projects ?? [], [projectsQuery.data]);
@@ -291,7 +297,7 @@ export function usePaletteSections({
 
     if (mode === 'projects') {
       if (projectsHit.items.length > 0) {
-        found.push({ id: 'projects', heading: 'Changer de Projet', best: 1, projects: projectsHit.items });
+        found.push({ id: 'projects', heading: headings.switchProject, best: 1, projects: projectsHit.items });
       }
     } else {
       const navigationHit = rank(commands.navigation, search, describeCommand);
@@ -301,25 +307,25 @@ export function usePaletteSections({
 
       // Dans l'ordre d'affichage sans saisie ; les actions ne se montrent que sur demande.
       if (navigationHit.items.length > 0) {
-        found.push({ id: 'navigation', heading: 'Navigation', best: navigationHit.best, commands: navigationHit.items });
+        found.push({ id: 'navigation', heading: headings.navigation, best: navigationHit.best, commands: navigationHit.items });
       }
       if (projectsHit.items.length > 0) {
-        found.push({ id: 'projects', heading: 'Projets', best: projectsHit.best, projects: projectsHit.items });
+        found.push({ id: 'projects', heading: headings.projects, best: projectsHit.best, projects: projectsHit.items });
       }
       if (epicsHit.items.length > 0) {
-        found.push({ id: 'epics', heading: 'Epics', best: epicsHit.best, items: epicsHit.items });
+        found.push({ id: 'epics', heading: headings.epics, best: epicsHit.best, items: epicsHit.items });
       }
       if (issuesHit.items.length > 0) {
         found.push({
           id: 'issues',
-          heading: search ? 'Tickets' : 'Tickets récents',
+          heading: search ? headings.issues : headings.recentIssues,
           best: issuesHit.best,
           items: issuesHit.items,
           more: issuesHit.total - issuesHit.items.length,
         });
       }
       if (search && actionsHit.items.length > 0) {
-        found.push({ id: 'actions', heading: 'Actions', best: actionsHit.best, commands: actionsHit.items });
+        found.push({ id: 'actions', heading: headings.actions, best: actionsHit.best, commands: actionsHit.items });
       }
     }
 
@@ -327,7 +333,7 @@ export function usePaletteSections({
     if (search) found.sort((a, b) => b.best - a.best);
 
     return { sections: found, resultCount: found.reduce((total, section) => total + rowCount(section), 0) };
-  }, [mode, search, allProjects, commands, epics, tickets]);
+  }, [mode, search, allProjects, commands, epics, tickets, describeIssue, headings]);
 
   const exactPath = useMemo(() => exactIssuePath(sections, search), [sections, search]);
 

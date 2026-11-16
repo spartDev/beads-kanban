@@ -47,6 +47,21 @@ const sentencesIn = (source: string, fileName?: string): SentenceKind[] =>
 
 // [la forme, ce qu'elle devient, la source]. Les formes de la relecture de bdesk-38k.73, puis celles qu'on en tire.
 const REFUSED: [string, SentenceKind, string][] = [
+  ['un nom confié à une fonction du catalogue', 'catalogue', 'const t = useT();\nconst s = t.shell.signalsPage.projectDescription(project.name);'],
+  ['un nom confié à une fonction du catalogue, par une variable qui en est tirée', 'catalogue', 'const text = useT().shell.signalsPage;\nconst s = text.projectDescription(project.name);'],
+  ['un nom confié à une fonction du catalogue, par `useLanguage().t`', 'catalogue', 'const { t } = useLanguage();\nconst el = <p>{t.shell.palette.ticketsUnavailable(project.name)}</p>;'],
+  ['un nom confié au catalogue d’un contexte gardé entier', 'catalogue', 'const language = useLanguage();\nconst s = language.t.shell.palette.ticketsUnavailable(project.name);'],
+  ['un nom confié au catalogue renommé', 'catalogue', 'const { t: messages } = useLanguage();\nconst s = messages.shell.palette.ticketsUnavailable(project.name);'],
+  ['un nom confié à `CATALOGS`', 'catalogue', 'const s = CATALOGS[language].shell.signalsPage.projectDescription(project.name);'],
+  ['un nom confié à une partie de `CATALOGS`', 'catalogue', 'const words = CATALOGS[language].shell.signalsPage;\nconst s = words.projectDescription(project.name);'],
+  ['un nom confié à une fonction déstructurée du catalogue', 'catalogue', 'const { projectDescription } = useT().shell.signalsPage;\nconst s = projectDescription(project.name);'],
+  ['un nom confié au catalogue reçu en paramètre', 'catalogue', 'const say = (messages: Messages) => messages.shell.signalsPage.projectDescription(project.name);'],
+  ['un nom confié au catalogue d’une langue, gardé dans une variable', 'catalogue', 'const t = CATALOGS[language];\nconst s = t.shell.signalsPage.projectDescription(project.name);'],
+  ['un nom confié au catalogue français, gardé dans une variable', 'catalogue', 'const t = CATALOGS.fr;\nconst s = t.shell.signalsPage.projectDescription(project.name);'],
+  ['un nom en gras entre deux textes du catalogue', 'texte JSX', 'const text = useT().shell.signalsPage;\nconst el = <p>{text.before}<strong>{project.name}</strong>{text.after}</p>;'],
+  ['un nom dans un `<Link>`, après une phrase du catalogue', 'texte JSX', 'const t = useT();\nconst el = <p>{t.shell.notFound.hintBefore}<Link to={x}>{project.name}</Link></p>;'],
+  ['des noms en gras que rend un `.map`, après un texte du catalogue', 'liste', 'const t = useT();\nconst el = <p>{t.shell.signalsPage.separator}{failed.map((p) => <strong key={p.id}>{p.name}</strong>)}</p>;'],
+  ['un nom confié à une partie du catalogue reçue en paramètre', 'catalogue', "const say = (text: Messages['shell']['signalsPage']) => text.projectDescription(project.name);"],
   ['du texte JSX à côté du nom', 'texte JSX', '<p>Les tickets de {project.name}, en colonnes.</p>'],
   ['une alerte écrite en JSX', 'texte JSX', '<p role="alert">Tickets indisponibles : {project.name}.</p>'],
   ['un nom puis sa raison, en JSX', 'texte JSX', '<p>{project.name} : {project.reason}</p>'],
@@ -146,6 +161,13 @@ const ACCEPTED: [string, string][] = [
   ['`ctx.projectName(…)` dans une cellule', '<td className="px-3">{ctx.projectName(point.project)}</td>'],
   ['une fonction du fichier qui rend le nom, en libellé', 'const nameOf = (id) => projects.find((p) => p.id === id)?.name ?? id;\nconst el = <span>{nameOf(id)}</span>;'],
   ['une variable qui porte le nom, en libellé', "const label = projectId ? (project?.name ?? projectId) : 'Vue globale';\nconst el = <span>{label}</span>;"],
+  ['`projectInSentence` confié au catalogue', 'const text = useT().shell.signalsPage;\nconst s = text.projectDescription(projectInSentence(project, language));'],
+  ['un nom en argument d’une fonction qui n’est pas du catalogue', 'const text = format;\nconst s = text.label(project.name);'],
+  ['un `t` qui n’est pas le catalogue, en paramètre', 'const found = tickets.filter((t) => t.labels.includes(project.name));'],
+  ['un `t` qui n’est pas le catalogue, en variable', 'const t = new Map();\nt.set(project.id, project.name);'],
+  ['une méthode de chaîne sur un texte du catalogue', 'const t = useT();\nconst order = t.shell.common.untitled.localeCompare(project.name);'],
+  ['une méthode de tableau sur des mots-clés du catalogue', 'const t = useT();\nconst found = t.shell.palette.overviewKeywords.includes(project.name);'],
+  ['le catalogue sans zone, appelé sur le nom', 'const t = useT();\nconst s = t.toString(project.name);'],
   ['`projectInSentence` et `projectList`', 'const s = `Les tickets de ${projectInSentence(project)}`;\nconst t = `Indisponibles : ${projectList(failed)}.`;'],
   ['l’identifiant d’un Projet', 'const s = `Aucune Epic « ${epicId} » dans ${project.id}`;'],
   ['une liste d’identifiants', 'const s = projects.map((project) => project.id).join(", ");'],
@@ -188,6 +210,8 @@ const LIMITS: [string, string][] = [
   ['un nom passé en `children`', '<p>Voir <Link to={x} children={project.name} /> ici</p>'],
   ['un nom seul dans un `<Link>`, à côté d’un texte qui vient d’une expression', '<p>{raison} <Link to={x}>{project.name}</Link></p>'],
   ['un nom confié à une fonction du fichier qui en fait du texte', 'const phrase = (n) => `Dans ${n}`;\nconst s = phrase(project.name);'],
+  ['une fonction du fichier qui rend une partie du catalogue', 'const words = (l) => CATALOGS[l].shell.projectNames;\nconst s = words(l).quoted(project.name);'],
+  ['une partie du catalogue en propriété déstructurée', "const Say = ({ text }: { text: Messages['shell']['signalsPage'] }) => text.projectDescription(project.name);"],
   ['un composant du fichier qui rend le nom en gras', 'const Nom = ({ p }) => <strong>{p.name}</strong>;\nconst el = <p>Dans <Nom p={project} />, rien.</p>;'],
 ];
 
@@ -253,11 +277,13 @@ describe('les phrases du code de l’interface', () => {
   const MUTANTS: [string, string, string, string][] = [
     ['le gabarit du relecteur de bdesk-38k.73, dans l’avis « Aucun ticket dans ce Projet »', 'src/web/pages/KanbanPage.tsx', 'Créez-en un avec <code>bd create</code>', 'Créez-en un dans {`${project.name}`} avec <code>bd create</code>'],
     ['`.toString()` dans le même avis', 'src/web/pages/KanbanPage.tsx', 'Créez-en un avec <code>bd create</code>', 'Créez-en un dans {project.name.toString()} avec <code>bd create</code>'],
-    ['des noms en gras que rend un `.map`, dans l’alerte de la palette', 'src/web/palette/CommandPalette.tsx', 'Tickets indisponibles : {projectList(failedProjects)}.', 'Tickets indisponibles : {failedProjects.map((project) => <strong key={project.id}>{project.name}</strong>)}.'],
+    ['des noms en gras que rend un `.map`, dans l’alerte de la palette', 'src/web/palette/CommandPalette.tsx', '{text.ticketsUnavailable(projectList(failedProjects, language))}', 'Tickets indisponibles : {failedProjects.map((project) => <strong key={project.id}>{project.name}</strong>)}.'],
     // Relecture finale, tour 2 : le nom dans un `<Link>`, au milieu de la phrase de l'avis d'une Epic absente (le relecteur), de celui du kanban vide, de l'alerte de la palette.
     ['le `<Link>` du relecteur, dans l’avis d’une Epic absente', 'src/web/pages/EpicsPage.tsx', 'L’Epic a peut-être été supprimée, ou le lien vient d’un autre Projet.', 'L’Epic a peut-être été supprimée de <Link to={paths.epics(project.id)}>{project.name}</Link>, ou le lien vient d’un autre Projet.'],
     ['un `<NavLink>` dans l’avis « Aucun ticket dans ce Projet »', 'src/web/pages/KanbanPage.tsx', 'Créez-en un avec <code>bd create</code>', 'Créez-en un dans <NavLink to="/">{project.name}</NavLink> avec <code>bd create</code>'],
-    ['des noms dans des `<Link>` que rend un `.map`, dans l’alerte de la palette', 'src/web/palette/CommandPalette.tsx', 'Tickets indisponibles : {projectList(failedProjects)}.', 'Tickets indisponibles : {failedProjects.map((project) => <Link key={project.id} to="/">{project.name}</Link>)}.'],
+    ['le nom confié tel quel au catalogue, dans la description de la page « À regarder » d’un Projet', 'src/web/pages/SignalsPage.tsx', 'text.projectDescription(projectInSentence(project, language))', 'text.projectDescription(project.name)'],
+    ['un nom en code entre deux textes du catalogue, sur la Vue globale', 'src/web/pages/GlobalPage.tsx', '<code>~/Developer</code>', '<code>{projects[0]?.name}</code>'],
+    ['des noms dans des `<Link>` que rend un `.map`, dans l’alerte de la palette', 'src/web/palette/CommandPalette.tsx', '{text.ticketsUnavailable(projectList(failedProjects, language))}', 'Tickets indisponibles : {failedProjects.map((project) => <Link key={project.id} to="/">{project.name}</Link>)}.'],
   ];
 
   it.each(MUTANTS)('refuse la phrase écrite à la main dans un vrai fichier : %s', (_what, file, from, to) => {

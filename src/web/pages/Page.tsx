@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { isInvisibleText } from '../lib/invisibleText';
 import { Skeleton } from '../ui/states';
@@ -6,11 +7,10 @@ import { Skeleton } from '../ui/states';
 /** Un titre qui s'ajuste à son texte, et un contour de focus qui l'épouse de près : voir `SectionTitle` et `Page`. */
 const TIGHT_OUTLINE = 'w-fit max-w-full rounded-sm focus-visible:outline-offset-1';
 
-/** Le nom du titre d'une page qui n'a pas encore le sien (`title` est `null`) : celui de la page, pour toute page (bdesk-38k.53), plutôt qu'un titre vide. Voir `Page`. */
-const LOADING_TITLE = 'Chargement…';
-
-/** Ce que la page écrit à la place d'un titre qu'on ne verrait pas (vide, fait de blancs ou de caractères sans largeur : `isInvisibleText`). Voir `Page`. */
-const UNTITLED = 'Sans titre';
+/*
+ * Le nom du titre d'une page qui n'a pas encore le sien (`title` est `null`) est `t.shell.pages.loadingTitle` : celui de la page, pour toute page (bdesk-38k.53), plutôt qu'un titre vide.
+ * Ce que la page écrit à la place d'un titre qu'on ne verrait pas (vide, fait de blancs ou de caractères sans largeur : `isInvisibleText`) est `t.shell.common.untitled`. Voir `Page`.
+ */
 
 /**
  * Cadre commun des pages : titre, phrase d'explication, contenu. Largeur de lecture limitée, sauf `wide` : le contenu
@@ -47,11 +47,12 @@ export function Page({
   // qui est occupé, et c'est la région qui suit (`role="status"`) qui dit le chargement.
   // Le titre n'est donc pas un `ReactNode` : `aria-label` remplace le nom que le contenu donnerait, et un titre en JSX, pris pour un squelette parce qu'il n'est pas un
   // texte, aurait été renommé « Chargement… » en silence pour les lecteurs d'écran. Avec `string | null`, TypeScript le refuse.
+  const t = useT();
   const loading = title === null;
   // Un texte qu'on ne verrait pas ferait un `<h1>` muet pour un lecteur d'écran, et axe ne le voit pas quand il est fait de caractères sans largeur : il s'écrit « Sans titre ». C'est
   // un vrai titre, que le focus peut prendre : seul `null` dit « il charge ». Tout autre texte reste tel qu'il est écrit (ni `trim`, ni règle des titres de ticket : voir plus haut).
   // Ce qui n'est pas un texte (un `as` a contourné le type) est rendu tel quel, comme avant : la règle ne vaut que pour un texte.
-  const text = typeof title === 'string' && isInvisibleText(title) ? UNTITLED : title;
+  const text = typeof title === 'string' && isInvisibleText(title) ? t.shell.common.untitled : title;
   return (
     <div
       className={cx(
@@ -64,7 +65,7 @@ export function Page({
         {/* wrap-anywhere : un id, un chemin ou un nom de fichier sans espace passe à la ligne au lieu d'être rogné. */}
         <h1
           data-skeleton={loading ? '' : undefined}
-          aria-label={loading ? LOADING_TITLE : undefined}
+          aria-label={loading ? t.shell.pages.loadingTitle : undefined}
           className={cx(
             'wrap-anywhere text-2xl font-extrabold tracking-[-0.015em] text-ink md:text-[1.75rem] md:leading-9',
             // Le titre prend le focus par programme à l'arrivée d'une page qu'un « Réessayer » a rechargée (voir `useRetryFocus`) : son contour (au clavier
@@ -83,10 +84,11 @@ export function Page({
 
 /** Page dont le contenu est l'objet d'un autre ticket : dit lequel, sans rien promettre de plus. */
 export function ComingSoon({ ticket, children }: { ticket: string; children: ReactNode }) {
+  const t = useT();
   return (
     <aside className="flex items-start gap-3 rounded-lg border border-line bg-well p-4">
       <span className="mt-px inline-flex h-5 shrink-0 items-center rounded-full bg-accent-soft px-2 text-xs font-medium text-accent">
-        À venir
+        {t.shell.pages.comingSoon}
       </span>
       <p className="min-w-0 text-ink-2">
         {children} <code className="whitespace-nowrap font-mono text-xs text-ink">{ticket}</code>

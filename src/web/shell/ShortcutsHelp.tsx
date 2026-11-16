@@ -1,6 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 import { Fragment } from 'react';
+import { useT } from '../i18n';
 import type { Shortcut } from '../shortcuts/registry';
 import { useShortcutList } from '../shortcuts/ShortcutsProvider';
 import { dialogOverlay, dialogSurface } from '../ui/dialog';
@@ -13,7 +14,13 @@ export function ShortcutsHelp() {
   // Échap rendu au registre des raccourcis pendant l'animation de sortie, focus rendu à l'élément d'origine : voir `useOverlayContent`.
   const overlay = useOverlayContent(open);
   const shortcuts = useShortcutList();
-  const groups = new Map<string, Shortcut[]>();
+  const t = useT();
+  // Les rubriques de l'application d'abord, puis celles des pages dans l'ordre où elles s'enregistrent : une bascule de langue ré-enregistre les raccourcis de
+  // l'application (leur libellé change), qui passeraient sinon derrière ceux de la page.
+  const groups = new Map<string, Shortcut[]>([
+    [t.shell.shortcuts.groups.general, []],
+    [t.shell.shortcuts.groups.navigation, []],
+  ]);
   for (const shortcut of shortcuts) {
     groups.set(shortcut.group, [...(groups.get(shortcut.group) ?? []), shortcut]);
   }
@@ -25,14 +32,13 @@ export function ShortcutsHelp() {
         <Dialog.Content className={dialogSurface} aria-describedby="shortcuts-help-description" {...overlay}>
           <div className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
             <div>
-              <Dialog.Title className="text-base font-bold text-ink">Raccourcis clavier</Dialog.Title>
+              <Dialog.Title className="text-base font-bold text-ink">{t.shell.shortcuts.helpTitle}</Dialog.Title>
               <Dialog.Description id="shortcuts-help-description" className="mt-0.5 text-ink-2">
-                Ils sont ignorés quand le curseur est dans un champ de saisie. Entrée et les flèches restent au bouton, au
-                lien ou à la liste qui les utilise.
+                {t.shell.shortcuts.helpDescription}
               </Dialog.Description>
             </div>
             <Dialog.Close
-              aria-label="Fermer"
+              aria-label={t.shell.common.close}
               className="-mr-1.5 -mt-1 grid size-8 place-items-center rounded-md text-ink-3 transition-colors hover:bg-hover hover:text-ink"
             >
               <X size={16} aria-hidden="true" />
@@ -42,11 +48,11 @@ export function ShortcutsHelp() {
           {/* tabIndex : une zone qui défile prend le focus, sinon le clavier ne peut pas l'atteindre ; le contour reste à l'intérieur (le panneau rogne). */}
           <div
             role="region"
-            aria-label="Liste des raccourcis"
+            aria-label={t.shell.shortcuts.list}
             tabIndex={0}
             className="max-h-[min(60dvh,28rem)] overflow-y-auto px-5 py-3 focus-visible:-outline-offset-2"
           >
-            {[...groups].map(([group, items]) => (
+            {[...groups].filter(([, items]) => items.length > 0).map(([group, items]) => (
               <section key={group} aria-label={group} className="py-2">
                 <h3 className="pb-1 text-xs font-medium text-ink-3">{group}</h3>
                 <ul>
@@ -71,12 +77,13 @@ export function ShortcutsHelp() {
 
 /** Les touches d'une même action sur une seule ligne : « H ou ← ». */
 function Alternatives({ keys }: { keys: readonly string[] }) {
+  const t = useT();
   return (
     <span className="inline-flex shrink-0 flex-wrap items-center justify-end gap-x-1.5 gap-y-1">
       {keys.map((alternative, index) => (
         // Deux alternatives ne peuvent pas être identiques : la touche sert de clé.
         <Fragment key={alternative}>
-          {index > 0 ? <span className="text-xs text-ink-3">ou</span> : null}
+          {index > 0 ? <span className="text-xs text-ink-3">{t.shell.shortcuts.or}</span> : null}
           <SequenceKeys keys={alternative} />
         </Fragment>
       ))}
@@ -86,13 +93,14 @@ function Alternatives({ keys }: { keys: readonly string[] }) {
 
 /** Une séquence s'écrit « G puis K » ; une combinaison, « ⌘ K ». */
 function SequenceKeys({ keys }: { keys: string }) {
+  const t = useT();
   const steps = keys.split(' ');
   return (
     <span className="inline-flex shrink-0 items-center gap-1.5">
       {steps.map((step, index) => (
         // L'index est la seule clé unique : une séquence peut répéter une touche (« g g »).
         <Fragment key={index}>
-          {index > 0 ? <span className="text-xs text-ink-3">puis</span> : null}
+          {index > 0 ? <span className="text-xs text-ink-3">{t.shell.shortcuts.then}</span> : null}
           <ShortcutKeys keys={step} />
         </Fragment>
       ))}

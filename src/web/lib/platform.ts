@@ -1,3 +1,6 @@
+import { CATALOGS } from '../i18n/catalog';
+import type { Language } from '../i18n/language';
+
 type NavigatorInfo = Pick<Navigator, 'platform' | 'userAgent'> & {
   userAgentData?: { platform?: string };
 };
@@ -8,23 +11,28 @@ export function isMacPlatform(nav: NavigatorInfo = navigator): boolean {
   return /mac|iphone|ipad|ipod/i.test(platform);
 }
 
-const KEY_LABELS: Record<string, string> = {
-  enter: '↵',
-  escape: 'Échap',
-  arrowup: '↑',
-  arrowdown: '↓',
-  arrowleft: '←',
-  arrowright: '→',
-  space: 'Espace',
-  tab: 'Tab',
-  backspace: '⌫',
+/** Le nom écrit des touches : un signe, ou un mot de la langue (`t.shell.keys`). */
+const keyLabels = (language: Language): Record<string, string> => {
+  const { keys } = CATALOGS[language].shell;
+  return {
+    enter: '↵',
+    escape: keys.escape,
+    arrowup: '↑',
+    arrowdown: '↓',
+    arrowleft: '←',
+    arrowright: '→',
+    space: keys.space,
+    tab: keys.tab,
+    backspace: '⌫',
+  };
 };
 
 /**
  * Décompose un raccourci (`mod+k`, `g k`, `?`) en touches à afficher.
  * Une séquence (`g k`) donne une touche par étape.
  */
-export function keyCaps(keys: string, mac: boolean): string[] {
+export function keyCaps(keys: string, mac: boolean, language: Language = 'fr'): string[] {
+  const labels = keyLabels(language);
   return keys
     .split(' ')
     .flatMap((step) => step.split('+'))
@@ -37,9 +45,9 @@ export function keyCaps(keys: string, mac: boolean): string[] {
         case 'alt':
           return mac ? '⌥' : 'Alt';
         case 'shift':
-          return mac ? '⇧' : 'Maj';
+          return mac ? '⇧' : CATALOGS[language].shell.keys.shift;
         default:
-          return KEY_LABELS[token] ?? token.toUpperCase();
+          return labels[token] ?? token.toUpperCase();
       }
     });
 }

@@ -6,6 +6,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { queryKeys } from '../data/hooks';
 import { projectList } from '../data/projectNames';
+import { useFormat, useLanguage, useT, type Messages } from '../i18n';
 import { openedFromPalette } from '../kanban/boardFocus';
 import { cx } from '../lib/cx';
 import { useOverlayContent, usePalette, type PaletteMode } from '../shell/OverlayProvider';
@@ -23,15 +24,16 @@ export function CommandPalette() {
   const { open, mode, closePalette } = usePalette();
   // Échap rendu au registre des raccourcis pendant l'animation de sortie, focus rendu à l'élément d'origine : voir `useOverlayContent`.
   const overlay = useOverlayContent(open);
+  const t = useT();
 
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && closePalette()}>
       <Dialog.Portal>
         <Dialog.Overlay className={dialogOverlay} />
         <Dialog.Content className={dialogSurface} aria-describedby="palette-description" {...overlay}>
-          <Dialog.Title className="sr-only">Palette de commandes</Dialog.Title>
+          <Dialog.Title className="sr-only">{t.shell.palette.title}</Dialog.Title>
           <Dialog.Description id="palette-description" className="sr-only">
-            Cherchez un Projet, une Epic ou un ticket, ou lancez une commande. Flèches pour choisir, Entrée pour ouvrir.
+            {t.shell.palette.description}
           </Dialog.Description>
           {/* Monté à l'ouverture et retiré à la fin de l'animation de sortie : la saisie repart à zéro et rien n'est chargé tant que la palette est
               retirée. Rouverte pendant cette animation, elle est encore montée : elle garde sa saisie. */}
@@ -45,27 +47,30 @@ export function CommandPalette() {
 /** La valeur cmdk de la ligne « Chercher … dans tous les Projets ». */
 const WIDEN_VALUE = 'action:search-all';
 
-/**
- * Les noms des régions de statut de la palette, qui n'ont pas de titre à l'écran où les prendre. Les deux messages visibles (l'attente des tickets, la liste vide) rendent compte de la recherche, et ne
- * sont jamais là ensemble ; le décompte que seuls les lecteurs d'écran lisent est un autre statut. La liste des résultats, elle, est nommée « Suggestions » par cmdk.
+/*
+ * Les noms des régions de statut de la palette (`searchState`, `resultCountLabel`), qui n'ont pas de titre à l'écran où les prendre. Les deux messages visibles (l'attente des tickets, la liste vide) rendent
+ * compte de la recherche, et ne sont jamais là ensemble ; le décompte que seuls les lecteurs d'écran lisent est un autre statut. La liste des résultats, elle, est nommée « Suggestions » par cmdk.
  */
-const SEARCH_STATE = 'État de la recherche';
-const RESULT_COUNT = 'Nombre de résultats';
 
-/** Verbe affiché dans le pied de la palette, selon la ligne sélectionnée. */
-const ACTION_LABELS: readonly (readonly [prefix: string, label: string])[] = [
-  ['nav:', 'Aller à'],
-  ['project:', 'Changer de Projet'],
-  ['epic:', 'Ouvrir l’Epic'],
-  ['issue:', 'Ouvrir le ticket'],
-  [WIDEN_VALUE, 'Élargir la recherche'],
-  ['action:retry', 'Réessayer'],
-  ['action:', 'Exécuter'],
+type Verb = keyof Messages['shell']['palette']['verbs'];
+
+/** Verbe affiché dans le pied de la palette, selon la ligne sélectionnée (`t.shell.palette.verbs`). */
+const ACTION_VERBS: readonly (readonly [prefix: string, verb: Verb])[] = [
+  ['nav:', 'goTo'],
+  ['project:', 'switchProject'],
+  ['epic:', 'openEpic'],
+  ['issue:', 'openIssue'],
+  [WIDEN_VALUE, 'widen'],
+  ['action:retry', 'retry'],
+  ['action:', 'run'],
 ];
 
 function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode; onClose: () => void }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { language, t } = useLanguage();
+  const format = useFormat();
+  const text = t.shell.palette;
 
   const [query, setQuery] = useState('');
   const [searchAll, setSearchAll] = useState(false);
@@ -100,7 +105,7 @@ function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode
     projectsStatus,
   } = usePaletteSections({ mode, query, searchAll, go, close: onClose });
 
-  const actionLabel = ACTION_LABELS.find(([prefix]) => selected.startsWith(prefix))?.[1] ?? 'Ouvrir';
+  const actionLabel = text.verbs[ACTION_VERBS.find(([prefix]) => selected.startsWith(prefix))?.[1] ?? 'open'];
   const hasRows = resultCount > 0 || canWiden || failedProjects.length > 0;
   const holdEnter = usePendingEnter({ open, search, selected, pending: ticketsPending, targetPath: exactPath, go });
   // Revenue après le délai (voir `canWiden`), « Chercher … dans tous les Projets » est la seule ligne tant que les tickets chargent. cmdk
@@ -116,7 +121,7 @@ function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode
   return (
     <Command
       ref={root}
-      label="Palette de commandes"
+      label={text.title}
       shouldFilter={false}
       loop
       // Sans les raccourcis « vim » de cmdk : Ctrl+K y est « ligne précédente », et le registre ne verrait plus
@@ -140,7 +145,7 @@ function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode
             setQuery(value);
           }}
           placeholder={
-            mode === 'projects' ? 'Changer de Projet' : 'Chercher un ticket, une Epic, un Projet ou une commande'
+            mode === 'projects' ? text.placeholderProjects : text.placeholder
           }
           className="h-12 min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-ink-3"
         />
@@ -149,27 +154,27 @@ function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode
 
       {/* Les messages d'état sont hors de la listbox : elle ne contient que des options (WAI-ARIA). */}
       {loadingTickets ? (
-        <p role="status" aria-label={SEARCH_STATE} className="px-4 py-2.5 text-ink-3">
-          Chargement des tickets…
+        <p role="status" aria-label={text.searchState} className="px-4 py-2.5 text-ink-3">
+          {text.loadingTickets}
         </p>
       ) : null}
 
       {failedProjects.length > 0 ? (
         <p role="alert" className="flex items-center gap-2 px-4 py-2 text-ink-2 wrap-anywhere">
           <TriangleAlert size={14} aria-hidden="true" className="shrink-0 text-danger" />
-          Tickets indisponibles : {projectList(failedProjects)}.
+          {text.ticketsUnavailable(projectList(failedProjects, language))}
         </p>
       ) : null}
 
       {empty ? (
-        <p role="status" aria-label={SEARCH_STATE} className="px-4 py-10 text-center text-ink-3 wrap-anywhere">
+        <p role="status" aria-label={text.searchState} className="px-4 py-10 text-center text-ink-3 wrap-anywhere">
           {projectsStatus === 'ready'
             ? search
-              ? `Aucun résultat pour « ${search} ».`
-              : 'Rien à afficher pour le moment.'
+              ? text.noResults(search)
+              : text.nothingYet
             : projectsStatus === 'failed'
-              ? 'Impossible de charger les Projets : le serveur ne répond pas.'
-              : 'Chargement…'}
+              ? text.projectsFailed
+              : t.shell.common.loading}
         </p>
       ) : null}
 
@@ -191,17 +196,17 @@ function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode
             >
               <Bead />
               <RefreshCw size={16} strokeWidth={1.8} aria-hidden="true" className="shrink-0 text-ink-3 group-data-[selected=true]/item:text-ink-2" />
-              Réessayer
+              {t.shell.common.retry}
             </Command.Item>
           </Command.Group>
         ) : null}
 
         {canWiden ? (
-          <Command.Group heading="Élargir" className={groupClass}>
+          <Command.Group heading={text.widenHeading} className={groupClass}>
             <Command.Item value={WIDEN_VALUE} onSelect={() => setSearchAll(true)} className={itemClass}>
               <Bead />
               <Globe size={16} strokeWidth={1.8} aria-hidden="true" className="shrink-0 text-ink-3" />
-              <span className="min-w-0 flex-1 truncate">Chercher « {search} » dans tous les Projets</span>
+              <span className="min-w-0 flex-1 truncate">{text.widen(search)}</span>
               <EnterHint />
             </Command.Item>
           </Command.Group>
@@ -212,19 +217,19 @@ function PaletteBody({ open, mode, onClose }: { open: boolean; mode: PaletteMode
         <span className="flex items-center gap-1.5">
           <Kbd>↑</Kbd>
           <Kbd>↓</Kbd>
-          naviguer
+          {text.navigate}
         </span>
         <span className="ml-auto flex items-center gap-1.5">
           <Kbd>↵</Kbd>
           {actionLabel}
         </span>
         <span className="flex items-center gap-1.5">
-          <Kbd>Échap</Kbd>
-          fermer
+          <Kbd>{t.shell.keys.escape}</Kbd>
+          {text.close}
         </span>
       </div>
-      <div className="sr-only" role="status" aria-label={RESULT_COUNT} aria-live="polite">
-        {search ? `${resultCount} résultats` : ''}
+      <div className="sr-only" role="status" aria-label={text.resultCountLabel} aria-live="polite">
+        {search ? text.results(format.formatCount(resultCount), resultCount) : ''}
       </div>
     </Command>
   );

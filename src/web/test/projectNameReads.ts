@@ -16,7 +16,9 @@ import ts from 'typescript';
  *   `<Command.Item>`) lui-même au milieu d'un texte (`<p>Les tickets de <strong>{nom}</strong>, en colonnes.</p>`, `<p>Voir les tickets de <Link to={x}>{nom}</Link>, en colonnes.</p>`), que cet élément soit écrit là, rendu sous
  *   condition (`{ok && <strong>{nom}</strong>}`), mis entre accolades, rendu par la flèche d'un `.map` ou d'un `.flatMap` (`<p>Indisponibles : {liste.map((x) => <strong key={x.id}>{x.name}</strong>)}.</p>`), ou rangé dans une
  *   variable qu'on pose ensuite dans du texte : `texte JSX`, ou `liste` pour ce que rend un `.map` ;
- * - dans une liste que la page écrira d'un trait (`liste.map((x) => x.name)`, à corps de bloc ou déstructurée, `['…', x.name].join(' ')`) : `liste`.
+ * - dans une liste que la page écrira d'un trait (`liste.map((x) => x.name)`, à corps de bloc ou déstructurée, `['…', x.name].join(' ')`) : `liste` ;
+ * - en argument d'une fonction du catalogue des textes (bdesk-ewr), qui en fait une phrase : `t.shell.signalsPage.projectDescription(x.name)`, ou par une variable du fichier tirée du catalogue
+ *   (`const text = useT().shell.signalsPage` ou `= t.shell.signalsPage`, puis `text.projectDescription(x.name)`) : `catalogue`. Le nom passe alors par `projectInSentence` ou `projectList`, comme ailleurs.
  * Sa valeur traverse ce qui la laisse telle quelle ou presque : parenthèses, `!`, `as`, `??`, `||`, `? :`, `String(…)`, un gabarit qui ne porte qu'elle (`${nom}`), un tableau qui la contient, et les méthodes de chaîne
  * qui la rendent encore, entière ou en partie (`.toString()`, `.trim()`, `.toLowerCase()`, `.split(…)[0]`…).
  * Elle n'est pas dans une phrase quand elle reste seule : seule dans son élément, un attribut, un argument, une propriété d'objet, une comparaison, une affectation : c'est un libellé.
@@ -34,7 +36,7 @@ import ts from 'typescript';
  * (`<p>{raison} <Link to={x}>{x.name}</Link></p>` : seul un texte écrit à côté compte, car une ligne de la barre latérale porte un nom seul à côté d'expressions qui rendent des éléments). Ce que le rendu écrit, lui, est éprouvé par `data/projectSentences.rendered.test.tsx`, sans lire le code, dans les états qu'il monte ; mais il ne lit pas un nom seul dans son élément au milieu d'une
  * phrase (le texte propre de l'élément est le repli seul) : celui-là, c'est ce balayage qui le lit, et `<Nom />` n'est donc lu par aucun des deux.
  */
-export type SentenceKind = 'gabarit' | 'concaténation' | 'texte JSX' | 'liste';
+export type SentenceKind = 'gabarit' | 'concaténation' | 'texte JSX' | 'liste' | 'catalogue';
 
 export interface NameRead {
   /** Ce qui est lu : `project.name`, `ctx.projectName(id)`… */
@@ -89,6 +91,99 @@ export function nameReads(source: string, fileName = 'x.tsx'): NameRead[] {
   const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   const aliases = new Set<string>();
   const nameFunctions = new Set<string>();
+
+  /**
+   * Le catalogue des textes (bdesk-ewr), là où le fichier le tient. Deux sortes de racines :
+   * - `messages` : le catalogue entier ou ce qui le porte : un appel à `useT()` ou `useLanguage()`, `CATALOGS`, une variable qui en est la valeur (`const t = useT()`,
+   *   `const language = useLanguage()`, `const { t } = useLanguage()`, `const { t: messages } = useLanguage()`), un paramètre typé `Messages` ;
+   * - `part` : une partie d'une zone, tirée d'une racine par une chaîne qui passe par le nom d'une zone (`const text = useT().shell.signalsPage`,
+   *   `const words = CATALOGS[language].shell.projectNames`, `const { projectDescription } = t.shell.signalsPage`), ou un paramètre typé `Messages['shell']…`.
+   * Un appel est au catalogue quand sa fonction est une `part`, ou qu'on l'atteint d'une racine `messages` par le nom d'une zone (`t.shell.….f(…)`,
+   * `language.t.shell.….f(…)`) : `t.labels.includes(…)`, sans zone, n'en est pas un. Les racines valent pour tout le fichier, sans égard à la portée.
+   */
+  type CatalogKind = 'messages' | 'part';
+  const ZONES = new Set(['shell', 'kanban', 'epics', 'metrics', 'errors']);
+  const catalogRoots = new Map<string, CatalogKind>();
+
+  /** Ce qu'une expression désigne du catalogue : sa racine, et si la chaîne qui y mène passe par une zone. */
+  const catalogOf = (node: ts.Expression): CatalogKind | undefined => {
+    let zoned = false;
+    let current: ts.Expression = node;
+    for (;;) {
+      if (ts.isParenthesizedExpression(current) || ts.isNonNullExpression(current) || ts.isAsExpression(current)) current = current.expression;
+      else if (ts.isPropertyAccessExpression(current)) {
+        if (ZONES.has(current.name.text)) zoned = true;
+        current = current.expression;
+      } else if (ts.isElementAccessExpression(current)) {
+        if (ts.isStringLiteralLike(current.argumentExpression) && ZONES.has(current.argumentExpression.text)) zoned = true;
+        current = current.expression;
+      } else break;
+    }
+    let root: CatalogKind | undefined;
+    if (ts.isCallExpression(current) && ts.isIdentifier(current.expression) && ['useT', 'useLanguage'].includes(current.expression.text)) root = 'messages';
+    else if (ts.isIdentifier(current)) root = current.text === 'CATALOGS' ? 'messages' : catalogRoots.get(current.text);
+    if (root === 'part') return 'part';
+    if (root === 'messages') return zoned ? 'part' : current === node ? 'messages' : zonedOrWhole(node, current);
+    return undefined;
+  };
+  /**
+   * Une racine `messages` tirée sans zone : sa propriété `t` (`language.t`), ou le catalogue d'une langue (`CATALOGS[language]`, `CATALOGS.fr`), reste le catalogue ;
+   * tout autre chemin n'en est pas.
+   */
+  const zonedOrWhole = (node: ts.Expression, root: ts.Expression): CatalogKind | undefined => {
+    if (!ts.isPropertyAccessExpression(node) && !ts.isElementAccessExpression(node)) return undefined;
+    if (node.expression !== root) return undefined;
+    if (ts.isIdentifier(root) && root.text === 'CATALOGS') return 'messages';
+    return ts.isPropertyAccessExpression(node) && node.name.text === 't' ? 'messages' : undefined;
+  };
+
+  const bind = (name: ts.BindingName, kind: CatalogKind | undefined): void => {
+    if (!kind) return;
+    if (ts.isIdentifier(name)) {
+      catalogRoots.set(name.text, kind);
+      return;
+    }
+    for (const element of name.elements) {
+      if (ts.isOmittedExpression(element)) continue;
+      // `const { t } = useLanguage()`, `const { t: messages } = …` : le catalogue entier ; une autre propriété d'un contexte n'en est pas (`const { language } = useLanguage()`).
+      const key = element.propertyName && ts.isIdentifier(element.propertyName) ? element.propertyName.text : ts.isIdentifier(element.name) ? element.name.text : '';
+      if (kind === 'part') bind(element.name, 'part');
+      else if (key === 't') bind(element.name, 'messages');
+      else if (ZONES.has(key)) bind(element.name, 'part');
+    }
+  };
+  const collectCatalogRoots = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) && node.initializer) bind(node.name, catalogOf(node.initializer));
+    if (ts.isParameter(node) && node.type) {
+      const type = node.type.getText(file).replace(/\s+/g, '');
+      if (type === 'Messages') bind(node.name, 'messages');
+      else if (/^Messages\[/.test(type)) bind(node.name, 'part');
+    }
+    ts.forEachChild(node, collectCatalogRoots);
+  };
+  // Deux passes : une racine tirée d'une autre déclarée plus bas dans le fichier.
+  collectCatalogRoots(file);
+  collectCatalogRoots(file);
+
+  /** Les méthodes d'une chaîne ou d'un tableau : appelées sur un texte du catalogue (`t.shell.common.untitled.localeCompare(…)`), elles n'en font pas une phrase. */
+  const BUILT_IN_METHODS = new Set(['localeCompare', 'includes', 'indexOf', 'lastIndexOf', 'startsWith', 'endsWith', 'concat', 'some', 'every', 'find', 'findIndex', 'filter', 'map', 'flatMap', 'join', 'replace', 'replaceAll', 'split', 'at', 'toLowerCase', 'toUpperCase', 'trim']);
+
+  /** Un appel à une fonction du catalogue : `t.shell.….f(…)`, `text.f(…)`, `useT().shell.….f(…)`, `CATALOGS[l].shell.….f(…)`, `projectDescription(…)` déstructurée. */
+  const isCatalogCall = (call: ts.CallExpression): boolean => {
+    const callee = call.expression;
+    if (ts.isIdentifier(callee)) return catalogRoots.get(callee.text) === 'part';
+    if (ts.isPropertyAccessExpression(callee) && BUILT_IN_METHODS.has(callee.name.text)) return false;
+    if (!ts.isPropertyAccessExpression(callee) && !ts.isElementAccessExpression(callee)) return false;
+    return catalogOf(callee) === 'part';
+  };
+
+  /** Une expression qui se lit comme du texte du catalogue : un texte (`{text.before}`) ou une phrase (`{text.f(…)}`). */
+  const readsCatalog = (expression: ts.Expression): boolean => {
+    let current: ts.Expression = expression;
+    while (ts.isParenthesizedExpression(current) || ts.isNonNullExpression(current) || ts.isAsExpression(current)) current = current.expression;
+    if (ts.isCallExpression(current)) return isCatalogCall(current);
+    return catalogOf(current) === 'part';
+  };
 
   /** L'expression sans ce qui l'enveloppe sans la changer : parenthèses, `!`, `as`, `<T>`, `satisfies`. */
   const unwrap = (node: ts.Node): ts.Node =>
@@ -217,8 +312,9 @@ export function nameReads(source: string, fileName = 'x.tsx'): NameRead[] {
     return isListCall(call) && call.arguments.includes(fn as ts.Expression);
   };
 
-  /** Du texte JSX qui se lit à côté : pas que des blancs (une espace seule entre deux éléments n'en est pas). */
-  const hasText = (child: ts.Node): boolean => ts.isJsxText(child) && child.text.trim() !== '';
+  /** Du texte qui se lit à côté : du texte JSX qui n'est pas que des blancs (une espace seule entre deux éléments n'en est pas), ou un texte du catalogue (`{text.before}`). */
+  const hasText = (child: ts.Node): boolean =>
+    (ts.isJsxText(child) && child.text.trim() !== '') || (ts.isJsxExpression(child) && child.expression !== undefined && readsCatalog(child.expression));
   /** Une autre expression à côté : pas `{' '}`. */
   const hasExpression = (child: ts.Node): boolean => ts.isJsxExpression(child) && child.expression !== undefined && !(ts.isStringLiteralLike(child.expression) && child.expression.text.trim() === '');
 
@@ -237,7 +333,7 @@ export function nameReads(source: string, fileName = 'x.tsx'): NameRead[] {
 
   /**
    * Un élément de mise en forme qui ne porte qu'un nom est-il lui-même au milieu d'un texte ? On le suit là où il va : l'élément qui le contient (un autre élément de mise en forme, tant qu'il n'y a pas de texte à côté),
-   * une expression `{…}`, une condition, la flèche d'un `.map` ou d'un `.flatMap` (ce qu'on pose alors dans le texte est une liste de ces éléments). Le texte à côté, lui, est du texte JSX : une autre expression ne fait pas une phrase.
+   * une expression `{…}`, une condition, la flèche d'un `.map` ou d'un `.flatMap` (ce qu'on pose alors dans le texte est une liste de ces éléments). Le texte à côté est du texte JSX ou un texte du catalogue (`hasText`) : une autre expression ne fait pas une phrase.
    */
   const wrapperSentence = (wrapper: ts.Node): SentenceKind | undefined => {
     let kind: SentenceKind = 'texte JSX';
@@ -318,6 +414,7 @@ export function nameReads(source: string, fileName = 'x.tsx'): NameRead[] {
         node = parent;
         continue;
       }
+      if (ts.isCallExpression(parent) && parent.arguments.includes(node as ts.Expression) && isCatalogCall(parent)) return 'catalogue';
       if (ts.isReturnStatement(parent) || (ts.isArrowFunction(parent) && parent.body === node)) {
         const fn = ts.isArrowFunction(parent) ? parent : enclosingFunction(parent);
         return fn && isListCallback(fn) ? 'liste' : undefined;

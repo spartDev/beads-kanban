@@ -1,8 +1,17 @@
 import { QueryClient, queryOptions, useQuery } from '@tanstack/react-query';
 import { ApiError, apiGet } from './client';
+import { useLanguage, type Language } from '../i18n';
 import { browserTimeZone } from '../lib/instant';
 import { namedProjects } from './projectNames';
-import type { ApiSignal, IssueChronologyResponse, IssueResponse, IssuesResponse, ProjectsResponse, SignalsResponse } from './types';
+import type {
+  ApiSignal,
+  IssueChronologyResponse,
+  IssueResponse,
+  IssuesResponse,
+  NamedProjectsResponse,
+  ProjectsResponse,
+  SignalsResponse,
+} from './types';
 
 export const queryKeys = {
   projects: ['projects'] as const,
@@ -87,8 +96,15 @@ export function signalsQuery(projectId: string | undefined, timeZone: string) {
  * (`projectInSentence`, `projectList`) et la couleur ne tirent rien.
  */
 export function useProjects() {
-  return useQuery({ ...projectsQuery(), select: namedProjects });
+  const { language } = useLanguage();
+  // Un `select` par langue, créé une fois : TanStack Query ne relit les noms que quand la langue change.
+  return useQuery({ ...projectsQuery(), select: NAMED_PROJECTS[language] });
 }
+
+const NAMED_PROJECTS: Record<Language, (response: ProjectsResponse) => NamedProjectsResponse> = {
+  fr: (response) => namedProjects(response, 'fr'),
+  en: (response) => namedProjects(response, 'en'),
+};
 
 /** Tickets d'un Projet. Inactif tant que `projectId` est absent. */
 export function useIssues(projectId: string | undefined) {
