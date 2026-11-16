@@ -1,5 +1,6 @@
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach } from 'vitest';
+import { installEventLoopYield } from '../../testing/event-loop';
 import { setBrowserLanguages } from './languages';
 import { installMatchMedia } from './matchMedia';
 
@@ -37,6 +38,10 @@ globalThis.Request = class extends NativeRequest {
     super(input, init ? { ...init, signal: undefined } : init);
   }
 } as typeof Request;
+
+// Rendre la main à la boucle d'événements avant chaque test : sans cela, une suite de tests synchrones la tient bloquée assez longtemps pour que vitest
+// échoue sur « Timeout calling "onTaskUpdate" » (bdesk-8g5, voir `src/testing/event-loop.ts`).
+installEventLoopYield();
 
 beforeEach(() => {
   installMatchMedia(false);

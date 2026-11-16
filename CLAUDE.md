@@ -77,6 +77,7 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 ## Build & Test
 
 - Les tests d'intégration exigent `dolt` dans le PATH (et `bd` pour `bd.integration.test.ts` et `live.integration.test.ts`) : sans eux ils sont sautés, pas en échec, et chaque fichier concerné l'écrit (`ATTENTION : « dolt » est introuvable…`, `… existe mais ne peut pas être lancé…` ou `… existe mais « dolt version » échoue…`, selon la cause). Lancez la suite avec eux avant de valider un changement des lectures Dolt.
+- Ne tenez pas la boucle d'événements du worker de vitest bloquée longtemps d'un seul tenant : au-delà de 60 s, il ne lit plus à temps les réponses de son processus principal, et la suite sort en code 1 sur « Timeout calling "onTaskUpdate" » alors que tous les tests passent (bdesk-8g5). Les fichiers d'initialisation rendent déjà la main avant chaque test ; dans un crochet ou un test qui enchaîne des commandes synchrones (les bases Dolt de `dolt-fixture.ts`, `execFileSync`), rendez-la entre deux étapes : `await yieldToEventLoop()` (`src/testing/event-loop.ts`).
 
 _Add your build and test commands here_
 

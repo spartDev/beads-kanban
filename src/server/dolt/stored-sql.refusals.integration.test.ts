@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { yieldToEventLoop } from '../../testing/event-loop';
 import { createProjectService, ProjectUnreadableError, type ProjectService } from '../projects/service';
 import { dolt, hasBinary, isolatedDoltEnv, type Scratch } from '../testing/dolt-fixture';
 import { scratchDir } from '../testing/scratch';
@@ -104,12 +105,13 @@ describe.skipIf(!hasBinary('dolt'))('le refus d’une base qui porte du SQL (bde
     root = realpathSync(scratchDir('bdesk-stored-sql-refusals-'));
 
     toggle = build('toggle');
-    await new Promise((resolve) => setImmediate(resolve)); // rendre la main entre deux constructions de bases (voir `stored-sql.integration.test.ts`)
+    await yieldToEventLoop(); // rendre la main entre deux constructions de bases (bdesk-8g5, voir src/testing/event-loop.ts)
 
     const columns = build('many-cols');
     const alters = Array.from({ length: GENERATED_COLUMNS }, (_, i) => `alter table issues add column g${i} varchar(10) generated always as ('x') virtual`);
     columns.sql(alters.join(';\n'));
     columns.commit(2, 'des centaines de colonnes générées');
+    await yieldToEventLoop();
 
     const head = build('head-view');
     head.sql(`create view dolt_log as select 'x' as commit_hash, cast('2026-10-01 10:00:00' as datetime) as date from ${outfile(join(dbOf('head-view'), 'out-head.txt'))}`);

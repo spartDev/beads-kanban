@@ -68,20 +68,7 @@ jobs:
       # `bd` n'est volontairement PAS installé : il est facultatif. Seuls bd.integration.test.ts et live.integration.test.ts l'exigent ; ils sont
       # sautés (avec un avertissement `ATTENTION : « bd » est introuvable…`) quand il manque. Les lectures Dolt, elles, sont bien exécutées.
       # `--maxWorkers=3` SANS `--` : pnpm transmet le `--` au script, et vitest ignore alors tout ce qui le suit (le plafond ne s'appliquerait pas).
-      # Comme scripts/gates.sh : un échec qui ne vient que de « Timeout calling "onTaskUpdate" » (le worker de vitest n'a pas répondu à temps à son
-      # processus principal, alors qu'aucun test n'a échoué : tous les tests passent, le code de sortie est 1) est relancé, deux fois au plus. Un test
-      # en échec (« Tests … failed ») ne l'est jamais. Vu en CI sur la PR #3 : 8292 tests passés, 0 en échec, code 1.
-      - name: pnpm test --maxWorkers=3
-        run: |
-          set +e -uo pipefail
-          for attempt in 1 2 3; do
-            pnpm test --maxWorkers=3 2>&1 | tee "$RUNNER_TEMP/test.log"
-            rc=${PIPESTATUS[0]}
-            [ "$rc" -eq 0 ] && exit 0
-            plain=$(sed $'s/\033\\[[0-9;]*[A-Za-z]//g' "$RUNNER_TEMP/test.log")
-            if [ "$attempt" -lt 3 ] && grep -qF 'Timeout calling "onTaskUpdate"' <<<"$plain" && ! grep -qE 'Tests .* failed' <<<"$plain"; then
-              echo "::warning::Seul « Timeout calling \"onTaskUpdate\" », aucun test en échec : relance $attempt sur 2"
-              continue
-            fi
-            exit "$rc"
-          done
+      # Une seule passe : « Timeout calling "onTaskUpdate" » (code 1 alors que tous les tests passaient), qui faisait relancer la suite jusqu'à deux fois,
+      # venait de tests qui tenaient la boucle d'événements du worker de vitest bloquée plus de 60 s ; ils lui rendent désormais la main (bdesk-8g5, voir
+      # src/testing/event-loop.ts).
+      - run: pnpm test --maxWorkers=3

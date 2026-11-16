@@ -27,10 +27,12 @@ describe.skipIf(!hasBinary('dolt') || !hasBinary('bd'))('lecteur Dolt sur un wor
   let env: NodeJS.ProcessEnv;
   const ids: Record<string, string> = {};
 
-  const bd = (...args: string[]) => execFileSync('bd', args, { cwd: workspace, env, encoding: 'utf8' }).trim();
-  const create = (name: string, ...args: string[]) => (ids[name] = bd('q', name, ...args));
+  // `bd` asynchrone : le crochet en lance une vingtaine, une à deux secondes chacune sous charge, et le worker de vitest doit garder la main pendant ce temps
+  // (bdesk-8g5, voir src/testing/event-loop.ts).
+  const bd = async (...args: string[]) => (await run('bd', args, { cwd: workspace, env, encoding: 'utf8' })).stdout.trim();
+  const create = async (name: string, ...args: string[]) => (ids[name] = await bd('q', name, ...args));
 
-  beforeAll(() => {
+  beforeAll(async () => {
     roots = realpathSync(scratchDir('bdesk-bd-'));
     workspace = join(roots, 'xx-projet');
     // Aucune variable BEADS_* / BD_* de l'environnement ne doit rediriger bd vers un vrai Projet.
@@ -38,27 +40,27 @@ describe.skipIf(!hasBinary('dolt') || !hasBinary('bd'))('lecteur Dolt sur un wor
     env.BEADS_ACTOR = 'testeur';
     mkdirSync(workspace);
     execFileSync('git', ['init', '-q', '.'], { cwd: workspace });
-    bd('init', '--prefix', 'xx', '--non-interactive', '--skip-hooks', '--skip-agents', '-q');
+    await bd('init', '--prefix', 'xx', '--non-interactive', '--skip-hooks', '--skip-agents', '-q');
 
-    const epic = create('Epic', '-t', 'epic');
-    const a = create('Ticket A é "ü" <b>', '-t', 'feature', '-p', '1', '--parent', epic);
-    const b = create('Bloquant B', '-t', 'bug', '-p', '0', '-l', 'urgent');
-    const c = create('Doublon C');
-    const d = create('Rouvert D');
-    const f = create('Bloqué F');
-    const g = create('Bloquant G');
+    const epic = await create('Epic', '-t', 'epic');
+    const a = await create('Ticket A é "ü" <b>', '-t', 'feature', '-p', '1', '--parent', epic);
+    const b = await create('Bloquant B', '-t', 'bug', '-p', '0', '-l', 'urgent');
+    const c = await create('Doublon C');
+    const d = await create('Rouvert D');
+    const f = await create('Bloqué F');
+    const g = await create('Bloquant G');
 
-    bd('dep', 'add', a, b);
-    bd('update', a, '--status', 'in_progress');
-    bd('comments', 'add', a, 'Un commentaire\nsur deux lignes');
-    bd('label', 'add', a, 'foo');
-    bd('close', b, '--reason', 'fait');
-    bd('update', a, '--description', 'Ligne 1\nLigne 2 avec \\ et "guillemets"');
-    bd('close', a, '--reason', 'terminé');
-    bd('duplicate', c, '--of', a);
-    bd('close', d);
-    bd('reopen', d);
-    bd('dep', 'add', f, g);
+    await bd('dep', 'add', a, b);
+    await bd('update', a, '--status', 'in_progress');
+    await bd('comments', 'add', a, 'Un commentaire\nsur deux lignes');
+    await bd('label', 'add', a, 'foo');
+    await bd('close', b, '--reason', 'fait');
+    await bd('update', a, '--description', 'Ligne 1\nLigne 2 avec \\ et "guillemets"');
+    await bd('close', a, '--reason', 'terminé');
+    await bd('duplicate', c, '--of', a);
+    await bd('close', d);
+    await bd('reopen', d);
+    await bd('dep', 'add', f, g);
   }, 180 * SECOND);
 
   const database = () => createDoltClient().open(join(workspace, '.beads', 'embeddeddolt', 'xx'));

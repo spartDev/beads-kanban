@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { yieldToEventLoop } from '../../testing/event-loop';
 import { createProjectService } from '../projects/service';
 import { createDatabase, hasBinary, isolatedDoltEnv, type Scratch } from '../testing/dolt-fixture';
 import { type SqlServer, startSqlServer } from '../testing/dolt-server';
@@ -97,11 +98,13 @@ describe.skipIf(!hasBinary('dolt'))('une base voisine sur le même serveur (bdes
     mkdirSync(culpritFolder, { recursive: true });
     writeFileSync(join(beads, 'metadata.json'), JSON.stringify({ backend: 'dolt', database: 'dolt', dolt_mode: 'server', dolt_database: 'tdb' }));
     beadsLikeDatabase(env, dbOf(culpritFolder, 'tdb'));
+    await yieldToEventLoop(); // rendre la main entre deux bases (bdesk-8g5, voir src/testing/event-loop.ts)
     const evil = bare(culpritFolder, 'evil');
     evil.sql(
       "create table zz (id int primary key, name varchar(64), type varchar(64), fragment text, extra json, sql_mode varchar(256)); insert into zz (id) values (1); insert into dolt_nonlocal_tables values ('dolt_schemas', 'main', 'zz', 'immediate')",
     );
     evil.commit(2, 'dolt_schemas menée vers une table ordinaire');
+    await yieldToEventLoop();
     const aaa = bare(culpritFolder, 'aaa');
     aaa.sql(`create view dolt_nonlocal_tables as select * from dolt_query_diff('select ''${PWNED}'' as v into outfile ''${pwned()}''', 'select 1 as v')`);
     aaa.commit(2, 'une vue qui porte le nom de la table système');
@@ -109,7 +112,9 @@ describe.skipIf(!hasBinary('dolt'))('une base voisine sur le même serveur (bdes
     // 2. Un serveur sain dont une base voisine porte, en vue, chacun des noms que l'app lit.
     namesFolder = join(root, 'srv-names', '.beads', 'dolt');
     mkdirSync(namesFolder, { recursive: true });
+    await yieldToEventLoop();
     beadsLikeDatabase(env, dbOf(namesFolder, 'tdb'));
+    await yieldToEventLoop();
     const zzz = bare(namesFolder, 'zzz');
     zzz.sql(NAMES.map((name) => `create view \`${name}\` as select * from ${outfile(join(outside, `${name}.txt`))}`).join('; '));
     zzz.commit(2, 'une vue par nom que l’app lit');

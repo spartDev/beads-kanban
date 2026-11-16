@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { yieldToEventLoop } from '../../testing/event-loop';
 import { createDatabase, dolt, hasBinary, isolatedDoltEnv, type Scratch } from '../testing/dolt-fixture';
 import { type SqlServer, startSqlServer } from '../testing/dolt-server';
 import { scratchDir } from '../testing/scratch';
@@ -68,8 +69,12 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)(
       mkdirSync(outside, { recursive: true });
       folder = mode === 'embedded' ? join(root, 'dbs') : join(root, 'srv', '.beads', 'dolt');
       mkdirSync(folder, { recursive: true });
+      // Rendre la main entre deux bases (bdesk-8g5, voir src/testing/event-loop.ts) : `amended` seule dure plus de 32 s, le temps que coûte la création de son index `sleep(8)`
+      // (mesuré avec Dolt 2.5.0, sur deux tickets).
       amendedDatabase(createDatabase(env, dbOf('amended')), dbOf('amended'));
+      await yieldToEventLoop();
       hostileDatabase(createDatabase(env, dbOf('hostile')));
+      await yieldToEventLoop();
       beadsLikeDatabase(env, dbOf('plain'));
       if (mode === 'server') server = await startSqlServer(env, folder, { databaseDir: dbOf('amended') });
     }, 600_000);

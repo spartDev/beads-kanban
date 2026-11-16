@@ -2,6 +2,7 @@ import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { IssueChronology, MetricsResponse } from '../../shared/api';
+import { yieldToEventLoop } from '../../testing/event-loop';
 import { createProjectService } from '../projects/service';
 import { buildServer } from '../server';
 import { createDatabase, hasBinary, isolatedDoltEnv } from '../testing/dolt-fixture';
@@ -191,14 +192,19 @@ describe.skipIf(!hasBinary('dolt'))('horloge de commit qui recule, sur une vraie
   let chronology: (id: string, project?: string) => Promise<IssueChronology>;
   let metrics: (query: string) => Promise<MetricsResponse>;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     const root = realpathSync(scratchDir('bdesk-clock-back-'));
-    buildProject(root, 'epsilon', 'e', EPSILON);
-    buildProject(root, 'zeta', 'z', ZETA);
-    buildProject(root, 'eta', 'h', ETA);
-    buildProject(root, 'theta', 'k', THETA);
-    buildProject(root, 'iota', 'i', IOTA);
-    buildProject(root, 'kappa', 'q', KAPPA);
+    for (const [name, prefix, script] of [
+      ['epsilon', 'e', EPSILON],
+      ['zeta', 'z', ZETA],
+      ['eta', 'h', ETA],
+      ['theta', 'k', THETA],
+      ['iota', 'i', IOTA],
+      ['kappa', 'q', KAPPA],
+    ] as const) {
+      buildProject(root, name, prefix, script);
+      await yieldToEventLoop(); // rendre la main entre deux Projets, bâtis par des commandes `dolt` synchrones (bdesk-8g5, voir src/testing/event-loop.ts)
+    }
 
     const config = { roots: [root], projects: [], hiddenProjects: [] };
     const projects = createProjectService(config);
