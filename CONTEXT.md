@@ -38,6 +38,30 @@ _Avoid_: statut blocked, bloqué (seul)
 Un ticket ouvert, jamais démarré ou revenu à ouvert, en Blocage.
 _English_: Backlog
 
+**Statut de travail**:
+Un statut d'un ticket pris en charge et non fermé : en cours, rattaché à un agent, bloqué, un Statut de relais, ou un autre statut que le Projet déclare comme travail.
+_English_: Work status
+_Avoid_: statut actif
+
+**Statut de relais**:
+Un statut qui dit qui a la main sur un ticket une fois le développement passé : En relecture, En intégration ou À valider. Il porte le même nom dans tous les Projets et n'impose aucun ordre.
+_English_: Handoff status
+_Avoid_: étape, phase (se confond avec la Phase d'un Blocage)
+
+**En relecture**:
+Un ticket qu'un agent relecteur examine.
+_English_: In review
+
+**En intégration**:
+Un ticket dont la demande de fusion est ouverte, le temps de ses vérifications automatiques et de sa revue externe.
+_English_: In integration
+_Avoid_: en PR, en CI
+
+**À valider**:
+Un ticket qui attend l'utilisateur : un test à la main, une décision ou son feu vert pour fusionner.
+_English_: Awaiting validation
+_Avoid_: en attente
+
 **Epic**:
 Un ticket de type epic qui regroupe des Enfants. Son Avancement se mesure en nombre de Livraisons parmi ses Enfants à livrer ; elle n'est jamais elle-même une Livraison.
 _English_: Epic
@@ -68,7 +92,7 @@ _English_: Dropped
 _Avoid_: annulé, rejeté
 
 **Durée écoulée**:
-Le temps qui s'est réellement écoulé entre deux instants, nuits, week-ends et jours fériés compris (jamais en jours ouvrés). Elle ne dépend pas du fuseau, et un changement d'heure y compte pour ce qu'il est : le dimanche où les horloges reculent dure 25 heures. C'est le sens de toutes les durées mesurées, hors l'âge d'un Prêt : Lead Time, Cycle Time, Temps de rétablissement, Attente de dépendance, Attente en Prêt, âge d'un ticket en cours.
+Le temps qui s'est réellement écoulé entre deux instants, nuits, week-ends et jours fériés compris (jamais en jours ouvrés). Elle ne dépend pas du fuseau, et un changement d'heure y compte pour ce qu'il est : le dimanche où les horloges reculent dure 25 heures. C'est le sens de toutes les durées mesurées, hors l'âge d'un Prêt : Lead Time, Cycle Time, Temps de rétablissement, Attente de dépendance, Attente en Prêt, Attente humaine, âge d'un ticket en cours.
 _English_: Elapsed time
 _Avoid_: temps calendaire (se confond avec l'Âge calendaire)
 
@@ -88,7 +112,7 @@ _English_: Lead Time
 _Avoid_: time to delivery (ambigu), délai
 
 **Cycle Time**:
-Temps cumulé passé par un ticket dans les statuts de travail (en cours, rattaché à un agent, bloqué), Blocages inclus, toutes périodes confondues. Indéfini si le ticket n'a jamais été démarré.
+Temps cumulé passé par un ticket dans les Statuts de travail, Blocages inclus, toutes périodes confondues. Indéfini si le ticket n'a jamais été démarré.
 _English_: Cycle Time
 _Avoid_: temps de dev, durée
 
@@ -125,7 +149,7 @@ _English_: Time to restore
 _Avoid_: MTTR
 
 **WIP**:
-Nombre de tickets en cours simultanément.
+Nombre de tickets dans un Statut de travail au même moment.
 _English_: WIP
 
 **Arrivées**:
@@ -208,7 +232,7 @@ _English_: Drift
 _Avoid_: ticket en retard, SLA
 
 **Blocage long**:
-Un Blocage dont la phase en cours de travail dure depuis plus de 3 jours de Durée écoulée (3 jours pile ne suffisent pas). Elle court depuis que le ticket est à la fois en statut de travail et en Blocage, sans interruption : passer d'en cours à rattaché à un agent ne la recommence pas.
+Un Blocage dont la phase en cours de travail dure depuis plus de 3 jours de Durée écoulée (3 jours pile ne suffisent pas). Elle court depuis que le ticket est à la fois en statut de travail et en Blocage, sans interruption : passer d'un Statut de travail à un autre ne la recommence pas.
 _English_: Long blockage
 
 **WIP inhabituel**:
@@ -216,12 +240,12 @@ Un WIP d'un Projet au-dessus du 85ᵉ centile de son WIP quotidien des 90 dernie
 _English_: Unusual WIP
 
 **Signal**:
-Une situation en cours qui mérite d'être regardée maintenant : Dérive, Prêt qui stagne, Blocage long ou WIP inhabituel. Un Signal existe tant que sa condition est vraie dans le Dernier commit ; on ne peut pas l'écarter. Le Retravail n'en est pas un : c'est un constat après coup.
+Une situation en cours qui mérite d'être regardée maintenant : Dérive, Prêt qui stagne, Blocage long, WIP inhabituel, Validation qui attend ou Boucle de Retours. Un Signal existe tant que sa condition est vraie dans le Dernier commit ; on ne peut pas l'écarter. Le Retravail n'en est pas un : c'est un constat après coup.
 _English_: Signal
 _Avoid_: alerte, notification
 
 **Prise rendue**:
-Une Transition d'un statut de travail (en cours, rattaché à un agent, bloqué) vers ouvert, sans clôture entre les deux.
+Une Transition d'un Statut de travail vers ouvert, sans clôture entre les deux.
 _English_: Handback
 _Avoid_: abandon de prise (se confond avec l'Abandon), régression
 
@@ -239,10 +263,59 @@ Un résumé en markdown, à copier, de la période que montre la page Métriques
 _English_: Retrospective report
 _Avoid_: export, bilan
 
+**Tour de relecture**:
+Un passage d'un ticket En relecture : une Transition vers ce statut.
+_English_: Review round
+_Avoid_: itération
+
+**Retour**:
+Une Transition d'un Statut de relais vers en cours ou rattaché à un agent : le ticket repart au développement. Son origine est le statut qu'il quitte (relecture, intégration ou validation). Un Retour n'est pas du Retravail : la chaîne arrête un défaut avant la Livraison.
+_English_: Send-back
+_Avoid_: rejet, renvoi, rework
+
+**Livraison relue**:
+Une Livraison qui a connu au moins un Tour de relecture avant sa dernière clôture.
+_English_: Reviewed delivery
+
+**Acceptation au premier passage**:
+Part des Livraisons relues d'une période qui n'ont subi aucun Retour avant leur dernière clôture. Non significative sous 10 Livraisons relues.
+_English_: First-pass acceptance
+_Avoid_: first-pass yield, taux de réussite
+
+**Couverture de relecture**:
+Part des Livraisons d'une période qui sont des Livraisons relues. Elle dit si l'Acceptation au premier passage est représentative.
+_English_: Review coverage
+
+**Tours par Livraison**:
+Répartition des Livraisons relues d'une période selon leur nombre de Tours de relecture : 1, 2, 3, 4 ou plus.
+_English_: Review rounds per delivery
+
+**Taux d'échec après relecture**:
+Le Taux d'échec des seules Livraisons relues d'une période, à lire à côté de celui des Livraisons qui ne l'ont pas été.
+_English_: Change failure rate after review
+
+**Attente humaine**:
+Temps cumulé passé À valider par un ticket, toutes périodes confondues ; composante du Cycle Time.
+_English_: Human wait
+_Avoid_: temps de validation
+
+**Décomposition du Cycle Time**:
+Le Cycle Time cumulé des Livraisons d'une période, réparti en six parts qui s'additionnent : Relecture, Intégration et Attente humaine (le temps passé dans chaque Statut de relais), Blocage, et le reste du travail, coupé au premier Retour en Développement (avant) et Correction (après). Un temps à la fois de relais et de Blocage compte en Blocage.
+_English_: Cycle Time breakdown
+
+**Validation qui attend**:
+Un ticket À valider depuis plus de 24 heures de Durée écoulée (24 heures pile ne suffisent pas).
+_English_: Waiting validation
+
+**Boucle de Retours**:
+Un ticket non fermé qui a subi au moins 3 Retours.
+_English_: Send-back loop
+_Avoid_: ping-pong
+
 ## Relationships
 
 - Un **Projet** contient zéro ou plusieurs tickets
-- Les durées (**Lead Time**, **Cycle Time**, **Temps de rétablissement**, **Attente de dépendance**, **Attente en Prêt**, âge d'un ticket en cours) sont des **Durées écoulées** ; l'âge d'un **Prêt**, lui, est un **Âge calendaire**
+- Les durées (**Lead Time**, **Cycle Time**, **Temps de rétablissement**, **Attente de dépendance**, **Attente en Prêt**, **Attente humaine**, âge d'un ticket en cours) sont des **Durées écoulées** ; l'âge d'un **Prêt**, lui, est un **Âge calendaire**
 - Une **Epic** a des **Enfants** ; son **Avancement** = **Livraisons** parmi ses **Enfants à livrer**
 - La **Prévision de fin** d'une **Epic** se tire de son **Débit récent**
 - Un **Bug d'origine** est relié à au moins une **Livraison**, qu'il met chacune en échec ; une **Livraison** peut avoir plusieurs Bugs d'origine
@@ -251,7 +324,11 @@ _Avoid_: export, bilan
 - Le kanban, le **Panneau de ticket**, les métriques et la **Chronologie** d'un **Projet** lisent le même **Dernier commit**
 - Un **Blocage** se découpe en **phases** : seule celle en cours de travail compte dans le **Cycle Time** ; celle d'avant le premier démarrage est l'**Attente de dépendance**
 - Une **Dérive** compare le **Cycle Time** en cours d'un ticket à son **Cycle Time de référence**
-- Les **Signaux** sont la **Dérive**, le **Prêt qui stagne**, le **Blocage long** et le **WIP inhabituel** ; le **Retravail** n'en est pas un
+- Les **Signaux** sont la **Dérive**, le **Prêt qui stagne**, le **Blocage long**, le **WIP inhabituel**, la **Validation qui attend** et la **Boucle de Retours** ; le **Retravail** n'en est pas un
+- Les **Statuts de relais** sont des **Statuts de travail** : leur temps compte dans le **Cycle Time**, et un ticket n'est que dans un statut à la fois
+- Un **Retour** n'est pas du **Retravail** : il revient au développement avant la **Livraison**, pas après
+- La **Décomposition du Cycle Time** détaille les parts travail et **Blocage** de la **Décomposition du Lead Time**
+- L'**Acceptation au premier passage**, les **Tours par Livraison** et le **Taux d'échec après relecture** ne portent que sur les **Livraisons relues** ; la **Couverture de relecture** dit quelle part des Livraisons elles représentent
 - Le **Retravail** naît d'une **Réouverture**, d'une **Prise rendue** ou d'un **Bug d'origine**
 - Le **Rapport de rétrospective** réunit les indicateurs d'une période, sa **Tendance longue**, son **Retravail** et les **Signaux** en cours
 - Le **Panneau de ticket** montre la **Chronologie** du ticket : ses **Transitions**, ses **Blocages** et leurs phases, avec les durées des métriques
