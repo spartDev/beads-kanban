@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { yieldToEventLoop } from '../../testing/event-loop';
 import { createProjectService, ProjectUnreadableError } from '../projects/service';
 import { dolt, hasBinary, isolatedDoltEnv, type Scratch } from '../testing/dolt-fixture';
 import { type SqlServer, startSqlServer } from '../testing/dolt-server';
@@ -181,7 +182,7 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)('d
     mkdirSync(aloneFolder, { recursive: true });
     for (const name of [...SCENARIOS, ...ALONE]) {
       setup[name](beadsLikeDatabase(env, dbOf(name)), secretOf(name));
-      await new Promise((resolve) => setImmediate(resolve)); // rendre la main entre deux bases (voir `stored-sql.integration.test.ts`)
+      await yieldToEventLoop(); // rendre la main entre deux bases (bdesk-8g5, voir src/testing/event-loop.ts)
     }
     // Le Projet du service des Projets : `nh`.
     const beads = join(root, 'projets', 'cache', '.beads');
