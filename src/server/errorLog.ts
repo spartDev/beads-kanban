@@ -27,7 +27,7 @@ const LOG_PROPS_MAX = 10;
 const LOG_KEY_MAX = 64;
 /** Combien d'erreurs d'un `AggregateError` le journal écrit. */
 const LOG_AGGREGATED_MAX = 3;
-/** Le message d'une réponse que rien n'a prévue : ce que le client lit quand l'erreur n'a pas de message texte, ou que le gestionnaire a échoué. */
+/** Le message d'une réponse que rien n'a prévue : ce que le client lit quand l'erreur n'a pas de message texte non vide, ou que le gestionnaire a échoué. */
 export const UNEXPECTED = 'Erreur inattendue.';
 /**
  * Ce que le journal écrit de ce qui ne se lit pas : un message, un élément de `errors`, une valeur dont `inspect` lève. Toujours tel quel, sans les

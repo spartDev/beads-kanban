@@ -71,7 +71,7 @@ const DAY_MS = 86_400_000;
 export class InvalidPeriodError extends Error {
   constructor(
     message: string,
-    readonly detail: ApiErrorDetail,
+    readonly detail: Extract<ApiErrorDetail, { code: `period-${string}` }>,
   ) {
     super(message);
     this.name = 'InvalidPeriodError';

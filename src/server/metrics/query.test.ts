@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ApiError, errorText } from '../../web/data/apiError';
 import { InvalidMetricsQueryError, parseMetricsQuery } from './query';
 
 describe('parseMetricsQuery', () => {
@@ -89,6 +90,9 @@ describe('parseMetricsQuery', () => {
     }
 
     expect(thrown).toBeInstanceOf(InvalidMetricsQueryError);
-    expect((thrown as InvalidMetricsQueryError).detail).toEqual(detail);
+    const refused = thrown as InvalidMetricsQueryError;
+    expect(refused.detail).toEqual(detail);
+    // L'interface écrit en français exactement le message du serveur (ce refus ne passe pas par l'API, où `api.test.ts` le vérifie pour les autres).
+    expect(errorText(new ApiError(refused.message, 400, { detail: refused.detail }), 'fr')).toBe(refused.message);
   });
 });

@@ -47,7 +47,7 @@ import {
  *
  * Le gestionnaire ne lève jamais (bdesk-38k.52) : si une erreur le faisait lever, Fastify la passerait à son gestionnaire par défaut, qui journalise
  * la requête avec son adresse (`?token=…`). Ce que l'on lit de l'erreur (un accesseur peut lever) est gardé ; le message du corps n'est celui de
- * l'erreur que s'il est un texte ; et un filet autour de tout écrit une ligne fixe, sans adresse (avec, au mieux, le type et le message de
+ * l'erreur que s'il est un texte non vide ; et un filet autour de tout écrit une ligne fixe, sans adresse (avec, au mieux, le type et le message de
  * l'erreur d'origine), et répond un 500. Ce que l'on lit d'une erreur et ce qu'on en écrit est dans `errorLog.ts`.
  */
 export async function registerApi(
@@ -133,15 +133,14 @@ function handleError(error: FastifyError, req: FastifyRequest, reply: FastifyRep
   const statusCode = statusOf(error);
   // Journalisée ici, une seule fois : la réponse part par `send`, jamais par `reply.send(error)`, que Fastify journaliserait à son tour.
   if (statusCode >= 500) req.log.error({ err: loggable(error), ...whereOf(req) }, 'Erreur inattendue');
-  // Le corps ne reçoit que le message qui est un texte : un `BigInt` ou un objet circulaire fait échouer `JSON.stringify`, et l'objet d'une 4xx
+  // Le corps ne reçoit que le message qui est un texte non vide : un `BigInt` ou un objet circulaire fait échouer `JSON.stringify`, et l'objet d'une 4xx
   // partirait au client tel quel.
-  // Une lecture abandonnée alors que le client attend toujours (une lecture partagée annulée par d'autres) : une panne, avec le message et le code de l'API.
-  if (error instanceof ReadAborted) return send(reply, statusCode, error.message, { code: 'read-aborted', params: {} });
-  // Un message que l'on n'a pas écrit n'a pas de code : l'interface l'affiche tel quel. Un message vide ne dirait rien : le message générique.
+  // Un message vide ne dirait rien : le message générique, avec son code.
   const message = attempt(() => error.message, undefined);
-  return typeof message === 'string' && message !== ''
-    ? send(reply, statusCode, message)
-    : send(reply, statusCode, UNEXPECTED, UNEXPECTED_DETAIL);
+  if (typeof message !== 'string' || message === '') return send(reply, statusCode, UNEXPECTED, UNEXPECTED_DETAIL);
+  // Une lecture abandonnée alors que le client attend toujours (une lecture partagée annulée par d'autres) : une panne, avec le code de l'API. Tout
+  // autre message, que l'API n'a pas écrit, n'a pas de code : l'interface l'affiche tel quel.
+  return send(reply, statusCode, message, error instanceof ReadAborted ? { code: 'read-aborted', params: {} } : undefined);
 }
 
 /** D'où vient l'erreur, pour le journal : la méthode et le modèle de la route, jamais l'adresse demandée avec sa requête. */

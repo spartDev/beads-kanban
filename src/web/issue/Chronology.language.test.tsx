@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { bdeskIssues, projectsResponse } from '../test/fixtures';
+import { withAsyncTimeout } from '../test/asyncTimeout';
 import { setBrowserLanguages } from '../test/languages';
 import { renderApp, stubApi } from '../test/render';
 
@@ -8,6 +9,9 @@ import { renderApp, stubApi } from '../test/render';
  * bdesk-ewr.6 : la chronologie indisponible écrit le détail de son erreur dans la langue affichée, par son code (`errorText`), jamais le message
  * français du serveur. Un 400 : l'interface ne le réessaie pas.
  */
+// Monter toute l'application prend plus d'une seconde quand la machine est chargée : voir `withAsyncTimeout`.
+withAsyncTimeout(5_000);
+
 describe('Chronologie indisponible : le détail de l’erreur dans la langue affichée', () => {
   const failure = {
     status: 400,

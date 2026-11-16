@@ -57,6 +57,13 @@ describe('apiGet : code et paramètres', () => {
     expect(error).toMatchObject({ status: 404, message: 'Projet inconnu : p', detail: { code: 'project-not-found', params: { project: 'p' } } });
   });
 
+  it('garde une erreur codée sans message : la phrase vient du code', async () => {
+    const error = await failureOf({ code: 'project-not-found', params: { project: 'p' } }, 404);
+
+    expect(error.detail).toEqual({ code: 'project-not-found', params: { project: 'p' } });
+    expect(errorText(error, 'en')).toBe('Unknown Project: p');
+  });
+
   it('ignore un code qu’il ne connaît pas, ou dont les paramètres n’ont pas la forme attendue : le message reste', async () => {
     const unknown = await failureOf({ message: 'Nouveau refus', code: 'nouveau-code', params: {} }, 400);
     const malformed = await failureOf({ message: 'Projet inconnu : p', code: 'project-not-found', params: { project: 1 } }, 404);
@@ -135,7 +142,8 @@ describe('errorText', () => {
     ],
   };
 
-  it.each(Object.entries(SENTENCES))('écrit %s dans les deux langues', (_code, [detail, fr, en]) => {
+  it.each(Object.entries(SENTENCES))('écrit %s dans les deux langues', (code, [detail, fr, en]) => {
+    expect(detail.code).toBe(code);
     const error = coded('message du serveur', 400, detail);
 
     expect(errorText(error, 'fr')).toBe(fr);

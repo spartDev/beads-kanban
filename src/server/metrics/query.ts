@@ -8,7 +8,7 @@ import type { MetricsQuery, SignalsQuery } from './service';
 export class InvalidMetricsQueryError extends Error {
   constructor(
     message: string,
-    readonly detail: ApiErrorDetail,
+    readonly detail: Extract<ApiErrorDetail, { code: `query-${string}` }>,
   ) {
     super(message);
     this.name = 'InvalidMetricsQueryError';
