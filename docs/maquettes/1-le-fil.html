@@ -1,0 +1,2375 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Le fil · variante 1 · beads-desktop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400..600&family=Atkinson+Hyperlegible+Next:wght@400..800&display=swap">
+<style>
+/*
+ * Ce que les cinq maquettes partagent sans que cela fasse partie du design à juger : la mécanique des graphiques,
+ * l'infobulle, et le bandeau qui passe d'une variante à l'autre. Les couleurs viennent de chaque variante, par variables.
+ */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Une unité (« h », « j », « min », « % ») à côté d'un nombre : chaque variante règle sa taille. */
+.u {
+  font-size: var(--unit-size, 1em);
+  font-weight: var(--unit-weight, inherit);
+  letter-spacing: 0;
+}
+
+/* --- Graphiques ------------------------------------------------------------------------------------------------- */
+
+.bd-chart {
+  min-width: 0;
+}
+
+.bd-chart svg {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.bd-grid {
+  stroke: var(--chart-grid, rgba(0, 0, 0, 0.08));
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.bd-axis {
+  stroke: var(--chart-axis, rgba(0, 0, 0, 0.22));
+  stroke-width: 1;
+  shape-rendering: crispEdges;
+}
+
+.bd-tick,
+.bd-xlabel {
+  fill: var(--chart-ink, currentColor);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-mark {
+  fill: var(--chart-ink-strong, currentColor);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.bd-bar {
+  fill: var(--chart-bar, currentColor);
+}
+
+.bd-bar.is-partial {
+  fill: var(--chart-bar-partial, var(--chart-bar, currentColor));
+}
+
+.bd-bar.is-quiet {
+  fill: var(--chart-bar-quiet, var(--chart-bar, currentColor));
+}
+
+.bd-hit {
+  fill: transparent;
+}
+
+.bd-col:hover .bd-hit {
+  fill: var(--chart-hover, rgba(0, 0, 0, 0.05));
+}
+
+.bd-line {
+  fill: none;
+  stroke: var(--chart-line, currentColor);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.bd-area {
+  fill: var(--chart-area, currentColor);
+  opacity: var(--chart-area-opacity, 0.12);
+}
+
+.bd-dot {
+  fill: var(--chart-line, currentColor);
+  stroke: var(--chart-surface, #fff);
+  stroke-width: 2;
+}
+
+.bd-spark {
+  display: block;
+  overflow: visible;
+}
+
+/* Barre segmentée : un tout, découpé en parts. L'écart de 2 px sépare les parts, pas un contour. */
+.bd-seg {
+  display: flex;
+  gap: 2px;
+  width: 100%;
+}
+
+.bd-seg-part {
+  display: flex;
+  align-items: center;
+  min-width: 4px;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+/* Carte d'activité : une teinte, du plus clair au plus soutenu. */
+.bd-heat {
+  display: grid;
+  grid-template-columns: auto repeat(24, minmax(0, 1fr));
+  gap: 2px;
+  align-items: center;
+}
+
+.bd-heat-cell {
+  aspect-ratio: 1;
+  min-height: 9px;
+  border-radius: var(--heat-radius, 3px);
+  background: color-mix(in oklab, var(--heat-hi, #1d4ed8) calc(var(--v) * 100%), var(--heat-lo, #e5e7eb));
+}
+
+.bd-heat-day,
+.bd-heat-hour {
+  font-size: 11px;
+  color: var(--chart-ink, currentColor);
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-heat-day {
+  padding-right: 6px;
+}
+
+.bd-heat-hour {
+  grid-column: span 3;
+  padding-top: 2px;
+}
+
+/* Le tableau jumeau d'un graphique. */
+.bd-data {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.bd-data summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--chart-ink, currentColor);
+}
+
+.bd-data-scroll {
+  max-height: 240px;
+  margin-top: 8px;
+  overflow: auto;
+}
+
+.bd-data table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.bd-data th,
+.bd-data td {
+  padding: 4px 14px 4px 0;
+  border-bottom: 1px solid var(--chart-grid, rgba(0, 0, 0, 0.1));
+  text-align: right;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.bd-data th {
+  font-weight: 600;
+}
+
+.bd-data th:first-child,
+.bd-data td:first-child {
+  text-align: left;
+}
+
+/* --- Infobulle -------------------------------------------------------------------------------------------------- */
+
+.bd-tip {
+  position: fixed;
+  z-index: 90;
+  display: grid;
+  gap: 1px;
+  max-width: 280px;
+  padding: 8px 11px;
+  border-radius: 8px;
+  background: var(--tip-bg, #14181f);
+  color: var(--tip-ink, #fff);
+  font-size: 13px;
+  line-height: 1.35;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.bd-tip[hidden] {
+  display: none;
+}
+
+.bd-tip strong {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.bd-tip span {
+  opacity: 0.85;
+}
+
+/* --- Bandeau des variantes (hors design : toujours le même, en police système) ----------------------------------- */
+
+body.has-switch {
+  padding-bottom: 84px;
+}
+
+.bd-switch {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100vw - 24px);
+  padding: 5px;
+  border-radius: 999px;
+  background: #14181f;
+  color: #fff;
+  font: 500 13px/1 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  letter-spacing: 0;
+  transform: translateX(-50%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.bd-switch a {
+  display: inline-grid;
+  place-items: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: inherit;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.bd-switch a:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.bd-switch a:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.bd-switch a[aria-current='page'] {
+  background: #fff;
+  color: #14181f;
+  font-weight: 700;
+}
+
+.bd-switch-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.bd-switch-warn {
+  padding: 0 12px 0 6px;
+  color: #ffd27a;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .bd-switch .bd-switch-name {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+</style>
+<style>
+/*
+ * Variante 1 — Le fil.
+ * Idée : le parcours d'un ticket dessiné comme un fil de perles. Les chiffres sont posés là où ils se produisent :
+ * ce qui entre à gauche, ce qui attend au milieu, ce qui sort à droite, et les deux délais cotés au-dessus.
+ * Police : Atkinson Hyperlegible Next, dessinée pour que chaque caractère se distingue des autres (0 et O, 1 et l).
+ * Couleurs : marine et jaune signal sur brume froide, comme un plan de réseau. Le jaune dit « vous êtes ici ».
+ */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --navy: #101b33;
+  --ink: #101b33;
+  --ink-2: #45506a;
+  --ink-3: #5e6981;
+  --line: #d9dfe7;
+  --yellow: #ffc83d;
+  --good: #13774a;
+  --good-bg: #e1f3e8;
+  --bad: #c2371f;
+  --bad-bg: #fbe5df;
+  --side-muted: #aeb8cc;
+  --radius: 14px;
+  --sans: 'Atkinson Hyperlegible Next', 'Atkinson Hyperlegible', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'Atkinson Hyperlegible Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --chart-bar: var(--navy);
+  --chart-bar-partial: #8394b0;
+  --chart-grid: #e4e9ef;
+  --chart-axis: #b8c2d0;
+  --chart-ink: var(--ink-3);
+  --chart-ink-strong: var(--ink);
+  --chart-hover: rgba(16, 27, 51, 0.06);
+  --tip-bg: var(--navy);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 16px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+a { color: inherit; }
+button { font: inherit; color: inherit; cursor: pointer; }
+
+:focus-visible { outline: 3px solid var(--navy); outline-offset: 2px; border-radius: 6px; }
+.side :focus-visible { outline-color: var(--yellow); }
+
+.ic { flex: none; }
+
+/* ---------- Ossature ---------- */
+
+.app {
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.side {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  height: 100vh;
+  padding: 22px 14px 16px;
+  overflow-y: auto;
+  background: var(--navy);
+  color: #fff;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+  font-size: 17px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.find {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--side-muted);
+  font-size: 15px;
+  text-align: left;
+}
+
+.find span { flex: 1; }
+
+.find kbd {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font: 500 12px/1.4 var(--sans);
+}
+
+.nav { display: grid; gap: 4px; }
+
+.nav a,
+.plist a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 10px;
+  color: #dfe5f0;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.nav a:hover,
+.plist a:hover { background: rgba(255, 255, 255, 0.09); color: #fff; }
+
+.nav a[aria-current='page'] { background: var(--yellow); color: var(--navy); }
+
+.nav .count {
+  margin-left: auto;
+  min-width: 26px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--navy);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.projects { display: grid; gap: 6px; min-height: 0; }
+
+.projects h2 {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 10px;
+  color: var(--side-muted);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.plist { display: grid; gap: 2px; }
+
+.plist a { font-weight: 500; }
+
+.pbead {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: oklch(0.8 0.13 var(--v));
+}
+
+.pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pmeta { flex: none; color: var(--side-muted); font-size: 13px; font-weight: 500; }
+
+.plist li[data-status='unreadable'] a { color: var(--side-muted); }
+.plist li[data-status='unreadable'] .pbead { background: transparent; box-shadow: inset 0 0 0 2px var(--side-muted); }
+
+.side-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding: 0 4px;
+}
+
+.theme { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: rgba(255, 255, 255, 0.08); }
+
+.theme button,
+.side-foot > button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--side-muted);
+}
+
+.theme button[aria-pressed='true'] { background: #fff; color: var(--navy); }
+
+main {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 30px 40px 40px;
+}
+
+/* ---------- En-tête ---------- */
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 24px;
+  margin-bottom: 22px;
+}
+
+h1 { font-size: 32px; line-height: 1.15; font-weight: 800; letter-spacing: -0.015em; }
+
+.top p { margin-top: 4px; color: var(--ink-2); font-size: 17px; }
+
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+.period {
+  display: flex;
+  gap: 2px;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.period label {
+  display: grid;
+  place-items: center;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  color: var(--ink-2);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.period label:hover { color: var(--ink); }
+.period label:has(:checked) { background: var(--yellow); color: var(--navy); }
+.period label:has(:focus-visible) { outline: 3px solid var(--navy); outline-offset: 2px; }
+.period input { position: absolute; opacity: 0; pointer-events: none; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.btn:hover { border-color: var(--ink-3); }
+.btn.square { width: 44px; justify-content: center; padding: 0; }
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 15px;
+}
+
+.notice .ic { margin-top: 2px; color: var(--bad); }
+.notice strong { color: var(--ink); font-weight: 700; }
+
+/* ---------- Cartes ---------- */
+
+.card {
+  min-width: 0;
+  padding: 24px 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.card > header { margin-bottom: 18px; }
+
+h2 { font-size: 21px; line-height: 1.25; font-weight: 700; letter-spacing: -0.005em; }
+
+.card > header p { margin-top: 3px; color: var(--ink-2); font-size: 15px; max-width: 68ch; }
+
+.grid { display: grid; gap: 18px; margin-top: 18px; }
+.grid.two { grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr); }
+.grid.half { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* ---------- Tendance ---------- */
+
+.trend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 5px;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.trend[data-tone='good'] { color: var(--good); }
+.trend[data-tone='bad'] { color: var(--bad); }
+.trend-ic { display: inline-grid; }
+.trend-prev { color: var(--ink-3); font-weight: 400; }
+
+/* ---------- Le parcours d'un ticket ---------- */
+
+.journey { padding-bottom: 22px; }
+
+.fil {
+  display: grid;
+  grid-template-columns:
+    minmax(92px, max-content)
+    minmax(136px, var(--c1, 16fr))
+    minmax(0, var(--c2, 64fr))
+    minmax(164px, var(--c3, 20fr))
+    minmax(150px, max-content);
+  align-items: start;
+  margin-top: 6px;
+}
+
+/* Les deux délais, cotés au-dessus du fil comme sur un plan. */
+.dim { display: grid; gap: 5px; }
+.dim.lead { grid-column: 2 / 5; grid-row: 1; margin-bottom: 14px; }
+.dim.cycle { grid-column: 4 / 5; grid-row: 2; margin-bottom: 16px; }
+
+.dim-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 12px;
+  line-height: 1.25;
+}
+
+.dim.cycle .dim-label { justify-content: flex-end; margin-left: -420px; text-align: right; }
+
+.dim-name { font-size: 16px; font-weight: 700; }
+
+.dim-value {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  --unit-size: 0.62em;
+  --unit-weight: 700;
+}
+
+.dim-note { color: var(--ink-2); font-size: 15px; }
+
+.brace {
+  display: block;
+  height: 10px;
+  border: 2px solid var(--navy);
+  border-bottom: 0;
+  border-radius: 5px 5px 0 0;
+}
+
+/* Le fil : un tube vide quand le ticket attend, plein quand on y travaille. */
+.stub, .s { grid-row: 3; position: relative; height: 30px; }
+
+.s::after {
+  content: '';
+  position: absolute;
+  inset: 9px 0;
+  border: 2px solid var(--navy);
+  background: var(--surface);
+}
+
+.s.work::after { background: var(--navy); }
+
+.s::before,
+.s.work > i {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  border: 5px solid var(--navy);
+  border-radius: 50%;
+  background: var(--yellow);
+  transform: translate(-50%, -50%);
+}
+
+.s.work > i { left: 100%; }
+
+.stub::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  height: 2px;
+  background: var(--ink-3);
+  transform: translateY(-50%);
+}
+
+.stub.in::after { left: 0; right: 26px; }
+.stub.out::after { left: 26px; right: 12px; }
+
+.stub::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border: solid var(--ink-3);
+  border-width: 2px 2px 0 0;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.stub.in::before { right: 26px; }
+.stub.out::before { right: 12px; }
+
+/* Sous le fil : ce qui entre, les trois états, ce qui sort. */
+.flow, .stage { grid-row: 4; padding-top: 12px; }
+
+.stage { padding-right: 14px; }
+.flow.out { padding-left: 22px; }
+.flow.in { padding-right: 18px; }
+
+.big {
+  display: block;
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.025em;
+}
+
+.what { display: block; margin-top: 4px; font-size: 17px; font-weight: 700; }
+.hint { display: block; color: var(--ink-2); font-size: 14px; line-height: 1.35; }
+.hint.good { color: var(--good); font-weight: 600; }
+
+.stage h3 { font-size: 17px; font-weight: 700; }
+
+.stage .share { color: var(--ink-2); font-size: 15px; line-height: 1.35; }
+.stage .share b { color: var(--ink); font-size: 22px; font-weight: 800; --unit-size: 0.75em; }
+
+.stage .now { margin-top: 8px; font-size: 15px; line-height: 1.35; }
+.stage .now b { font-weight: 800; }
+.stage .now a { text-decoration-thickness: 2px; text-underline-offset: 3px; text-decoration-color: var(--yellow); }
+
+.journey-foot {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-2);
+  font-size: 15px;
+}
+
+.journey-foot strong { color: var(--ink); }
+
+/* ---------- À regarder ---------- */
+
+.wgroup + .wgroup { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+
+.wgroup h3 { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 700; }
+
+.wgroup h3 span {
+  min-width: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--yellow);
+  font-size: 14px;
+  text-align: center;
+}
+
+.wgroup li { margin-top: 10px; }
+.wgroup .w-title { display: block; font-size: 15px; font-weight: 600; line-height: 1.35; text-decoration: none; }
+.wgroup .w-title:hover { text-decoration: underline; }
+.wgroup .w-detail { display: block; color: var(--ink-2); font-size: 14px; line-height: 1.4; }
+.wgroup .w-rest { margin-top: 10px; color: var(--ink-2); font-size: 14px; }
+
+.more {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 18px;
+  font-size: 15px;
+  font-weight: 700;
+  text-underline-offset: 3px;
+}
+
+/* ---------- Délais et qualité ---------- */
+
+.facts { display: grid; }
+
+.fact {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 16px;
+  align-items: baseline;
+  padding: 13px 0;
+  border-top: 1px solid var(--line);
+}
+
+.fact:first-child { border-top: 0; padding-top: 0; }
+
+.fact dt { font-size: 16px; font-weight: 700; }
+.fact .f-help { grid-column: 1; color: var(--ink-2); font-size: 14px; line-height: 1.4; }
+
+.fact .f-value {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-align: right;
+  white-space: nowrap;
+  --unit-size: 0.68em;
+  --unit-weight: 700;
+}
+
+.fact .f-value.muted { color: var(--ink-2); font-size: 17px; font-weight: 700; }
+.fact .f-side { grid-column: 2; text-align: right; }
+.fact .f-side .trend { justify-content: flex-end; }
+
+.hist-title { margin: 20px 0 8px; font-size: 15px; font-weight: 700; }
+
+/* ---------- Tableaux ---------- */
+
+.rows { width: 100%; border-collapse: collapse; }
+
+.rows th,
+.rows td {
+  padding: 11px 12px 11px 0;
+  border-top: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.rows thead th { border-top: 0; padding-top: 0; color: var(--ink-2); font-size: 14px; font-weight: 500; }
+.rows .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rows td.num { font-weight: 700; }
+.rows td:last-child, .rows th:last-child { padding-right: 0; }
+
+.t-title { display: block; font-size: 15px; font-weight: 600; line-height: 1.35; }
+
+.t-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 3px; color: var(--ink-2); font-size: 14px; }
+.t-id { font-family: var(--mono); font-size: 13px; }
+
+.tag {
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.tag.late { border-color: transparent; background: var(--bad-bg); color: var(--bad); }
+
+.p-cell { display: flex; align-items: center; gap: 10px; font-weight: 600; white-space: nowrap; }
+.p-cell .pbead { background: oklch(0.68 0.15 var(--v)); }
+
+.bar-cell { display: flex; align-items: center; gap: 10px; min-width: 104px; }
+.bar-cell b { min-width: 34px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.bar-cell i { height: 10px; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--navy); width: calc(var(--v) * (100% - 44px)); }
+
+.dash { color: var(--ink-3); }
+
+/* ---------- Écrans étroits ---------- */
+
+@media (max-width: 1160px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+
+  .side {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    height: auto;
+    padding: 12px 20px;
+  }
+
+  .find { width: 44px; padding: 0; justify-content: center; order: 3; }
+  .find span, .find kbd { display: none; }
+  .nav { display: flex; order: 2; margin-right: auto; }
+  .projects { order: 5; width: 100%; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+  .projects h2 { padding: 0; gap: 6px; }
+  .plist { display: flex; overflow-x: auto; }
+  .plist a { white-space: nowrap; }
+  .pname { overflow: visible; }
+  .side-foot { order: 4; margin: 0; gap: 8px; }
+  main { padding: 24px 24px 32px; }
+}
+
+@media (max-width: 900px) {
+  .grid.two, .grid.half { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 760px) {
+  main { padding: 18px 16px 28px; }
+  h1 { font-size: 27px; }
+  .card { padding: 20px 18px; }
+  .period { width: 100%; overflow-x: auto; }
+
+  /* Le fil se lit de haut en bas : un trait à gauche, une perle par étape. */
+  .fil { display: block; margin-top: 14px; }
+  .stub, .s, .brace { display: none; }
+  .dim.cycle .dim-label { justify-content: flex-start; margin-left: 0; text-align: left; }
+  .dim { margin-bottom: 14px !important; }
+
+  .flow, .stage {
+    position: relative;
+    margin-left: 12px;
+    padding: 0 0 20px 26px;
+    border-left: 4px solid var(--navy);
+  }
+
+  .flow.out { padding-left: 26px; padding-bottom: 0; border-left-color: transparent; }
+
+  .flow::before, .stage::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: -2px;
+    width: 22px;
+    height: 22px;
+    border: 4px solid var(--navy);
+    border-radius: 50%;
+    background: var(--yellow);
+    transform: translateX(-50%);
+  }
+
+  .stage::before { width: 12px; height: 12px; top: 7px; background: var(--surface); border-width: 3px; }
+  .rows .hide-s { display: none; }
+}
+</style>
+</head>
+<body data-variant="1" data-fonts="Atkinson Hyperlegible Next">
+<div class="app">
+  <aside class="side" aria-label="Navigation">
+    <a class="brand" href="#">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
+        <path d="M2 15h26" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="8" cy="15" r="4.5" fill="#ffc83d"/>
+        <circle cx="16.5" cy="15" r="4.5" fill="#ffc83d"/>
+        <circle cx="25" cy="15" r="3" fill="#fff"/>
+      </svg>
+      beads-desktop
+    </a>
+
+    <button class="find" type="button">
+      <i data-icon="search"></i>
+      <span>Rechercher</span>
+      <kbd>⌘K</kbd>
+    </button>
+
+    <nav class="nav" aria-label="Navigation principale">
+      <a href="#" aria-current="page"><i data-icon="grid"></i>Vue globale</a>
+      <a href="#"><i data-icon="eye"></i>À regarder<span class="count" data-b="x.signals.total"></span></a>
+    </nav>
+
+    <section class="projects" aria-labelledby="side-projects">
+      <h2 id="side-projects">Projets <span data-b="x.projectCount"></span></h2>
+      <ul class="plist" id="side-list"></ul>
+    </section>
+
+    <div class="side-foot">
+      <div class="theme" role="group" aria-label="Thème">
+        <button type="button" aria-pressed="false" aria-label="Thème du système"><i data-icon="screen" data-size="16"></i></button>
+        <button type="button" aria-pressed="true" aria-label="Thème clair"><i data-icon="sun" data-size="16"></i></button>
+        <button type="button" aria-pressed="false" aria-label="Thème sombre"><i data-icon="moon" data-size="16"></i></button>
+      </div>
+      <button type="button" aria-label="Raccourcis clavier"><i data-icon="keyboard"></i></button>
+    </div>
+  </aside>
+
+  <main>
+    <header class="top">
+      <div>
+        <h1>Vue globale</h1>
+        <p>Le flux des <span data-b="x.readable"></span> Projets suivis, <span data-b="x.periodLong"></span>.</p>
+      </div>
+      <div class="tools">
+        <fieldset class="period">
+          <legend class="sr-only">Période</legend>
+          <label><input type="radio" name="period">7 jours</label>
+          <label><input type="radio" name="period" checked>30 jours</label>
+          <label><input type="radio" name="period">90 jours</label>
+          <label><input type="radio" name="period">Autre</label>
+        </fieldset>
+        <button class="btn" type="button"><i data-icon="copy"></i>Copier le rapport</button>
+        <button class="btn square" type="button" aria-label="Actualiser les métriques" title="Calculé à 21:55"><i data-icon="refresh"></i></button>
+      </div>
+    </header>
+
+    <p class="notice" id="unreadable" hidden></p>
+
+    <section class="card journey" aria-labelledby="journey-title">
+      <header>
+        <h2 id="journey-title">Le parcours d’un ticket</h2>
+        <p>Ce qui entre, ce qui attend, ce qui sort. Le tube est vide quand le ticket attend, plein quand on y travaille.</p>
+      </header>
+
+      <div class="fil" id="fil">
+        <div class="dim lead">
+          <p class="dim-label">
+            <span class="dim-name">Lead Time</span>
+            <b class="dim-value" data-b="lead.median" data-f="dur"></b>
+            <span class="dim-note">de la création à la Livraison, en médiane</span>
+            <span data-trend="leadMedian"></span>
+          </p>
+          <i class="brace"></i>
+        </div>
+        <div class="dim cycle">
+          <p class="dim-label">
+            <span class="dim-name">Cycle Time</span>
+            <b class="dim-value" data-b="cycle.median" data-f="dur"></b>
+            <span class="dim-note">de travail, en médiane</span>
+            <span data-trend="cycleMedian"></span>
+          </p>
+          <i class="brace"></i>
+        </div>
+
+        <div class="stub in"></div>
+        <div class="s wait"></div>
+        <div class="s wait"></div>
+        <div class="s work"><i></i></div>
+        <div class="stub out"></div>
+
+        <div class="flow in">
+          <b class="big" data-b="arrivals.value"></b>
+          <span class="what">Arrivées</span>
+          <span class="hint">tickets créés</span>
+        </div>
+        <div class="stage" id="stage-backlog"></div>
+        <div class="stage" id="stage-ready"></div>
+        <div class="stage" id="stage-work"></div>
+        <div class="flow out">
+          <b class="big" data-b="debit.value"></b>
+          <span class="what">Livraisons</span>
+          <span class="hint good"><span data-b="x.debitTimes"></span> plus qu’avant (<span data-b="debit.prev"></span>)</span>
+        </div>
+      </div>
+
+      <p class="journey-foot" id="journey-foot"></p>
+    </section>
+
+    <div class="grid two">
+      <section class="card" aria-labelledby="daily-title">
+        <header>
+          <h2 id="daily-title">Livraisons par jour</h2>
+          <p>Le jour le plus chargé : <span data-b="x.peakDay.label"></span>, avec <span data-b="x.peakDay.value"></span> Livraisons. La dernière colonne, plus claire, est le jour en cours.</p>
+        </header>
+        <div class="bd-chart" id="chart-daily"></div>
+      </section>
+
+      <section class="card" aria-labelledby="watch-title">
+        <header>
+          <h2 id="watch-title">À regarder</h2>
+          <p><span data-b="x.signals.total"></span> Signaux en ce moment, dans tous les Projets.</p>
+        </header>
+        <div id="watch"></div>
+        <a class="more" href="#">Voir tous les Signaux<i data-icon="right" data-size="16"></i></a>
+      </section>
+    </div>
+
+    <div class="grid half">
+      <section class="card" aria-labelledby="delays-title">
+        <header>
+          <h2 id="delays-title">Délais</h2>
+          <p>La médiane dit le cas courant. Le P85 dit le pire cas raisonnable : 85 % des tickets font mieux.</p>
+        </header>
+        <dl class="facts">
+          <div class="fact">
+            <dt>Lead Time, P85</dt>
+            <dd class="f-value" data-b="lead.p85" data-f="dur"></dd>
+            <dd class="f-help">Médiane <span data-b="lead.median" data-f="dur"></span>, sur <span data-b="lead.n"></span> Livraisons.</dd>
+            <dd class="f-side"><span data-trend="leadP85"></span></dd>
+          </div>
+          <div class="fact">
+            <dt>Cycle Time, P85</dt>
+            <dd class="f-value" data-b="cycle.p85" data-f="dur"></dd>
+            <dd class="f-help">Médiane <span data-b="cycle.median" data-f="dur"></span>, sur <span data-b="cycle.n"></span> Livraisons démarrées.</dd>
+            <dd class="f-side"><span data-trend="cycleP85"></span></dd>
+          </div>
+          <div class="fact">
+            <dt>Temps de rétablissement</dt>
+            <dd class="f-value" data-b="recovery.median" data-f="dur"></dd>
+            <dd class="f-help">Le Lead Time médian des <span data-b="recovery.n"></span> bugs critiques (P0 et P1) livrés.</dd>
+            <dd class="f-side"><span data-trend="recoveryMedian"></span></dd>
+          </div>
+        </dl>
+        <h3 class="hist-title">Combien de travail demande un ticket</h3>
+        <div class="bd-chart" id="chart-hist"></div>
+      </section>
+
+      <section class="card" aria-labelledby="quality-title">
+        <header>
+          <h2 id="quality-title">Qualité du flux</h2>
+          <p>Ce qui est livré tient-il, et le travail démarré avance-t-il sans rester coincé ?</p>
+        </header>
+        <dl class="facts">
+          <div class="fact">
+            <dt>Taux d’échec</dt>
+            <dd class="f-value muted">Non significatif</dd>
+            <dd class="f-help">Seuls <span data-b="failure.coverage" data-f="pct"></span> des bugs ont une origine renseignée : il en faut <span data-b="failure.minCoverage" data-f="pct"></span> pour conclure.</dd>
+          </div>
+          <div class="fact">
+            <dt>Taux de Réouverture</dt>
+            <dd class="f-value" data-b="reopening.rate" data-f="pct1"></dd>
+            <dd class="f-help"><span data-b="reopening.reopened"></span> ticket rouvert sur <span data-b="reopening.closures"></span> clôtures.</dd>
+            <dd class="f-side"><span data-trend="reopening"></span></dd>
+          </div>
+          <div class="fact">
+            <dt>Efficacité du flux</dt>
+            <dd class="f-value" data-b="efficiency.ratio" data-f="efficiency"></dd>
+            <dd class="f-help">La part du Cycle Time passée hors Blocage.</dd>
+            <dd class="f-side"><span data-trend="efficiency"></span></dd>
+          </div>
+          <div class="fact">
+            <dt>Taux d’abandon</dt>
+            <dd class="f-value" data-b="abandon.rate" data-f="pct1"></dd>
+            <dd class="f-help">Aucun doublon ni ticket remplacé sur <span data-b="abandon.closed"></span> tickets fermés.</dd>
+            <dd class="f-side"><span data-trend="abandon"></span></dd>
+          </div>
+          <div class="fact">
+            <dt>WIP moyen</dt>
+            <dd class="f-value" data-b="wip.avg" data-f="dec1"></dd>
+            <dd class="f-help">Les tickets en cours en même temps, en moyenne sur la période.</dd>
+            <dd class="f-side"><span data-trend="wipAvg"></span></dd>
+          </div>
+        </dl>
+      </section>
+    </div>
+
+    <div class="grid half">
+      <section class="card" aria-labelledby="wip-title">
+        <header>
+          <h2 id="wip-title">Tickets en cours</h2>
+          <p>Du plus ancien au plus récent, depuis leur premier démarrage.</p>
+        </header>
+        <table class="rows">
+          <thead><tr><th scope="col">Ticket</th><th scope="col" class="num">En cours depuis</th></tr></thead>
+          <tbody id="wip-rows"></tbody>
+        </table>
+      </section>
+
+      <section class="card" aria-labelledby="projects-title">
+        <header>
+          <h2 id="projects-title">Projets</h2>
+          <p>Les mêmes mesures, Projet par Projet.</p>
+        </header>
+        <table class="rows">
+          <thead>
+            <tr>
+              <th scope="col">Projet</th>
+              <th scope="col">Livraisons</th>
+              <th scope="col" class="num hide-s">Lead Time</th>
+              <th scope="col" class="num hide-s">Cycle Time</th>
+              <th scope="col" class="num">En cours</th>
+            </tr>
+          </thead>
+          <tbody id="project-rows"></tbody>
+        </table>
+      </section>
+    </div>
+  </main>
+</div>
+
+<template id="tpl-side-project">
+  <li><a href="#"><span class="pbead" data-v="hue"></span><span class="pname" data-t="name"></span><span class="pmeta" data-t="meta"></span></a></li>
+</template>
+
+<template id="tpl-wip-row">
+  <tr>
+    <td>
+      <span class="t-title" data-t="title"></span>
+      <span class="t-meta"><span class="t-id" data-t="id"></span><span data-t="project"></span><span class="tag" data-t="type"></span><span class="tag late" data-t="late"></span></span>
+    </td>
+    <td class="num" data-t="age"></td>
+  </tr>
+</template>
+
+<template id="tpl-project-row">
+  <tr>
+    <th scope="row"><span class="p-cell"><span class="pbead" data-v="hue"></span><span data-t="name"></span></span></th>
+    <td><span class="bar-cell" data-v="share"><b data-t="throughput"></b><i></i></span></td>
+    <td class="num hide-s" data-t="lead"></td>
+    <td class="num hide-s" data-t="cycle"></td>
+    <td class="num" data-t="wip"></td>
+  </tr>
+</template>
+
+<script>
+/* global window */
+/*
+ * Les données des cinq maquettes : la Vue globale sur 30 jours (17 oct. – 15 nov. 2026), relevée dans l'application le
+ * 15 novembre 2026. Les chiffres sont les vrais. Les noms de Projets et les titres de tickets sont inventés : ce dépôt est
+ * public, et les vrais n'ont pas à y figurer.
+ * Les durées sont en millisecondes, comme dans l'API.
+ */
+window.BD = {
+  computedAt: '21:55',
+  period: { from: '2026-10-17', to: '2026-11-15', days: 30 },
+  previous: { from: '2026-09-17', to: '2026-10-16' },
+
+  /* Les Projets, dans l'ordre de la barre latérale. `hue` : la teinte de leur pastille. */
+  projects: [
+    { id: 'atlas-docs', name: 'atlas-docs', prefix: 'atlas', status: 'ok', hue: 28, throughput: 0, arrivals: 0, leadMedian: null, cycleMedian: null, wip: 0 },
+    { id: 'beads-desktop', name: 'beads-desktop', prefix: 'bdesk', status: 'ok', hue: 262, throughput: 101, arrivals: 101, leadMedian: 23422639, cycleMedian: 11562477, wip: 0 },
+    {
+      id: 'herbier',
+      name: 'herbier',
+      prefix: 'herb',
+      status: 'unreadable',
+      hue: 95,
+      reason: 'Base Dolt absente de ce poste : le Projet est en mode serveur, sa base n’est pas disponible localement.',
+    },
+    { id: 'marelle', name: 'marelle', prefix: 'mar', status: 'ok', hue: 340, throughput: 14, arrivals: 15, leadMedian: 2208958, cycleMedian: 2314704, wip: 0 },
+    { id: 'mosaique', name: 'mosaïque', prefix: 'mosa', status: 'ok', hue: 150, throughput: 176, arrivals: 169, leadMedian: 65556881.5, cycleMedian: 5696656, wip: 3 },
+    { id: 'sextant-api', name: 'sextant-api', prefix: 'sext', status: 'ok', hue: 215, throughput: 0, arrivals: 0, leadMedian: null, cycleMedian: null, wip: 6 },
+  ],
+
+  /* Indicateurs : valeur de la période, et celle de la période précédente. */
+  debit: { value: 291, prev: 11 },
+  arrivals: { value: 285, prev: 33 },
+  lead: { median: 54603112, medianPrev: 14826148, p85: 506301526, p85Prev: 286795817, n: 291 },
+  cycle: { median: 7832273, medianPrev: 8733180, p85: 86163431.6, p85Prev: 74438548, n: 237 },
+  recovery: { median: 12714716, medianPrev: 22904916, p85: 48624519.4, p85Prev: 22904916, n: 9 },
+  failure: { significant: false, rate: 0, failed: 0, deliveries: 291, coverage: 0.14864864864864866, linked: 22, bugs: 148, minCoverage: 0.5 },
+  wip: { current: 9, avg: 10.675187831522482, avgPrev: 6.672552982675173 },
+
+  /* Santé du flux. */
+  efficiency: { ratio: 0.9999997593254624, prev: 1, n: 237, blockedTime: 3516, cycleTime: 14608940500, blockedDeliveries: 1 },
+  reopening: { rate: 0.003424657534246575, prev: 0, reopened: 1, closures: 292 },
+  abandon: { rate: 0, prev: 0, abandoned: 0, closed: 291 },
+  ready: { count: 20, stagnant: 11, stagnantPrev: 11, afterDays: 14 },
+
+  /* Les colonnes du kanban, tous Projets confondus, au dernier jour de la période. */
+  stock: { backlog: 0, ready: 20, inProgress: 8, blocked: 1 },
+
+  /* Décomposition du Lead Time cumulé des Livraisons de la période. */
+  breakdown: {
+    deliveries: 291,
+    total: 72512417290,
+    dependencyWait: 11349156859,
+    readyWait: 45769028032,
+    work: 14608936984,
+    blocked: 3516,
+    otherWait: 785291899,
+  },
+
+  /* Un nombre par jour, du 17 octobre au 15 novembre. */
+  daily: {
+    deliveries: [0, 11, 4, 14, 1, 2, 7, 0, 0, 5, 2, 2, 0, 0, 2, 0, 15, 20, 24, 71, 14, 10, 11, 10, 9, 16, 15, 2, 6, 18],
+    arrivals: [0, 6, 18, 17, 0, 0, 12, 1, 0, 3, 4, 0, 0, 2, 3, 5, 12, 20, 19, 58, 11, 17, 4, 7, 11, 9, 22, 0, 0, 24],
+    backlog: [0, 0, 9, 12, 9, 8, 6, 6, 6, 5, 5, 5, 5, 5, 5, 5, 6, 2, 4, 5, 5, 5, 5, 2, 3, 1, 1, 1, 0, 0],
+    ready: [20, 23, 28, 26, 27, 27, 33, 34, 34, 34, 37, 35, 35, 37, 33, 38, 35, 37, 32, 16, 14, 18, 15, 15, 16, 14, 21, 21, 16, 20],
+    inProgress: [16, 8, 8, 10, 11, 10, 11, 11, 11, 10, 9, 9, 9, 9, 14, 14, 11, 13, 11, 13, 12, 15, 11, 11, 11, 9, 9, 7, 7, 8],
+    blocked: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+  },
+
+  /* Tendance longue : les 12 dernières semaines, du lundi au dimanche. La dernière est en cours. */
+  weekly: [
+    { from: '2026-08-24', throughput: 0, leadP85: null, reopeningRate: null },
+    { from: '2026-08-31', throughput: 0, leadP85: null, reopeningRate: null },
+    { from: '2026-09-07', throughput: 0, leadP85: null, reopeningRate: null },
+    { from: '2026-09-14', throughput: 0, leadP85: null, reopeningRate: null },
+    { from: '2026-09-21', throughput: 1, leadP85: 444383, reopeningRate: 0 },
+    { from: '2026-09-28', throughput: 8, leadP85: 86111520.6, reopeningRate: 0 },
+    { from: '2026-10-05', throughput: 1, leadP85: 484152770, reopeningRate: 0 },
+    { from: '2026-10-12', throughput: 12, leadP85: 1378692361.7, reopeningRate: 0 },
+    { from: '2026-10-19', throughput: 28, leadP85: 225836443.85, reopeningRate: 0 },
+    { from: '2026-10-26', throughput: 11, leadP85: 777603860, reopeningRate: 0 },
+    { from: '2026-11-02', throughput: 165, leadP85: 823398461.2, reopeningRate: 0.006024096385542169 },
+    { from: '2026-11-09', throughput: 76, leadP85: 391714937.75, reopeningRate: 0, partial: true },
+  ],
+
+  /* Cycle Time des 237 Livraisons démarrées, par tranche. */
+  cycleHist: [
+    { label: '< 1 h', n: 68 },
+    { label: '1 à 4 h', n: 84 },
+    { label: '4 à 24 h', n: 52 },
+    { label: '1 à 3 j', n: 13 },
+    { label: '3 à 7 j', n: 17 },
+    { label: '> 7 j', n: 3 },
+  ],
+
+  types: [
+    { key: 'bug', throughput: 112, wip: 5, leadMedian: 32028930.5, cycleMedian: 11030128 },
+    { key: 'task', throughput: 90, wip: 3, leadMedian: 50986301, cycleMedian: 4332045.5 },
+    { key: 'feature', throughput: 46, wip: 1, leadMedian: 53481240.5, cycleMedian: 7761557 },
+    { key: 'chore', throughput: 41, wip: 0, leadMedian: 58186514, cycleMedian: 5167251 },
+    { key: 'decision', throughput: 1, wip: 0, leadMedian: 234801215, cycleMedian: 170438105 },
+    { key: 'spike', throughput: 1, wip: 0, leadMedian: 18654944, cycleMedian: 16445301 },
+  ],
+
+  /* Carte d'activité : Transitions par jour (lundi → dimanche) et par heure (0 → 23). */
+  activity: [
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 4, 0, 0, 0, 6, 7, 0, 7, 7, 13, 3, 0, 2, 5],
+    [2, 0, 0, 0, 0, 2, 0, 1, 6, 8, 9, 4, 7, 2, 7, 4, 4, 4, 4, 2, 9, 1, 3, 5],
+    [5, 1, 1, 2, 8, 1, 1, 2, 1, 23, 0, 5, 1, 3, 4, 2, 1, 0, 6, 3, 2, 2, 5, 0],
+    [1, 6, 2, 2, 5, 0, 3, 5, 3, 8, 6, 17, 8, 6, 10, 1, 7, 6, 4, 13, 17, 7, 12, 8],
+    [7, 2, 3, 0, 3, 2, 3, 0, 0, 0, 5, 0, 0, 0, 3, 2, 1, 0, 1, 3, 5, 0, 2, 2],
+    [3, 1, 0, 0, 0, 0, 0, 0, 1, 10, 14, 0, 0, 0, 0, 0, 0, 0, 1, 8, 1, 0, 0, 2],
+    [1, 0, 0, 0, 0, 0, 0, 0, 11, 1, 8, 3, 3, 5, 1, 0, 0, 4, 1, 10, 14, 2, 0, 1],
+  ],
+
+  /* Les tickets en cours, du plus ancien au plus récent (`age` : depuis leur premier démarrage). */
+  inProgress: [
+    { id: 'sext-4k2', title: 'Les rappels par e-mail partent deux fois le lundi', type: 'bug', priority: 1, project: 'sextant-api', age: 17495592263 },
+    { id: 'sext-9zr', title: 'La documentation ne se régénère plus à chaque version', type: 'bug', priority: 2, project: 'sextant-api', age: 16889510091 },
+    { id: 'sext-t7m', title: 'Reprendre les retours de revue sur le guide d’installation', type: 'task', priority: 2, project: 'sextant-api', age: 16700295145 },
+    { id: 'sext-f3q', title: 'Ajouter l’export CSV des commandes', type: 'feature', priority: 2, project: 'sextant-api', age: 10498987918 },
+    { id: 'sext-30b', title: 'Publier la version 3.2', type: 'task', priority: 2, project: 'sextant-api', age: 4531598703 },
+    { id: 'sext-78c', title: 'Le tableau de suivi compte les événements de test', type: 'bug', priority: 2, project: 'sextant-api', age: 4068487422 },
+    { id: 'mosa-q1w', title: 'Vérifier le nouveau formulaire sur mobile et tablette', type: 'task', priority: 2, project: 'mosaique', age: 374969176, blocked: true },
+    { id: 'mosa-u5h', title: 'Le filtre par date oublie le fuseau de l’utilisateur', type: 'bug', priority: 2, project: 'mosaique', age: 15229925 },
+    { id: 'mosa-a8v', title: 'La page de connexion boucle après l’expiration de la session', type: 'bug', priority: 1, project: 'mosaique', age: 1649629 },
+  ],
+
+  /* Les Signaux de la page « À regarder », dans l'ordre du serveur. */
+  signals: [
+    {
+      kind: 'drift',
+      project: 'mosaique',
+      ticket: { id: 'mosa-q1w', title: 'Vérifier le nouveau formulaire sur mobile et tablette', type: 'task', priority: 2 },
+      cycleTime: 374971458,
+      reference: 74438431.3,
+    },
+    { kind: 'stagnantReady', project: 'sextant-api', ticket: { id: 'sext-3h1', title: 'Protéger les chemins qui contiennent des espaces dans l’installeur', type: 'task', priority: 3 }, age: 13593760992 },
+    { kind: 'stagnantReady', project: 'sextant-api', ticket: { id: 'sext-t3p', title: 'Avertir quand un chemin temporaire est écrit dans la configuration', type: 'task', priority: 2 }, age: 13592873340 },
+    { kind: 'stagnantReady', project: 'sextant-api', ticket: { id: 'sext-5m9', title: 'Tester la mise à jour sous Windows avant la prochaine version', type: 'task', priority: 1 }, age: 13592187551 },
+    { kind: 'stagnantReady', project: 'sextant-api', ticket: { id: 'sext-d6t', title: 'Derniers ajustements après la revue du module d’import', type: 'task', priority: 3 }, age: 13585167394 },
+    { kind: 'stagnantReady', project: 'sextant-api', ticket: { id: 'sext-k0c', title: 'Retirer l’ancien format des fichiers de configuration', type: 'task', priority: 2 }, age: 10705329728 },
+    { kind: 'stagnantReady', project: 'sextant-api', ticket: { id: 'sext-p5d', title: 'Mettre la documentation à jour après le retrait de l’ancien format', type: 'task', priority: 2 }, age: 10705329005 },
+    { kind: 'stagnantReady', project: 'sextant-api', ticket: { id: 'sext-c0n', title: 'Supprimer le script de migration une fois la bascule terminée', type: 'task', priority: 3 }, age: 10705328320 },
+    { kind: 'stagnantReady', project: 'sextant-api', ticket: { id: 'sext-408', title: 'Nettoyer les branches mortes de l’installeur', type: 'task', priority: 2 }, age: 10704924995 },
+    { kind: 'stagnantReady', project: 'sextant-api', ticket: { id: 'sext-k3y', title: 'Relire les guides de référence', type: 'task', priority: 3 }, age: 10704923913 },
+    { kind: 'stagnantReady', project: 'sextant-api', ticket: { id: 'sext-i5x', title: 'Signaler les fichiers modifiés localement avant de les écraser', type: 'feature', priority: 1 }, age: 10657998162 },
+    { kind: 'stagnantReady', project: 'sextant-api', ticket: { id: 'sext-s7j', title: 'Test instable : la vérification de version échoue sous charge', type: 'bug', priority: 3 }, age: 4527622521 },
+    { kind: 'unusualWip', project: 'mosaique', wip: 3, threshold: 2 },
+  ],
+};
+</script>
+<script>
+/* global window, document, console, ResizeObserver, requestAnimationFrame */
+/*
+ * Outils communs aux cinq maquettes. Rien ici ne décide du design : chaque variante garde sa structure et ses styles.
+ *   - formats : les règles de src/web/metrics/format.ts (virgule décimale, espace insécable, moins typographique) ;
+ *   - indicateurs : valeur, période précédente, écart et ton (mieux, moins bien, neutre), comme src/web/metrics/trend.ts ;
+ *   - liaisons : `data-b="chemin"` écrit une donnée, `data-trend="indicateur"` sa tendance, `data-icon="nom"` une icône ;
+ *   - graphiques SVG, infobulle, tableau jumeau ;
+ *   - bandeau pour passer d'une variante à l'autre (flèches gauche et droite du clavier).
+ */
+(function () {
+  'use strict';
+
+  const BD = window.BD;
+  const NBSP = ' ';
+  const NARROW = ' ';
+  const MINUS = '−';
+  const DASH = '—';
+  const MIN = 60000;
+  const HOUR = 60 * MIN;
+  const DAY = 24 * HOUR;
+
+  /* ---------- Formats ------------------------------------------------------------------------------------------- */
+
+  const isNum = (value) => typeof value === 'number' && Number.isFinite(value);
+
+  function group(text) {
+    const parts = text.split(',');
+    const grouped = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, NBSP);
+    return parts.length > 1 ? grouped + ',' + parts[1] : grouped;
+  }
+
+  function dec(value, digits) {
+    if (!isNum(value)) return DASH;
+    const fixed = value.toFixed(digits === undefined ? 1 : digits);
+    if (Number(fixed) === 0) return '0';
+    const trimmed = fixed.includes('.') ? fixed.replace(/\.?0+$/, '') : fixed;
+    return trimmed.replace('.', ',').replace('-', MINUS);
+  }
+
+  function int(value) {
+    if (!isNum(value)) return DASH;
+    const rounded = Math.round(value);
+    return (rounded < 0 ? MINUS : '') + group(String(Math.abs(rounded)));
+  }
+
+  function signed(value, digits) {
+    if (!isNum(value)) return DASH;
+    const d = digits || 0;
+    const rounded = Number(value.toFixed(d));
+    if (rounded === 0) return '0';
+    const magnitude = d === 0 ? int(Math.abs(rounded)) : group(dec(Math.abs(rounded), d));
+    return (rounded > 0 ? '+' : MINUS) + magnitude;
+  }
+
+  function daysText(value) {
+    const tenths = Math.round(value * 10) / 10;
+    return tenths < 10 ? dec(tenths, 1) : String(Math.round(value));
+  }
+
+  /** « 37 min », « 15 h 10 », « 5,9 j » : arrondi à la minute avant de choisir l'unité. */
+  function dur(ms) {
+    if (!isNum(ms)) return DASH;
+    const value = Math.max(0, ms);
+    const minutes = Math.round(value / MIN);
+    if (minutes < 1) return '<' + NBSP + '1' + NBSP + 'min';
+    if (minutes < 60) return minutes + NBSP + 'min';
+    if (minutes < 24 * 60) {
+      const hours = Math.floor(minutes / 60);
+      const rest = minutes % 60;
+      return rest === 0 ? hours + NBSP + 'h' : hours + NBSP + 'h' + NBSP + String(rest).padStart(2, '0');
+    }
+    return daysText(value / DAY) + NBSP + 'j';
+  }
+
+  function sdur(ms) {
+    if (!isNum(ms)) return DASH;
+    if (Math.round(Math.abs(ms) / MIN) < 1) return '0' + NBSP + 'min';
+    return (ms > 0 ? '+' : MINUS) + dur(Math.abs(ms));
+  }
+
+  function percentNumber(percent) {
+    const rounded = Math.round(percent * 10) / 10;
+    return rounded < 10 ? dec(rounded, 1) : String(Math.round(percent));
+  }
+
+  /** « 63 % » ; avec `precise`, une décimale partout (« 0,3 % »). */
+  function pct(ratio, precise) {
+    if (!isNum(ratio)) return DASH;
+    return (precise ? dec(Math.round(ratio * 1000) / 10, 1) : percentNumber(ratio * 100)) + NBSP + '%';
+  }
+
+  function points(delta) {
+    if (!isNum(delta)) return DASH;
+    const value = delta * 100;
+    if (Math.round(Math.abs(value) * 10) === 0) return '0' + NBSP + 'pt';
+    const text = percentNumber(Math.abs(value));
+    return (value > 0 ? '+' : MINUS) + text + NBSP + (Number(text.replace(',', '.')) >= 2 ? 'pts' : 'pt');
+  }
+
+  /** L'Efficacité du flux n'écrit « 100 % » que sans le moindre Blocage. */
+  function efficiency(ratio) {
+    const text = pct(ratio, true);
+    return isNum(ratio) && ratio < 1 && text === '100' + NBSP + '%' ? '>' + NBSP + '99,9' + NBSP + '%' : text;
+  }
+
+  /** « 26 fois », « 3,7 fois » : un rapport dit simplement. */
+  function times(ratio) {
+    return dec(ratio, ratio >= 10 ? 0 : 1) + NBSP + 'fois';
+  }
+
+  const plural = (count, singular, many) => int(count) + NBSP + (count > 1 ? many || singular + 's' : singular);
+
+  const MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  const MONTHS_LONG = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+  const WEEKDAYS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+  const WEEKDAYS_LONG = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+
+  function dayParts(iso) {
+    const [y, m, d] = iso.split('-').map(Number);
+    return { y, m, d, wd: new Date(Date.UTC(y, m - 1, d)).getUTCDay() };
+  }
+
+  /** « 5 nov. », « jeu. 5 nov. », « jeudi 5 novembre », « 5 nov. 2026 ». */
+  function day(iso, options) {
+    const o = options || {};
+    const p = dayParts(iso);
+    return [
+      o.weekday ? (o.long ? WEEKDAYS_LONG : WEEKDAYS)[p.wd] : '',
+      o.long && p.d === 1 ? '1er' : String(p.d),
+      (o.long ? MONTHS_LONG : MONTHS)[p.m - 1],
+      o.year ? String(p.y) : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  function addDays(iso, count) {
+    const p = dayParts(iso);
+    return new Date(Date.UTC(p.y, p.m - 1, p.d + count)).toISOString().slice(0, 10);
+  }
+
+  /* ---------- DOM ----------------------------------------------------------------------------------------------- */
+
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+
+  function setAttrs(node, attrs) {
+    if (!attrs) return;
+    Object.keys(attrs).forEach((key) => {
+      const value = attrs[key];
+      if (value === null || value === undefined || value === false) return;
+      if (key === 'text') node.textContent = value;
+      else node.setAttribute(key, value === true ? '' : String(value));
+    });
+  }
+
+  const usable = (kid) => kid !== null && kid !== undefined && kid !== false;
+
+  function h(tag, attrs, ...kids) {
+    const node = document.createElement(tag);
+    setAttrs(node, attrs);
+    node.append(...kids.flat().filter(usable));
+    return node;
+  }
+
+  function s(tag, attrs, ...kids) {
+    const node = document.createElementNS(SVG_NS, tag);
+    setAttrs(node, attrs);
+    node.append(...kids.flat().filter(usable));
+    return node;
+  }
+
+  /**
+   * Un nombre avec ses unités (« 15 h 10 », « 63 % ») : les unités sont dans des `span.u`, que chaque variante peut écrire
+   * plus petit. Entre un nombre et son unité, une espace fine insécable.
+   */
+  function withUnits(text) {
+    const fragment = document.createDocumentFragment();
+    text.split(NBSP).forEach((token, index) => {
+      if (index > 0) fragment.append(NARROW);
+      if (/^(h|j|min|%|pts?|<|>)$/.test(token)) fragment.append(h('span', { class: 'u', text: token }));
+      else fragment.append(token);
+    });
+    return fragment;
+  }
+
+  const ICONS = {
+    search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/>',
+    grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+    eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+    refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>',
+    copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    right: '<path d="m9 18 6-6-6-6"/>',
+    down: '<path d="m6 9 6 6 6-6"/>',
+    up: '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>',
+    drop: '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
+    flat: '<path d="M5 12h14"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
+    alert: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+    help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .8c0 1.7-2.5 2.3-2.5 4"/><path d="M12 17.2h.01"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.3 17.7-1.4 1.4"/><path d="m19.1 4.9-1.4 1.4"/>',
+    moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+    screen: '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>',
+    keyboard: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01"/><path d="M10 10h.01"/><path d="M14 10h.01"/><path d="M18 10h.01"/><path d="M7 14h10"/>',
+    columns: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M15 3v18"/>',
+    pause: '<path d="M9 5v14"/><path d="M15 5v14"/>',
+    menu: '<path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/>',
+  };
+
+  function icon(name, size) {
+    const px = Number(size) || 18;
+    const node = s('svg', {
+      class: 'ic ic-' + name,
+      viewBox: '0 0 24 24',
+      width: px,
+      height: px,
+      fill: 'none',
+      stroke: 'currentColor',
+      'stroke-width': 2,
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round',
+      'aria-hidden': 'true',
+    });
+    node.innerHTML = ICONS[name] || '';
+    return node;
+  }
+
+  /* ---------- Indicateurs : valeur, période précédente, écart, ton --------------------------------------------- */
+
+  /** Ton d'un écart : `good`, `bad`, `neutral` (une grandeur sans bon ni mauvais sens) ou `flat` (stable). */
+  function toneOf(delta, polarity, eps) {
+    if (!isNum(delta) || Math.abs(delta) < eps) return 'flat';
+    if (polarity === 'neutral') return 'neutral';
+    return (polarity === 'up' ? delta > 0 : delta < 0) ? 'good' : 'bad';
+  }
+
+  function metric(def) {
+    const delta = isNum(def.now) && isNum(def.prev) ? def.now - def.prev : null;
+    const tone = toneOf(delta, def.polarity, def.eps);
+    const dir = tone === 'flat' ? 'flat' : delta > 0 ? 'up' : 'down';
+    const words = def.words || ['en hausse', 'en baisse'];
+    return Object.assign({}, def, {
+      delta,
+      tone,
+      dir,
+      /* La direction, en mots : « en hausse », « plus lent », « stable ». */
+      word: tone === 'flat' ? 'stable' : dir === 'up' ? words[0] : words[1],
+      /* Le jugement, quand la grandeur a un bon sens : « mieux », « moins bien ». */
+      judgment: tone === 'good' ? 'mieux' : tone === 'bad' ? 'moins bien' : '',
+      verdict: tone === 'good' ? 'En progrès' : tone === 'bad' ? 'En recul' : tone === 'flat' ? 'Stable' : dir === 'up' ? 'En hausse' : 'En baisse',
+      t: { now: def.f(def.now), prev: def.f(def.prev), delta: tone === 'flat' ? 'stable' : def.fd(delta) },
+    });
+  }
+
+  const FASTER = ['plus lent', 'plus rapide'];
+  const DURATION = { f: dur, fd: sdur, polarity: 'down', eps: MIN / 2, words: FASTER };
+  const RATE = { f: (v) => pct(v, true), fd: points, polarity: 'down', eps: 0.0005 };
+
+  const balanceNow = BD.arrivals.value - BD.debit.value;
+  const balancePrev = BD.arrivals.prev - BD.debit.prev;
+
+  const M = {
+    debit: metric({ name: 'Débit', help: 'Les tickets livrés sur la période.', now: BD.debit.value, prev: BD.debit.prev, f: int, fd: signed, polarity: 'up', eps: 0.5 }),
+    arrivals: metric({ name: 'Arrivées', help: 'Les tickets créés sur la période.', now: BD.arrivals.value, prev: BD.arrivals.prev, f: int, fd: signed, polarity: 'neutral', eps: 0.5 }),
+    balance: metric({
+      name: 'Arrivées moins Débit',
+      help: 'Tickets créés moins tickets livrés. Négatif, le stock de travail se résorbe.',
+      now: balanceNow,
+      prev: balancePrev,
+      f: signed,
+      fd: signed,
+      polarity: 'neutral',
+      eps: 0.5,
+    }),
+    leadMedian: metric(Object.assign({ name: 'Lead Time', help: 'De la création d’un ticket à sa Livraison, attentes comprises.', now: BD.lead.median, prev: BD.lead.medianPrev }, DURATION)),
+    leadP85: metric(Object.assign({ name: 'Lead Time, P85', help: '85 % des tickets sont livrés en moins de temps que cela.', now: BD.lead.p85, prev: BD.lead.p85Prev }, DURATION)),
+    cycleMedian: metric(Object.assign({ name: 'Cycle Time', help: 'Le temps de travail, du premier démarrage à la Livraison.', now: BD.cycle.median, prev: BD.cycle.medianPrev }, DURATION)),
+    cycleP85: metric(Object.assign({ name: 'Cycle Time, P85', help: '85 % des tickets demandent moins de travail que cela.', now: BD.cycle.p85, prev: BD.cycle.p85Prev }, DURATION)),
+    recoveryMedian: metric(
+      Object.assign({ name: 'Temps de rétablissement', help: 'Le Lead Time des bugs critiques (P0 et P1).', now: BD.recovery.median, prev: BD.recovery.medianPrev }, DURATION),
+    ),
+    recoveryP85: metric(Object.assign({ name: 'Temps de rétablissement, P85', help: '85 % des bugs critiques sont rétablis plus vite.', now: BD.recovery.p85, prev: BD.recovery.p85Prev }, DURATION)),
+    wipAvg: metric({
+      name: 'WIP',
+      help: 'Les tickets en cours en même temps, en moyenne sur la période.',
+      now: BD.wip.avg,
+      prev: BD.wip.avgPrev,
+      f: (v) => dec(v, 1),
+      fd: (v) => signed(v, 1),
+      polarity: 'neutral',
+      eps: 0.05,
+    }),
+    efficiency: metric({
+      name: 'Efficacité du flux',
+      help: 'La part du Cycle Time passée hors Blocage.',
+      now: BD.efficiency.ratio,
+      prev: BD.efficiency.prev,
+      f: efficiency,
+      fd: points,
+      polarity: 'up',
+      eps: 0.0005,
+    }),
+    reopening: metric(Object.assign({ name: 'Taux de Réouverture', help: 'La part des clôtures suivies d’une Réouverture.', now: BD.reopening.rate, prev: BD.reopening.prev }, RATE)),
+    abandon: metric(
+      Object.assign({ name: 'Taux d’abandon', help: 'La part des tickets fermés comme doublon ou remplacés.', now: BD.abandon.rate, prev: BD.abandon.prev }, RATE, { polarity: 'neutral' }),
+    ),
+    stagnant: metric({
+      name: 'Prêts qui stagnent',
+      help: 'Les tickets Prêts depuis plus de 14 jours sans être démarrés.',
+      now: BD.ready.stagnant,
+      prev: BD.ready.stagnantPrev,
+      f: int,
+      fd: signed,
+      polarity: 'down',
+      eps: 0.5,
+    }),
+  };
+
+  /* ---------- Valeurs dérivées, pour les phrases ---------------------------------------------------------------- */
+
+  const year = BD.period.to.slice(0, 4);
+  const peakIndex = BD.daily.deliveries.indexOf(Math.max(...BD.daily.deliveries));
+  const peakWeek = BD.weekly.reduce((best, week) => (week.throughput > best.throughput ? week : best), BD.weekly[0]);
+  const b = BD.breakdown;
+  const readable = BD.projects.filter((project) => project.status === 'ok');
+  const countKind = (kind) => BD.signals.filter((signal) => signal.kind === kind).length;
+
+  const X = {
+    periodLabel: day(BD.period.from) + ' – ' + day(BD.period.to, { year: true }),
+    periodLong: 'du ' + day(BD.period.from, { long: true }) + ' au ' + day(BD.period.to, { long: true }) + ' ' + year,
+    prevLabel: day(BD.previous.from) + ' – ' + day(BD.previous.to),
+    readable: readable.length,
+    unreadable: BD.projects.length - readable.length,
+    projectCount: BD.projects.length,
+    debitTimes: times(BD.debit.value / BD.debit.prev),
+    leadTimes: times(BD.lead.median / BD.lead.medianPrev),
+    shares: {
+      dependency: b.dependencyWait / b.total,
+      ready: b.readyWait / b.total,
+      work: b.work / b.total,
+      blocked: b.blocked / b.total,
+      other: b.otherWait / b.total,
+    },
+    waitShare: (b.dependencyWait + b.readyWait + b.otherWait) / b.total,
+    peakDay: { index: peakIndex, value: BD.daily.deliveries[peakIndex], iso: addDays(BD.period.from, peakIndex) },
+    peakWeek: { value: peakWeek.throughput, iso: peakWeek.from },
+    signals: {
+      total: BD.signals.length,
+      drift: countKind('drift'),
+      longBlockage: countKind('longBlockage'),
+      stagnantReady: countKind('stagnantReady'),
+      unusualWip: countKind('unusualWip'),
+    },
+    tones: Object.keys(M).reduce((counts, key) => {
+      counts[M[key].tone] = (counts[M[key].tone] || 0) + 1;
+      return counts;
+    }, {}),
+  };
+  X.peakDay.label = day(X.peakDay.iso, { weekday: true, long: true });
+  X.peakWeek.label = day(X.peakWeek.iso, { long: true });
+
+  BD.x = X;
+  BD.m = M;
+
+  /* ---------- Listes : Projets, tickets, Signaux ----------------------------------------------------------------- */
+
+  const project = (id) => BD.projects.find((candidate) => candidate.id === id) || { id, name: id, prefix: id, hue: 255 };
+
+  /** Les deux lettres de la pastille d'un Projet. */
+  function initials(name) {
+    const words = name.split(/[-_\s.]+/).filter(Boolean);
+    const letters = words.length > 1 ? words[0][0] + words[1][0] : (words[0] || '?').slice(0, 2);
+    return letters.toUpperCase();
+  }
+
+  const SIGNAL_KINDS = [
+    { kind: 'drift', label: 'Dérive', many: 'Dérives', help: 'Un ticket en cours depuis plus longtemps que la normale.' },
+    { kind: 'longBlockage', label: 'Blocage long', many: 'Blocages longs', help: 'Un ticket bloqué en cours de travail depuis plus de 3 jours.' },
+    { kind: 'stagnantReady', label: 'Prêt qui stagne', many: 'Prêts qui stagnent', help: 'Un ticket Prêt depuis plus de 14 jours sans être démarré.' },
+    { kind: 'unusualWip', label: 'WIP inhabituel', many: 'WIP inhabituels', help: 'Plus de tickets en cours que d’habitude dans un Projet.' },
+  ];
+
+  /** Ce que dit un Signal : de combien il dépasse la normale. */
+  function signalText(signal) {
+    if (signal.kind === 'drift') return dur(signal.cycleTime) + ' de travail en cours, au-delà de ' + dur(signal.reference) + ', le P85 des Livraisons du même type';
+    if (signal.kind === 'longBlockage') return 'bloqué en cours de travail depuis ' + dur(signal.duration);
+    if (signal.kind === 'stagnantReady') return 'Prêt depuis ' + dur(signal.age);
+    return signal.wip + ' tickets en cours, au-delà de ' + dec(signal.threshold, 1) + ', le P85 du WIP quotidien des 90 derniers jours';
+  }
+
+  /** Les Signaux groupés par sorte, sans les sortes vides. */
+  function signalGroups() {
+    return SIGNAL_KINDS.map((entry) => Object.assign({}, entry, { items: BD.signals.filter((signal) => signal.kind === entry.kind) })).filter((entry) => entry.items.length > 0);
+  }
+
+  /** Les champs d'un Signal pour un gabarit : titre, identifiant, Projet, phrase. */
+  function signalFields(signal) {
+    const owner = project(signal.project);
+    return {
+      title: signal.ticket ? signal.ticket.title : owner.name,
+      id: signal.ticket ? signal.ticket.id : null,
+      project: signal.ticket ? owner.name : null,
+      detail: signalText(signal),
+      kind: SIGNAL_KINDS.find((entry) => entry.kind === signal.kind).label,
+      type: signal.ticket ? signal.ticket.type : null,
+      prio: signal.ticket ? 'P' + signal.ticket.priority : null,
+    };
+  }
+
+  /* ---------- Liaisons ------------------------------------------------------------------------------------------- */
+
+  const FORMATS = {
+    int,
+    signed,
+    dec1: (v) => dec(v, 1),
+    dur: (v) => withUnits(dur(v)),
+    sdur: (v) => withUnits(sdur(v)),
+    pct: (v) => withUnits(pct(v)),
+    pct1: (v) => withUnits(pct(v, true)),
+    efficiency: (v) => withUnits(efficiency(v)),
+    units: (v) => withUnits(String(v)),
+    text: (v) => String(v),
+  };
+
+  function lookup(path) {
+    return path.split('.').reduce((value, key) => (value === null || value === undefined ? undefined : value[key]), BD);
+  }
+
+  /** La tendance d'un indicateur : flèche, écart, valeur d'avant, et le ton en attribut pour les styles. */
+  function trend(node, key) {
+    const m = M[key];
+    if (!m) {
+      console.warn('[maquette] indicateur inconnu :', key);
+      return;
+    }
+    node.classList.add('trend');
+    node.dataset.tone = m.tone;
+    node.dataset.dir = m.dir;
+    const arrow = m.dir === 'up' ? 'up' : m.dir === 'down' ? 'drop' : 'flat';
+    const kids = [h('span', { class: 'trend-ic' }, icon(arrow, 14))];
+    if (node.dataset.word !== undefined) {
+      // En mots : « plus lent de 11 h 03 », « en hausse de 4 », « stable ».
+      kids.push(h('span', { class: 'trend-word', text: m.word }));
+      if (m.tone !== 'flat') kids.push(h('span', { class: 'trend-delta' }, 'de' + NBSP, withUnits(m.t.delta.replace(/^[+\u2212]/, ''))));
+    } else {
+      kids.push(h('span', { class: 'trend-delta' }, withUnits(m.t.delta)));
+    }
+    if (m.judgment) kids.push(h('span', { class: 'sr-only', text: ' (' + m.judgment + ')' }));
+    if (node.dataset.prev !== 'none') kids.push(h('span', { class: 'trend-prev' }, 'avant' + NBSP, withUnits(m.t.prev)));
+    node.replaceChildren(...kids);
+  }
+
+  /** Écrit les données, les tendances et les icônes déclarées dans `root`. */
+  function hydrate(root) {
+    const scope = root || document;
+    scope.querySelectorAll('[data-icon]').forEach((node) => node.replaceWith(icon(node.dataset.icon, node.dataset.size)));
+    scope.querySelectorAll('[data-b]').forEach((node) => {
+      const value = lookup(node.dataset.b);
+      if (value === undefined) {
+        console.warn('[maquette] donnée introuvable :', node.dataset.b);
+        node.textContent = DASH;
+        return;
+      }
+      const format = FORMATS[node.dataset.f || (typeof value === 'number' ? 'int' : 'text')];
+      if (!format) {
+        console.warn('[maquette] format inconnu :', node.dataset.f);
+        return;
+      }
+      node.replaceChildren(format(value));
+    });
+    scope.querySelectorAll('[data-trend]').forEach((node) => trend(node, node.dataset.trend));
+  }
+
+  /**
+   * Répète un gabarit (`<template>`) pour chaque élément d'une liste. `fill(item, index)` rend les champs : chaque
+   * `[data-t="champ"]` reçoit son texte (ou un nœud, ou une liste de nœuds), et disparaît si le champ est vide ; chaque `[data-v="champ"]` reçoit
+   * la variable CSS `--v`. Le champ `$` pose des attributs sur la racine.
+   */
+  function repeat(target, template, items, fill) {
+    const host = typeof target === 'string' ? document.querySelector(target) : target;
+    const source = typeof template === 'string' ? document.getElementById(template) : template;
+    if (!host || !source) {
+      console.warn('[maquette] gabarit ou cible introuvable :', target, template);
+      return;
+    }
+    items.forEach((item, index) => {
+      const node = source.content.firstElementChild.cloneNode(true);
+      const fields = fill(item, index) || {};
+      [node, ...node.querySelectorAll('[data-t], [data-v]')].forEach((part) => {
+        if (part.dataset.v !== undefined && fields[part.dataset.v] !== undefined) part.style.setProperty('--v', fields[part.dataset.v]);
+        if (part.dataset.t === undefined) return;
+        const value = fields[part.dataset.t];
+        if (!usable(value) || value === '') part.remove();
+        else if (value instanceof window.Node) part.replaceChildren(value);
+        else if (Array.isArray(value)) part.replaceChildren(...value.filter(usable));
+        else part.textContent = value;
+      });
+      Object.keys(fields.$ || {}).forEach((name) => {
+        if (usable(fields.$[name])) node.setAttribute(name, fields.$[name]);
+      });
+      hydrate(node);
+      host.append(node);
+    });
+  }
+
+  /* ---------- Graphiques ----------------------------------------------------------------------------------------- */
+
+  /** Dessine dans `node` à sa largeur, et redessine quand elle change : le texte garde sa taille. */
+  function mount(target, render) {
+    const node = typeof target === 'string' ? document.querySelector(target) : target;
+    if (!node) {
+      console.warn('[maquette] graphique sans cible :', target);
+      return;
+    }
+    let last = 0;
+    const draw = () => {
+      const width = Math.floor(node.clientWidth);
+      if (!width || width === last) return;
+      last = width;
+      node.replaceChildren(render(width));
+    };
+    draw();
+    if ('ResizeObserver' in window) new ResizeObserver(() => requestAnimationFrame(draw)).observe(node);
+  }
+
+  function niceStep(max, count) {
+    const raw = max / count;
+    const power = Math.pow(10, Math.floor(Math.log10(raw)));
+    const fraction = raw / power;
+    return Math.max(1, (fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10) * power);
+  }
+
+  const r1 = (value) => Math.round(value * 10) / 10;
+
+  /** Garde une étiquette sur `every`, en partant de `start`. */
+  const sparse = (labels, every, start) => labels.map((label, index) => ((index - (start || 0)) % every === 0 && index >= (start || 0) ? label : ''));
+
+  function scaleY(values, height, pad, ticks, forcedMax) {
+    const top = forcedMax || Math.max(1, ...values);
+    const step = niceStep(top, ticks || 3);
+    const max = Math.ceil(top / step) * step;
+    const inner = height - pad.t - pad.b;
+    return { max, step, y: (value) => r1(pad.t + inner - (value / max) * inner) };
+  }
+
+  function drawGrid(root, scale, pad, width) {
+    for (let value = scale.step; value <= scale.max + 1e-9; value += scale.step) {
+      root.append(s('line', { class: 'bd-grid', x1: pad.l, x2: width - pad.r, y1: scale.y(value), y2: scale.y(value) }));
+      if (pad.l >= 20) root.append(s('text', { class: 'bd-tick', x: pad.l - 8, y: scale.y(value) + 4, 'text-anchor': 'end', text: int(value) }));
+    }
+    if (pad.l >= 20) root.append(s('text', { class: 'bd-tick', x: pad.l - 8, y: scale.y(0) + 4, 'text-anchor': 'end', text: '0' }));
+  }
+
+  /**
+   * Colonnes : une série, une teinte. Bout arrondi côté donnée, pied carré sur l'axe, 24 px d'épaisseur au plus.
+   * `o.values`, `o.labels` (une par colonne, vide pour la taire), `o.tips`, `o.cls(index)` (classe de plus : `is-partial`,
+   * `is-quiet`), `o.marks` (index des colonnes dont la valeur est écrite).
+   */
+  function columns(width, o) {
+    const height = o.height || 200;
+    const pad = Object.assign({ t: o.marks ? 22 : 10, r: 2, b: 26, l: 32 }, o.pad);
+    const scale = scaleY(o.values, height, pad, o.ticks, o.max);
+    const band = (width - pad.l - pad.r) / o.values.length;
+    const thick = Math.max(2, Math.min(o.barMax || 24, band - (o.gap === undefined ? 2 : o.gap)));
+    const root = s('svg', { viewBox: '0 0 ' + width + ' ' + height, width, height, role: 'img', 'aria-label': o.label || '' });
+    if (o.grid !== false) drawGrid(root, scale, pad, width);
+    const base = scale.y(0);
+    o.values.forEach((value, index) => {
+      const left = pad.l + band * index;
+      const x = r1(left + (band - thick) / 2);
+      const col = s('g', { class: 'bd-col', 'data-tip': o.tips ? o.tips[index] : null });
+      col.append(s('rect', { class: 'bd-hit', x: r1(left), y: pad.t, width: r1(band), height: base - pad.t }));
+      if (value > 0) {
+        const top = Math.min(scale.y(value), base - 2);
+        const radius = Math.min(o.radius === undefined ? 4 : o.radius, thick / 2, base - top);
+        const right = r1(x + thick);
+        col.append(
+          s('path', {
+            class: 'bd-bar' + (o.cls && o.cls(index) ? ' ' + o.cls(index) : ''),
+            d: 'M' + x + ',' + base + 'V' + r1(top + radius) + 'Q' + x + ',' + top + ' ' + r1(x + radius) + ',' + top + 'H' + r1(right - radius) + 'Q' + right + ',' + top + ' ' + right + ',' + r1(top + radius) + 'V' + base + 'Z',
+          }),
+        );
+        if (o.marks && o.marks.includes(index)) col.append(s('text', { class: 'bd-mark', x: r1(x + thick / 2), y: top - 7, 'text-anchor': 'middle', text: int(value) }));
+      }
+      root.append(col);
+      if (o.labels && o.labels[index]) root.append(s('text', { class: 'bd-xlabel', x: r1(left + band / 2), y: height - 7, 'text-anchor': 'middle', text: o.labels[index] }));
+    });
+    root.append(s('line', { class: 'bd-axis', x1: pad.l, x2: width - pad.r, y1: base, y2: base }));
+    return root;
+  }
+
+  /** Courbe d'une série, avec son aplat léger et un point au bout. Le survol trouve le jour, pas la ligne. */
+  function areaLine(width, o) {
+    const height = o.height || 160;
+    const pad = Object.assign({ t: 12, r: 8, b: 26, l: 32 }, o.pad);
+    const scale = scaleY(o.values, height, pad, o.ticks, o.max);
+    const count = o.values.length;
+    const inner = width - pad.l - pad.r;
+    const x = (index) => r1(pad.l + (inner * index) / (count - 1));
+    const base = scale.y(0);
+    const points = o.values.map((value, index) => x(index) + ',' + scale.y(value));
+    const root = s('svg', { viewBox: '0 0 ' + width + ' ' + height, width, height, role: 'img', 'aria-label': o.label || '' });
+    if (o.grid !== false) drawGrid(root, scale, pad, width);
+    root.append(s('path', { class: 'bd-area', d: 'M' + points.join('L') + 'L' + x(count - 1) + ',' + base + 'L' + x(0) + ',' + base + 'Z' }));
+    root.append(s('path', { class: 'bd-line', d: 'M' + points.join('L') }));
+    root.append(s('circle', { class: 'bd-dot', cx: x(count - 1), cy: scale.y(o.values[count - 1]), r: 4.5 }));
+    const band = inner / (count - 1);
+    o.values.forEach((value, index) => {
+      const col = s('g', { class: 'bd-col', 'data-tip': o.tips ? o.tips[index] : null });
+      col.append(s('rect', { class: 'bd-hit', x: r1(x(index) - band / 2), y: pad.t, width: r1(band), height: base - pad.t }));
+      root.append(col);
+      if (o.labels && o.labels[index]) root.append(s('text', { class: 'bd-xlabel', x: x(index), y: height - 7, 'text-anchor': 'middle', text: o.labels[index] }));
+    });
+    root.append(s('line', { class: 'bd-axis', x1: pad.l, x2: width - pad.r, y1: base, y2: base }));
+    return root;
+  }
+
+  /** Petite courbe sans axes, à côté d'un chiffre. */
+  function spark(values, options) {
+    const o = options || {};
+    const width = o.w || 120;
+    const height = o.h || 36;
+    const pad = 4;
+    const max = Math.max(1, ...values);
+    const x = (index) => r1(pad + ((width - 2 * pad) * index) / (values.length - 1));
+    const y = (value) => r1(height - pad - ((height - 2 * pad) * value) / max);
+    const points = values.map((value, index) => x(index) + ',' + y(value));
+    const last = values.length - 1;
+    return s(
+      'svg',
+      { class: 'bd-spark', viewBox: '0 0 ' + width + ' ' + height, width, height, 'aria-hidden': 'true' },
+      o.area === false ? null : s('path', { class: 'bd-area', d: 'M' + points.join('L') + 'L' + x(last) + ',' + (height - pad) + 'L' + x(0) + ',' + (height - pad) + 'Z' }),
+      s('path', { class: 'bd-line', d: 'M' + points.join('L') }),
+      s('circle', { class: 'bd-dot', cx: x(last), cy: y(values[last]), r: 4 }),
+    );
+  }
+
+  /**
+   * Barre segmentée : un tout découpé en parts (`{ key, label, value, text }`). Chaque part écrit sa proportion si elle en
+   * a la place ; l'infobulle et la légende de la variante disent le reste.
+   */
+  function segments(parts, options) {
+    const o = options || {};
+    const total = parts.reduce((sum, part) => sum + part.value, 0);
+    const root = h('div', { class: 'bd-seg', role: 'img', 'aria-label': o.label || '' });
+    parts.forEach((part) => {
+      const share = part.value / total;
+      if (share < 0.002) return;
+      const node = h('div', { class: 'bd-seg-part', 'data-key': part.key, style: 'flex:' + (share * 1000).toFixed(1) + ' 1 0', 'data-tip': part.text + '\n' + part.label });
+      if (share >= (o.minLabelShare || 0.09)) node.append(h('span', null, withUnits(pct(share))));
+      root.append(node);
+    });
+    return root;
+  }
+
+  /** Les cinq parts du Lead Time, dans l'ordre du parcours d'un ticket. */
+  function breakdownParts() {
+    const share = X.shares;
+    const part = (key, label, value, ratio) => ({ key, label, value, share: ratio, text: pct(ratio) + ', soit ' + dur(value) });
+    return [
+      part('dependency', 'Attente de dépendance', b.dependencyWait, share.dependency),
+      part('ready', 'Attente en Prêt', b.readyWait, share.ready),
+      part('other', 'Autre attente', b.otherWait, share.other),
+      part('work', 'Travail', b.work, share.work),
+      part('blocked', 'Blocage', b.blocked, share.blocked),
+    ];
+  }
+
+  /** Carte d'activité : 7 jours par 24 heures, une seule teinte. La racine carrée laisse voir les petites valeurs. */
+  function heat(cells, options) {
+    const o = options || {};
+    const max = Math.max(1, ...cells.flat());
+    const names = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+    const full = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+    const root = h('div', { class: 'bd-heat', role: 'img', 'aria-label': o.label || '' });
+    cells.forEach((row, d) => {
+      root.append(h('span', { class: 'bd-heat-day', text: names[d] }));
+      row.forEach((value, hour) => {
+        root.append(h('i', { class: 'bd-heat-cell', style: '--v:' + Math.sqrt(value / max).toFixed(3), 'data-tip': plural(value, 'Transition') + '\n' + full[d] + ', ' + hour + NBSP + 'h' }));
+      });
+    });
+    root.append(h('span'));
+    [0, 3, 6, 9, 12, 15, 18, 21].forEach((hour) => root.append(h('span', { class: 'bd-heat-hour', text: hour + NBSP + 'h' })));
+    return root;
+  }
+
+  /** Le tableau jumeau d'un graphique, replié : les valeurs sans survol. */
+  function dataTable(headers, rows) {
+    return h(
+      'details',
+      { class: 'bd-data' },
+      h('summary', { text: 'Données du graphique' }),
+      h(
+        'div',
+        { class: 'bd-data-scroll' },
+        h(
+          'table',
+          null,
+          h('thead', null, h('tr', null, headers.map((text) => h('th', { scope: 'col', text })))),
+          h('tbody', null, rows.map((row) => h('tr', null, row.map((text, index) => h(index === 0 ? 'th' : 'td', index === 0 ? { scope: 'row', text } : { text }))))),
+        ),
+      ),
+    );
+  }
+
+  /* Les séries prêtes à dessiner, avec leurs étiquettes. */
+  const dailyDays = BD.daily.deliveries.map((_, index) => addDays(BD.period.from, index));
+  const series = {
+    daily: {
+      days: dailyDays,
+      /** Une étiquette par lundi : « 19 oct. ». */
+      mondays: dailyDays.map((iso) => (dayParts(iso).wd === 1 ? day(iso) : '')),
+      tips: (values, noun, many) => values.map((value, index) => plural(value, noun, many) + '\n' + day(dailyDays[index], { weekday: true }) + (index === values.length - 1 ? ', jour en cours' : '')),
+      rows: () => dailyDays.map((iso, index) => [day(iso, { weekday: true }), int(BD.daily.deliveries[index]), int(BD.daily.arrivals[index])]),
+      wip: BD.daily.inProgress.map((value, index) => value + BD.daily.blocked[index]),
+    },
+    weekly: {
+      throughput: BD.weekly.map((week) => week.throughput),
+      labels: BD.weekly.map((week) => day(week.from)),
+      tips: BD.weekly.map((week) => plural(week.throughput, 'Livraison') + '\nsemaine du ' + day(week.from) + (week.partial ? ', en cours' : '')),
+      rows: () => BD.weekly.map((week) => ['Semaine du ' + day(week.from) + (week.partial ? ' (en cours)' : ''), int(week.throughput), week.leadP85 === null ? DASH : dur(week.leadP85)]),
+    },
+  };
+
+  /* ---------- Infobulle ------------------------------------------------------------------------------------------ */
+
+  const tip = h('div', { class: 'bd-tip', role: 'tooltip', hidden: true });
+  let tipOwner = null;
+
+  function placeTip(x, y) {
+    const box = tip.getBoundingClientRect();
+    const left = Math.min(Math.max(8, x + 14), window.innerWidth - box.width - 8);
+    const top = y + 18 + box.height > window.innerHeight - 8 ? y - box.height - 12 : y + 18;
+    tip.style.left = left + 'px';
+    tip.style.top = Math.max(8, top) + 'px';
+  }
+
+  function showTip(owner, x, y) {
+    if (owner !== tipOwner) {
+      tipOwner = owner;
+      const lines = owner.getAttribute('data-tip').split('\n');
+      tip.replaceChildren(h('strong', { text: lines[0] }), ...lines.slice(1).map((text) => h('span', { text })));
+      tip.hidden = false;
+    }
+    placeTip(x, y);
+  }
+
+  function hideTip() {
+    tipOwner = null;
+    tip.hidden = true;
+  }
+
+  function startTips() {
+    document.body.append(tip);
+    document.addEventListener('pointermove', (event) => {
+      const owner = event.target instanceof window.Element ? event.target.closest('[data-tip]') : null;
+      if (owner) showTip(owner, event.clientX, event.clientY);
+      else if (tipOwner) hideTip();
+    });
+    document.documentElement.addEventListener('mouseleave', hideTip);
+    document.addEventListener('focusin', (event) => {
+      const owner = event.target instanceof window.Element ? event.target.closest('[data-tip]') : null;
+      if (!owner) return;
+      const box = owner.getBoundingClientRect();
+      showTip(owner, box.left + box.width / 2, box.bottom - 12);
+    });
+    document.addEventListener('focusout', hideTip);
+    window.addEventListener('scroll', hideTip, true);
+  }
+
+  /* ---------- Bandeau des variantes ------------------------------------------------------------------------------ */
+
+  const VARIANTS = [
+    { file: '1-le-fil.html', name: 'Le fil' },
+    { file: '2-grands-chiffres.html', name: 'Grands chiffres' },
+    { file: '3-le-point.html', name: 'Le point' },
+    { file: '4-bilan.html', name: 'Bilan' },
+    { file: '5-nuit.html', name: 'Nuit' },
+  ];
+
+  function startSwitch() {
+    const current = Number(document.body.dataset.variant) - 1;
+    if (!(current >= 0)) return;
+    // Dans la page de comparaison, la variante est dans un cadre : c'est la page qui change de variante, et les flèches du clavier lui sont transmises.
+    if (window.self !== window.top) {
+      document.addEventListener('keydown', (event) => {
+        if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        if (event.key === 'ArrowRight' || event.key === 'ArrowLeft' || event.key === 'Escape') window.parent.postMessage({ maquette: event.key }, '*');
+      });
+      return;
+    }
+    // Ouverte seule depuis un panneau qui la lit comme une image du fichier (adresse « data: »), la page n'a pas de voisines où aller.
+    if (window.location.protocol === 'data:') return;
+    const nav = h(
+      'nav',
+      { class: 'bd-switch', 'aria-label': 'Variantes de design' },
+      h('a', { href: 'index.html', text: 'Toutes' }),
+      h('span', { class: 'bd-switch-sep' }),
+      VARIANTS.map((variant, index) =>
+        h(
+          'a',
+          { href: variant.file, title: variant.name, 'aria-current': index === current ? 'page' : null },
+          String(index + 1),
+          index === current ? h('span', { class: 'bd-switch-name', text: NBSP + variant.name }) : null,
+        ),
+      ),
+    );
+    document.body.append(nav);
+    document.body.classList.add('has-switch');
+
+    document.addEventListener('keydown', (event) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (event.target instanceof window.Element && event.target.closest('input, textarea, select, [contenteditable]')) return;
+      const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+      if (step === 0) return;
+      window.location.href = VARIANTS[(current + step + VARIANTS.length) % VARIANTS.length].file;
+    });
+
+    // La police est le sujet de ces maquettes : si elle n'a pas pu être chargée (hors ligne), le bandeau le dit.
+    const wanted = (document.body.dataset.fonts || '').split('|').filter(Boolean);
+    if (wanted.length === 0 || !document.fonts) return;
+    document.fonts.ready.then(() => {
+      const loaded = new Set();
+      document.fonts.forEach((face) => {
+        if (face.status === 'loaded') loaded.add(face.family.replace(/["']/g, ''));
+      });
+      const missing = wanted.filter((family) => !loaded.has(family));
+      if (missing.length > 0) nav.append(h('span', { class: 'bd-switch-warn', text: 'Police non chargée : ' + missing.join(', ') }));
+    });
+  }
+
+  /* ---------- Démarrage ------------------------------------------------------------------------------------------ */
+
+  window.BDK = {
+    fmt: { int, dec, signed, dur, sdur, pct, points, efficiency, times, plural, day, addDays },
+    h,
+    s,
+    icon,
+    withUnits,
+    hydrate,
+    repeat,
+    trend,
+    mount,
+    columns,
+    areaLine,
+    spark,
+    segments,
+    breakdownParts,
+    heat,
+    dataTable,
+    sparse,
+    series,
+    project,
+    initials,
+    signalGroups,
+    signalFields,
+    signalText,
+    M,
+    X,
+  };
+
+  hydrate(document);
+  startTips();
+  startSwitch();
+})();
+</script>
+<script>
+(function () {
+  const { h, fmt, repeat, mount, columns, series, withUnits, X } = BDK;
+  const NBSP = ' ';
+
+  /* Barre latérale : une perle par Projet, et son nombre de tickets en cours. */
+  repeat('#side-list', 'tpl-side-project', BD.projects, (project) => ({
+    name: project.name,
+    meta: project.status !== 'ok' ? 'illisible' : project.wip > 0 ? fmt.plural(project.wip, 'en cours', 'en cours') : '',
+    hue: project.hue,
+    $: { 'data-status': project.status },
+  }));
+
+  /* Les Projets illisibles ne sont pas dans les chiffres : la page le dit, en une ligne. */
+  const unreadable = BD.projects.filter((project) => project.status !== 'ok');
+  if (unreadable.length > 0) {
+    const notice = document.getElementById('unreadable');
+    notice.hidden = false;
+    notice.append(
+      BDK.icon('alert', 18),
+      h('span', null, h('strong', { text: unreadable.map((project) => project.name).join(', ') }), unreadable.length > 1 ? ' sont illisibles et absents' : ' est illisible et absent', ' de ces chiffres. ', unreadable[0].reason || ''),
+    );
+  }
+
+  /* Le fil : la largeur de chaque tronçon est sa part du Lead Time cumulé. */
+  const share = X.shares;
+  const fil = document.getElementById('fil');
+  fil.style.setProperty('--c1', (share.dependency * 100).toFixed(1) + 'fr');
+  fil.style.setProperty('--c2', ((share.ready + share.other) * 100).toFixed(1) + 'fr');
+  fil.style.setProperty('--c3', ((share.work + share.blocked) * 100).toFixed(1) + 'fr');
+
+  const tickets = (count) => (count > 1 ? ' tickets' : ' ticket') + ' en ce moment';
+  const stage = (id, name, ratio, doing, now) => {
+    document.getElementById(id).append(
+      h('h3', { text: name }),
+      h('p', { class: 'share' }, h('b', null, withUnits(fmt.pct(ratio))), ' du temps', h('br'), doing),
+      h('p', { class: 'now' }, now),
+    );
+  };
+  stage('stage-backlog', 'Backlog', share.dependency, 'à attendre une dépendance', [h('b', { text: fmt.int(BD.stock.backlog) }), tickets(BD.stock.backlog)]);
+  stage('stage-ready', 'Prêt', share.ready + share.other, 'à attendre d’être démarré', [
+    h('b', { text: fmt.int(BD.stock.ready) }),
+    tickets(BD.stock.ready),
+    ', dont ',
+    h('a', { href: '#' }, h('b', { text: fmt.int(BD.ready.stagnant) }), ' stagnent depuis plus de ' + BD.ready.afterDays + ' jours'),
+  ]);
+  const working = BD.stock.inProgress + BD.stock.blocked;
+  stage('stage-work', 'En cours', share.work + share.blocked, 'au travail', [
+    h('b', { text: fmt.int(working) }),
+    tickets(working),
+    BD.stock.blocked > 0 ? ', dont ' + BD.stock.blocked + ' bloqué' + (BD.stock.blocked > 1 ? 's' : '') : '',
+  ]);
+
+  document.getElementById('journey-foot').append(
+    h('strong', { text: 'Un ticket livré a passé ' + fmt.pct(X.waitShare) + ' de sa vie à attendre' }),
+    ', surtout en Prêt. Les parts sont celles du Lead Time cumulé des ' + fmt.int(BD.breakdown.deliveries) + ' Livraisons de la période, soit ' + fmt.dur(BD.breakdown.total) + '.',
+  );
+
+  /* Livraisons par jour. */
+  const daily = BD.daily.deliveries;
+  mount('#chart-daily', (width) =>
+    columns(width, {
+      values: daily,
+      labels: series.daily.mondays,
+      tips: series.daily.tips(daily, 'Livraison'),
+      cls: (index) => (index === daily.length - 1 ? 'is-partial' : ''),
+      marks: [X.peakDay.index],
+      height: 250,
+      label: 'Livraisons par jour sur la période',
+    }),
+  );
+  document.getElementById('chart-daily').after(BDK.dataTable(['Jour', 'Livraisons', 'Arrivées'], series.daily.rows()));
+
+  /* À regarder : les Signaux, par sorte, les premiers de chaque sorte. */
+  const watch = document.getElementById('watch');
+  BDK.signalGroups().forEach((group) => {
+    const shown = group.items.slice(0, 3);
+    const rest = group.items.length - shown.length;
+    watch.append(
+      h(
+        'section',
+        { class: 'wgroup' },
+        h('h3', null, group.items.length > 1 ? group.many : group.label, h('span', { text: String(group.items.length) })),
+        h(
+          'ul',
+          null,
+          shown.map((signal) => {
+            const fields = BDK.signalFields(signal);
+            return h('li', null, h('a', { class: 'w-title', href: '#', text: fields.title }), h('span', { class: 'w-detail', text: (fields.project ? fields.project + ', ' : '') + fields.detail }));
+          }),
+        ),
+        rest > 0 ? h('p', { class: 'w-rest', text: 'et ' + rest + ' autres, tous Prêts depuis plus de ' + fmt.dur(group.items[group.items.length - 1].age) + '.' }) : null,
+      ),
+    );
+  });
+
+  /* Cycle Time par tranche : la forme de la distribution, pas un nuage de points. */
+  mount('#chart-hist', (width) =>
+    columns(width, {
+      values: BD.cycleHist.map((bucket) => bucket.n),
+      labels: BD.cycleHist.map((bucket) => bucket.label),
+      tips: BD.cycleHist.map((bucket) => fmt.plural(bucket.n, 'Livraison') + '\nCycle Time de ' + bucket.label),
+      marks: BD.cycleHist.map((_, index) => index),
+      height: 170,
+      barMax: 40,
+      grid: false,
+      pad: { l: 0, r: 0 },
+      label: 'Répartition du Cycle Time des Livraisons',
+    }),
+  );
+
+  /* Tickets en cours : « au-delà du P85 » quand le travail dure plus que le Cycle Time P85. */
+  repeat('#wip-rows', 'tpl-wip-row', BD.inProgress, (ticket) => ({
+    title: ticket.title,
+    id: ticket.id,
+    project: BDK.project(ticket.project).name,
+    type: ticket.type + NBSP + 'P' + ticket.priority,
+    late: ticket.blocked ? 'bloqué' : ticket.age > BD.cycle.p85 ? 'au-delà du P85' : '',
+    age: fmt.dur(ticket.age),
+  }));
+
+  /* Projets : la barre compare les Livraisons, les délais sont des médianes. */
+  const most = Math.max(1, ...BD.projects.map((project) => project.throughput || 0));
+  repeat('#project-rows', 'tpl-project-row', BD.projects.filter((project) => project.status === 'ok'), (project) => ({
+    name: project.name,
+    hue: project.hue,
+    share: (project.throughput / most).toFixed(3),
+    throughput: fmt.int(project.throughput),
+    lead: project.leadMedian === null ? h('span', { class: 'dash', text: 'aucune' }) : fmt.dur(project.leadMedian),
+    cycle: project.cycleMedian === null ? h('span', { class: 'dash', text: 'aucune' }) : fmt.dur(project.cycleMedian),
+    wip: fmt.int(project.wip),
+  }));
+})();
+</script>
+</body>
+</html>

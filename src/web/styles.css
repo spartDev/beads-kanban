@@ -15,44 +15,66 @@
  * puis tenu à jour par ThemeProvider. Sans attribut : thème clair.
  * Les composants n'utilisent que des tokens sémantiques (bg-panel, text-ink-2, border-line…) :
  * aucun `dark:` à écrire.
+ *
+ * Direction « Le fil » (bdesk-bxq) : marine et jaune signal sur brume froide, comme un plan de réseau. Le marine porte le
+ * texte, les traits et la barre latérale ; le jaune dit « vous êtes ici ».
  */
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 
 :root {
   color-scheme: light;
 
-  /* Surfaces : le fond de l'app (barre latérale) et le panneau de contenu qui flotte dessus. */
-  --canvas: oklch(0.965 0.004 255);
+  /* Surfaces : le fond de l'app (brume), les cartes posées dessus (blanc), et le creux des champs et des colonnes. */
+  --canvas: oklch(0.957 0.005 248);
   --panel: oklch(1 0 0);
   --float: oklch(1 0 0);
-  --well: oklch(0.975 0.003 255);
+  --well: oklch(0.932 0.01 253);
 
   /*
    * Texte : ink-2 et ink-3 atteignent tous deux 4.5:1 (WCAG AA) sur les fonds où ils s'affichent, voiles de
    * survol compris (design/contrast.test.ts le vérifie). ink-3 est réservé aux indices secondaires, jamais
    * sur une ligne sélectionnée (voile `press`) : là, le texte passe en ink-2.
    */
-  --ink: oklch(0.21 0.012 255);
-  --ink-2: oklch(0.45 0.014 255);
-  --ink-3: oklch(0.51 0.012 255);
+  --ink: oklch(0.226 0.05 264);
+  --ink-2: oklch(0.415 0.045 267);
+  --ink-3: oklch(0.47 0.04 265);
 
-  --line: oklch(0.25 0.02 255 / 0.1);
-  --line-strong: oklch(0.25 0.02 255 / 0.18);
-  --hover: oklch(0.25 0.02 255 / 0.05);
-  --press: oklch(0.25 0.02 255 / 0.09);
+  --line: oklch(0.226 0.05 264 / 0.13);
+  --line-strong: oklch(0.226 0.05 264 / 0.24);
+  --hover: oklch(0.226 0.05 264 / 0.05);
+  --press: oklch(0.226 0.05 264 / 0.09);
 
-  /* Seul accent de l'interface : verre marin. Il marque l'endroit où l'on se trouve (sélection, focus). */
-  --accent: oklch(0.49 0.105 190);
-  --accent-ink: oklch(0.99 0.005 190);
-  --accent-soft: oklch(0.49 0.105 190 / 0.1);
+  /*
+   * L'accent est la couleur des traits et du texte d'action : liens, anneau de focus, barres d'avancement. En clair,
+   * un marine plus vif que l'encre ; il se lit sur toutes les surfaces (4.5:1).
+   */
+  --accent: oklch(0.365 0.114 266);
+  --accent-ink: oklch(0.99 0.005 264);
+  --accent-soft: oklch(0.365 0.114 266 / 0.1);
 
-  --danger: oklch(0.52 0.19 25);
-  --danger-soft: oklch(0.52 0.19 25 / 0.08);
+  /*
+   * La marque : le jaune signal, toujours en aplat sous un texte marine, jamais en texte sur fond clair (il n'y
+   * atteindrait pas 3:1). Elle dit « vous êtes ici » : page courante, choix fait, perles du fil.
+   */
+  --mark: oklch(0.859 0.158 86);
+  --mark-ink: oklch(0.226 0.05 264);
+
+  /* La barre latérale : marine, avec ses propres encres. Ses voiles sont clairs, là où ceux de la page sont sombres. */
+  --side: oklch(0.226 0.05 264);
+  --side-ink: oklch(0.99 0.005 264);
+  --side-ink-2: oklch(0.921 0.016 263);
+  --side-ink-3: oklch(0.781 0.031 264);
+  --side-line: oklch(0.99 0.005 264 / 0.22);
+  --side-hover: oklch(0.99 0.005 264 / 0.09);
+  --side-press: oklch(0.99 0.005 264 / 0.15);
+
+  --danger: oklch(0.52 0.18 32);
+  --danger-soft: oklch(0.52 0.18 32 / 0.08);
 
   --float-shadow:
-    0 0 0 1px var(--line), 0 22px 48px -14px oklch(0.25 0.03 255 / 0.28),
-    0 4px 12px oklch(0.25 0.03 255 / 0.07);
-  --panel-shadow: 0 1px 2px oklch(0.25 0.03 255 / 0.05);
+    0 0 0 1px var(--line), 0 22px 48px -14px oklch(0.226 0.05 264 / 0.3),
+    0 4px 12px oklch(0.226 0.05 264 / 0.08);
+  --panel-shadow: 0 1px 2px oklch(0.226 0.05 264 / 0.06);
 
   /* Pastille d'un Projet : la teinte (--h) vient de son préfixe, la saturation reste discrète. */
   --tile-bg-l: 0.93;
@@ -61,8 +83,8 @@
   --tile-fg-c: 0.11;
 
   /*
-   * Code couleur fixe des tickets (voir design/issue-palette.ts). Teintes hors de la plage
-   * 165–205° : elle appartient à l'accent, qui ne doit jamais se confondre avec une donnée.
+   * Code couleur fixe des tickets (voir design/issue-palette.ts). Des teintes de données : le jaune de la marque
+   * (86°) ne sert jamais à nommer un type ou une priorité en aplat.
    */
   --type-bug: oklch(0.58 0.2 25);
   --type-feature: oklch(0.6 0.15 150);
@@ -85,35 +107,48 @@
 :root[data-theme='dark'] {
   color-scheme: dark;
 
-  --canvas: oklch(0.155 0.007 255);
-  --panel: oklch(0.187 0.008 255);
-  --float: oklch(0.222 0.009 255);
-  --well: oklch(0.14 0.007 255);
+  --canvas: oklch(0.184 0.035 263);
+  --panel: oklch(0.231 0.051 265);
+  --float: oklch(0.278 0.069 267);
+  --well: oklch(0.199 0.043 265);
 
-  --ink: oklch(0.95 0.004 255);
-  --ink-2: oklch(0.75 0.01 255);
-  --ink-3: oklch(0.65 0.012 255);
+  --ink: oklch(0.966 0.007 261);
+  --ink-2: oklch(0.813 0.03 264);
+  --ink-3: oklch(0.72 0.038 264);
 
-  --line: oklch(0.98 0.01 255 / 0.08);
-  --line-strong: oklch(0.98 0.01 255 / 0.15);
-  --hover: oklch(0.98 0.01 255 / 0.05);
-  --press: oklch(0.98 0.01 255 / 0.09);
+  --line: oklch(0.966 0.007 261 / 0.1);
+  --line-strong: oklch(0.966 0.007 261 / 0.19);
+  --hover: oklch(0.966 0.007 261 / 0.05);
+  --press: oklch(0.966 0.007 261 / 0.09);
 
-  --accent: oklch(0.8 0.125 187);
-  --accent-ink: oklch(0.2 0.04 190);
-  --accent-soft: oklch(0.8 0.125 187 / 0.14);
+  /* En sombre, le jaune se lit en texte et en trait : l'accent et la marque sont la même couleur. */
+  --accent: oklch(0.859 0.158 86);
+  --accent-ink: oklch(0.226 0.05 264);
+  --accent-soft: oklch(0.859 0.158 86 / 0.14);
 
-  --danger: oklch(0.72 0.17 25);
-  --danger-soft: oklch(0.72 0.17 25 / 0.12);
+  --mark: oklch(0.859 0.158 86);
+  --mark-ink: oklch(0.226 0.05 264);
+
+  /* La barre latérale se fond dans le fond de l'app, un cran plus profonde. */
+  --side: oklch(0.16 0.03 264);
+  --side-ink: oklch(0.966 0.007 261);
+  --side-ink-2: oklch(0.86 0.02 264);
+  --side-ink-3: oklch(0.72 0.038 264);
+  --side-line: oklch(0.966 0.007 261 / 0.16);
+  --side-hover: oklch(0.966 0.007 261 / 0.07);
+  --side-press: oklch(0.966 0.007 261 / 0.12);
+
+  --danger: oklch(0.766 0.14 32);
+  --danger-soft: oklch(0.766 0.14 32 / 0.13);
 
   --float-shadow:
     0 0 0 1px var(--line-strong), 0 24px 56px -12px oklch(0 0 0 / 0.6), 0 4px 14px oklch(0 0 0 / 0.3);
   --panel-shadow: none;
 
-  --tile-bg-l: 0.33;
-  --tile-bg-c: 0.06;
-  --tile-fg-l: 0.86;
-  --tile-fg-c: 0.1;
+  --tile-bg-l: 0.36;
+  --tile-bg-c: 0.07;
+  --tile-fg-l: 0.9;
+  --tile-fg-c: 0.09;
 
   --type-bug: oklch(0.72 0.17 25);
   --type-feature: oklch(0.76 0.16 150);
@@ -134,10 +169,11 @@
 }
 
 @theme inline {
+  /* Atkinson Hyperlegible Next : dessinée pour que chaque caractère se distingue des autres (0 et O, 1 et l). */
   --font-sans:
-    'Mona Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    'Atkinson Hyperlegible Next Variable', 'Atkinson Hyperlegible Next', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono:
-    'Geist Mono Variable', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+    'Atkinson Hyperlegible Mono Variable', 'Atkinson Hyperlegible Mono', ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
 
   --color-canvas: var(--canvas);
   --color-panel: var(--panel);
@@ -153,13 +189,23 @@
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-accent-soft: var(--accent-soft);
+  --color-mark: var(--mark);
+  --color-mark-ink: var(--mark-ink);
+  --color-side: var(--side);
+  --color-side-ink: var(--side-ink);
+  --color-side-ink-2: var(--side-ink-2);
+  --color-side-ink-3: var(--side-ink-3);
+  --color-side-line: var(--side-line);
+  --color-side-hover: var(--side-hover);
+  --color-side-press: var(--side-press);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
 
-  --text-ui: 0.8125rem;
-  --text-ui--line-height: 1.25rem;
-  --text-micro: 0.6875rem;
-  --text-micro--line-height: 1rem;
+  /* Le corps de l'interface et celui des indices. Avec la racine à 18 px (voir `html`), 15,75 px et 13,5 px. */
+  --text-ui: 0.875rem;
+  --text-ui--line-height: 1.375rem;
+  --text-micro: 0.75rem;
+  --text-micro--line-height: 1.125rem;
 
   --shadow-float: var(--float-shadow);
   --shadow-panel: var(--panel-shadow);
@@ -172,19 +218,21 @@
     border-color: var(--line);
   }
 
+  /*
+   * Toute l'interface est en rem : la racine à 112,5 % (18 px quand le navigateur est à 16) l'agrandit d'un bloc,
+   * texte, espacements et cibles, sans toucher au réglage de taille de l'utilisateur.
+   */
   html {
     background: var(--canvas);
+    font-size: 112.5%;
     -webkit-text-size-adjust: 100%;
   }
 
   body {
     background: var(--canvas);
     color: var(--ink);
-    font-size: 0.8125rem;
-    line-height: 1.25rem;
-    /* Mona Sans a un axe de chasse : un cran plus serré donne la densité d'un outil de dev. */
-    font-stretch: 94%;
-    letter-spacing: -0.003em;
+    font-size: 0.875rem;
+    line-height: 1.375rem;
     font-optical-sizing: auto;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
@@ -204,6 +252,11 @@
   :where(a, button, input, summary, [role='button'], [tabindex]):focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+  }
+
+  /* Sur la barre latérale marine, l'anneau marine ne se verrait pas : il y prend le jaune de la marque. */
+  .on-side :where(a, button, input, summary, [role='button'], [tabindex]):focus-visible {
+    outline-color: var(--mark);
   }
 
   * {
@@ -228,10 +281,21 @@
     color: var(--ink-2);
     font-family: var(--font-sans);
     font-size: 0.6875rem;
-    font-weight: 500;
-    font-stretch: 100%;
+    font-weight: 600;
     line-height: 1;
     letter-spacing: 0;
+  }
+
+  .on-side .kbd {
+    border-color: var(--side-line);
+    background: var(--side-hover);
+    color: var(--side-ink-2);
+  }
+
+  .on-side [aria-current='page'] .kbd {
+    border-color: color-mix(in oklab, var(--mark-ink) 35%, transparent);
+    background: transparent;
+    color: var(--mark-ink);
   }
 
   /* Les variables de teinte se lisent à l'endroit de l'élément : --h est posé par ProjectTile. */

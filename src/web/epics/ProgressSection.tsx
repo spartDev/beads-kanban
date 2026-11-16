@@ -31,7 +31,7 @@ export function ProgressSection({ progress, groups }: { progress: EpicProgress; 
       ) : (
         <>
           <p className="flex flex-wrap items-baseline gap-x-2">
-            <span className="tnum text-[17px] font-semibold text-ink">{progressSentence(progress)}</span>
+            <span className="tnum text-[1.1875rem] font-bold text-ink">{progressSentence(progress)}</span>
             <span className="tnum text-ink-2">{formatPercent(ratio)}</span>
           </p>
           <ProgressBar delivered={delivered} total={total} label="Avancement de l’Epic" valueText={progressSentence(progress)} />

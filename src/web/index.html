@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#f3f4f6" />
+    <meta name="theme-color" content="#eef1f4" />
     <title>beads-desktop</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <script>
@@ -21,7 +21,7 @@
           (preference !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
         document.documentElement.dataset.theme = dark ? 'dark' : 'light';
         var themeColor = document.querySelector('meta[name="theme-color"]');
-        if (themeColor) themeColor.setAttribute('content', dark ? '#0f1114' : '#f3f4f6');
+        if (themeColor) themeColor.setAttribute('content', dark ? '#0a1222' : '#eef1f4');
       })();
     </script>
   </head>

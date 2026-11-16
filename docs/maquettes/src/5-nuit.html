@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nuit · variante 5 · beads-desktop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@300..800&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+/*
+ * Variante 5 — Nuit.
+ * Idée : pour qui tient au sombre, le même contenu refait pour être lu vite. Une grille où la taille d'une tuile dit
+ * son importance : le Débit et son graphique prennent la place, les délais et le WIP suivent, le reste se range dessous.
+ * Police : Lexend, large et ouverte, conçue pour réduire l'effort de lecture ; elle tient bien en clair sur sombre.
+ * Couleurs : un indigo franc plutôt qu'un presque-noir. Menthe et corail sont réservés à « mieux » et « moins bien » ;
+ * ciel, lilas et beurre identifient les familles de tuiles.
+ */
+:root {
+  color-scheme: dark;
+  --bg: #151233;
+  --tile: #1e1a45;
+  --tile-2: #29245a;
+  --ink: #f4f2ff;
+  --ink-2: #c2bce6;
+  --ink-3: #9b94c7;
+  --line: rgba(255, 255, 255, 0.1);
+  --mint: #86e3bd;
+  --coral: #ff9d8a;
+  --sky: #8ec5ff;
+  --lilac: #c4b2ff;
+  --butter: #ffe08a;
+  --sans: 'Lexend', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --chart-bar: var(--sky);
+  --chart-grid: rgba(255, 255, 255, 0.08);
+  --chart-axis: rgba(255, 255, 255, 0.28);
+  --chart-ink: var(--ink-3);
+  --chart-ink-strong: var(--ink);
+  --chart-hover: rgba(255, 255, 255, 0.07);
+  --chart-surface: var(--tile);
+  --heat-lo: #29245a;
+  --heat-hi: #c4b2ff;
+  --tip-bg: #f4f2ff;
+  --tip-ink: #151233;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 16px/1.55 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+a { color: inherit; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--butter); outline-offset: 2px; border-radius: 8px; }
+.ic { flex: none; }
+
+/* ---------- Ossature ---------- */
+
+.app { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: 100vh; }
+
+.side { position: sticky; top: 0; display: flex; flex-direction: column; gap: 22px; height: 100vh; padding: 24px 14px 16px 18px; overflow-y: auto; }
+
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; font-size: 17px; font-weight: 600; text-decoration: none; }
+
+.find { display: flex; align-items: center; gap: 10px; width: 100%; height: 44px; padding: 0 14px; border: 0; border-radius: 14px; background: var(--tile); color: var(--ink-3); font-size: 15px; text-align: left; }
+.find span { flex: 1; }
+.find kbd { padding: 1px 7px; border-radius: 7px; background: var(--tile-2); color: var(--ink-2); font: 500 12px/1.6 var(--sans); }
+
+.nav { display: grid; gap: 4px; }
+.nav a, .plist a { display: flex; align-items: center; gap: 12px; min-height: 42px; padding: 0 12px; border-radius: 14px; color: var(--ink-2); font-size: 15px; font-weight: 500; text-decoration: none; }
+.nav a:hover, .plist a:hover { background: var(--tile); color: var(--ink); }
+.nav a[aria-current='page'] { background: var(--ink); color: var(--bg); }
+.nav .count { margin-left: auto; min-width: 28px; padding: 0 8px; border-radius: 999px; background: var(--butter); color: var(--bg); font-size: 13px; font-weight: 600; line-height: 1.7; text-align: center; }
+
+.projects { display: grid; gap: 6px; }
+.projects h2 { display: flex; justify-content: space-between; padding: 0 12px; color: var(--ink-3); font-size: 14px; font-weight: 400; }
+.plist { display: grid; gap: 2px; }
+.plist a { font-weight: 400; }
+.pbead { flex: none; width: 10px; height: 10px; border-radius: 50%; background: oklch(0.8 0.12 var(--v)); }
+.pname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pmeta { flex: none; color: var(--ink-3); font-size: 13px; }
+.plist li[data-status='unreadable'] a { color: var(--ink-3); }
+.plist li[data-status='unreadable'] .pbead { background: none; box-shadow: inset 0 0 0 2px var(--ink-3); }
+.plist li[data-status='unreadable'] .pmeta { color: var(--coral); }
+
+.side-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; }
+.theme { display: flex; gap: 2px; padding: 4px; border-radius: 14px; background: var(--tile); }
+.theme button, .side-foot > button { display: grid; place-items: center; width: 36px; height: 32px; border: 0; border-radius: 10px; background: none; color: var(--ink-3); }
+.theme button[aria-pressed='true'] { background: var(--tile-2); color: var(--ink); }
+
+main { width: 100%; max-width: 1360px; margin: 0 auto; padding: 28px 32px 36px 14px; }
+
+/* ---------- En-tête ---------- */
+
+.top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 24px; margin-bottom: 22px; }
+h1 { font-size: 34px; font-weight: 600; line-height: 1.15; letter-spacing: -0.02em; }
+.top p { margin-top: 4px; color: var(--ink-2); font-size: 17px; font-weight: 300; }
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+
+.period { display: flex; gap: 2px; margin: 0; padding: 4px; border: 0; border-radius: 16px; background: var(--tile); }
+.period label { display: grid; place-items: center; height: 38px; padding: 0 16px; border-radius: 12px; color: var(--ink-2); font-size: 15px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.period label:hover { color: var(--ink); }
+.period label:has(:checked) { background: var(--ink); color: var(--bg); }
+.period label:has(:focus-visible) { outline: 3px solid var(--butter); outline-offset: 2px; }
+.period input { position: absolute; opacity: 0; pointer-events: none; }
+
+.btn { display: inline-flex; align-items: center; gap: 8px; height: 46px; padding: 0 16px; border: 0; border-radius: 16px; background: var(--tile); color: var(--ink-2); font-size: 15px; font-weight: 500; }
+.btn:hover { color: var(--ink); background: var(--tile-2); }
+.btn.square { width: 46px; justify-content: center; padding: 0; }
+
+/* ---------- La grille ---------- */
+
+.bento { display: grid; gap: 16px; }
+.bento.a { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr) minmax(0, 1fr); }
+.bento.b { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 16px; }
+.bento.c { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); margin-top: 16px; }
+
+.tile { min-width: 0; padding: 24px 26px; border-radius: 26px; background: var(--tile); }
+.t-debit { grid-row: span 2; display: flex; flex-direction: column; }
+.t-lead { grid-column: span 2; }
+
+.tile > h2 { display: flex; align-items: center; gap: 10px; color: var(--ink-2); font-size: 16px; font-weight: 500; }
+.tile > h2::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--accent, var(--ink-3)); }
+
+.t-debit { --accent: var(--sky); }
+.t-lead, .t-cycle, .t-activity { --accent: var(--lilac); --chart-bar: var(--lilac); }
+.t-wip { --accent: var(--butter); --chart-line: var(--butter); --chart-area: var(--butter); }
+.t-watch { --accent: var(--butter); }
+
+.n { margin-top: 8px; font-size: 56px; font-weight: 600; line-height: 1; letter-spacing: -0.035em; white-space: nowrap; --unit-size: 0.52em; --unit-weight: 500; }
+.n .u { letter-spacing: 0; }
+.t-debit .n { font-size: clamp(88px, 9vw, 132px); letter-spacing: -0.05em; }
+
+.what { margin-top: 10px; color: var(--ink-2); font-size: 15px; font-weight: 300; line-height: 1.45; }
+.what b { color: var(--ink); font-weight: 500; }
+
+.pill { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; margin-top: 16px; padding: 7px 16px 7px 12px; border-radius: 999px; background: var(--mint); color: var(--bg); font-size: 15px; font-weight: 500; }
+
+.trend { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin-top: 10px; color: var(--ink-2); font-size: 15px; font-weight: 500; white-space: nowrap; }
+.trend[data-tone='good'] .trend-ic, .trend[data-tone='good'] .trend-word, .trend[data-tone='good'] .trend-delta { color: var(--mint); }
+.trend[data-tone='bad'] .trend-ic, .trend[data-tone='bad'] .trend-word, .trend[data-tone='bad'] .trend-delta { color: var(--coral); }
+.trend-ic { display: inline-grid; }
+.trend-prev { color: var(--ink-3); font-weight: 300; }
+
+.t-debit .bd-chart { margin-top: auto; padding-top: 26px; --chart-bar-partial: rgba(142, 197, 255, 0.45); }
+.chart-cap { margin-top: 6px; color: var(--ink-3); font-size: 14px; font-weight: 300; }
+.bd-data { color: var(--ink-2); }
+
+.lead-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 40px; align-items: end; }
+
+.bd-seg { height: 28px; }
+.bd-seg-part { padding: 0 9px; border-radius: 6px; background: #3b3573; color: var(--ink); font-size: 14px; font-weight: 500; }
+.bd-seg-part[data-key='ready'] { background: #4d4494; }
+.bd-seg-part[data-key='other'] { background: #2f2a5f; }
+.bd-seg-part[data-key='work'] { background: var(--lilac); color: var(--bg); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 12px; color: var(--ink-2); font-size: 14px; font-weight: 300; }
+.legend li { display: flex; align-items: center; gap: 8px; }
+.legend i { width: 12px; height: 12px; border-radius: 4px; background: #3b3573; }
+.legend li[data-key='ready'] i { background: #4d4494; }
+.legend li[data-key='other'] i { background: #2f2a5f; box-shadow: inset 0 0 0 1px var(--ink-3); }
+.legend li[data-key='work'] i { background: var(--lilac); }
+.legend b { color: var(--ink); font-weight: 500; }
+.seg-title { margin-bottom: 10px; color: var(--ink-2); font-size: 15px; }
+.seg-title b { color: var(--ink); font-weight: 500; }
+
+.mini { margin-top: 18px; }
+
+/* À regarder. */
+.t-watch .n { color: var(--butter); }
+.wlist { margin-top: 16px; }
+.wlist li { display: grid; gap: 1px; padding: 12px 0; border-top: 1px solid var(--line); }
+.wlist .k { color: var(--ink-3); font-size: 14px; }
+.wlist a { font-size: 15px; font-weight: 500; line-height: 1.35; text-decoration: none; }
+.wlist a:hover { text-decoration: underline; }
+.wlist .d { color: var(--ink-2); font-size: 14px; font-weight: 300; line-height: 1.4; }
+.more { display: inline-flex; align-items: center; gap: 4px; margin-top: 12px; color: var(--butter); font-size: 15px; font-weight: 500; text-underline-offset: 4px; }
+
+/* Qualité. */
+.facts { display: grid; margin-top: 14px; }
+.fact { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 16px; align-items: baseline; padding: 13px 0; border-top: 1px solid var(--line); }
+.fact:first-child { border-top: 0; padding-top: 0; }
+.fact dt { font-size: 16px; font-weight: 500; }
+.fact .h { grid-column: 1; color: var(--ink-2); font-size: 14px; font-weight: 300; line-height: 1.4; }
+.fact .v { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 28px; font-weight: 600; letter-spacing: -0.025em; text-align: right; white-space: nowrap; --unit-size: 0.6em; }
+.fact .v.muted { color: var(--ink-2); font-size: 15px; font-weight: 500; letter-spacing: 0; white-space: normal; max-width: 9ch; }
+.fact .trend { display: inline-flex; margin-top: 0; font-size: 14px; }
+
+/* Activité. */
+.t-activity .bd-heat { margin-top: 16px; }
+
+/* Tableaux. */
+.rows { width: 100%; margin-top: 12px; border-collapse: collapse; }
+.rows th, .rows td { padding: 12px 14px 12px 0; border-top: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.rows thead th { border-top: 0; padding-top: 0; color: var(--ink-3); font-size: 14px; font-weight: 400; }
+.rows .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rows td.num { font-weight: 500; }
+.rows td:last-child, .rows th:last-child { padding-right: 0; }
+.rows tbody th { font-weight: 500; }
+.t-title { display: block; font-size: 15px; font-weight: 500; line-height: 1.35; }
+.t-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 3px; color: var(--ink-3); font-size: 14px; font-weight: 300; }
+.tag { padding: 0 9px; border-radius: 999px; background: var(--tile-2); color: var(--ink-2); font-size: 13px; font-weight: 400; line-height: 1.7; }
+.tag.late { background: rgba(255, 157, 138, 0.16); color: var(--coral); }
+.p-cell { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.bar-cell { display: flex; align-items: center; gap: 10px; min-width: 104px; }
+.bar-cell b { min-width: 34px; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
+.bar-cell i { height: 10px; min-width: 3px; border-radius: 0 5px 5px 0; background: var(--sky); width: calc(var(--v) * (100% - 44px)); }
+.dash { color: var(--ink-3); font-weight: 300; }
+
+.notice { display: flex; align-items: flex-start; gap: 10px; margin-top: 16px; color: var(--ink-2); font-size: 14px; font-weight: 300; }
+.notice .ic { margin-top: 2px; color: var(--coral); }
+.notice strong { color: var(--ink); font-weight: 500; }
+
+@media (max-width: 1240px) {
+  .bento.a { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .t-debit { grid-column: 1 / -1; grid-row: auto; }
+  .bento.b { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .t-activity { grid-column: 1 / -1; }
+}
+
+@media (max-width: 1040px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .side { position: static; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px 14px; height: auto; padding: 14px 20px 6px; }
+  .find { width: 44px; padding: 0; justify-content: center; order: 3; }
+  .find span, .find kbd { display: none; }
+  .nav { display: flex; order: 2; margin-right: auto; }
+  .projects { order: 5; width: 100%; grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+  .projects h2 { padding: 0; gap: 6px; }
+  .plist { display: flex; overflow-x: auto; }
+  .pname { overflow: visible; }
+  .side-foot { order: 4; margin: 0; gap: 8px; }
+  main { padding: 18px 20px 32px; }
+  .bento.c { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 700px) {
+  main { padding: 14px 14px 28px; }
+  h1 { font-size: 28px; }
+  .period { width: 100%; overflow-x: auto; }
+  .bento.a, .bento.b { grid-template-columns: minmax(0, 1fr); }
+  .t-lead { grid-column: auto; }
+  .lead-grid { grid-template-columns: minmax(0, 1fr); }
+  .tile { padding: 20px 18px; border-radius: 22px; }
+  .rows .hide-s { display: none; }
+}
+</style>
+</head>
+<body data-variant="5" data-fonts="Lexend">
+<div class="app">
+  <aside class="side" aria-label="Navigation">
+    <a class="brand" href="#">
+      <svg width="34" height="22" viewBox="0 0 34 22" aria-hidden="true">
+        <circle cx="6" cy="11" r="6" fill="#8ec5ff"/>
+        <circle cx="17" cy="11" r="6" fill="#c4b2ff"/>
+        <circle cx="28" cy="11" r="6" fill="#ffe08a"/>
+      </svg>
+      beads-desktop
+    </a>
+
+    <button class="find" type="button"><i data-icon="search"></i><span>Rechercher</span><kbd>⌘K</kbd></button>
+
+    <nav class="nav" aria-label="Navigation principale">
+      <a href="#" aria-current="page"><i data-icon="grid"></i>Vue globale</a>
+      <a href="#"><i data-icon="eye"></i>À regarder<span class="count" data-b="x.signals.total"></span></a>
+    </nav>
+
+    <section class="projects" aria-labelledby="side-projects">
+      <h2 id="side-projects">Projets <span data-b="x.projectCount"></span></h2>
+      <ul class="plist" id="side-list"></ul>
+    </section>
+
+    <div class="side-foot">
+      <div class="theme" role="group" aria-label="Thème">
+        <button type="button" aria-pressed="false" aria-label="Thème du système"><i data-icon="screen" data-size="16"></i></button>
+        <button type="button" aria-pressed="false" aria-label="Thème clair"><i data-icon="sun" data-size="16"></i></button>
+        <button type="button" aria-pressed="true" aria-label="Thème sombre"><i data-icon="moon" data-size="16"></i></button>
+      </div>
+      <button type="button" aria-label="Raccourcis clavier"><i data-icon="keyboard"></i></button>
+    </div>
+  </aside>
+
+  <main>
+    <header class="top">
+      <div>
+        <h1>Vue globale</h1>
+        <p><span data-b="x.readable"></span> Projets suivis, <span data-b="x.periodLong"></span>.</p>
+      </div>
+      <div class="tools">
+        <fieldset class="period">
+          <legend class="sr-only">Période</legend>
+          <label><input type="radio" name="period">7 jours</label>
+          <label><input type="radio" name="period" checked>30 jours</label>
+          <label><input type="radio" name="period">90 jours</label>
+          <label><input type="radio" name="period">Autre</label>
+        </fieldset>
+        <button class="btn" type="button"><i data-icon="copy"></i>Copier le rapport</button>
+        <button class="btn square" type="button" aria-label="Actualiser les métriques" title="Calculé à 21:55"><i data-icon="refresh"></i></button>
+      </div>
+    </header>
+
+    <div class="bento a">
+      <section class="tile t-debit" aria-labelledby="debit-title">
+        <h2 id="debit-title">Livraisons</h2>
+        <p class="n" data-b="debit.value"></p>
+        <p class="pill"><i data-icon="up" data-size="16"></i><span><span data-b="x.debitTimes"></span> plus qu’avant (<span data-b="debit.prev"></span>)</span></p>
+        <p class="what">Il est entré <b data-b="arrivals.value"></b> tickets sur la période : le stock de travail <span id="balance-say"></span>.</p>
+        <div class="bd-chart" id="chart-daily"></div>
+        <p class="chart-cap">Par jour. Le plus chargé : <span data-b="x.peakDay.label"></span>. La dernière colonne est le jour en cours.</p>
+      </section>
+
+      <section class="tile t-lead" aria-labelledby="lead-title">
+        <h2 id="lead-title">Lead Time</h2>
+        <div class="lead-grid">
+          <div>
+            <p class="n" data-b="lead.median" data-f="dur"></p>
+            <p class="what">de la création à la Livraison, en médiane</p>
+            <p data-trend="leadMedian" data-word></p>
+            <p class="what">85 % en moins de <b data-b="lead.p85" data-f="dur"></b></p>
+          </div>
+          <div>
+            <p class="seg-title" id="seg-title"></p>
+            <div id="seg"></div>
+            <ul class="legend" id="legend"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="tile t-cycle" aria-labelledby="cycle-title">
+        <h2 id="cycle-title">Cycle Time</h2>
+        <p class="n" data-b="cycle.median" data-f="dur"></p>
+        <p class="what">de travail par ticket, en médiane</p>
+        <p data-trend="cycleMedian" data-word></p>
+        <div class="bd-chart mini" id="chart-hist"></div>
+      </section>
+
+      <section class="tile t-wip" aria-labelledby="wip-title">
+        <h2 id="wip-title">En cours</h2>
+        <p class="n" data-b="wip.current"></p>
+        <p class="what">tickets en ce moment, <b data-b="wip.avg" data-f="dec1"></b> en moyenne</p>
+        <p data-trend="wipAvg" data-word></p>
+        <div class="bd-chart mini" id="chart-wip"></div>
+      </section>
+    </div>
+
+    <div class="bento b">
+      <section class="tile t-watch" aria-labelledby="watch-title">
+        <h2 id="watch-title">À regarder</h2>
+        <p class="n" data-b="x.signals.total"></p>
+        <p class="what" id="signals-say"></p>
+        <ul class="wlist" id="watch"></ul>
+        <a class="more" href="#">Voir tous les Signaux<i data-icon="right" data-size="16"></i></a>
+      </section>
+
+      <section class="tile t-quality" aria-labelledby="quality-title">
+        <h2 id="quality-title">Qualité</h2>
+        <dl class="facts">
+          <div class="fact">
+            <dt>Taux d’échec</dt>
+            <dd class="v muted">Non significatif</dd>
+            <dd class="h">Seuls <span data-b="failure.coverage" data-f="pct"></span> des bugs ont une origine renseignée, il en faut <span data-b="failure.minCoverage" data-f="pct"></span>.</dd>
+          </div>
+          <div class="fact">
+            <dt>Taux de Réouverture</dt>
+            <dd class="v" data-b="reopening.rate" data-f="pct1"></dd>
+            <dd class="h"><span data-b="reopening.reopened"></span> sur <span data-b="reopening.closures"></span> clôtures. <span data-trend="reopening" data-word data-prev="none"></span></dd>
+          </div>
+          <div class="fact">
+            <dt>Temps de rétablissement</dt>
+            <dd class="v" data-b="recovery.median" data-f="dur"></dd>
+            <dd class="h"><span data-b="recovery.n"></span> bugs critiques. <span data-trend="recoveryMedian" data-word data-prev="none"></span></dd>
+          </div>
+          <div class="fact">
+            <dt>Efficacité du flux</dt>
+            <dd class="v" data-b="efficiency.ratio" data-f="efficiency"></dd>
+            <dd class="h">du Cycle Time hors Blocage</dd>
+          </div>
+          <div class="fact">
+            <dt>Taux d’abandon</dt>
+            <dd class="v" data-b="abandon.rate" data-f="pct1"></dd>
+            <dd class="h">doublons et tickets remplacés</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="tile t-activity" aria-labelledby="activity-title">
+        <h2 id="activity-title">Quand le travail avance</h2>
+        <p class="what">Les Transitions de la période, par jour de la semaine et par heure.</p>
+        <div id="heat"></div>
+        <p class="chart-cap" id="heat-cap"></p>
+      </section>
+    </div>
+
+    <div class="bento c">
+      <section class="tile" aria-labelledby="tickets-title">
+        <h2 id="tickets-title">Tickets en cours</h2>
+        <table class="rows">
+          <thead><tr><th scope="col">Ticket</th><th scope="col" class="num">En cours depuis</th></tr></thead>
+          <tbody id="wip-rows"></tbody>
+        </table>
+      </section>
+
+      <section class="tile" aria-labelledby="projects-title">
+        <h2 id="projects-title">Projets</h2>
+        <table class="rows">
+          <thead>
+            <tr><th scope="col">Projet</th><th scope="col">Livraisons</th><th scope="col" class="num hide-s">Lead Time</th><th scope="col" class="num">En cours</th></tr>
+          </thead>
+          <tbody id="project-rows"></tbody>
+        </table>
+        <p class="notice" id="unreadable" hidden></p>
+      </section>
+    </div>
+  </main>
+</div>
+
+<template id="tpl-side-project">
+  <li><a href="#"><span class="pbead" data-v="hue"></span><span class="pname" data-t="name"></span><span class="pmeta" data-t="meta"></span></a></li>
+</template>
+
+<template id="tpl-wip-row">
+  <tr>
+    <td>
+      <span class="t-title" data-t="title"></span>
+      <span class="t-meta"><span data-t="project"></span><span class="tag" data-t="type"></span><span class="tag late" data-t="late"></span></span>
+    </td>
+    <td class="num" data-t="age"></td>
+  </tr>
+</template>
+
+<template id="tpl-project-row">
+  <tr>
+    <th scope="row"><span class="p-cell"><span class="pbead" data-v="hue"></span><span data-t="name"></span></span></th>
+    <td><span class="bar-cell" data-v="share"><b data-t="throughput"></b><i></i></span></td>
+    <td class="num hide-s" data-t="lead"></td>
+    <td class="num" data-t="wip"></td>
+  </tr>
+</template>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  const { h, fmt, repeat, mount, columns, areaLine, series, X } = BDK;
+  const NBSP = ' ';
+
+  repeat('#side-list', 'tpl-side-project', BD.projects, (project) => ({
+    name: project.name,
+    meta: project.status !== 'ok' ? 'illisible' : project.wip > 0 ? fmt.plural(project.wip, 'en cours', 'en cours') : '',
+    hue: project.hue,
+    $: { 'data-status': project.status },
+  }));
+
+  const balance = BD.arrivals.value - BD.debit.value;
+  document.getElementById('balance-say').textContent = balance < 0 ? 'diminue de ' + fmt.int(-balance) : balance > 0 ? 'augmente de ' + fmt.int(balance) : 'ne bouge pas';
+
+  /* Livraisons par jour : la tuile la plus grande porte le graphique le plus lu. */
+  const daily = BD.daily.deliveries;
+  mount('#chart-daily', (width) =>
+    columns(width, {
+      values: daily,
+      labels: series.daily.mondays,
+      tips: series.daily.tips(daily, 'Livraison'),
+      cls: (index) => (index === daily.length - 1 ? 'is-partial' : ''),
+      marks: [X.peakDay.index],
+      height: 230,
+      label: 'Livraisons par jour sur la période',
+    }),
+  );
+  document.querySelector('.t-debit .chart-cap').after(BDK.dataTable(['Jour', 'Livraisons', 'Arrivées'], series.daily.rows()));
+
+  /* Où passe le temps : le travail en lilas clair, les attentes en retrait. */
+  const parts = BDK.breakdownParts();
+  document.getElementById('seg-title').append(h('b', { text: fmt.pct(X.waitShare) + ' d’attente' }), ', ' + fmt.pct(X.shares.work) + ' de travail : où passe le Lead Time.');
+  document.getElementById('seg').append(BDK.segments(parts, { label: 'Décomposition du Lead Time cumulé des Livraisons' }));
+  const legend = document.getElementById('legend');
+  parts.filter((part) => part.share >= 0.002).forEach((part) => legend.append(h('li', { 'data-key': part.key }, h('i'), h('b', { text: part.label }), fmt.dur(part.value))));
+
+  mount('#chart-hist', (width) =>
+    columns(width, {
+      values: BD.cycleHist.map((bucket) => bucket.n),
+      labels: BD.cycleHist.map((bucket, index) => (width > 300 || index % 2 === 0 ? bucket.label : '')),
+      tips: BD.cycleHist.map((bucket) => fmt.plural(bucket.n, 'Livraison') + '\nCycle Time de ' + bucket.label),
+      height: 112,
+      barMax: 30,
+      grid: false,
+      pad: { l: 0, r: 0 },
+      label: 'Répartition du Cycle Time des Livraisons',
+    }),
+  );
+
+  const wip = series.daily.wip;
+  mount('#chart-wip', (width) =>
+    areaLine(width, {
+      values: wip,
+      labels: series.daily.mondays.map((label, index) => (index % 14 === 2 ? label : '')),
+      tips: wip.map((value, index) => fmt.plural(value, 'ticket') + ' en cours\n' + fmt.day(series.daily.days[index], { weekday: true })),
+      height: 112,
+      grid: false,
+      pad: { l: 4, r: 8 },
+      label: 'Tickets en cours, jour par jour',
+    }),
+  );
+
+  /* À regarder. */
+  const groups = BDK.signalGroups();
+  document.getElementById('signals-say').textContent = groups.map((group) => group.items.length + NBSP + (group.items.length > 1 ? group.many : group.label)).join(', ') + '.';
+  const watch = document.getElementById('watch');
+  groups
+    .flatMap((group) => group.items.slice(0, group.kind === 'stagnantReady' ? 2 : 1))
+    .forEach((signal) => {
+      const fields = BDK.signalFields(signal);
+      watch.append(h('li', null, h('span', { class: 'k', text: fields.kind + (fields.project ? ', ' + fields.project : '') }), h('a', { href: '#', text: fields.title }), h('span', { class: 'd', text: fields.detail })));
+    });
+
+  /* Carte d'activité. */
+  document.getElementById('heat').append(BDK.heat(BD.activity, { label: 'Transitions par jour de la semaine et par heure' }));
+  const total = BD.activity.flat().reduce((sum, value) => sum + value, 0);
+  document.getElementById('heat-cap').textContent = fmt.plural(total, 'Transition') + '. Plus la case est claire, plus il y en a eu.';
+
+  repeat('#wip-rows', 'tpl-wip-row', BD.inProgress, (ticket) => ({
+    title: ticket.title,
+    project: BDK.project(ticket.project).name,
+    type: ticket.type + NBSP + 'P' + ticket.priority,
+    late: ticket.blocked ? 'bloqué' : ticket.age > BD.cycle.p85 ? 'au-delà du P85' : '',
+    age: fmt.dur(ticket.age),
+  }));
+
+  const readable = BD.projects.filter((project) => project.status === 'ok');
+  const most = Math.max(1, ...readable.map((project) => project.throughput));
+  repeat('#project-rows', 'tpl-project-row', readable, (project) => ({
+    name: project.name,
+    hue: project.hue,
+    share: (project.throughput / most).toFixed(3),
+    throughput: fmt.int(project.throughput),
+    lead: project.leadMedian === null ? h('span', { class: 'dash', text: 'aucune' }) : fmt.dur(project.leadMedian),
+    wip: fmt.int(project.wip),
+  }));
+
+  const unreadable = BD.projects.filter((project) => project.status !== 'ok');
+  if (unreadable.length > 0) {
+    const notice = document.getElementById('unreadable');
+    notice.hidden = false;
+    notice.append(
+      BDK.icon('alert', 18),
+      h('span', null, h('strong', { text: unreadable.map((project) => project.name).join(', ') }), unreadable.length > 1 ? ' sont illisibles et absents' : ' est illisible et absent', ' de ces chiffres. ', unreadable[0].reason || ''),
+    );
+  }
+})();
+</script>
+</body>
+</html>

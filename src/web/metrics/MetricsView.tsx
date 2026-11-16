@@ -21,6 +21,7 @@ import { describeComparison } from './comparison';
 import { CycleTimePanel } from './CycleTimeChart';
 import { dayInZone } from './format';
 import { HealthTiles } from './HealthTiles';
+import { JourneyPanel } from './JourneyPanel';
 import { LongTrendPanel } from './LongTrendPanel';
 import { MetricsSkeleton } from './MetricsSkeleton';
 import { AddressNotices, UnreadableProjects, ZoneNotice } from './Notices';
@@ -157,7 +158,7 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
         <div ref={place.ref} style={place.settling ? NO_SCROLL_ANCHORING : undefined} className="min-w-0">
           {waiting ? <div aria-hidden="true" className="metrics-busy" /> : null}
           <div ref={keepFocusInZone} aria-busy={query.isPlaceholderData} className="flex min-w-0 flex-col gap-6">
-            <Content data={data} by={by} ctx={ctx} projectHref={projectHref} />
+            <Content data={data} by={by} ctx={ctx} projectHref={projectHref} signalsHref={paths.signals(scope.kind === 'project' ? scope.project.id : undefined)} />
           </div>
         </div>
       ) : query.isError ? (
@@ -169,7 +170,19 @@ export function MetricsView({ scope }: { scope: MetricsScope }) {
   );
 }
 
-function Content({ data, by, ctx, projectHref }: { data: MetricsResponse; by: Dimension; ctx: ReturnType<typeof useSeriesContext>; projectHref: (id: string) => string }) {
+function Content({
+  data,
+  by,
+  ctx,
+  projectHref,
+  signalsHref,
+}: {
+  data: MetricsResponse;
+  by: Dimension;
+  ctx: ReturnType<typeof useSeriesContext>;
+  projectHref: (id: string) => string;
+  signalsHref: string;
+}) {
   const comparison = useMemo(() => describeComparison(data), [data]);
   const view = useMemo(
     () => describeSlices({ slices: data.slices[by], dimension: by, tiles: data.tiles, ctx, projectHref }),
@@ -195,6 +208,8 @@ function Content({ data, by, ctx, projectHref }: { data: MetricsResponse; by: Di
         </Notice>
       ) : (
         <>
+          <JourneyPanel tiles={data.tiles} health={data.health} cfd={data.cfd} comparison={comparison} signalsHref={signalsHref} />
+
           <MetricTiles tiles={data.tiles} comparison={comparison} />
 
           <LongTrendPanel trend={data.longTrend} />

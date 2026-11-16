@@ -205,7 +205,7 @@ function Figure({ label, value, missing, zero }: { label: string; value: number 
   return (
     <div className="flex min-w-0 flex-col gap-0.5 rounded-lg border border-line bg-well px-3 py-2">
       <dt className="text-xs text-ink-3">{label}</dt>
-      <dd className="tnum text-[15px] font-semibold leading-5 text-ink">
+      <dd className="tnum text-base font-bold leading-6 text-ink">
         {value === null ? (
           <>
             <span aria-hidden="true">—</span>

@@ -6,11 +6,12 @@ import { isInvisibleText } from '../lib/invisibleText';
 import { keepFocusInZone } from '../lib/zoneFocus';
 import { Button } from './Button';
 
-export function Skeleton({ className }: { className?: string }) {
+/** Un bloc qui tient la place d'un contenu en chargement. `tone="side"` : sur la barre latérale marine, où le voile de la page (sombre) ne se verrait pas. */
+export function Skeleton({ className, tone = 'page' }: { className?: string; tone?: 'page' | 'side' }) {
   return (
     <div
       aria-hidden="true"
-      className={cx('animate-pulse rounded-md bg-press motion-reduce:animate-none', className)}
+      className={cx('animate-pulse rounded-md motion-reduce:animate-none', tone === 'side' ? 'bg-side-press' : 'bg-press', className)}
     />
   );
 }

@@ -66,7 +66,7 @@ export function Page({
           data-skeleton={loading ? '' : undefined}
           aria-label={loading ? LOADING_TITLE : undefined}
           className={cx(
-            'wrap-anywhere text-xl font-semibold tracking-[-0.02em] text-ink md:text-[22px] md:leading-7',
+            'wrap-anywhere text-2xl font-extrabold tracking-[-0.015em] text-ink md:text-[1.75rem] md:leading-9',
             // Le titre prend le focus par programme à l'arrivée d'une page qu'un « Réessayer » a rechargée (voir `useRetryFocus`) : son contour (au clavier
             // seulement) entoure le texte, pas toute la largeur de l'en-tête. Pas pour un squelette, dont la largeur en pourcentage tomberait à zéro.
             !loading && TIGHT_OUTLINE,
@@ -74,7 +74,7 @@ export function Page({
         >
           {loading ? <Skeleton className={cx('h-7', loadingWidth)} /> : text}
         </h1>
-        {description ? <p className="mt-1.5 max-w-[62ch] wrap-anywhere text-[14px] leading-6 text-ink-2">{description}</p> : null}
+        {description ? <p className="mt-1.5 max-w-[68ch] wrap-anywhere text-[0.9375rem] leading-6 text-ink-2">{description}</p> : null}
       </header>
       {children}
     </div>
@@ -98,7 +98,7 @@ export function ComingSoon({ ticket, children }: { ticket: string; children: Rea
 /** Intertitre d'une section de page. Même contour resserré que le titre de la page : celui d'une section prend le focus quand elle se recharge. */
 export function SectionTitle({ id, children }: { id?: string; children: ReactNode }) {
   return (
-    <h2 id={id} className={cx('text-ui font-semibold text-ink', TIGHT_OUTLINE)}>
+    <h2 id={id} className={cx('text-lg font-bold tracking-[-0.01em] text-ink', TIGHT_OUTLINE)}>
       {children}
     </h2>
   );

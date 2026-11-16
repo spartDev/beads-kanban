@@ -15,7 +15,7 @@ export function TopBar() {
   const { openPalette } = usePalette();
 
   return (
-    <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b border-line bg-panel/85 px-3 backdrop-blur-md md:h-11 md:rounded-t-xl md:px-4">
+    <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b border-line bg-canvas/85 px-3 backdrop-blur-md md:h-11 md:px-5">
       <MobileSwitcher />
       <Breadcrumb />
       <div className="ml-auto flex items-center gap-2 md:hidden">
@@ -24,7 +24,7 @@ export function TopBar() {
             type="button"
             aria-label="Rechercher"
             onClick={(event) => openPalette('all', event.currentTarget)}
-            className="grid size-8 place-items-center rounded-lg border border-line bg-well text-ink-2 transition-colors hover:text-ink"
+            className="grid size-8 place-items-center rounded-lg border border-line bg-panel text-ink-2 transition-colors hover:text-ink"
           >
             <Search size={15} strokeWidth={2} aria-hidden="true" />
           </button>

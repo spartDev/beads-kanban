@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Le point · variante 3 · beads-desktop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400..800&family=Fraunces:opsz,wght,SOFT@9..144,400..700,0..100&display=swap">
+<link rel="stylesheet" href="shared.css">
+<style>
+/*
+ * Variante 3 — Le point.
+ * Idée : la page répond, en phrases, aux questions qu'on se pose vraiment : est-ce qu'on livre, en combien de temps,
+ * est-ce que ça tient, qu'est-ce qui attend. Chaque chiffre est surligné selon ce qu'il devient : menthe s'il progresse,
+ * pêche s'il recule ou demande un coup d'œil, lilas sinon.
+ * Polices : Fraunces, une sérif douce, pour les questions et les réponses ; Figtree, une sans claire, pour l'interface.
+ * Couleurs : papier lilas, encre aubergine. Pas de couleur vive hors des surlignages.
+ */
+:root {
+  --paper: #f7f4fa;
+  --card: #ffffff;
+  --ink: #241a33;
+  --ink-2: #5a4f68;
+  --ink-3: #74688a;
+  --line: #e5ddef;
+  --plum: #6a3fa8;
+  --hl-good: #c8f1da;
+  --hl-bad: #ffd8c6;
+  --hl-flat: #e7e0f3;
+  --good: #0e5a37;
+  --bad: #8a2e0b;
+  --serif: 'Fraunces', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --sans: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --chart-bar: var(--plum);
+  --chart-bar-partial: #b9a2dc;
+  --chart-grid: #ece6f4;
+  --chart-axis: #c9bedb;
+  --chart-ink: var(--ink-3);
+  --chart-ink-strong: var(--ink);
+  --chart-hover: rgba(106, 63, 168, 0.07);
+  --tip-bg: var(--ink);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 17px/1.55 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+a { color: inherit; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--plum); outline-offset: 3px; border-radius: 6px; }
+.ic { flex: none; }
+
+.wrap { width: 100%; max-width: 1160px; margin: 0 auto; padding: 0 40px; }
+
+/* ---------- Barre du haut ---------- */
+
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; padding-top: 18px; padding-bottom: 18px; }
+
+.brand { display: flex; align-items: center; gap: 10px; font-family: var(--serif); font-variation-settings: 'SOFT' 100; font-size: 21px; font-weight: 600; text-decoration: none; }
+
+.scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.bar nav { display: flex; gap: 4px; margin-left: auto; }
+
+.bar nav a { display: inline-flex; align-items: center; gap: 8px; height: 42px; padding: 0 14px; border-radius: 12px; color: var(--ink-2); font-size: 16px; font-weight: 600; text-decoration: none; }
+.bar nav a:hover { color: var(--ink); background: var(--hl-flat); }
+.bar nav a[aria-current='page'] { color: var(--ink); background: var(--hl-flat); }
+
+.count { min-width: 26px; padding: 0 8px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 700; line-height: 1.7; text-align: center; }
+
+.round { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink-2); }
+
+/* ---------- Titre ---------- */
+
+.lede { padding-top: 44px; padding-bottom: 40px; }
+
+h1 {
+  font-family: var(--serif);
+  font-variation-settings: 'SOFT' 100;
+  font-size: clamp(40px, 5.2vw, 68px);
+  font-weight: 500;
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+}
+
+.lede > p { max-width: 60ch; margin-top: 16px; color: var(--ink-2); font-size: 19px; }
+
+.lede-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 28px; margin-top: 26px; }
+
+.period { display: flex; gap: 2px; margin: 0; padding: 4px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.period label { display: grid; place-items: center; height: 36px; padding: 0 15px; border-radius: 10px; color: var(--ink-2); font-size: 16px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.period label:hover { color: var(--ink); }
+.period label:has(:checked) { background: var(--ink); color: #fff; }
+.period label:has(:focus-visible) { outline: 3px solid var(--plum); outline-offset: 2px; }
+.period input { position: absolute; opacity: 0; pointer-events: none; }
+
+.key { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--ink-2); font-size: 15px; }
+.key li { display: flex; align-items: center; gap: 7px; }
+.key i { width: 26px; height: 14px; border-radius: 4px; background: var(--hl-flat); }
+.key li[data-tone='good'] i { background: var(--hl-good); }
+.key li[data-tone='bad'] i { background: var(--hl-bad); }
+
+/* ---------- Questions et réponses ---------- */
+
+.qa {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 18px 64px;
+  padding: 52px 0;
+  border-top: 1px solid var(--line);
+}
+
+.qa > h2 {
+  font-family: var(--serif);
+  font-variation-settings: 'SOFT' 100;
+  font-size: 30px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--plum);
+}
+
+.say {
+  font-family: var(--serif);
+  font-variation-settings: 'SOFT' 60;
+  font-variant-numeric: lining-nums;
+  font-size: clamp(26px, 2.9vw, 38px);
+  font-weight: 400;
+  line-height: 1.3;
+  letter-spacing: -0.012em;
+  max-width: 24em;
+  text-wrap: pretty;
+}
+
+mark {
+  padding: 0.02em 0.2em;
+  border-radius: 0.22em;
+  background: var(--hl-flat);
+  color: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+mark[data-tone='good'] { background: var(--hl-good); }
+mark[data-tone='bad'] { background: var(--hl-bad); }
+
+.more { max-width: 62ch; margin-top: 18px; color: var(--ink-2); font-size: 18px; }
+.more b { color: var(--ink); font-weight: 600; }
+
+.fiche { margin-top: 30px; padding: 24px 26px; border-radius: 18px; background: var(--card); }
+.fiche h3 { margin-bottom: 16px; font-size: 17px; font-weight: 700; }
+.fiche figcaption, .cap { margin-top: 12px; color: var(--ink-3); font-size: 15px; line-height: 1.45; }
+
+/* Où passe le temps. */
+.bd-seg { height: 28px; }
+.bd-seg-part { padding: 0 9px; border-radius: 4px; background: #d9cdea; font-size: 15px; font-weight: 700; }
+.bd-seg-part[data-key='ready'] { background: #c2b0de; }
+.bd-seg-part[data-key='other'] { background: #ece4f5; }
+.bd-seg-part[data-key='work'] { background: var(--plum); color: #fff; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 26px; margin-top: 16px; font-size: 15px; }
+.legend li { display: flex; align-items: center; gap: 8px; color: var(--ink-2); }
+.legend i { width: 14px; height: 14px; border-radius: 4px; background: #d9cdea; }
+.legend li[data-key='ready'] i { background: #c2b0de; }
+.legend li[data-key='other'] i { background: #ece4f5; }
+.legend li[data-key='work'] i { background: var(--plum); }
+.legend li[data-key='blocked'] i { background: none; box-shadow: inset 0 0 0 2px #c2b0de; }
+.legend b { color: var(--ink); font-weight: 600; }
+
+/* Trois faits côte à côte. */
+.trio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 30px; }
+.trio > div { min-width: 0; padding: 20px 22px; border-radius: 18px; background: var(--card); }
+.trio dt { color: var(--ink-2); font-size: 16px; font-weight: 600; }
+.trio .v { margin-top: 6px; font-family: var(--serif); font-variation-settings: 'SOFT' 60; font-variant-numeric: lining-nums; font-size: 40px; font-weight: 500; line-height: 1.05; letter-spacing: -0.02em; white-space: nowrap; --unit-size: 0.6em; }
+.trio .h { margin-top: 8px; color: var(--ink-3); font-size: 15px; line-height: 1.4; }
+
+.trend { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 5px; margin-top: 8px; color: var(--ink-2); font-size: 15px; font-weight: 600; white-space: nowrap; }
+.trend[data-tone='good'] { color: var(--good); }
+.trend[data-tone='bad'] { color: var(--bad); }
+.trend-ic { display: inline-grid; }
+.trend-prev { color: var(--ink-3); font-weight: 400; }
+
+/* Les Signaux. */
+.signals li { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 2px 18px; padding: 14px 0; border-top: 1px solid var(--line); }
+.signals li:first-child { padding-top: 0; border-top: 0; }
+.signals .kind { color: var(--ink-2); font-size: 15px; font-weight: 600; }
+.signals a { font-size: 17px; font-weight: 600; line-height: 1.35; text-decoration: none; }
+.signals a:hover { text-decoration: underline; }
+.signals span.d { grid-column: 2; color: var(--ink-3); font-size: 15px; line-height: 1.4; }
+
+.link { display: inline-flex; align-items: center; gap: 4px; margin-top: 18px; color: var(--plum); font-weight: 700; text-underline-offset: 4px; }
+
+/* Projets. */
+.rows { width: 100%; border-collapse: collapse; }
+.rows th, .rows td { padding: 13px 16px 13px 0; border-top: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.rows thead th { padding-top: 0; border-top: 0; color: var(--ink-3); font-size: 15px; font-weight: 500; }
+.rows .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rows td.num { font-weight: 600; }
+.rows td:last-child, .rows th:last-child { padding-right: 0; }
+.rows tbody th { font-weight: 600; white-space: nowrap; }
+.bar-cell { display: flex; align-items: center; gap: 12px; min-width: 130px; }
+.bar-cell b { min-width: 34px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.bar-cell i { height: 12px; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--plum); width: calc(var(--v) * (100% - 46px)); }
+.dash { color: var(--ink-3); font-weight: 400; }
+
+.notice { display: flex; align-items: flex-start; gap: 10px; margin-top: 18px; color: var(--ink-2); font-size: 15px; }
+.notice .ic { margin-top: 3px; color: var(--bad); }
+.notice strong { color: var(--ink); }
+
+@media (max-width: 980px) {
+  .wrap { padding: 0 24px; }
+  .qa { grid-template-columns: minmax(0, 1fr); padding: 40px 0; }
+  .trio { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .wrap { padding: 0 16px; }
+  .bar nav { margin-left: 0; width: 100%; order: 5; }
+  .scope { margin-left: auto; }
+  .period { width: 100%; overflow-x: auto; }
+  .fiche { padding: 18px 16px; }
+  .signals li { grid-template-columns: minmax(0, 1fr); }
+  .signals span.d { grid-column: 1; }
+  .rows .hide-s { display: none; }
+}
+</style>
+</head>
+<body data-variant="3" data-fonts="Fraunces|Figtree">
+<header class="bar wrap">
+  <a class="brand" href="#">
+    <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+      <circle cx="7" cy="14" r="5" fill="#6a3fa8"/>
+      <circle cx="17" cy="14" r="5" fill="#c2b0de"/>
+      <circle cx="25" cy="14" r="2.5" fill="#241a33"/>
+    </svg>
+    beads-desktop
+  </a>
+  <button class="scope" type="button" aria-haspopup="menu" aria-expanded="false">Tous les Projets<i data-icon="down" data-size="16"></i></button>
+  <nav aria-label="Navigation principale">
+    <a href="#" aria-current="page">Vue globale</a>
+    <a href="#">À regarder<span class="count" data-b="x.signals.total"></span></a>
+  </nav>
+  <button class="round" type="button" aria-label="Rechercher"><i data-icon="search"></i></button>
+  <button class="round" type="button" aria-label="Changer de thème"><i data-icon="sun"></i></button>
+</header>
+
+<main class="wrap">
+  <header class="lede">
+    <h1>Le point sur trente jours</h1>
+    <p>Les <span data-b="x.readable"></span> Projets suivis, <span data-b="x.periodLong"></span>. Chaque chiffre est comparé aux trente jours précédents.</p>
+    <div class="lede-tools">
+      <fieldset class="period">
+        <legend class="sr-only">Période</legend>
+        <label><input type="radio" name="period">7 jours</label>
+        <label><input type="radio" name="period" checked>30 jours</label>
+        <label><input type="radio" name="period">90 jours</label>
+        <label><input type="radio" name="period">Autre</label>
+      </fieldset>
+      <ul class="key" aria-label="Sens des surlignages">
+        <li data-tone="good"><i></i>progresse</li>
+        <li data-tone="bad"><i></i>recule, ou demande un coup d’œil</li>
+        <li><i></i>sans tendance</li>
+      </ul>
+    </div>
+  </header>
+
+  <section class="qa" aria-labelledby="q-deliver">
+    <h2 id="q-deliver">Est-ce qu’on livre&#8239;?</h2>
+    <div>
+      <p class="say"><mark data-m="debit"><span data-b="debit.value"></span> Livraisons</mark> en trente jours, contre <span data-b="debit.prev"></span> sur les trente précédents.</p>
+      <p class="more">C’est <b><span data-b="x.debitTimes"></span> plus</b>. Il est entré <span data-b="arrivals.value"></span> tickets et il en est sorti <span data-b="debit.value"></span> : <span id="balance-say"></span>.</p>
+      <figure class="fiche">
+        <h3>Livraisons par semaine</h3>
+        <div class="bd-chart" id="chart-weekly"></div>
+        <figcaption>Douze semaines, du lundi au dimanche. La plus chargée commence le <span data-b="x.peakWeek.label"></span> ; la dernière, plus claire, est en cours.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="qa" aria-labelledby="q-time">
+    <h2 id="q-time">En combien de temps&#8239;?</h2>
+    <div>
+      <p class="say">Un ticket est livré <mark data-m="leadMedian" data-b="lead.median" data-f="dur"></mark> après sa création, et demande <mark data-m="cycleMedian" data-b="cycle.median" data-f="dur"></mark> de travail.</p>
+      <p class="more">Ce sont des médianes : le Lead Time et le Cycle Time. Sur les trente jours précédents, c’était <span data-b="lead.medianPrev" data-f="dur"></span> et <span data-b="cycle.medianPrev" data-f="dur"></span>. Dans 85 % des cas, un ticket est livré en moins de <b data-b="lead.p85" data-f="dur"></b>.</p>
+      <figure class="fiche">
+        <h3>Où passe le temps d’un ticket</h3>
+        <div id="seg"></div>
+        <ul class="legend" id="legend"></ul>
+        <figcaption id="seg-cap"></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="qa" aria-labelledby="q-quality">
+    <h2 id="q-quality">Est-ce que ça tient&#8239;?</h2>
+    <div>
+      <p class="say"><mark data-m="reopening"><span data-b="reopening.reopened"></span> ticket rouvert</mark> sur <span data-b="reopening.closures"></span> clôtures, et les bugs critiques sont rétablis en <mark data-m="recoveryMedian" data-b="recovery.median" data-f="dur"></mark>.</p>
+      <p class="more">Le Taux d’échec, lui, n’est pas mesurable pour l’instant : seuls <span data-b="failure.coverage" data-f="pct"></span> des bugs ont une origine renseignée, et il en faut <span data-b="failure.minCoverage" data-f="pct"></span> pour conclure.</p>
+      <dl class="trio">
+        <div>
+          <dt>Taux de Réouverture</dt>
+          <dd class="v" data-b="reopening.rate" data-f="pct1"></dd>
+          <dd><span data-trend="reopening" data-word></span></dd>
+        </div>
+        <div>
+          <dt>Temps de rétablissement</dt>
+          <dd class="v" data-b="recovery.median" data-f="dur"></dd>
+          <dd><span data-trend="recoveryMedian" data-word></span></dd>
+        </div>
+        <div>
+          <dt>Efficacité du flux</dt>
+          <dd class="v" data-b="efficiency.ratio" data-f="efficiency"></dd>
+          <dd class="h">du Cycle Time se passe hors Blocage</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="qa" aria-labelledby="q-wait">
+    <h2 id="q-wait">Qu’est-ce qui attend&#8239;?</h2>
+    <div>
+      <p class="say"><mark><span data-b="wip.current"></span> tickets</mark> sont en cours, et <mark data-tone="bad"><span data-b="ready.stagnant"></span> Prêts</mark> stagnent depuis plus de deux semaines.</p>
+      <p class="more" id="signals-say"></p>
+      <figure class="fiche">
+        <h3>À regarder en premier</h3>
+        <ul class="signals" id="signals"></ul>
+        <a class="link" href="#">Voir les <span data-b="x.signals.total"></span> Signaux<i data-icon="right" data-size="16"></i></a>
+      </figure>
+    </div>
+  </section>
+
+  <section class="qa" aria-labelledby="q-projects">
+    <h2 id="q-projects">Et Projet par Projet&#8239;?</h2>
+    <div>
+      <p class="say" id="projects-say"></p>
+      <figure class="fiche">
+        <table class="rows">
+          <thead>
+            <tr><th scope="col">Projet</th><th scope="col">Livraisons</th><th scope="col" class="num hide-s">Lead Time</th><th scope="col" class="num hide-s">Cycle Time</th><th scope="col" class="num">En cours</th></tr>
+          </thead>
+          <tbody id="project-rows"></tbody>
+        </table>
+        <p class="notice" id="unreadable" hidden></p>
+      </figure>
+    </div>
+  </section>
+</main>
+
+<template id="tpl-project-row">
+  <tr>
+    <th scope="row" data-t="name"></th>
+    <td><span class="bar-cell" data-v="share"><b data-t="throughput"></b><i></i></span></td>
+    <td class="num hide-s" data-t="lead"></td>
+    <td class="num hide-s" data-t="cycle"></td>
+    <td class="num" data-t="wip"></td>
+  </tr>
+</template>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  const { h, fmt, repeat, mount, columns, series, X, M } = BDK;
+
+  /* Un surlignage prend la couleur de la tendance de son indicateur. */
+  document.querySelectorAll('mark[data-m]').forEach((mark) => {
+    mark.dataset.tone = M[mark.dataset.m].tone;
+  });
+
+  const balance = BD.arrivals.value - BD.debit.value;
+  document.getElementById('balance-say').textContent =
+    balance < 0 ? 'le stock de travail diminue de ' + fmt.int(-balance) : balance > 0 ? 'le stock de travail augmente de ' + fmt.int(balance) : 'le stock de travail ne bouge pas';
+
+  const weeks = series.weekly.throughput;
+  const last = weeks.length - 1;
+  mount('#chart-weekly', (width) =>
+    columns(width, {
+      values: weeks,
+      labels: series.weekly.labels.map((label, index) => (width > 560 || index % 2 === 0 ? label : '')),
+      tips: series.weekly.tips,
+      cls: (index) => (index === last ? 'is-partial' : ''),
+      marks: [weeks.indexOf(Math.max(...weeks)), last],
+      height: 220,
+      barMax: 30,
+      label: 'Livraisons par semaine sur douze semaines',
+    }),
+  );
+  document.getElementById('chart-weekly').after(BDK.dataTable(['Semaine', 'Livraisons', 'Lead Time P85'], series.weekly.rows()));
+
+  /* Où passe le temps : le travail en prune, les attentes en lilas. */
+  const parts = BDK.breakdownParts();
+  document.getElementById('seg').append(BDK.segments(parts, { label: 'Décomposition du Lead Time cumulé des Livraisons' }));
+  const legend = document.getElementById('legend');
+  parts.forEach((part) => legend.append(h('li', { 'data-key': part.key }, h('i'), h('b', { text: part.label }), fmt.pct(part.share))));
+  document.getElementById('seg-cap').textContent =
+    'Sur dix heures de la vie d’un ticket, ' + fmt.dec(X.waitShare * 10, 0) + ' se passent à attendre. Parts du Lead Time cumulé des ' + fmt.int(BD.breakdown.deliveries) + ' Livraisons, soit ' + fmt.dur(BD.breakdown.total) + '.';
+
+  /* Les Signaux : le décompte en une phrase, puis les premiers de chaque sorte. */
+  const groups = BDK.signalGroups();
+  document.getElementById('signals-say').textContent =
+    fmt.plural(X.signals.total, 'Signal', 'Signaux') + ' en ce moment : ' + groups.map((group) => group.items.length + ' ' + (group.items.length > 1 ? group.many : group.label)).join(', ') + '.';
+  const picked = groups.flatMap((group) => group.items.slice(0, group.kind === 'stagnantReady' ? 3 : 1));
+  const list = document.getElementById('signals');
+  picked.forEach((signal) => {
+    const fields = BDK.signalFields(signal);
+    list.append(h('li', null, h('span', { class: 'kind', text: fields.kind }), h('a', { href: '#', text: fields.title }), h('span', { class: 'd', text: (fields.project ? fields.project + ', ' : '') + fields.detail })));
+  });
+
+  /* Projets. */
+  const readable = BD.projects.filter((project) => project.status === 'ok');
+  const ranked = readable.slice().sort((a, b) => b.throughput - a.throughput);
+  const idle = readable.filter((project) => project.throughput === 0);
+  document.getElementById('projects-say').append(
+    h('mark', { text: ranked[0].name }),
+    ' livre le plus, avec ' + fmt.int(ranked[0].throughput) + ' Livraisons. ',
+    idle.length > 0 ? fmt.plural(idle.length, 'Projet') + (idle.length > 1 ? ' n’ont rien livré' : ' n’a rien livré') + ' sur la période.' : '',
+  );
+  const most = Math.max(1, ranked[0].throughput);
+  repeat('#project-rows', 'tpl-project-row', readable, (project) => ({
+    name: project.name,
+    share: (project.throughput / most).toFixed(3),
+    throughput: fmt.int(project.throughput),
+    lead: project.leadMedian === null ? h('span', { class: 'dash', text: 'aucune' }) : fmt.dur(project.leadMedian),
+    cycle: project.cycleMedian === null ? h('span', { class: 'dash', text: 'aucune' }) : fmt.dur(project.cycleMedian),
+    wip: fmt.int(project.wip),
+  }));
+
+  const unreadable = BD.projects.filter((project) => project.status !== 'ok');
+  if (unreadable.length > 0) {
+    const notice = document.getElementById('unreadable');
+    notice.hidden = false;
+    notice.append(
+      BDK.icon('alert', 18),
+      h('span', null, h('strong', { text: unreadable.map((project) => project.name).join(', ') }), unreadable.length > 1 ? ' sont illisibles et absents' : ' est illisible et absent', ' de ces chiffres. ', unreadable[0].reason || ''),
+    );
+  }
+})();
+</script>
+</body>
+</html>

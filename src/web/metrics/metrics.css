@@ -134,3 +134,244 @@
     background: Highlight;
   }
 }
+
+/*
+ * Le parcours d'un ticket (bdesk-bxq.3, `JourneyPanel`). Une grille de cinq colonnes : ce qui entre, les trois tronçons du fil, ce qui sort. La largeur d'un tronçon
+ * est sa part du Lead Time cumulé (`--journey-backlog`, `--journey-ready`, `--journey-work`, posées par le composant), avec un plancher pour que son texte tienne :
+ * sur un écran moyen, un tronçon court est dessiné un peu plus long que sa part, et c'est le pourcentage écrit dessous qui fait foi.
+ *
+ * Quatre rangées : la cote du Lead Time (tout le fil), celle du Cycle Time (le tronçon En cours), le fil, puis les textes. Le fil est un tube : vide (fond du panneau,
+ * cerné d'encre) là où le ticket attend, plein (encre) là où l'on y travaille. La différence tient à la forme, pas à la couleur. Les perles portent la marque.
+ */
+.journey {
+  display: grid;
+  grid-template-columns:
+    minmax(4.75rem, max-content)
+    minmax(7.75rem, var(--journey-backlog, 1fr))
+    minmax(0, var(--journey-ready, 1fr))
+    minmax(9.25rem, var(--journey-work, 1fr))
+    minmax(7.5rem, max-content);
+  align-items: start;
+}
+
+.journey-dim {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.journey-lead {
+  grid-column: 2 / 5;
+  grid-row: 1;
+  margin-bottom: 0.8rem;
+}
+
+.journey-cycle {
+  grid-column: 4 / 5;
+  grid-row: 2;
+  margin-bottom: 0.9rem;
+}
+
+.journey-dim-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.7rem;
+  line-height: 1.3;
+}
+
+/* Le tronçon En cours est court : son texte s'aligne sur son bord droit et déborde vers la gauche, au-dessus du tronçon Prêt. */
+.journey-cycle .journey-dim-label {
+  justify-content: flex-end;
+  margin-left: -24rem;
+  text-align: right;
+}
+
+.journey-figure {
+  font-size: 1.9rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.journey-brace {
+  display: block;
+  height: 0.55rem;
+  border: 2px solid var(--ink);
+  border-bottom: 0;
+  border-radius: 0.3rem 0.3rem 0 0;
+}
+
+.journey-stub,
+.journey-tube {
+  position: relative;
+  grid-row: 3;
+  height: 1.75rem;
+}
+
+.journey-tube::after {
+  content: '';
+  position: absolute;
+  inset: 0.5rem 0;
+  border: 2px solid var(--ink);
+  background: var(--panel);
+}
+
+.journey-tube-full::after {
+  background: var(--ink);
+}
+
+/* Une perle à chaque jonction : au début de chaque tronçon, et au bout du dernier. */
+.journey-tube::before,
+.journey-tube-full > i {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  z-index: 1;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 0.3rem solid var(--ink);
+  border-radius: 50%;
+  background: var(--mark);
+  transform: translate(-50%, -50%);
+}
+
+.journey-tube-full > i {
+  left: 100%;
+}
+
+/* Ce qui entre et ce qui sort : un trait fin et sa pointe, de part et d'autre du fil. */
+.journey-stub::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  height: 2px;
+  background: var(--ink-3);
+  transform: translateY(-50%);
+}
+
+.journey-stub-in::after {
+  left: 0;
+  right: 1.45rem;
+}
+
+.journey-stub-out::after {
+  left: 1.45rem;
+  right: 0.7rem;
+}
+
+.journey-stub::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 0.5rem;
+  height: 0.5rem;
+  border: solid var(--ink-3);
+  border-width: 2px 2px 0 0;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.journey-stub-in::before {
+  right: 1.45rem;
+}
+
+.journey-stub-out::before {
+  right: 0.7rem;
+}
+
+.journey-flow,
+.journey-stage {
+  grid-row: 4;
+  min-width: 0;
+  padding-top: 0.7rem;
+}
+
+.journey-flow,
+.journey-stage {
+  padding-right: 0.8rem;
+}
+
+.journey-flow-out {
+  padding-right: 0;
+  padding-left: 1.25rem;
+}
+
+.journey-count {
+  font-size: 2.7rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.025em;
+}
+
+/* Conteneur étroit : le fil se lit de haut en bas. Un trait à gauche, une perle par étape ; les cotes passent devant, sans accolade. */
+@container (max-width: 46rem) {
+  .journey {
+    display: block;
+  }
+
+  .journey-stub,
+  .journey-tube,
+  .journey-brace {
+    display: none;
+  }
+
+  .journey-dim {
+    margin-bottom: 0.9rem;
+  }
+
+  .journey-cycle .journey-dim-label {
+    justify-content: flex-start;
+    margin-left: 0;
+    text-align: left;
+  }
+
+  .journey-flow,
+  .journey-stage {
+    position: relative;
+    margin-left: 0.75rem;
+    padding: 0 0 1.2rem 1.6rem;
+    border-left: 4px solid var(--ink);
+  }
+
+  .journey-flow-out {
+    padding-bottom: 0;
+    border-left-color: transparent;
+  }
+
+  .journey-flow::before,
+  .journey-stage::before {
+    content: '';
+    position: absolute;
+    top: 0.15rem;
+    left: -2px;
+    width: 1.3rem;
+    height: 1.3rem;
+    border: 0.25rem solid var(--ink);
+    border-radius: 50%;
+    background: var(--mark);
+    transform: translateX(-50%);
+  }
+
+  .journey-stage::before {
+    top: 0.4rem;
+    width: 0.8rem;
+    height: 0.8rem;
+    border-width: 3px;
+    background: var(--panel);
+  }
+}
+
+/* Couleurs forcées : le système remplace les fonds. Le tube plein et les perles gardent une couleur que l'utilisateur a choisie pour ressortir. */
+@media (forced-colors: active) {
+  .journey-tube-full::after {
+    background: CanvasText;
+  }
+
+  .journey-tube::before,
+  .journey-tube-full > i,
+  .journey-flow::before {
+    background: Highlight;
+  }
+}

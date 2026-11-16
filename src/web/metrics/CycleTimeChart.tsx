@@ -143,7 +143,7 @@ export function CycleTimePlot({ points, span, dimension, ctx, timeZone, median, 
       {active && point ? (
         <ChartTooltip pointer={active} bounds={{ width, height }}>
           {/* L'infobulle fait 15 rem au plus : l'identifiant, qui peut n'avoir aucun endroit où passer à la ligne, s'y coupe où il le faut (bdesk-38k.90). */}
-          <p className="wrap-anywhere font-mono text-[11px] text-ink-2">{point.id}</p>
+          <p className="wrap-anywhere font-mono text-[0.6875rem] text-ink-2">{point.id}</p>
           <p className="line-clamp-3 font-medium">{ticketTitle(point)}</p>
           <p className="flex flex-wrap items-center gap-x-2 text-ink-2">
             <TypeBadge type={point.type} />

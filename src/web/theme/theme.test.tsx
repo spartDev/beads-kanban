@@ -142,11 +142,11 @@ describe('ThemeProvider', () => {
   });
 
   it('met à jour la couleur de la barre du navigateur mobile', () => {
-    document.head.innerHTML = '<meta name="theme-color" content="#f3f4f6">';
+    document.head.innerHTML = '<meta name="theme-color" content="#eef1f4">';
     installMatchMedia(true);
     render(<ThemeProvider><Probe /></ThemeProvider>);
 
-    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#0f1114');
+    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#0a1222');
     document.head.innerHTML = '';
   });
 });

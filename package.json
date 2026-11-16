@@ -38,8 +38,8 @@
   },
   "dependencies": {
     "@fastify/static": "8",
-    "@fontsource-variable/geist-mono": "^5.3.0",
-    "@fontsource-variable/mona-sans": "^5.3.0",
+    "@fontsource-variable/atkinson-hyperlegible-mono": "^5.3.0",
+    "@fontsource-variable/atkinson-hyperlegible-next": "^5.3.0",
     "@radix-ui/react-dialog": "^1.3.1",
     "@radix-ui/react-tooltip": "^1.4.1",
     "@tanstack/react-query": "5",

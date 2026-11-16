@@ -188,7 +188,7 @@ export function IssuePanel() {
               ref={titleRef}
               id={titleId}
               tabIndex={-1}
-              className="mt-0.5 w-fit max-w-full wrap-anywhere rounded-sm text-[17px] font-semibold leading-6 tracking-[-0.01em] text-ink focus-visible:outline-offset-1"
+              className="mt-0.5 w-fit max-w-full wrap-anywhere rounded-sm text-[1.1875rem] font-bold leading-7 tracking-[-0.01em] text-ink focus-visible:outline-offset-1"
             >
               {gone ? 'Ticket introuvable' : issue ? ticketTitle(issue) : 'Ticket indisponible'}
             </h2>

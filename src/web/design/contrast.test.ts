@@ -81,6 +81,21 @@ for (const base of BASES) {
 }
 const ALL_SURFACES = Object.keys(SURFACES);
 
+/**
+ * Les fonds de la direction « Le fil » (bdesk-bxq), hors de la liste précédente : leurs textes ont leurs propres encres. La barre latérale est marine, et ses voiles
+ * (ligne survolée, Projet courant) sont clairs ; la marque est le jaune signal, en aplat sous un texte marine ; l'accent en aplat porte une barre d'avancement ou un bouton plein.
+ */
+const SIDE_SURFACES: Record<string, readonly Layer[]> = {
+  side: ['side'],
+  'side + side-hover': ['side', 'side-hover'],
+  'side + side-press': ['side', 'side-press'],
+  'side + side-press + side-hover': ['side', 'side-press', 'side-hover'],
+  mark: ['mark'],
+  accent: ['accent'],
+};
+Object.assign(SURFACES, SIDE_SURFACES);
+const SIDE = ['side', 'side + side-hover', 'side + side-press', 'side + side-press + side-hover'] as const;
+
 // Le texte des touches de clavier (`.kbd`) : le token vient de styles.css, pas d'ici.
 const kbdToken = /\.kbd\s*\{[^}]*\n\s*color:\s*var\(--([\w-]+)\)/.exec(css)?.[1];
 
@@ -101,12 +116,12 @@ const TEXT_ROLES: readonly TextRole[] = [
   {
     token: 'ink-3',
     surfaces: [
-      'canvas', // barre latérale : intertitres, préfixes, aide
-      'canvas + hover', // ligne de la barre latérale survolée
+      'canvas', // fond de l'app : descriptions des pages, légendes posées hors d'une carte
+      'canvas + hover', // ligne survolée posée sur le fond de l'app
       'panel', // pages : chemins, ids, légendes
       'panel + hover', // ligne de la Vue globale survolée
       'float', // palette et aide : intertitres, ids, champ de saisie vide (placeholder), pied
-      'well', // champ « Rechercher » de la barre latérale
+      'well', // creux : colonnes du kanban, encarts
       'panel + danger-soft', // chemin du Projet dans l'encart d'un Projet illisible
       'barre d’onglets', // onglets inactifs du mobile
     ],
@@ -127,6 +142,12 @@ const TEXT_ROLES: readonly TextRole[] = [
     usage: 'liens, pastille « À venir »',
   },
   { token: 'danger', surfaces: ['canvas', 'panel', 'float', 'panel + danger-soft'], usage: 'pictogrammes d’alerte' },
+  { token: 'side-ink', surfaces: SIDE, usage: 'barre latérale : nom de l’application, page et Projet courants' },
+  { token: 'side-ink-2', surfaces: SIDE, usage: 'barre latérale : liens de navigation, noms des Projets' },
+  { token: 'side-ink-3', surfaces: ['side', 'side + side-hover'], usage: 'barre latérale : intertitres, préfixes, champ « Rechercher »' },
+  { token: 'mark', surfaces: ['side', 'side + side-hover'], usage: 'barre latérale : anneau de focus, pictogramme d’un Projet illisible' },
+  { token: 'mark-ink', surfaces: ['mark'], usage: 'page courante, choix fait, compteur de Signaux : texte marine sur aplat jaune' },
+  { token: 'accent-ink', surfaces: ['accent'], usage: 'texte sur un aplat d’accent' },
 ];
 
 describe('contraste WCAG AA des tokens de styles.css', () => {
