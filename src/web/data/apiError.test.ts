@@ -33,6 +33,7 @@ describe('readApiErrorDetail', () => {
     ['un code qui n’est pas un texte', 42, {}],
     ['un nom hérité d’Object', 'toString', {}],
     ['un paramètre manquant', 'issue-not-found', { project: 'p' }],
+    ['un paramètre mal nommé', 'query-unknown-parameter', { parameter: 'x', attendus: ['a'] }],
     ['un paramètre en trop', 'project-not-found', { project: 'p', path: '/Users/x' }],
     ['un paramètre mal typé', 'period-too-long', { days: '400', max: 366 }],
     ['un nombre nul', 'period-too-long', { days: null, max: 366 }],

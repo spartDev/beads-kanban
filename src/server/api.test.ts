@@ -1389,6 +1389,18 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       expect(line).toMatchObject({ level: ERROR, method: 'GET', route: '/api/projects', msg: 'Erreur inattendue', err: { message } });
     });
 
+    it.each([
+      ['un message BigInt', () => Object.defineProperty(new ReadAborted(), 'message', { value: 10n })],
+      ['un message dont l’accesseur lève', () => Object.defineProperty(new ReadAborted(), 'message', { get: () => { throw new Error('accesseur-qui-leve'); } })],
+      ['un message vide', () => Object.defineProperty(new ReadAborted(), 'message', { value: '' })],
+    ])('500 : une ReadAborted dont %s : le message générique et son code, une seule ligne `error`, sans adresse (bdesk-ewr.6)', async (_name, thrown) => {
+      const { res, lines } = await ask(failing(thrown()));
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: GENERIC, code: 'unexpected', params: {} });
+      expect(lines()).toHaveLength(1);
+    });
+
     it('500 : un `message` dont l’accesseur lève : réponse de l’API, une seule ligne `error`', async () => {
       const { res, lines } = await ask(failing(withGetter('message')));
 
@@ -1996,10 +2008,11 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
     });
 
     it.each([
-      ['une ReadAborted', () => new ReadAborted(), 'ReadAborted'],
-      ['une AbortError de la plateforme (DOMException)', () => new DOMException('The operation was aborted.', 'AbortError'), 'DOMException'],
-      ['une Error nommée AbortError', () => Object.assign(new Error('délai dépassé'), { name: 'AbortError' }), 'Error'],
-    ])('%s levée alors que le client attend toujours n’est pas son abandon : une panne, 500 et une ligne `error`', async (_name, thrown, type) => {
+      // Seule la nôtre porte le code `read-aborted` : son message est celui du catalogue ; les autres disent le leur, sans code.
+      ['une ReadAborted', () => new ReadAborted(), 'ReadAborted', { message: 'Lecture abandonnée par son demandeur.', code: 'read-aborted', params: {} }],
+      ['une AbortError de la plateforme (DOMException)', () => new DOMException('The operation was aborted.', 'AbortError'), 'DOMException', { message: 'The operation was aborted.' }],
+      ['une Error nommée AbortError', () => Object.assign(new Error('délai dépassé'), { name: 'AbortError' }), 'Error', { message: 'délai dépassé' }],
+    ])('%s levée alors que le client attend toujours n’est pas son abandon : une panne, 500 et une ligne `error`', async (_name, thrown, type, body) => {
       const { app, lines } = serve({
         list: async () => {
           throw thrown();
@@ -2009,7 +2022,7 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       const res = await app.inject({ method: 'GET', url: '/api/projects' });
 
       expect(res.statusCode).toBe(500);
-      expect(res.json()).toMatchObject({ statusCode: 500, error: 'Internal Server Error' });
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', ...body });
       // `type` est la classe de l'erreur : la copie plafonnée de `loggable` la garde, même pour un DOMException dont les accesseurs lèvent hors de lui
       expect(lines()).toMatchObject([{ level: ERROR, method: 'GET', route: '/api/projects', msg: 'Erreur inattendue', err: { type, message: expect.any(String) } }]);
     });

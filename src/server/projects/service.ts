@@ -16,7 +16,7 @@ export class ProjectNotFoundError extends Error {
     this.name = 'ProjectNotFoundError';
   }
 
-  get detail(): ApiErrorDetail {
+  get detail(): Extract<ApiErrorDetail, { code: 'project-not-found' }> {
     return { code: 'project-not-found', params: { project: this.projectId } };
   }
 }
@@ -30,7 +30,7 @@ export class IssueNotFoundError extends Error {
     this.name = 'IssueNotFoundError';
   }
 
-  get detail(): ApiErrorDetail {
+  get detail(): Extract<ApiErrorDetail, { code: 'issue-not-found' }> {
     return { code: 'issue-not-found', params: { project: this.projectId, issue: this.issueId } };
   }
 }

@@ -17,7 +17,7 @@
 export type ApiErrorParamKind = 'string' | 'number' | 'string[]';
 
 export const API_ERROR_PARAMS = {
-  /** 500 (ou le code 4xx/5xx que porte l'erreur, quand son message ne se lit pas) : une erreur que rien n'avait prévue. */
+  /** 500 (ou le code 4xx/5xx que porte l'erreur, quand son message n'est pas un texte non vide) : une erreur que rien n'avait prévue. */
   unexpected: {},
   /** 499 : le client a fermé sa connexion avant la réponse. */
   'request-aborted': {},
