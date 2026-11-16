@@ -3,7 +3,8 @@ import type { Zone } from './zone';
 
 /**
  * Zone « errors » (bdesk-ewr.6) : ce que l'interface écrit pour chaque code d'erreur que le serveur lui envoie (code + paramètres, voir
- * `src/shared/errors.ts`), et pour les erreurs que le client constate lui-même. Lu par `errorText` (`src/web/data/apiError.ts`), jamais
+ * `src/shared/errors.ts`). Les erreurs que le client constate lui-même (serveur injoignable, réponse sans corps lisible) sont écrites par
+ * `shell.loadErrors`. Lu par `errorText` (`src/web/data/apiError.ts`), jamais
  * directement par un composant. Fichiers de la zone : ce module, `src/web/data/apiError.ts` (`ApiError` et `errorText`), `src/shared/errors.ts`
  * et les réponses d'erreur du serveur.
  *
@@ -56,11 +57,6 @@ const api = {
 const fr = {
   /** Les erreurs que l'API envoie, par code. */
   api,
-  /** Les erreurs que le client constate sans réponse du serveur à lire. */
-  client: {
-    /** Le serveur ne répond pas (connexion refusée, réseau). */
-    unreachable: 'Serveur injoignable',
-  },
 };
 
 const en: typeof fr = {
@@ -86,9 +82,6 @@ const en: typeof fr = {
     'period-too-early': ({ from }) => `The range must start on or after January 1, 1970: “from” (${from}) is too early.`,
     'period-too-long': ({ days, max }) => `The range is too long: ${days} days, at most ${max}.`,
     'period-invalid-day': ({ parameter, received }) => `${quotedEn(parameter)} must be a real day, formatted YYYY-MM-DD: got ${quotedEn(received)}.`,
-  },
-  client: {
-    unreachable: 'Server unreachable',
   },
 };
 

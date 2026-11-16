@@ -6,7 +6,8 @@ import { keyCaps } from '../lib/platform';
 import { signalKinds, signalSentence, SIGNAL_KINDS } from '../lib/signals';
 import { abandonReason } from '../ui/IssueBadges';
 
-/** Les fonctions pures de la zone shell que les autres zones appellent : françaises par défaut, anglaises sur demande (bdesk-ewr.2). */
+/** Les fonctions pures de la zone shell que les autres zones appellent : françaises par défaut, anglaises sur demande (bdesk-ewr.2) ; sauf
+ * `describeError`, qui demande toujours la langue (bdesk-ewr.6). */
 
 const DAY = 86_400_000;
 const NBSP = ' ';

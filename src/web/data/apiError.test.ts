@@ -179,8 +179,33 @@ describe('errorText', () => {
     const unreachable = await apiGet('/api/x').catch((error: unknown) => error);
 
     expect([errorText(bodyless, 'fr'), errorText(bodyless, 'en')]).toEqual(['Erreur HTTP 502', 'HTTP error 502']);
-    expect([errorText(unreachable, 'fr'), errorText(unreachable, 'en')]).toEqual(['Serveur injoignable', 'Server unreachable']);
+    expect([errorText(unreachable, 'fr'), errorText(unreachable, 'en')]).toEqual([
+      'Le serveur beads-desktop est injoignable',
+      'The beads-desktop server is unreachable',
+    ]);
   });
+
+  it.each([
+    ['un objet vide', {}],
+    ['un code HTTP seul', { statusCode: 502 }],
+    ['un message vide', { message: '' }],
+    ['un code inconnu sans message', { code: 'nouveau-code', params: {} }],
+    ['un code mal formé sans message', { code: 'project-not-found', params: {} }],
+  ])('écrit dans la langue une réponse JSON qui ne dit rien d’autre que son code HTTP : %s', async (_name, body) => {
+    const error = await failureOf(body, 502);
+
+    expect(error.bare).toBe(true);
+    expect([errorText(error, 'fr'), errorText(error, 'en')]).toEqual(['Erreur HTTP 502', 'HTTP error 502']);
+  });
+
+  // La langue est obligatoire : un appel qui l'oublierait écrirait en français dans l'interface anglaise. Jamais appelée : seul le compilateur la lit.
+  function languageIsRequired(): void {
+    // @ts-expect-error -- la langue manque
+    describeError(new Error('x'));
+    // @ts-expect-error -- la langue manque
+    errorText(new Error('x'));
+  }
+  void languageIsRequired;
 
   it('ne dit rien de ce qui n’est pas une Error', () => {
     expect(errorText('boum', 'fr')).toBeUndefined();

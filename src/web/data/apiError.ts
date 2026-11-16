@@ -31,17 +31,17 @@ export class ApiError extends Error {
  * Le texte d'une erreur, dans la langue affichée (bdesk-ewr.6) : le seul chemin par lequel l'interface écrit le message d'une erreur d'API.
  * - Une erreur que l'API prévoit (son code est connu, ses paramètres ont la forme attendue) : la phrase du catalogue `errors`, ses nombres formatés
  *   dans la langue ; les autres paramètres (identifiants, valeurs reçues, raison d'un Projet illisible) tels quels.
- * - Le serveur injoignable, ou une réponse d'erreur sans corps : la phrase du client.
+ * - Le serveur injoignable, ou une réponse d'erreur sans corps lisible (`bare`) : les phrases de `shell.loadErrors`.
  * - Tout autre `Error` (un code que l'interface ne connaît pas, un message que le serveur n'a pas codé) : son `message`, tel quel.
  * - Ce qui n'est pas une `Error` : `undefined`.
  */
 export function errorText(error: unknown, language: Language): string | undefined {
   if (!(error instanceof Error)) return undefined;
   if (error instanceof ApiError) {
-    const { client, api } = CATALOGS[language].errors;
-    if (error.status === 0) return client.unreachable;
-    if (error.detail) return apiSentence(error.detail, api, language);
-    if (error.bare) return CATALOGS[language].shell.loadErrors.http(error.status);
+    const { errors, shell } = CATALOGS[language];
+    if (error.status === 0) return shell.loadErrors.unreachable;
+    if (error.detail) return apiSentence(error.detail, errors.api, language);
+    if (error.bare) return shell.loadErrors.http(error.status);
   }
   return error.message;
 }
