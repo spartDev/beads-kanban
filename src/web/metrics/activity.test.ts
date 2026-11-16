@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MetricsActivity } from '../../shared/api';
-import { describeActivity, slotLabel, WEEKDAYS } from './activity';
+import { describeActivity, slotLabel, weekdaysIn } from './activity';
 import { emptyHealthFixture, healthFixture } from './testing';
 
 /**
@@ -18,18 +18,18 @@ function activityOf(entries: [weekday: number, hour: number, count: number][]): 
   return { cells, total: entries.reduce((sum, [, , count]) => sum + count, 0) };
 }
 
-describe('WEEKDAYS', () => {
+describe('weekdaysIn', () => {
   it('commence le lundi, comme l’API et les tranches hebdomadaires', () => {
-    expect(WEEKDAYS.map((day) => day.name)).toEqual(['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']);
-    expect(WEEKDAYS.map((day) => day.short)).toEqual(['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.']);
+    expect(weekdaysIn('fr').map((day) => day.name)).toEqual(['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']);
+    expect(weekdaysIn('fr').map((day) => day.short)).toEqual(['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.']);
   });
 });
 
 describe('slotLabel', () => {
   it('dit le jour et l’heure entière de la case', () => {
-    expect(slotLabel(3, 14)).toBe(`jeudi, de 14${NBSP}h à 15${NBSP}h`);
-    expect(slotLabel(0, 0)).toBe(`lundi, de 0${NBSP}h à 1${NBSP}h`);
-    expect(slotLabel(6, 23)).toBe(`dimanche, de 23${NBSP}h à 24${NBSP}h`);
+    expect(slotLabel(3, 14, 'fr')).toBe(`jeudi, de 14${NBSP}h à 15${NBSP}h`);
+    expect(slotLabel(0, 0, 'fr')).toBe(`lundi, de 0${NBSP}h à 1${NBSP}h`);
+    expect(slotLabel(6, 23, 'fr')).toBe(`dimanche, de 23${NBSP}h à 24${NBSP}h`);
   });
 });
 
@@ -91,5 +91,12 @@ describe('describeActivity', () => {
 
     expect(view.total).toBe(100);
     expect(view.peak).toEqual({ weekday: 3, hour: 9, count: 6 });
+  });
+});
+
+describe('en anglais', () => {
+  it('nomme les jours et les créneaux en anglais', () => {
+    expect(weekdaysIn('en').map((day) => day.short)).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+    expect(slotLabel(3, 14, 'en')).toBe('Thursday, from 14:00 to 15:00');
   });
 });

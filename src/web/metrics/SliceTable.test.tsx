@@ -20,7 +20,7 @@ function renderTable(data: MetricsResponse, dimension: Dimension) {
     tiles: data.tiles,
     ctx,
     projectHref: (id) => `/p/${id}/metrics?range=7d`,
-  });
+  }, 'fr');
   return render(
     <MemoryRouter>
       <SliceTable view={view} dimension={dimension} />

@@ -1,4 +1,5 @@
 import type { MetricsBucket, MetricsBucketUnit, MetricsTiles, MetricsTrend } from '../../shared/api';
+import type { Language } from '../i18n/language';
 import { type BucketView, normalizeBuckets } from './buckets';
 
 /**
@@ -39,9 +40,10 @@ export interface BalanceRow extends BucketView {
 export function describeBalance(
   buckets: readonly MetricsBucket[],
   options: { unit: MetricsBucketUnit; running: boolean; asOfTime: string },
+  language: Language,
 ): BalanceRow[] {
   let [arrivals, deliveries] = [0, 0];
-  return normalizeBuckets(buckets, options).map((view, index): BalanceRow => {
+  return normalizeBuckets(buckets, options, language).map((view, index): BalanceRow => {
     const bucketArrivals = buckets[index]?.arrivals ?? 0;
     arrivals += bucketArrivals;
     deliveries += view.deliveries;

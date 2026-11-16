@@ -25,7 +25,7 @@ const signalsResponse = (overrides: Partial<SignalsResponse> = {}): SignalsRespo
 });
 
 const build = (metrics: NamedMetricsResponse = metricsFixture(), signals: SignalsResponse | 'error' = signalsResponse()) =>
-  plain(buildRetrospective({ scopeName: 'Vue globale', metrics, signals: signals === 'error' ? { status: 'error' } : { status: 'ok', response: signals } }));
+  plain(buildRetrospective({ scopeName: 'Vue globale', metrics, signals: signals === 'error' ? { status: 'error' } : { status: 'ok', response: signals }, language: 'fr' }));
 
 describe('rapport de rétrospective', () => {
   it('titre la période et dit comment elle est comparée', () => {
@@ -105,15 +105,50 @@ describe('rapport de rétrospective', () => {
 
 describe('évolution', () => {
   it('dit l’écart, sa part et s’il est un mieux', () => {
-    expect(plain(evolution(trendOf(12, 9), MEASURES.count))).toBe('+3 (+33 %), en mieux');
-    expect(plain(evolution(trendOf(2 * DAY, 3 * DAY), MEASURES.duration))).toBe('−1 j (−33 %), en mieux');
-    expect(evolution(trendOf(4, 4), MEASURES.count)).toBe('stable');
-    expect(evolution(trendOf(4, null), MEASURES.count)).toBe('—');
+    expect(plain(evolution(trendOf(12, 9), MEASURES.fr.count))).toBe('+3 (+33 %), en mieux');
+    expect(plain(evolution(trendOf(2 * DAY, 3 * DAY), MEASURES.fr.duration))).toBe('−1 j (−33 %), en mieux');
+    expect(evolution(trendOf(4, 4), MEASURES.fr.count)).toBe('stable');
+    expect(evolution(trendOf(4, null), MEASURES.fr.count)).toBe('—');
   });
 });
 
 describe('échappement', () => {
   it('neutralise la mise en forme et les fins de ligne d’un texte venu des données', () => {
     expect(escapeMarkdown('Fix *a* | [b](c) <d> `e` #1\nsuite')).toBe('Fix \\*a\\* \\| \\[b\\](c) \\<d\\> \\`e\\` \\#1 suite');
+  });
+});
+
+describe('en anglais', () => {
+  const english = (metrics: NamedMetricsResponse = metricsFixture(), signals: SignalsResponse = signalsResponse()) =>
+    plain(buildRetrospective({ scopeName: 'Overview', metrics, signals: { status: 'ok', response: signals }, language: 'en' }));
+
+  it('écrit le rapport complet dans la langue et la notation de l’interface', () => {
+    const text = english();
+    expect(text).toMatch(/^# Retrospective: Overview, Oct 27 – Nov 2, 2026\n\nPeriod in progress/);
+    expect(text).toContain('## Key metrics\n\n| Metric | Period | Previous | Change |');
+    expect(text).toContain('| Throughput | 18 Deliveries | 28 | −10 (−36%), worse |');
+    expect(text).toContain('| Lead Time (median) | 6.9 d |');
+    expect(text).toContain('| Reopen rate | 9.5% (2 of 21 closures) | 4% | +5.5 pts, worse |');
+    expect(text).toContain('| Change failure rate | 0% (0 of 18 Deliveries), not significant | 0% | steady |');
+    expect(text).toContain('_Change failure rate not significant: Coverage too low: 19% of bugs have a recorded origin (minimum 50%)._');
+    expect(text).toContain('## Long trend (12 weeks)\n\n| Week of | Throughput | Lead Time (P85) | Reopen rate |');
+    expect(text).toContain('| Aug 24 | 6 | 2 d | 16.7% |');
+    expect(text).toContain('| Nov 2 (in progress) | 1 | 12 d \\* | 0% |');
+    expect(text).toContain('\\* Fewer than 4 Deliveries in the week');
+    expect(text).toContain('## Rework (2 tickets)');
+    expect(text).toContain('- `bdesk-r1` Palette ⌘K (beads-desktop): 2 Reopens, Escaped bug `bdesk-b9`');
+    expect(text).toContain('- `mpm-r2` Import des prompts (My-Prompt-Manager): 1 Handback');
+    expect(text).toContain('## Current Signals (3 Signals, as of Nov 2 at 20:00)');
+    // L'échappement markdown ne dépend pas de la langue.
+    expect(text).toContain('- `bdesk-d1` Refonte \\| kanban (beads-desktop): ');
+    expect(text).toContain('- `mpm-s1` Doc \\*export\\* (My-Prompt-Manager): ');
+  });
+
+  it('accorde au singulier pour 1 exactement, et dit l’absence', () => {
+    const quiet = english(metricsFixture({ health: emptyHealthFixture() }), signalsResponse({ signals: signalsResponse().signals.slice(0, 1) }));
+    expect(quiet).toContain('## Rework (0 tickets)\n\nNo ticket came back in the period');
+    expect(quiet).toContain('## Current Signals (1 Signal, as of Nov 2 at 20:00)');
+    expect(plain(evolution(trendOf(12, 9), MEASURES.en.count))).toBe('+3 (+33%), better');
+    expect(evolution(trendOf(4, 4), MEASURES.en.count)).toBe('steady');
   });
 });

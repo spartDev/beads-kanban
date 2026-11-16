@@ -18,7 +18,7 @@ const slice = (key: string, throughput: number, arrivals: number, wip: number): 
 });
 
 describe('describeTypeMix', () => {
-  const view = describeTypeMix([slice('task', 3, 4, 3), slice('bug', 10, 6, 5), slice('feature', 1, 2, 3)]);
+  const view = describeTypeMix([slice('task', 3, 4, 3), slice('bug', 10, 6, 5), slice('feature', 1, 2, 3)], 'fr');
 
   it('range les types dans l’ordre du code couleur des tickets, comme les autres légendes', () => {
     expect(view.types.map((entry) => [entry.type, entry.label])).toEqual([
@@ -49,7 +49,7 @@ describe('describeTypeMix', () => {
   });
 
   it('garde les types sans compte dans une ligne, à zéro : toutes les lignes ont les mêmes segments', () => {
-    const uneven = describeTypeMix([slice('bug', 4, 0, 0), slice('task', 0, 3, 1)]);
+    const uneven = describeTypeMix([slice('bug', 4, 0, 0), slice('task', 0, 3, 1)], 'fr');
 
     expect(uneven.rows.map((row) => row.segments.map((segment) => segment.count))).toEqual([
       [0, 3], // Arrivées
@@ -59,7 +59,7 @@ describe('describeTypeMix', () => {
   });
 
   it('a une part nulle dans une ligne sans rien : pas de division par zéro', () => {
-    const quiet = describeTypeMix([slice('bug', 2, 0, 0)]);
+    const quiet = describeTypeMix([slice('bug', 2, 0, 0)], 'fr');
     const arrivals = quiet.rows.find((row) => row.key === 'arrivals');
 
     expect(arrivals).toMatchObject({ total: 0 });
@@ -67,20 +67,28 @@ describe('describeTypeMix', () => {
   });
 
   it('colore un type personnalisé de beads de la couleur neutre, et le nomme tel quel', () => {
-    const custom = describeTypeMix([slice('incident', 1, 1, 1)]);
+    const custom = describeTypeMix([slice('incident', 1, 1, 1)], 'fr');
 
     expect(custom.types[0]).toMatchObject({ type: 'incident', label: 'incident', color: 'var(--type-other)' });
   });
 
   it('est vide sans rien à répartir', () => {
-    expect(describeTypeMix([]).empty).toBe(true);
-    expect(describeTypeMix([slice('bug', 0, 0, 0)]).empty).toBe(true);
+    expect(describeTypeMix([], 'fr').empty).toBe(true);
+    expect(describeTypeMix([slice('bug', 0, 0, 0)], 'fr').empty).toBe(true);
     expect(view.empty).toBe(false);
   });
 
   it('reprend les types de la fixture de la Vue globale', () => {
-    const fixture = describeTypeMix(metricsFixture().slices.type);
+    const fixture = describeTypeMix(metricsFixture().slices.type, 'fr');
 
     expect(fixture.rows.find((row) => row.key === 'deliveries')?.total).toBe(14);
+  });
+});
+
+describe('en anglais', () => {
+  it('nomme les lignes en anglais', () => {
+    const view = describeTypeMix([slice('bug', 1, 1, 1)], 'en');
+
+    expect(view.rows.map((row) => row.label)).toEqual(['Arrivals', 'Deliveries', 'In progress']);
   });
 });

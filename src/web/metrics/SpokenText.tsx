@@ -1,4 +1,4 @@
-import { formatDuration, spokenDuration } from './format';
+import { useFormat } from '../i18n';
 
 /** Une valeur s'écrit avec un chevron quand elle borne plutôt qu'elle ne mesure : « < 1 min », « > 99,9 % ». */
 const HAS_CHEVRON = /[<>]/;
@@ -34,5 +34,6 @@ export function SpokenText({ written, spoken, spelledOut = false }: { written: s
 
 /** Une durée écrite comme `formatDuration`, et dite « moins d'une minute » là où elle s'écrit « < 1 min ». */
 export function DurationText({ ms }: { ms: number | null | undefined }) {
+  const { formatDuration, spokenDuration } = useFormat();
   return <SpokenText written={formatDuration(ms)} spoken={typeof ms === 'number' ? spokenDuration(ms) : ''} />;
 }

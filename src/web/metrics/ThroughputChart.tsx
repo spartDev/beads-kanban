@@ -4,18 +4,20 @@ import { Group } from '@visx/group';
 import { scaleBand, scaleLinear } from '@visx/scale';
 import { useId, useMemo } from 'react';
 import type { MetricsBucket, MetricsBucketUnit } from '../../shared/api';
+import { useFormat, useLanguage, useT, type DisplayFormat, type Messages } from '../i18n';
 import { normalizeBuckets, totalDeliveries, type BucketView } from './buckets';
 import { ChartCard, ChartFrame, ChartTooltip, DataTable, Legend, pointerIn, useActive } from './ChartParts';
 import { EmptyChart } from './CfdChart';
 import { AXIS_TEXT } from './axes';
-import { formatCount, formatDecimal } from './format';
 import { outlineOf } from './palette';
 import { bandIndexAt, integerTicks, thinLabels } from './scales';
 
 const MARGIN = { top: 16, right: 8, bottom: 24, left: 30 };
 const FILL = 'var(--flow-done)';
 
-const deliveriesText = (count: number) => (count === 0 ? 'Aucune Livraison' : `${formatCount(count)} ${count > 1 ? 'Livraisons' : 'Livraison'}`);
+/** « 3 Livraisons », « Aucune Livraison ». */
+const deliveriesText = (count: number, t: Messages, format: DisplayFormat) =>
+  count === 0 ? t.metrics.throughputChart.none : t.metrics.chartParts.deliveries(format.formatCount(count), count);
 
 /**
  * L'histogramme du Débit, à la largeur donnée : une barre par jour (période de 31 jours au plus) ou par semaine. Les
@@ -25,6 +27,8 @@ const deliveriesText = (count: number) => (count === 0 ? 'Aucune Livraison' : `$
  */
 export function ThroughputPlot({ views, width, height }: { views: readonly BucketView[]; width: number; height: number }) {
   const { active, frame, show, leave } = useActive<number>();
+  const t = useT();
+  const format = useFormat();
   const hatch = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const innerWidth = Math.max(0, width - MARGIN.left - MARGIN.right);
   const innerHeight = Math.max(0, height - MARGIN.top - MARGIN.bottom);
@@ -39,7 +43,10 @@ export function ThroughputPlot({ views, width, height }: { views: readonly Bucke
 
   return (
     <div ref={frame} className="relative">
-      <svg width={width} height={height} role="img" aria-label={`Débit : ${deliveriesText(totalDeliveries(views))} sur ${views.length} ${views.length > 1 ? 'tranches' : 'tranche'}.`} className="block overflow-visible">
+      <svg width={width} height={height} role="img" aria-label={t.metrics.throughputChart.ariaLabel(
+          deliveriesText(totalDeliveries(views), t, format),
+          t.metrics.chartParts.buckets(format.formatCount(views.length), views.length),
+        )} className="block overflow-visible">
         <defs>
           <pattern id={hatch} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
             <rect width="5" height="5" fill={FILL} fillOpacity="0.35" />
@@ -71,7 +78,7 @@ export function ThroughputPlot({ views, width, height }: { views: readonly Bucke
                 ) : null}
                 {showValues && bucket.deliveries > 0 ? (
                   <text x={left + x.bandwidth() / 2} y={top - 4} textAnchor="middle" {...AXIS_TEXT} fill="var(--ink-2)">
-                    {bucket.deliveries}
+                    {format.formatCount(bucket.deliveries)}
                   </text>
                 ) : null}
               </g>
@@ -82,7 +89,7 @@ export function ThroughputPlot({ views, width, height }: { views: readonly Bucke
             tickValues={yTicks}
             hideAxisLine
             hideTicks
-            tickFormat={(value) => formatCount(Number(value))}
+            tickFormat={(value) => format.formatCount(Number(value))}
             tickLabelProps={() => ({ ...AXIS_TEXT, textAnchor: 'end', dx: '-0.5em', dy: '0.33em' })}
           />
           <AxisBottom
@@ -115,8 +122,10 @@ export function ThroughputPlot({ views, width, height }: { views: readonly Bucke
       {active && view ? (
         <ChartTooltip pointer={active} bounds={{ width, height }}>
           <p className="font-medium">{view.title}</p>
-          <p className="tnum">{deliveriesText(view.deliveries)}</p>
-          {view.days > 1 ? <p className="tnum text-ink-2">{formatDecimal(view.perDay, 1)} par jour sur {view.days} jours</p> : null}
+          <p className="tnum">{deliveriesText(view.deliveries, t, format)}</p>
+          {view.days > 1 ? (
+            <p className="tnum text-ink-2">{t.metrics.throughputChart.perDay(format.formatDecimal(view.perDay, 1), format.formatCount(view.days))}</p>
+          ) : null}
           {view.note ? <p className="text-ink-2">{view.note}</p> : null}
         </ChartTooltip>
       ) : null}
@@ -137,28 +146,32 @@ export function ThroughputPanel({
   running: boolean;
   asOfTime: string;
 }) {
-  const views = useMemo(() => normalizeBuckets(buckets, { unit, running, asOfTime }), [buckets, unit, running, asOfTime]);
+  const t = useT();
+  const format = useFormat();
+  const { language } = useLanguage();
+  const text = t.metrics.throughputChart;
+  const views = useMemo(() => normalizeBuckets(buckets, { unit, running, asOfTime }, language), [buckets, unit, running, asOfTime, language]);
   const total = totalDeliveries(views);
   // La légende ne parle d'une tranche incomplète que si une barre hachurée est dessinée.
   const anyPartial = views.some((view) => view.partial && view.deliveries > 0);
 
   return (
     <ChartCard
-      title="Débit"
-      description={`${deliveriesText(total)} sur la période, comptées par ${unit === 'day' ? 'jour' : 'semaine (du lundi au dimanche)'}.`}
+      title={text.title}
+      description={text.description(deliveriesText(total, t, format), t.metrics.chartParts.unit[unit])}
       legend={
         <Legend
-          label="Légende du Débit"
+          label={text.legend}
           items={[
-            { key: 'full', label: 'Livraisons', color: FILL },
-            ...(anyPartial ? [{ key: 'partial', label: unit === 'day' ? 'Jour en cours' : 'Semaine incomplète ou en cours', color: FILL, hatched: true }] : []),
+            { key: 'full', label: text.full, color: FILL },
+            ...(anyPartial ? [{ key: 'partial', label: unit === 'day' ? text.partialDay : text.partialWeek, color: FILL, hatched: true }] : []),
           ]}
         />
       }
       data={<ThroughputTable views={views} />}
     >
       {total === 0 ? (
-        <EmptyChart>Aucune Livraison sur cette période.</EmptyChart>
+        <EmptyChart>{text.empty}</EmptyChart>
       ) : (
         <ChartFrame height={260}>{({ width, height }) => <ThroughputPlot views={views} width={width} height={height} />}</ChartFrame>
       )}
@@ -167,25 +180,29 @@ export function ThroughputPanel({
 }
 
 function ThroughputTable({ views }: { views: readonly BucketView[] }) {
+  const t = useT();
+  const format = useFormat();
+  const text = t.metrics.throughputChart;
+  const columns = t.metrics.chartParts;
   return (
     <DataTable
-      caption="Livraisons de chaque tranche de la période"
+      caption={text.caption}
       head={
         <tr>
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Tranche
+            {columns.bucketColumn}
           </th>
           <th scope="col" className="px-3 py-1.5 text-right font-medium">
-            Jours
+            {text.daysColumn}
           </th>
           <th scope="col" className="px-3 py-1.5 text-right font-medium">
-            Livraisons
+            {columns.deliveriesColumn}
           </th>
           <th scope="col" className="px-3 py-1.5 text-right font-medium">
-            Par jour
+            {text.perDayColumn}
           </th>
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Remarque
+            {columns.noteColumn}
           </th>
         </tr>
       }
@@ -195,9 +212,9 @@ function ThroughputTable({ views }: { views: readonly BucketView[] }) {
           <th scope="row" className="whitespace-nowrap px-3 py-1 text-left font-normal text-ink-2">
             {view.title}
           </th>
-          <td className="px-3 py-1 text-right">{view.days}</td>
-          <td className="px-3 py-1 text-right font-medium">{formatCount(view.deliveries)}</td>
-          <td className="px-3 py-1 text-right">{formatDecimal(view.perDay, 1)}</td>
+          <td className="px-3 py-1 text-right">{format.formatCount(view.days)}</td>
+          <td className="px-3 py-1 text-right font-medium">{format.formatCount(view.deliveries)}</td>
+          <td className="px-3 py-1 text-right">{format.formatDecimal(view.perDay, 1)}</td>
           <td className="px-3 py-1 text-ink-2">{view.note ?? ''}</td>
         </tr>
       ))}

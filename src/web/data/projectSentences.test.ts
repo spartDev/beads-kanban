@@ -24,7 +24,7 @@ import { CATALOG_TEXT_METHODS, nameReads, type SentenceKind } from '../test/proj
  * que soit la forme, mais dans les seuls états qu'il monte, et en lisant une à une les parties d'un titre d'onglet joint par « · ». Lui ne lit pas un nom seul dans son élément au milieu d'une phrase (le texte propre de l'élément est le repli seul) : celui-là, c'est ce
  * test qui le lit, d'où les éléments de la ligne (`<Link>` et les autres composants en sont) ; `<Nom />`, qui rend ce nom seul, n'est donc lu par aucun des deux. Les deux se complètent ; ni l'un ni l'autre ne prouve qu'une phrase n'existe nulle part.
  *
- * Les exceptions (`ALLOWED`) sont des lectures qui ne sont pas le nom d'un Projet, ou qui sont un libellé suivi de ce qui le qualifie (l'avis des Projets illisibles, qui nomme ses Projets par `projectLabel`). Une exception qui ne sert plus est refusée à son tour :
+ * Les exceptions (`ALLOWED`) sont des lectures qui ne sont pas le nom d'un Projet (le nom d'un jour de la semaine), ou qui sont un libellé suivi de ce qui le qualifie. Une exception qui ne sert plus est refusée à son tour :
  * elle ne reste pas pour rien.
  */
 
@@ -40,7 +40,6 @@ const EXEMPT = new Set(['src/web/data/projectNames.ts']);
 const ALLOWED = [
   { file: 'src/web/metrics/ActivityMap.tsx', read: 'WEEKDAYS[peak.weekday]?.name', why: 'le nom d’un jour de la semaine' },
   { file: 'src/web/metrics/activity.ts', read: 'WEEKDAYS[weekday]?.name', why: 'le nom d’un jour de la semaine' },
-  { file: 'src/web/metrics/Notices.tsx', read: 'projectLabel(project, projects)', why: 'un libellé suivi de sa raison (« Un Projet sans nom : Base Dolt introuvable… »), non une phrase : une ligne par Projet, nommé comme l’alerte de la palette' },
 ];
 
 const sentencesIn = (source: string, fileName?: string): SentenceKind[] =>

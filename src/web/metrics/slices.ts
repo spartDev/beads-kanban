@@ -1,5 +1,8 @@
 import type { MetricsCoverage, MetricsDurationStats, MetricsSlice, MetricsTiles } from '../../shared/api';
-import { formatCount, formatPercent, tidy } from './format';
+import { CATALOGS } from '../i18n/catalog';
+import type { Language } from '../i18n/language';
+import { failureRateReason } from './failureReason';
+import { FORMATS } from './format';
 import type { Dimension } from './params';
 import { seriesOf, type SeriesContext, type SeriesInfo } from './series';
 
@@ -48,9 +51,6 @@ export interface SliceTableView {
 type Tiles = Pick<MetricsTiles, 'throughput' | 'leadTime' | 'cycleTime' | 'failureRate' | 'wip'>;
 type Thresholds = MetricsTiles['failureRate']['thresholds'];
 
-const SHARED_COVERAGE = 'tous les Projets mesurés';
-const WHY_SHARED = 'un bug n’a ni le type ni la priorité de la Livraison qu’il met en échec';
-
 export function describeSlices({
   slices,
   dimension,
@@ -63,11 +63,11 @@ export function describeSlices({
   tiles: Tiles;
   ctx: SeriesContext;
   projectHref?: (projectId: string) => string;
-}): SliceTableView {
+}, language: Language): SliceTableView {
   const { thresholds } = tiles.failureRate;
   const rows = slices.map((slice): SliceRow => {
     const subject = { type: slice.key, priority: Number(slice.key), project: slice.key };
-    // Le nom d'un Projet est celui que l'API donne (`slice.label`) ; type et priorité se disent en français, comme au kanban.
+    // Le nom d'un Projet est celui que l'API donne (`slice.label`) ; type et priorité se disent comme au kanban (`design/issue-palette.ts`).
     const series = dimension === 'project' ? { ...seriesOf(dimension, subject, ctx), label: slice.label } : seriesOf(dimension, subject, ctx);
     return {
       key: slice.key,
@@ -77,7 +77,7 @@ export function describeSlices({
       throughput: slice.throughput,
       leadTime: slice.leadTime,
       cycleTime: slice.cycleTime,
-      failure: failureOf(slice, thresholds),
+      failure: failureOf(slice, thresholds, language),
       wip: slice.wip,
     };
   });
@@ -85,7 +85,7 @@ export function describeSlices({
   const { failureRate } = tiles;
   const overall: SliceRow = {
     key: 'all',
-    label: 'Ensemble',
+    label: CATALOGS[language].metrics.sliceTable.overall,
     series: null,
     href: null,
     throughput: tiles.throughput.total,
@@ -96,7 +96,7 @@ export function describeSlices({
         ? { kind: 'empty' }
         : failureRate.significant
           ? { kind: 'rate', rate: failureRate.rate, failed: failureRate.failed, deliveries: failureRate.deliveries }
-          : { kind: 'insignificant', reason: failureRate.reason ?? explainInsignificance(failureRate.coverage, thresholds) },
+          : { kind: 'insignificant', reason: failureRateReason(failureRate, language) ?? explainInsignificance(failureRate.coverage, thresholds, language) },
     wip: tiles.wip.current,
   };
 
@@ -104,15 +104,15 @@ export function describeSlices({
     rows,
     overall,
     failureColumn: rows.some((row) => row.failure.kind === 'rate'),
-    coverageNote: coverageNote(dimension, rows, overall, tiles.failureRate, slices.some((slice) => slice.significant)),
+    coverageNote: coverageNote(dimension, rows, overall, tiles.failureRate, slices.some((slice) => slice.significant), language),
   };
 }
 
 const pickStats = ({ median, p85, n }: MetricsDurationStats): MetricsDurationStats => ({ median, p85, n });
 
-function failureOf(slice: MetricsSlice, thresholds: Thresholds): FailureCell {
+function failureOf(slice: MetricsSlice, thresholds: Thresholds, language: Language): FailureCell {
   if (slice.throughput === 0 || slice.failureRate === null) return { kind: 'empty' };
-  if (!slice.significant) return { kind: 'insignificant', reason: explainInsignificance(slice.coverage, thresholds) };
+  if (!slice.significant) return { kind: 'insignificant', reason: explainInsignificance(slice.coverage, thresholds, language) };
   return { kind: 'rate', rate: slice.failureRate, failed: slice.failedDeliveries, deliveries: slice.throughput };
 }
 
@@ -120,15 +120,17 @@ function failureOf(slice: MetricsSlice, thresholds: Thresholds): FailureCell {
  * Pourquoi un taux ne dit rien, avec les chiffres de l'API : la Couverture sous le minimum, le nombre de bugs sous le
  * minimum, ou les deux. Même règle que le domaine (`insignificance`, src/domain/metrics.ts).
  */
-export function explainInsignificance(coverage: MetricsCoverage, thresholds: Thresholds): string {
+export function explainInsignificance(coverage: MetricsCoverage, thresholds: Thresholds, language: Language): string {
+  const { formatCount, formatPercent } = FORMATS[language];
+  const texts = CATALOGS[language].metrics.sliceTable;
   const reasons: string[] = [];
   if (coverage.ratio !== null && coverage.ratio < thresholds.minCoverage) {
-    reasons.push(`Couverture ${formatPercent(coverage.ratio)} (minimum ${formatPercent(thresholds.minCoverage)})`);
+    reasons.push(texts.coverageBelow(formatPercent(coverage.ratio), formatPercent(thresholds.minCoverage)));
   }
   if (coverage.bugs < thresholds.minBugs) {
-    reasons.push(`${formatCount(coverage.bugs)} ${coverage.bugs > 1 ? 'bugs' : 'bug'} (minimum ${thresholds.minBugs})`);
+    reasons.push(texts.bugsBelow(formatCount(coverage.bugs), coverage.bugs, formatCount(thresholds.minBugs)));
   }
-  return reasons.join(' ; ');
+  return reasons.join(texts.separator);
 }
 
 /**
@@ -140,28 +142,31 @@ export function explainInsignificance(coverage: MetricsCoverage, thresholds: Thr
  * montre au moins une, dans une ligne de Projet ou dans la ligne « Ensemble ». Elle ne parle donc d'aucun Projet en particulier :
  * la ligne « Ensemble » peut être la seule à dire « n. s. ».
  */
-function coverageNote(dimension: Dimension, rows: readonly SliceRow[], overall: SliceRow, failureRate: MetricsTiles['failureRate'], covered: boolean): string | null {
+function coverageNote(
+  dimension: Dimension,
+  rows: readonly SliceRow[],
+  overall: SliceRow,
+  failureRate: MetricsTiles['failureRate'],
+  covered: boolean,
+  language: Language,
+): string | null {
   if (!rows.some((row) => row.throughput > 0)) return null;
   const { thresholds, coverage } = failureRate;
+  const { formatCount, formatPercent } = FORMATS[language];
+  const texts = CATALOGS[language].metrics.sliceTable;
 
   if (dimension === 'project') {
     if (rows.some((row) => row.failure.kind === 'rate')) {
       if (![...rows, overall].some((row) => row.failure.kind === 'insignificant')) return null;
-      return (
-        'n. s. : Taux d’échec non significatif, faute de Couverture ou de bugs ' +
-        `(moins de ${formatPercent(thresholds.minCoverage)} des bugs avec une origine, ou moins de ${thresholds.minBugs} bugs).`
-      );
+      return texts.notSignificantLegend(formatPercent(thresholds.minCoverage), formatCount(thresholds.minBugs));
     }
-    const required = `(au moins ${formatPercent(thresholds.minCoverage)} des bugs avec une origine, et ${thresholds.minBugs} bugs)`;
-    return covered
-      ? `Taux d’échec non affiché : aucun Projet n’a à la fois assez de Couverture ${required} et des Livraisons sur la période.`
-      : `Taux d’échec non affiché : aucun Projet n’a assez de Couverture ${required}.`;
+    const required = texts.required(formatPercent(thresholds.minCoverage), formatCount(thresholds.minBugs));
+    return covered ? texts.noneCoveredWithDeliveries(required) : texts.noneCovered(required);
   }
 
   // Par type ou par priorité : une seule Couverture, celle de l'ensemble, dite une fois.
-  if (failureRate.significant) {
-    return `Taux d’échec : Couverture de ${formatPercent(coverage.ratio)} des bugs, celle de ${SHARED_COVERAGE} (${WHY_SHARED}).`;
-  }
-  const reason = tidy(failureRate.reason ?? `${explainInsignificance(coverage, thresholds)}.`);
-  return `Taux d’échec non affiché, car non significatif. ${reason} Cette Couverture est celle de ${SHARED_COVERAGE} : ${WHY_SHARED}.`;
+  if (failureRate.significant) return texts.sharedCoverage(formatPercent(coverage.ratio));
+  // Le motif du serveur (`failureRate.reason`) n'est qu'en français : on l'écrit d'après ses codes (`failureRateReason`).
+  const reason = failureRateReason(failureRate, language) ?? `${explainInsignificance(coverage, thresholds, language)}.`;
+  return texts.sharedNotShown(reason);
 }

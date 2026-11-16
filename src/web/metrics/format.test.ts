@@ -14,7 +14,6 @@ import {
   formatTime,
   spokenDuration,
   spokenPoints,
-  tidy,
 } from './format';
 
 /**
@@ -212,18 +211,6 @@ describe('jours et heures', () => {
   });
 });
 
-describe('tidy : la typographie d’une phrase du serveur', () => {
-  it('lie le nombre à son « % » par une espace insécable', () => {
-    expect(tidy('Couverture insuffisante : 19 % des bugs ont une origine renseignée (minimum 50 %).')).toBe(
-      `Couverture insuffisante : 19${NBSP}% des bugs ont une origine renseignée (minimum 50${NBSP}%).`,
-    );
-  });
-
-  it('ne touche à rien d’autre', () => {
-    expect(tidy('Trop peu de bugs pour conclure : 3 (minimum 5).')).toBe('Trop peu de bugs pour conclure : 3 (minimum 5).');
-    expect(tidy('100 % sûr, mais pas 5 pour cent')).toBe(`100${NBSP}% sûr, mais pas 5 pour cent`);
-  });
-});
 
 describe('FORMATS.en : conventions américaines, heures sur 24 h', () => {
   const en = FORMATS.en;

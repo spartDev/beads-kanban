@@ -1,11 +1,10 @@
 import { useId } from 'react';
 import { Link } from 'react-router';
 import type { MetricsDurationStats } from '../../shared/api';
+import { useFormat, useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { Swatch, SectionHeading } from './ChartParts';
-import { formatCount, formatPercent } from './format';
 import type { Dimension } from './params';
-import { DIMENSION_LABELS } from './series';
 import type { FailureCell, SliceRow, SliceTableView } from './slices';
 import { DurationText } from './SpokenText';
 
@@ -25,27 +24,27 @@ const CELL =
 
 export function SliceTable({ view, dimension }: { view: SliceTableView; dimension: Dimension }) {
   const titleId = useId();
-  const noun = DIMENSION_LABELS[dimension].toLowerCase();
+  const { sliceTable: t, chartSeries } = useT().metrics;
   const columns = [
-    ['Débit', 'throughput'],
-    ['Lead Time', 'leadTime'],
-    ['Cycle Time', 'cycleTime'],
-    ...(view.failureColumn ? ([['Taux d’échec', 'failure']] as const) : []),
-    ['WIP', 'wip'],
-  ] as const;
+    t.columns.throughput,
+    t.columns.leadTime,
+    t.columns.cycleTime,
+    ...(view.failureColumn ? [t.columns.failure] : []),
+    t.columns.wip,
+  ];
 
   return (
     <section aria-labelledby={titleId} className="@container flex min-w-0 flex-col gap-3">
-      <SectionHeading id={titleId}>Découpage par {noun}</SectionHeading>
+      <SectionHeading id={titleId}>{t.heading[dimension]}</SectionHeading>
       <div className="min-w-0 rounded-lg border border-line bg-panel p-1 @max-[44rem]:border-0 @max-[44rem]:bg-transparent @max-[44rem]:p-0">
         <table role="table" className="w-full border-collapse text-ui tnum @max-[44rem]:block">
-          <caption className="sr-only">Métriques de la période par {noun}</caption>
+          <caption className="sr-only">{t.caption[dimension]}</caption>
           <thead role="rowgroup" className="@max-[44rem]:sr-only">
             <tr role="row" className="text-micro text-ink-3">
               <th role="columnheader" scope="col" className="px-3 py-2 text-left font-normal">
-                {DIMENSION_LABELS[dimension]}
+                {chartSeries.dimensions[dimension]}
               </th>
-              {columns.map(([label]) => (
+              {columns.map((label) => (
                 <th key={label} role="columnheader" scope="col" className="px-3 py-2 text-right font-normal">
                   {label}
                 </th>
@@ -68,6 +67,8 @@ export function SliceTable({ view, dimension }: { view: SliceTableView; dimensio
 }
 
 function Row({ row, failureColumn, total = false }: { row: SliceRow; failureColumn: boolean; total?: boolean }) {
+  const { columns } = useT().metrics.sliceTable;
+  const format = useFormat();
   return (
     <tr
       role="row"
@@ -80,22 +81,22 @@ function Row({ row, failureColumn, total = false }: { row: SliceRow; failureColu
       <th role="rowheader" scope="row" className="px-3 py-2 text-left align-top font-medium text-ink @max-[44rem]:col-span-2 @max-[44rem]:p-0">
         <Label row={row} />
       </th>
-      <td role="cell" data-label="Débit" className={CELL}>
-        <span className="font-medium text-ink">{formatCount(row.throughput)}</span>
+      <td role="cell" data-label={columns.throughput} className={CELL}>
+        <span className="font-medium text-ink">{format.formatCount(row.throughput)}</span>
       </td>
-      <td role="cell" data-label="Lead Time" className={CELL}>
+      <td role="cell" data-label={columns.leadTime} className={CELL}>
         <Duration stats={row.leadTime} />
       </td>
-      <td role="cell" data-label="Cycle Time" className={CELL}>
+      <td role="cell" data-label={columns.cycleTime} className={CELL}>
         <Duration stats={row.cycleTime} />
       </td>
       {failureColumn ? (
-        <td role="cell" data-label="Taux d’échec" className={CELL}>
+        <td role="cell" data-label={columns.failure} className={CELL}>
           <Failure cell={row.failure} />
         </td>
       ) : null}
-      <td role="cell" data-label="WIP" className={CELL}>
-        <span className="font-medium text-ink">{formatCount(row.wip)}</span>
+      <td role="cell" data-label={columns.wip} className={CELL}>
+        <span className="font-medium text-ink">{format.formatCount(row.wip)}</span>
       </td>
     </tr>
   );
@@ -119,6 +120,7 @@ function Label({ row }: { row: SliceRow }) {
 
 /** La médiane, et le P85 en retrait ; un tiret sans Livraison. */
 function Duration({ stats }: { stats: MetricsDurationStats }) {
+  const { p85 } = useT().metrics.tiles;
   if (stats.n === 0 || stats.median === null) return <span className="text-ink-3">—</span>;
   return (
     <span className="flex flex-col @min-[44rem]:items-end">
@@ -126,21 +128,21 @@ function Duration({ stats }: { stats: MetricsDurationStats }) {
         <DurationText ms={stats.median} />
       </span>{' '}
       <span className="text-micro font-normal text-ink-3">
-        P85 <DurationText ms={stats.p85} />
+        {p85} <DurationText ms={stats.p85} />
       </span>
     </span>
   );
 }
 
 function Failure({ cell }: { cell: FailureCell }) {
+  const t = useT().metrics.sliceTable;
+  const format = useFormat();
   switch (cell.kind) {
     case 'rate':
       return (
         <span className="flex flex-col @min-[44rem]:items-end">
-          <span className="font-medium text-ink">{formatPercent(cell.rate, { precise: true })}</span>{' '}
-          <span className="text-micro font-normal text-ink-3">
-            {cell.failed} sur {cell.deliveries}
-          </span>
+          <span className="font-medium text-ink">{format.formatPercent(cell.rate, { precise: true })}</span>{' '}
+          <span className="text-micro font-normal text-ink-3">{t.failedOf(format.formatCount(cell.failed), format.formatCount(cell.deliveries))}</span>
         </span>
       );
     case 'empty':
@@ -148,8 +150,8 @@ function Failure({ cell }: { cell: FailureCell }) {
     case 'insignificant':
       return (
         <span className="text-ink-3" title={cell.reason}>
-          n. s.
-          <span className="sr-only"> : non significatif ({cell.reason})</span>
+          {t.notSignificant}
+          <span className="sr-only">{t.notSignificantSpoken(cell.reason)}</span>
         </span>
       );
   }

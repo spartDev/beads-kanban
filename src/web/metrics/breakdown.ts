@@ -1,5 +1,7 @@
 import type { MetricsDurationStats, MetricsLeadTimeBreakdown } from '../../shared/api';
-import { formatDuration, spokenDuration } from './format';
+import { CATALOGS } from '../i18n/catalog';
+import type { Language } from '../i18n/language';
+import { FORMATS } from './format';
 
 /**
  * Décomposition du Lead Time : le Lead Time cumulé des Livraisons de la période, en cinq parts qui s'additionnent. Chaque part
@@ -40,54 +42,30 @@ export interface BreakdownView {
   empty: boolean;
 }
 
-/** Une part sans ses mesures : ce que la page en dit. `none` est ce qu'on écrit d'une durée exactement nulle, accordé au libellé. */
-type PartSpec = Omit<BreakdownPart, 'duration' | 'share' | 'text' | 'spoken'> & { none: string };
+/** Une part sans ses mesures ni ses textes (libellé, description, et `none`, ce qu'on écrit d'une durée exactement nulle) : ceux-là sont au catalogue. */
+type PartSpec = Pick<BreakdownPart, 'key' | 'color' | 'hatched'>;
 
 const PARTS: readonly PartSpec[] = [
-  {
-    key: 'dependencyWait',
-    label: 'Attente de dépendance',
-    description: 'Le temps en Backlog avant le premier démarrage : le ticket dépendait d’un ticket non fermé.',
-    color: 'var(--flow-backlog)',
-    hatched: false,
-    none: 'Aucune',
-  },
-  {
-    key: 'readyWait',
-    label: 'Attente en Prêt',
-    description: 'Le temps passé Prêt : le ticket pouvait être démarré et ne l’était pas.',
-    color: 'var(--flow-ready)',
-    hatched: false,
-    none: 'Aucune',
-  },
-  {
-    key: 'otherWait',
-    label: 'Autre attente',
-    description: 'Le reste : Backlog après un premier démarrage, différé, ou fermé avant une Réouverture.',
-    color: 'var(--flow-backlog)',
-    hatched: true,
-    none: 'Aucune',
-  },
-  { key: 'work', label: 'Travail', description: 'Le Cycle Time hors Blocage.', color: 'var(--flow-progress)', hatched: false, none: 'Aucun' },
-  {
-    key: 'blocked',
-    label: 'Blocage',
-    description: 'Le Cycle Time passé en Blocage : statut bloqué, ou dépendance non fermée pendant le travail.',
-    color: 'var(--flow-blocked)',
-    hatched: false,
-    none: 'Aucun',
-  },
+  { key: 'dependencyWait', color: 'var(--flow-backlog)', hatched: false },
+  { key: 'readyWait', color: 'var(--flow-ready)', hatched: false },
+  { key: 'otherWait', color: 'var(--flow-backlog)', hatched: true },
+  { key: 'work', color: 'var(--flow-progress)', hatched: false },
+  { key: 'blocked', color: 'var(--flow-blocked)', hatched: false },
 ];
 
-export function describeBreakdown(breakdown: MetricsLeadTimeBreakdown): BreakdownView {
+export function describeBreakdown(breakdown: MetricsLeadTimeBreakdown, language: Language): BreakdownView {
+  const { formatDuration, spokenDuration } = FORMATS[language];
+  const texts = CATALOGS[language].metrics.leadTimeBreakdown.parts;
   const empty = breakdown.deliveries === 0 || breakdown.total === 0;
   return {
-    parts: PARTS.map(({ none, ...part }) => ({
+    parts: PARTS.map((part) => ({
       ...part,
+      label: texts[part.key].label,
+      description: texts[part.key].description,
       duration: breakdown[part.key],
       // `formatDuration(0)` dirait « < 1 min » : une part exactement nulle n'a pas eu lieu, elle ne s'écrit pas comme une part minuscule.
-      text: breakdown[part.key] > 0 ? formatDuration(breakdown[part.key]) : none,
-      spoken: breakdown[part.key] > 0 ? spokenDuration(breakdown[part.key]) : none,
+      text: breakdown[part.key] > 0 ? formatDuration(breakdown[part.key]) : texts[part.key].none,
+      spoken: breakdown[part.key] > 0 ? spokenDuration(breakdown[part.key]) : texts[part.key].none,
       share: empty ? null : breakdown[part.key] / breakdown.total,
     })),
     total: breakdown.total,

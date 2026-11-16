@@ -4,10 +4,10 @@ import { Group } from '@visx/group';
 import { scaleBand, scaleLinear } from '@visx/scale';
 import { useId } from 'react';
 import type { MetricsLongTrend, MetricsLongTrendWeek } from '../../shared/api';
+import { useFormat, useT, type DisplayFormat, type Messages } from '../i18n';
 import { EmptyChart } from './CfdChart';
 import { ChartCard, ChartFrame, DataTable, Legend } from './ChartParts';
 import { AXIS_TEXT } from './axes';
-import { formatCount, formatDay, formatDayRange, formatDuration, formatPercent, spokenDuration } from './format';
 import { outlineOf } from './palette';
 import { DURATION_STEPS, integerTicks, thinLabels } from './scales';
 import { DurationText } from './SpokenText';
@@ -20,7 +20,9 @@ const BARS = 'var(--flow-done)';
 const LEAD_TIME = projectColor(258);
 const REOPENING = projectColor(320);
 
-const deliveriesText = (count: number) => (count === 0 ? 'aucune Livraison' : `${formatCount(count)} ${count > 1 ? 'Livraisons' : 'Livraison'}`);
+type LongTrendTexts = Messages['metrics']['longTrend'];
+
+const deliveriesText = (texts: LongTrendTexts, format: DisplayFormat, count: number) => texts.deliveries(count, format.formatCount(count));
 
 /**
  * La carte « Tendance longue » : Débit, Lead Time au P85 et Taux de Réouverture des 12 dernières semaines, l'une sous l'autre sur le même axe des
@@ -30,37 +32,40 @@ const deliveriesText = (count: number) => (count === 0 ? 'aucune Livraison' : `$
 export function LongTrendPanel({ trend }: { trend: MetricsLongTrend }) {
   const { weeks, minDeliveries } = trend;
   const empty = weeks.every((week) => week.throughput === 0 && week.closures === 0);
-  const unreliable = `Moins de ${minDeliveries} Livraisons`;
+  const t = useT();
+  const { formatCount, formatDuration, formatPercent, spokenDuration } = useFormat();
+  const texts = t.metrics.longTrend;
+  const unreliable = texts.unreliable(formatCount(minDeliveries));
 
   return (
     <ChartCard
-      title="Tendance longue"
-      description="Les 12 dernières semaines, du lundi au dimanche, quelle que soit la période choisie : le flux s’améliore-t-il ? Chaque semaine est comptée seule, sans lissage."
+      title={texts.title}
+      description={texts.description}
       legend={
         <Legend
-          label="Légende de la Tendance longue"
+          label={texts.legend}
           items={[
-            { key: 'throughput', label: 'Débit', color: BARS },
-            { key: 'lead-time', label: 'Lead Time au P85', color: LEAD_TIME, round: true },
-            { key: 'reopening', label: 'Taux de Réouverture', color: REOPENING, round: true },
+            { key: 'throughput', label: texts.throughput, color: BARS },
+            { key: 'lead-time', label: texts.leadTime, color: LEAD_TIME, round: true },
+            { key: 'reopening', label: texts.reopening, color: REOPENING, round: true },
             { key: 'unreliable', label: unreliable, color: LEAD_TIME, round: true, hatched: true },
-            { key: 'partial', label: 'Semaine en cours', color: BARS, hatched: true },
+            { key: 'partial', label: texts.partial, color: BARS, hatched: true },
           ]}
         />
       }
-      data={<LongTrendTable weeks={weeks} minDeliveries={minDeliveries} />}
+      data={<LongTrendTable weeks={weeks} unreliable={unreliable} />}
     >
       {empty ? (
-        <EmptyChart>Aucune Livraison ni clôture sur les 12 dernières semaines.</EmptyChart>
+        <EmptyChart>{texts.empty}</EmptyChart>
       ) : (
         <div className="flex flex-col gap-2">
-          <Plot title="Débit">
+          <Plot title={texts.throughput}>
             {({ width, height }) => <ThroughputPlot weeks={weeks} width={width} height={height} />}
           </Plot>
-          <Plot title="Lead Time au P85">
+          <Plot title={texts.leadTime}>
             {({ width, height }) => (
               <LinePlot
-                subject="Lead Time au P85 par semaine"
+                subject={texts.leadTimeSubject}
                 weeks={weeks}
                 value={(week) => week.leadTimeP85}
                 dashed={(week) => !week.reliable}
@@ -73,10 +78,10 @@ export function LongTrendPanel({ trend }: { trend: MetricsLongTrend }) {
               />
             )}
           </Plot>
-          <Plot title="Taux de Réouverture">
+          <Plot title={texts.reopening}>
             {({ width, height }) => (
               <LinePlot
-                subject="Taux de Réouverture par semaine"
+                subject={texts.reopeningSubject}
                 weeks={weeks}
                 value={(week) => week.reopeningRate}
                 dashed={() => false}
@@ -112,6 +117,7 @@ function weekScale(weeks: readonly MetricsLongTrendWeek[], innerWidth: number) {
 }
 
 function WeekAxis({ weeks, x, top, innerWidth }: { weeks: readonly MetricsLongTrendWeek[]; x: ReturnType<typeof weekScale>; top: number; innerWidth: number }) {
+  const { formatDay } = useFormat();
   return (
     <AxisBottom
       top={top}
@@ -133,9 +139,18 @@ function ThroughputPlot({ weeks, width, height }: { weeks: readonly MetricsLongT
   const yTicks = integerTicks(Math.max(0, ...weeks.map((week) => week.throughput)), 3);
   const y = scaleLinear({ domain: [0, yTicks.at(-1) ?? 1], range: [innerHeight, 0] });
   const total = weeks.reduce((sum, week) => sum + week.throughput, 0);
+  const t = useT();
+  const format = useFormat();
+  const texts = t.metrics.longTrend;
 
   return (
-    <svg width={width} height={height} role="img" aria-label={`Débit par semaine : ${deliveriesText(total)} sur ${weeks.length} semaines.`} className="block overflow-visible">
+    <svg
+      width={width}
+      height={height}
+      role="img"
+      aria-label={texts.throughputLabel(deliveriesText(texts, format, total), format.formatCount(weeks.length))}
+      className="block overflow-visible"
+    >
       <defs>
         <pattern id={hatch} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
           <rect width="5" height="5" fill={BARS} fillOpacity="0.35" />
@@ -162,7 +177,7 @@ function ThroughputPlot({ weeks, width, height }: { weeks: readonly MetricsLongT
               strokeWidth={1.25}
               strokeDasharray={week.partial ? '3 2' : undefined}
             >
-              <title>{`${weekTitle(week)} : ${deliveriesText(week.throughput)}`}</title>
+              <title>{texts.point(weekTitle(texts, format, week), deliveriesText(texts, format, week.throughput))}</title>
             </rect>
           );
         })}
@@ -171,7 +186,7 @@ function ThroughputPlot({ weeks, width, height }: { weeks: readonly MetricsLongT
           tickValues={yTicks}
           hideAxisLine
           hideTicks
-          tickFormat={(value) => formatCount(Number(value))}
+          tickFormat={(value) => format.formatCount(Number(value))}
           tickLabelProps={() => ({ ...AXIS_TEXT, textAnchor: 'end', dx: '-0.5em', dy: '0.33em' })}
         />
         <WeekAxis weeks={weeks} x={x} top={innerHeight} innerWidth={innerWidth} />
@@ -220,9 +235,18 @@ function LinePlot({
   const cx = (index: number) => (x(index) ?? 0) + x.bandwidth() / 2;
   const faint = (week: MetricsLongTrendWeek) => dashed(week) || week.partial;
   const measured = values.filter((v) => v !== null).length;
+  const t = useT();
+  const display = useFormat();
+  const texts = t.metrics.longTrend;
 
   return (
-    <svg width={width} height={height} role="img" aria-label={`${subject} : ${measured} ${measured > 1 ? 'semaines mesurées' : 'semaine mesurée'} sur ${weeks.length}.`} className="block overflow-visible">
+    <svg
+      width={width}
+      height={height}
+      role="img"
+      aria-label={texts.lineLabel(subject, measured, display.formatCount(measured), display.formatCount(weeks.length))}
+      className="block overflow-visible"
+    >
       <Group left={MARGIN.left} top={MARGIN.top}>
         <GridRows scale={y} width={innerWidth} tickValues={yTicks} stroke="var(--line)" />
         {weeks.slice(1).map((week, offset) => {
@@ -260,7 +284,7 @@ function LinePlot({
               stroke={outlineOf(color)}
               strokeWidth={1.5}
             >
-              <title>{`${weekTitle(week)} : ${speak(v)}`}</title>
+              <title>{texts.point(weekTitle(texts, display, week), speak(v))}</title>
             </circle>
           );
         })}
@@ -295,28 +319,32 @@ function durationTicks(max: number): { top: number; values: number[] } {
   return { top, values: [0, ...values.reverse()] };
 }
 
-const weekTitle = (week: MetricsLongTrendWeek) => `Semaine du ${formatDayRange(week.from, week.to)}`;
+const weekTitle = (texts: LongTrendTexts, format: DisplayFormat, week: MetricsLongTrendWeek) => texts.week(format.formatDayRange(week.from, week.to));
 
-function LongTrendTable({ weeks, minDeliveries }: { weeks: readonly MetricsLongTrendWeek[]; minDeliveries: number }) {
+/** `unreliable` : « Moins de 4 Livraisons », la remarque d'une semaine dont le P85 n'est pas digne de foi (la même que la légende). */
+function LongTrendTable({ weeks, unreliable }: { weeks: readonly MetricsLongTrendWeek[]; unreliable: string }) {
+  const t = useT();
+  const { formatCount, formatDayRange, formatPercent } = useFormat();
+  const texts = t.metrics.longTrend;
   return (
     <DataTable
-      caption="Débit, Lead Time au P85 et Taux de Réouverture de chacune des 12 dernières semaines"
+      caption={texts.caption}
       head={
         <tr>
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Semaine
+            {texts.weekColumn}
           </th>
           <th scope="col" className="px-3 py-1.5 text-right font-medium">
-            Livraisons
+            {texts.deliveriesColumn}
           </th>
           <th scope="col" className="px-3 py-1.5 text-right font-medium">
-            Lead Time P85
+            {texts.leadTimeColumn}
           </th>
           <th scope="col" className="px-3 py-1.5 text-right font-medium">
-            Réouverture
+            {texts.reopeningColumn}
           </th>
           <th scope="col" className="px-3 py-1.5 font-medium">
-            Remarque
+            {texts.remarkColumn}
           </th>
         </tr>
       }
@@ -329,10 +357,10 @@ function LongTrendTable({ weeks, minDeliveries }: { weeks: readonly MetricsLongT
           <td className="px-3 py-1 text-right font-medium">{formatCount(week.throughput)}</td>
           <td className="px-3 py-1 text-right">{week.leadTimeP85 === null ? '—' : <DurationText ms={week.leadTimeP85} />}</td>
           <td className="px-3 py-1 text-right">
-            {week.reopeningRate === null ? '—' : `${formatPercent(week.reopeningRate)} (${week.reopened} sur ${week.closures})`}
+            {week.reopeningRate === null ? '—' : texts.reopeningCell(formatPercent(week.reopeningRate), formatCount(week.reopened), formatCount(week.closures))}
           </td>
           <td className="px-3 py-1 text-ink-2">
-            {[week.partial ? 'En cours' : '', week.throughput > 0 && !week.reliable ? `Moins de ${minDeliveries} Livraisons` : ''].filter(Boolean).join(', ')}
+            {[week.partial ? texts.inProgress : '', week.throughput > 0 && !week.reliable ? unreliable : ''].filter(Boolean).join(texts.remarkSeparator)}
           </td>
         </tr>
       ))}

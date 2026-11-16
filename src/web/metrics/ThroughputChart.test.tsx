@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LanguageProvider } from '../i18n';
+import { LANGUAGE_STORAGE_KEY } from '../i18n/language';
 import { ThroughputPanel } from './ThroughputChart';
 import { emptyMetricsFixture, metricsFixture, stubChartWidth, weeklyMetricsFixture } from './testing';
 
@@ -107,5 +109,34 @@ describe('ThroughputPanel : l’histogramme du Débit', () => {
 
     expect(screen.getByText('Aucune Livraison sur cette période.')).toBeTruthy();
     expect(container.querySelector('svg')).toBeNull();
+  });
+
+  it('écrit le nombre posé sur une barre comme l’axe et le tableau, milliers groupés', () => {
+    const { buckets } = metricsFixture();
+    const busy = buckets.map((bucket, index) => (index === 0 ? { ...bucket, deliveries: 1234 } : bucket));
+    const { container } = render(<ThroughputPanel buckets={busy} unit="day" running={false} asOfTime="20:00" />);
+
+    const labels = [...container.querySelectorAll('svg text')].map((text) => text.textContent);
+    expect(labels).toContain('1 234');
+    expect(labels).not.toContain('1234');
+  });
+});
+
+describe('en anglais', () => {
+  it('nomme le dessin, la carte, la légende et le tableau en anglais', () => {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'en');
+    const { buckets } = metricsFixture();
+    render(
+      <LanguageProvider switchEnabled>
+        <ThroughputPanel buckets={buckets} unit="day" running asOfTime="20:00" />
+      </LanguageProvider>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Throughput' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'Throughput: 18 Deliveries over 7 buckets.' })).toBeTruthy();
+    expect(screen.getByText('18 Deliveries in the period, counted by day.')).toBeTruthy();
+    expect(within(screen.getByRole('list', { name: 'Throughput legend' })).getByText('Current day')).toBeTruthy();
+    expect(screen.getByText('Chart data')).toBeTruthy();
+    expect(screen.getByRole('table', { name: 'Deliveries in each bucket of the period' })).toBeTruthy();
   });
 });
