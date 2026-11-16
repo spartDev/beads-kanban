@@ -75,16 +75,22 @@ interface Indexed {
   keywords: string;
 }
 
-// Les objets Issue gardent la même référence tant que la requête n'est pas rechargée :
-// on ne normalise leurs textes qu'une fois, pas à chaque frappe.
-const indexCache = new WeakMap<object, Indexed>();
+// Les objets Issue gardent la même référence tant que la requête n'est pas rechargée : on ne normalise leurs textes qu'une fois, pas à chaque frappe.
+// Un index par façon de décrire (`describe`) : celle des tickets change avec la langue (« Sans titre », « Untitled »), et un ticket indexé dans une langue
+// ne doit pas être cherché dans l'autre après une bascule, quand ses objets, eux, n'ont pas changé.
+const indexCache = new WeakMap<object, WeakMap<object, Indexed>>();
 
-function index(item: object, describe: () => Searchable): Indexed {
-  let indexed = indexCache.get(item);
+function index<T extends object>(item: T, describe: (item: T) => Searchable): Indexed {
+  let cache = indexCache.get(describe);
+  if (!cache) {
+    cache = new WeakMap();
+    indexCache.set(describe, cache);
+  }
+  let indexed = cache.get(item);
   if (!indexed) {
-    const { id = '', text, keywords = [] } = describe();
+    const { id = '', text, keywords = [] } = describe(item);
     indexed = { id: normalize(id), text: normalize(text), keywords: normalize(keywords.join(' ')) };
-    indexCache.set(item, indexed);
+    cache.set(item, indexed);
   }
   return indexed;
 }
@@ -120,7 +126,7 @@ export function rank<T extends object>(
 
   const scored: { item: T; score: number }[] = [];
   for (const item of items) {
-    const score = scoreItem(terms, index(item, () => describe(item)));
+    const score = scoreItem(terms, index(item, describe));
     if (score > 0) scored.push({ item, score });
   }
 
@@ -128,7 +134,7 @@ export function rank<T extends object>(
   const trimmed = normalize(query).trim();
   if (scored.length === 0 && trimmed.length >= 3) {
     for (const item of items) {
-      const { id, text } = index(item, () => describe(item));
+      const { id, text } = index(item, describe);
       const score = defaultFilter(`${id} ${text}`, trimmed) * 100;
       if (score > 0) scored.push({ item, score });
     }

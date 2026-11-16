@@ -3,6 +3,7 @@ import { Check, CornerDownLeft, Globe, TriangleAlert } from 'lucide-react';
 import { isReadable, ticketTitle } from '../data/helpers';
 import type { Issue, Project } from '../data/types';
 import { priorityMeta, statusLabel } from '../design/issue-palette';
+import { useFormat, useLanguage, useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { paths } from '../paths';
 import { sectionHref, useRouteInfo } from '../shell/navigation';
@@ -95,12 +96,17 @@ function renderRows(section: PaletteSection, everywhere: boolean, go: (to: strin
           {section.items.map(({ issue, project }) => (
             <IssueRow key={`${project.id}/${issue.id}`} issue={issue} project={project} go={go} />
           ))}
-          {section.more > 0 ? (
-            <p className="px-4 py-1.5 text-xs text-ink-3">{section.more} autres correspondances : affinez la recherche.</p>
-          ) : null}
+          {section.more > 0 ? <MoreMatches count={section.more} /> : null}
         </>
       );
   }
+}
+
+/** Sous les tickets : combien d'autres correspondent, au-delà de la limite d'affichage. */
+function MoreMatches({ count }: { count: number }) {
+  const t = useT();
+  const format = useFormat();
+  return <p className="px-4 py-1.5 text-xs text-ink-3">{t.shell.palette.more(format.formatCount(count), count)}</p>;
 }
 
 function EpicRow({
@@ -115,6 +121,7 @@ function EpicRow({
   showProject: boolean;
   go: (to: string) => void;
 }) {
+  const { language } = useLanguage();
   return (
     <Command.Item
       value={`epic:${project.id}/${issue.id}`}
@@ -125,7 +132,7 @@ function EpicRow({
       <TypeGlyph type="epic" />
       {/* En entier, coupé là où il le faut : voir ID_CLASS (bdesk-38k.90). */}
       <span className={cx(ID_CLASS, dim)}>{issue.id}</span>
-      <span className={cx('min-w-0 flex-1 truncate', issue.closedAt && dim)}>{ticketTitle(issue)}</span>
+      <span className={cx('min-w-0 flex-1 truncate', issue.closedAt && dim)}>{ticketTitle(issue, language)}</span>
       {showProject ? <span className={cx('max-w-[30%] shrink-0 truncate text-xs', dim)}>{project.name}</span> : null}
       <EnterHint />
     </Command.Item>
@@ -133,6 +140,7 @@ function EpicRow({
 }
 
 function IssueRow({ issue, project, go }: { issue: Issue; project: Project; go: (to: string) => void }) {
+  const { language, t } = useLanguage();
   return (
     <Command.Item
       value={`issue:${project.id}/${issue.id}`}
@@ -143,11 +151,11 @@ function IssueRow({ issue, project, go }: { issue: Issue; project: Project; go: 
       <TypeGlyph type={issue.type} />
       {/* En entier, coupé là où il le faut : voir ID_CLASS (bdesk-38k.90). */}
       <span className={cx(ID_CLASS, dim)}>{issue.id}</span>
-      <span className={cx('min-w-0 flex-1 truncate', issue.closedAt && dim)}>{ticketTitle(issue)}</span>
+      <span className={cx('min-w-0 flex-1 truncate', issue.closedAt && dim)}>{ticketTitle(issue, language)}</span>
       {issue.status !== 'open' ? (
         <span className={cx('hidden max-w-[25%] shrink-0 truncate text-xs sm:inline', dim)}>{statusLabel(issue.status)}</span>
       ) : null}
-      <span title={`Priorité ${priorityMeta(issue.priority).label}`} className="shrink-0">
+      <span title={t.shell.badges.priority(priorityMeta(issue.priority).label)} className="shrink-0">
         <PriorityGlyph priority={issue.priority} />
       </span>
       <EnterHint />
@@ -159,6 +167,7 @@ function ProjectRow({ project, go }: { project: Project; go: (to: string) => voi
   const route = useRouteInfo();
   const current = project.id === route.projectId;
   const readable = isReadable(project);
+  const t = useT();
   return (
     <Command.Item
       value={`project:${project.id}`}
@@ -175,12 +184,12 @@ function ProjectRow({ project, go }: { project: Project; go: (to: string) => voi
         <span className={cx('flex min-w-0 flex-1 items-center gap-1.5 text-xs', dim)}>
           <TriangleAlert size={13} aria-hidden="true" className="shrink-0 text-danger" />
           <span className="truncate">
-            <span className="sr-only">Illisible : </span>
-            {project.reason ?? 'Illisible'}
+            <span className="sr-only">{t.shell.common.unreadableBecause}</span>
+            {project.reason ?? t.shell.common.unreadable}
           </span>
         </span>
       )}
-      {current ? <Check size={14} strokeWidth={2.2} aria-label="Projet courant" className="shrink-0 text-accent" /> : null}
+      {current ? <Check size={14} strokeWidth={2.2} aria-label={t.shell.palette.currentProject} className="shrink-0 text-accent" /> : null}
       {readable ? <EnterHint /> : null}
     </Command.Item>
   );
@@ -188,13 +197,14 @@ function ProjectRow({ project, go }: { project: Project; go: (to: string) => voi
 
 export function CommandRow({ command }: { command: CommandEntry }) {
   const Icon = command.icon;
+  const t = useT();
   return (
     <Command.Item value={command.value} onSelect={command.run} className={itemClass}>
       <Bead />
       <Icon size={16} strokeWidth={1.8} aria-hidden="true" className="shrink-0 text-ink-3 group-data-[selected=true]/item:text-ink-2" />
       <span lang={command.lang} className="min-w-0 truncate">{command.label}</span>
       {command.hint ? <span className={cx('min-w-0 flex-1 truncate text-xs', dim)}>{command.hint}</span> : <span className="flex-1" />}
-      {command.active ? <Check size={14} strokeWidth={2.2} aria-label="Actif" className="shrink-0 text-accent" /> : null}
+      {command.active ? <Check size={14} strokeWidth={2.2} aria-label={t.shell.palette.active} className="shrink-0 text-accent" /> : null}
       {command.shortcut ? (
         <span className="hidden shrink-0 md:inline-flex">
           <ShortcutKeys keys={command.shortcut} />
@@ -214,13 +224,14 @@ export function ScopeChip({
   everywhere: boolean;
   project: Project | undefined;
 }) {
+  const t = useT();
   if (mode === 'projects') return null;
   return (
     <span className="flex max-w-[40%] shrink-0 items-center gap-1.5 rounded-md border border-line px-1.5 py-0.5 text-xs text-ink-2">
       {everywhere ? (
         <>
           <Globe size={12} aria-hidden="true" />
-          <span className="truncate">Tous les Projets</span>
+          <span className="truncate">{t.shell.palette.allProjects}</span>
         </>
       ) : project ? (
         <>

@@ -2,6 +2,7 @@ import { Eye, Keyboard, LayoutGrid, RefreshCw, Search, TriangleAlert } from 'luc
 import { Link, NavLink } from 'react-router';
 import { useProjects } from '../data/hooks';
 import type { Project } from '../data/types';
+import { useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { useRetryFocus } from '../lib/useRetryFocus';
 import { keepFocusInZone } from '../lib/zoneFocus';
@@ -41,6 +42,7 @@ function RowHint({ keys }: { keys: string }) {
 export function Sidebar() {
   const { openPalette } = usePalette();
   const help = useShortcutsHelp();
+  const t = useT();
 
   return (
     <aside className="on-side hidden w-60 shrink-0 flex-col gap-4 bg-side px-3 pb-3 pt-4 text-side-ink md:flex">
@@ -55,20 +57,20 @@ export function Sidebar() {
         className="flex h-9 w-full items-center gap-2.5 rounded-lg border border-side-line bg-side-hover px-2.5 text-ui text-side-ink-3 transition-colors hover:text-side-ink-2"
       >
         <Search size={16} strokeWidth={2} aria-hidden="true" />
-        <span className="flex-1 text-left">Rechercher</span>
+        <span className="flex-1 text-left">{t.shell.layout.search}</span>
         <ShortcutKeys keys="mod+k" />
       </button>
 
-      <nav aria-label="Navigation principale" className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
+      <nav aria-label={t.shell.layout.primaryNavigation} className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
         <div className="flex flex-col gap-1">
           <NavLink to={paths.global()} end className={rowClass}>
             <LayoutGrid size={17} strokeWidth={1.9} aria-hidden="true" className={rowIconClass} />
-            Vue globale
+            {t.shell.overview.title}
             <RowHint keys="g v" />
           </NavLink>
           <NavLink to={paths.signals()} end className={rowClass}>
             <Eye size={17} strokeWidth={1.9} aria-hidden="true" className={rowIconClass} />
-            À regarder
+            {t.shell.sections.signals}
           </NavLink>
         </div>
         <ProjectList />
@@ -78,10 +80,10 @@ export function Sidebar() {
       <LanguageToggle tone="side" className="mx-0.5" />
       <div className="flex items-center justify-between px-0.5">
         <ThemeToggle tone="side" />
-        <Tip label="Raccourcis clavier" shortcut="?" side="top">
+        <Tip label={t.shell.layout.shortcuts} shortcut="?" side="top">
           <button
             type="button"
-            aria-label="Afficher les raccourcis clavier"
+            aria-label={t.shell.layout.showShortcuts}
             onClick={(event) => help.show(event.currentTarget)}
             className="grid size-8 place-items-center rounded-lg text-side-ink-3 transition-colors hover:bg-side-hover hover:text-side-ink"
           >
@@ -97,20 +99,21 @@ function ProjectList() {
   const projects = useProjects();
   const retry = useRetryFocus(projects);
   const { projectId, section } = useRouteInfo();
+  const t = useT();
 
   return (
     // Une zone de focus : « Réessayer » ne perd pas le focus quand le squelette remplace l'alerte (voir `keepFocusInZone`), puis le titre le prend à l'arrivée de la liste.
     // Sans contour pour la zone (le focus y est transitoire) ; celui du titre reste à l'intérieur : la navigation rogne ce qui la dépasse.
     <section aria-labelledby="sidebar-projects" data-focus-zone="" className="flex flex-col gap-1 outline-none">
       <h2 id="sidebar-projects" className="flex items-center justify-between rounded-md px-2.5 pb-1 text-xs font-medium text-side-ink-3 focus-visible:-outline-offset-2">
-        Projets
+        {t.shell.layout.projects}
         {projects.data ? <span className="tnum">{projects.data.projects.length}</span> : null}
       </h2>
 
       {/* Un rafraîchissement raté garde la liste affichée : l'alerte n'a la parole que faute de données. */}
       {projects.data ? (
         projects.data.projects.length === 0 ? (
-          <p className="px-2.5 text-xs text-side-ink-3">Aucun Projet trouvé.</p>
+          <p className="px-2.5 text-xs text-side-ink-3">{t.shell.layout.noProjects}</p>
         ) : (
           <ul className="flex flex-col gap-0.5">
             {projects.data.projects.map((project) => (
@@ -126,18 +129,18 @@ function ProjectList() {
       ) : projects.isError ? (
         // `key` : l'alerte et le squelette sont deux `div` au même endroit, que React mettrait à jour sans retirer l'alerte ; il faut qu'il la retire, avec son bouton, pour que `keepFocusInZone` s'exécute quand le focus y est encore.
         <div key="failed" ref={keepFocusInZone} role="alert" className="mx-1 flex flex-col items-start gap-1.5 rounded-lg border border-side-line bg-side-hover p-2.5 text-xs text-side-ink-2">
-          Projets indisponibles : le serveur ne répond pas.
+          {t.shell.layout.projectsUnavailable}
           <button
             type="button"
             onClick={retry}
             className="inline-flex items-center gap-1.5 font-semibold text-side-ink hover:underline"
           >
             <RefreshCw size={13} aria-hidden="true" />
-            Réessayer
+            {t.shell.common.retry}
           </button>
         </div>
       ) : (
-        <div key="loading" role="status" aria-busy="true" aria-label="Chargement des Projets" className="flex flex-col gap-2 px-2.5 pt-1">
+        <div key="loading" role="status" aria-busy="true" aria-label={t.shell.layout.loadingProjects} className="flex flex-col gap-2 px-2.5 pt-1">
           <Skeleton tone="side" className="h-5" />
           <Skeleton tone="side" className="h-5 w-4/5" />
           <Skeleton tone="side" className="h-5 w-3/5" />
@@ -156,6 +159,7 @@ function ProjectItem({
   active: boolean;
   section: ReturnType<typeof useRouteInfo>['section'];
 }) {
+  const t = useT();
   if (project.status !== 'ok') {
     return (
       <li>
@@ -168,8 +172,8 @@ function ProjectItem({
               <TriangleAlert size={14} aria-hidden="true" className="shrink-0 text-mark" />
             </div>
             <p className="line-clamp-2 wrap-anywhere text-micro">
-              <span className="sr-only">Illisible : </span>
-              {project.reason ?? 'Illisible'}
+              <span className="sr-only">{t.shell.common.unreadableBecause}</span>
+              {project.reason ?? t.shell.common.unreadable}
             </p>
           </div>
         </div>
@@ -196,7 +200,7 @@ function ProjectItem({
 
       {active ? (
         <ul className="ml-[1.1rem] mt-1 flex flex-col gap-0.5 border-l border-side-line pl-2">
-          {SECTIONS.map(({ id, label, icon: Icon, shortcut }) => {
+          {SECTIONS.map(({ id, icon: Icon, shortcut }) => {
             // Le détail d'un ticket s'ouvre depuis le kanban : l'onglet reste celui du kanban.
             const current = section === id || (id === 'kanban' && section === 'issue');
             return (
@@ -207,7 +211,7 @@ function ProjectItem({
                   className={rowClass}
                 >
                   <Icon size={16} strokeWidth={1.9} aria-hidden="true" className={rowIconClass} />
-                  {label}
+                  {t.shell.sections[id]}
                   <RowHint keys={shortcut} />
                 </Link>
               </li>

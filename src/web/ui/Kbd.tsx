@@ -1,3 +1,4 @@
+import { useLanguage } from '../i18n';
 import { keyCaps } from '../lib/platform';
 import { useShortcutRegistry } from '../shortcuts/ShortcutsProvider';
 import { cx } from '../lib/cx';
@@ -14,12 +15,13 @@ export function Kbd({ children, className }: { children: string; className?: str
  */
 export function ShortcutKeys({ keys, className }: { keys: string; className?: string }) {
   const { isMac } = useShortcutRegistry();
+  const { language } = useLanguage();
   const steps = keys.split(' ');
   return (
     <span className={cx('inline-flex items-center gap-1', className)} aria-hidden="true">
       {steps.map((step, index) => (
         <span key={index} className="inline-flex items-center gap-0.5">
-          {keyCaps(step, isMac).map((cap, i) => (
+          {keyCaps(step, isMac, language).map((cap, i) => (
             <Kbd key={i}>{cap}</Kbd>
           ))}
         </span>

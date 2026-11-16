@@ -2,6 +2,7 @@ import { useQueryClient, type Query } from '@tanstack/react-query';
 import { RefreshCw, TriangleAlert } from 'lucide-react';
 import { useCallback, useSyncExternalStore, type MouseEvent } from 'react';
 import { ApiError } from '../data/client';
+import { useT } from '../i18n';
 import { focusContainer } from '../lib/focus';
 import { focusTitleWhenReady, keepFocusInZone, locationOf, zoneOf } from '../lib/zoneFocus';
 
@@ -26,6 +27,7 @@ const showsStaleData = (query: Query): boolean =>
  */
 export function RefreshFailedBanner({ muted }: { muted: boolean }) {
   const queryClient = useQueryClient();
+  const t = useT();
   const cache = queryClient.getQueryCache();
   const subscribe = useCallback((notify: () => void) => cache.subscribe(notify), [cache]);
   // « active » : des données à l'écran. La palette fermée ne retient pas ses requêtes dans ce décompte.
@@ -62,7 +64,7 @@ export function RefreshFailedBanner({ muted }: { muted: boolean }) {
         <div ref={keepFocusInZone} className="flex items-center gap-2 border-b border-line bg-well px-4 py-1.5 text-xs text-ink-2">
           <TriangleAlert size={13} aria-hidden="true" className="shrink-0 text-danger" />
           <p className="min-w-0 flex-1 wrap-anywhere">
-            Actualisation impossible : les données affichées ne sont peut-être plus à jour.
+            {t.shell.live.refreshFailed}
           </p>
           <button
             type="button"
@@ -70,7 +72,7 @@ export function RefreshFailedBanner({ muted }: { muted: boolean }) {
             className="inline-flex shrink-0 items-center gap-1.5 font-medium text-ink hover:underline"
           >
             <RefreshCw size={12} aria-hidden="true" />
-            Réessayer
+            {t.shell.common.retry}
           </button>
         </div>
       ) : null}

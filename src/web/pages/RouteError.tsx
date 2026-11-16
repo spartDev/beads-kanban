@@ -1,5 +1,6 @@
 import { CircleAlert } from 'lucide-react';
 import { isRouteErrorResponse, useRouteError } from 'react-router';
+import { useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { paths } from '../paths';
 import { Notice } from '../ui/states';
@@ -7,6 +8,7 @@ import { Notice } from '../ui/states';
 /** Erreur d'affichage d'une page : le message, et un chemin de sortie. */
 export function RouteError({ standalone = false }: { standalone?: boolean }) {
   const error = useRouteError();
+  const text = useT().shell.routeError;
   const message = isRouteErrorResponse(error)
     ? `${error.status} ${error.statusText}`
     : error instanceof Error
@@ -18,10 +20,10 @@ export function RouteError({ standalone = false }: { standalone?: boolean }) {
       <Notice
         tone="danger"
         icon={CircleAlert}
-        title="Une erreur a interrompu l’affichage de cette page"
+        title={text.title}
         action={
           <a href={paths.global()} className="font-medium text-accent hover:underline">
-            Recharger la Vue globale
+            {text.reload}
           </a>
         }
       >

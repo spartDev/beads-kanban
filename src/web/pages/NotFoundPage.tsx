@@ -1,24 +1,28 @@
 import { SearchX } from 'lucide-react';
 import { Link } from 'react-router';
+import { useT } from '../i18n';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { paths } from '../paths';
 import { Notice } from '../ui/states';
 import { Page } from './Page';
 
 export function NotFoundPage() {
-  useDocumentTitle('Page introuvable');
+  const text = useT().shell.notFound;
+  useDocumentTitle(text.title);
   return (
-    <Page title="Page introuvable">
+    <Page title={text.title}>
       <Notice
         icon={SearchX}
-        title="Cette adresse ne correspond à aucune page"
+        title={text.notice}
         action={
           <Link to={paths.global()} className="font-medium text-accent hover:underline">
-            Aller à la Vue globale
+            {text.back}
           </Link>
         }
       >
-        Les pages d’un Projet sont de la forme <code>/p/identifiant/kanban</code>.
+        {text.hintBefore}
+        <code>{text.hintPath}</code>
+        {text.hintAfter}
       </Notice>
     </Page>
   );
