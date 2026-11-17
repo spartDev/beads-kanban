@@ -162,7 +162,7 @@ describe('protection contre le DNS rebinding (en-tête Host)', () => {
 
     expect(res.statusCode).toBe(403);
     expect(res.headers['content-type']).toContain('application/json');
-    expect(res.json()).toMatchObject({ statusCode: 403, error: 'Forbidden' });
+    expect(res.json()).toMatchObject({ statusCode: 403, error: 'Forbidden', code: 'host-not-allowed', params: {} });
   });
 
   it('refuse une requête sans en-tête Host', async () => {

@@ -92,7 +92,7 @@ export function Chronology({ projectId, issueId }: { projectId: string; issueId:
  * qui l'est (trop long, base verrouillée). Le titre dit donc ce qui manque, et la cause suit.
  */
 function Unavailable({ error, onRetry }: { error: unknown; onRetry: (event: MouseEvent<HTMLButtonElement>) => void }) {
-  const described = describeError(error);
+  const described = describeError(error, useLanguage().language);
   const { chronology: texts } = useT().kanban;
   return (
     <Notice

@@ -10,7 +10,8 @@ import type {
   ProjectsResponse,
   SignalsResponse,
 } from '../shared/api';
-import { isAbortError } from './abort';
+import type { ApiErrorDetail } from '../shared/errors';
+import { isAbortError, ReadAborted } from './abort';
 import { type ChronologyService, createChronologyService } from './chronology/service';
 import { attempt, clip, identify, loggable, shown, statusOf, UNEXPECTED } from './errorLog';
 import { InvalidMetricsQueryError, parseMetricsQuery, parseSignalsQuery } from './metrics/query';
@@ -46,7 +47,7 @@ import {
  *
  * Le gestionnaire ne lève jamais (bdesk-38k.52) : si une erreur le faisait lever, Fastify la passerait à son gestionnaire par défaut, qui journalise
  * la requête avec son adresse (`?token=…`). Ce que l'on lit de l'erreur (un accesseur peut lever) est gardé ; le message du corps n'est celui de
- * l'erreur que s'il est un texte ; et un filet autour de tout écrit une ligne fixe, sans adresse (avec, au mieux, le type et le message de
+ * l'erreur que s'il est un texte non vide ; et un filet autour de tout écrit une ligne fixe, sans adresse (avec, au mieux, le type et le message de
  * l'erreur d'origine), et répond un 500. Ce que l'on lit d'une erreur et ce qu'on en écrit est dans `errorLog.ts`.
  */
 export async function registerApi(
@@ -66,7 +67,7 @@ export async function registerApi(
       // rien ne le promet pour demain.
       const original = attempt(() => identify(error), {});
       attempt(() => req.log.error({ ...whereOf(req), original }, "Erreur inattendue (le gestionnaire d'erreurs a échoué)"), undefined);
-      return send(reply, 500, UNEXPECTED);
+      return send(reply, 500, UNEXPECTED, UNEXPECTED_DETAIL);
     }
   });
 
@@ -107,30 +108,39 @@ function handleError(error: FastifyError, req: FastifyRequest, reply: FastifyRep
   // Le client est parti (sa connexion s'est fermée avant la réponse) et la lecture s'est arrêtée en abandon : personne n'attend la réponse, et ce
   // n'est pas une panne : rien au journal. Le nom de l'erreur ne suffit pas : un abandon alors que le client attend toujours (une lecture
   // partagée annulée par d'autres, un délai) est une panne comme une autre, un 500 que le journal dit.
-  if (isAbortError(error) && clientLeft(reply)) return send(reply, 499, 'Requête abandonnée par le client.');
+  if (isAbortError(error) && clientLeft(reply)) {
+    return send(reply, 499, 'Requête abandonnée par le client.', { code: 'request-aborted', params: {} });
+  }
   if (error instanceof InvalidMetricsQueryError || error instanceof InvalidPeriodError) {
-    return send(reply, 400, error.message);
+    return send(reply, 400, error.message, error.detail);
   }
   if (error instanceof ProjectNotFoundError || error instanceof IssueNotFoundError) {
-    return send(reply, 404, error.message);
+    return send(reply, 404, error.message, error.detail);
   }
   if (error instanceof ProjectUnreadableError) {
     req.log.warn(whereOf(req), clip(error.message));
-    return send(reply, 503, `Projet illisible : ${error.reason}`, error.reason);
+    // `reason` reste à sa place pour les clients qui la lisent ; elle est aussi le seul paramètre du code, telle quelle : une phrase française du
+    // serveur, un gabarit par classe de cause qui peut porter un chemin, un délai, un nom ou une valeur de la base. L'interface ne la traduit pas
+    // encore (bdesk-ewr.8).
+    return send(reply, 503, `Projet illisible : ${error.reason}`, { code: 'project-unreadable', params: { reason: error.reason } }, error.reason);
   }
   if (!(error instanceof Error)) {
     // Fastify type l'erreur en `FastifyError`, mais le code peut lever n'importe quoi (`throw 'x'`, `throw null`) : ni message, ni code, ni pile
     // à lire, la valeur elle-même dit ce qu'on en sait. Elle ne part pas au client.
     req.log.error(whereOf(req), `Erreur inattendue (valeur levée qui n'est pas une Error) : ${shown(error)}`);
-    return send(reply, 500, UNEXPECTED);
+    return send(reply, 500, UNEXPECTED, UNEXPECTED_DETAIL);
   }
   const statusCode = statusOf(error);
   // Journalisée ici, une seule fois : la réponse part par `send`, jamais par `reply.send(error)`, que Fastify journaliserait à son tour.
   if (statusCode >= 500) req.log.error({ err: loggable(error), ...whereOf(req) }, 'Erreur inattendue');
-  // Le corps ne reçoit que le message qui est un texte : un `BigInt` ou un objet circulaire fait échouer `JSON.stringify`, et l'objet d'une 4xx
+  // Le corps ne reçoit que le message qui est un texte non vide : un `BigInt` ou un objet circulaire fait échouer `JSON.stringify`, et l'objet d'une 4xx
   // partirait au client tel quel.
+  // Un message vide ne dirait rien : le message générique, avec son code.
   const message = attempt(() => error.message, undefined);
-  return send(reply, statusCode, typeof message === 'string' ? message : UNEXPECTED);
+  if (typeof message !== 'string' || message === '') return send(reply, statusCode, UNEXPECTED, UNEXPECTED_DETAIL);
+  // Une lecture abandonnée alors que le client attend toujours (une lecture partagée annulée par d'autres) : une panne, avec le code de l'API. Tout
+  // autre message, que l'API n'a pas écrit, n'a pas de code : l'interface l'affiche tel quel.
+  return send(reply, statusCode, message, error instanceof ReadAborted ? { code: 'read-aborted', params: {} } : undefined);
 }
 
 /** D'où vient l'erreur, pour le journal : la méthode et le modèle de la route, jamais l'adresse demandée avec sa requête. */
@@ -147,8 +157,14 @@ function clientLeft(reply: FastifyReply): boolean {
   return reply.raw.destroyed;
 }
 
-function send(reply: FastifyReply, statusCode: number, message: string, reason?: string): FastifyReply {
+const UNEXPECTED_DETAIL: ApiErrorDetail = { code: 'unexpected', params: {} };
+
+/**
+ * La réponse d'erreur : le message français, et, pour une erreur que l'API prévoit, son code et ses paramètres (`detail`), d'où l'interface écrit la
+ * phrase dans sa langue. Les paramètres sont des morceaux du message, jamais plus.
+ */
+function send(reply: FastifyReply, statusCode: number, message: string, detail?: ApiErrorDetail, reason?: string): FastifyReply {
   const error = STATUS_CODES[statusCode] ?? 'Error';
-  const body: ApiErrorBody = reason === undefined ? { statusCode, error, message } : { statusCode, error, message, reason };
+  const body: ApiErrorBody = { statusCode, error, message, ...(reason === undefined ? {} : { reason }), ...(detail ?? {}) };
   return reply.code(statusCode).send(body);
 }

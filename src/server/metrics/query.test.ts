@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ApiError, errorText } from '../../web/data/apiError';
 import { InvalidMetricsQueryError, parseMetricsQuery } from './query';
 
 describe('parseMetricsQuery', () => {
@@ -72,5 +73,26 @@ describe('parseMetricsQuery', () => {
   ])('refuse %s', (_name, query, fragment) => {
     expect(() => parseMetricsQuery(query)).toThrow(InvalidMetricsQueryError);
     expect(() => parseMetricsQuery(query)).toThrow(fragment);
+  });
+
+  // bdesk-ewr.6 : le code et les paramètres que l'API envoie avec le message (le parseur de requête de Fastify ne donne jamais d'objet : ce refus-là
+  // ne se voit qu'ici).
+  it.each([
+    ['un fuseau qui n’est pas un texte', { timeZone: { zone: 'UTC' } }, { code: 'query-not-text', params: { parameter: 'timeZone' } }],
+    ['un fuseau répété', { timeZone: ['UTC', 'Europe/Paris'] }, { code: 'query-repeated', params: { parameter: 'timeZone' } }],
+    ['« from » sans « to »', { from: '2026-10-01' }, { code: 'query-dates-together', params: {} }],
+  ])('donne son code à %s', (_name, query, detail) => {
+    let thrown: unknown;
+    try {
+      parseMetricsQuery(query);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(InvalidMetricsQueryError);
+    const refused = thrown as InvalidMetricsQueryError;
+    expect(refused.detail).toEqual(detail);
+    // L'interface écrit en français exactement le message du serveur (ce refus ne passe pas par l'API, où `api.test.ts` le vérifie pour les autres).
+    expect(errorText(new ApiError(refused.message, 400, { detail: refused.detail }), 'fr')).toBe(refused.message);
   });
 });

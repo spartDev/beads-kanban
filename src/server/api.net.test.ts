@@ -48,7 +48,7 @@ describe('API : le filet du gestionnaire d’erreurs, quand identify lève (bdes
     await app.close();
 
     expect(res.statusCode).toBe(500);
-    expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'Erreur inattendue.' });
+    expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'Erreur inattendue.', code: 'unexpected', params: {} });
     const text = chunks.join('');
     expect(text).not.toContain('s3cret');
     const lines = text

@@ -158,7 +158,13 @@ describe('API : refuse les requêtes d’une autre origine (bdesk-38k.64)', () =
 
     expect(res.statusCode).toBe(403);
     expect(res.headers['content-type']).toContain('application/json');
-    expect(res.json()).toMatchObject({ statusCode: 403, error: 'Forbidden', message: expect.stringContaining('Origine') });
+    expect(res.json()).toMatchObject({
+      statusCode: 403,
+      error: 'Forbidden',
+      message: expect.stringContaining('Origine'),
+      code: 'origin-not-allowed',
+      params: {},
+    });
     expect(calls).toEqual([]); // aucune lecture Dolt, aucun calcul de métriques
   });
 
