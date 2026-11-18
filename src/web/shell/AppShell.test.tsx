@@ -75,7 +75,7 @@ describe('navigation', () => {
     stubDefaultApi();
     renderApp('/p/bdesk/epics');
 
-    await waitFor(() => expect(document.title).toBe('Epics · beads-desktop · beads-desktop'));
+    await waitFor(() => expect(document.title).toBe('Epics · beads-desktop · Throughline'));
   });
 
   it('nomme le bouton de changement de Projet du mobile par le Projet affiché : le texte visible est dans son nom accessible', async () => {
@@ -90,7 +90,7 @@ describe('navigation', () => {
 
   it('pointe les onglets du mobile sur le dernier Projet visité quand on est en Vue globale', async () => {
     stubDefaultApi();
-    window.localStorage.setItem('beads-desktop:last-project', 'mpm');
+    window.localStorage.setItem('throughline:last-project', 'mpm');
     renderApp('/');
 
     const tabs = await screen.findByRole('navigation', { name: 'Onglets' });
@@ -127,7 +127,7 @@ describe('états de chargement', () => {
     renderApp('/');
 
     expect(await screen.findByText('Aucun Projet trouvé')).toBeTruthy();
-    expect(screen.getByText('~/.config/beads-desktop/config.json')).toBeTruthy();
+    expect(screen.getByText('~/.config/throughline/config.json')).toBeTruthy();
   });
 
   it('liste les dossiers ignorés avec leur raison', async () => {

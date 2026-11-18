@@ -110,7 +110,7 @@ describe.skipIf(!hasBinary('dolt'))('Projets au nom de dossier long, de bout en 
       cpSync(prefix === SHORT_PREFIX ? short : long, join(dir, '.beads'), { recursive: true });
     }
     const webRoot = scratchDir('bdesk-long-web-');
-    writeFileSync(join(webRoot, 'index.html'), '<!doctype html><title>beads-desktop</title>');
+    writeFileSync(join(webRoot, 'index.html'), '<!doctype html><title>Throughline</title>');
 
     const config = { roots: [root], projects: [], hiddenProjects: [] };
     const projects = createProjectService(config);

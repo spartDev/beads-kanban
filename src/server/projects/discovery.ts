@@ -62,7 +62,7 @@ export async function discoverProjects(config: Config, { dolt = createCheckedDol
     const real = await canonicalPath(path);
     if (hidden.has(path) || hidden.has(real)) continue;
     if (!(await isDirectory(join(path, '.beads')))) {
-      ignored.push({ path, reason: 'Aucun dossier .beads dans ce dossier ajouté à la main.' });
+      ignored.push({ path, reason: 'Ce dossier ajouté à la main ne contient aucun Projet.' });
       continue;
     }
     byRealPath.set(real, [...(byRealPath.get(real) ?? []), path]);
@@ -96,7 +96,7 @@ async function inspectWorkspace(path: string, dolt: DoltClient, lastRead: Readon
   const beads = join(path, '.beads');
   const metadata = await readJson(join(beads, 'metadata.json'));
   if (metadata === undefined) {
-    return { kind: 'ignored', reason: 'Pas de metadata.json dans .beads : workspace beads incomplet, sans base Dolt.' };
+    return { kind: 'ignored', reason: 'Projet incomplet : pas de metadata.json, donc pas de base Dolt.' };
   }
   if (metadata === null) return { kind: 'ignored', reason: 'metadata.json illisible (JSON invalide).' };
 

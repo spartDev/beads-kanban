@@ -36,8 +36,8 @@ describe('the shared helpers of the shell zone, in English', () => {
 
   it('describes loading errors, without translating what the server says', () => {
     expect(describeError(new ApiError('Serveur injoignable', 0), 'en')).toEqual({
-      title: 'The beads-desktop server is unreachable',
-      detail: 'Check that the beads-desktop command is still running, then try again.',
+      title: 'The Throughline server is unreachable',
+      detail: 'Check that the throughline command is still running, then try again.',
     });
     expect(describeError(new ApiError('verrou', 503, { reason: 'database is locked' }), 'en')).toEqual({
       title: 'Unreadable project',

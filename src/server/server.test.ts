@@ -26,13 +26,13 @@ describe('serveur', () => {
 
   it('sert l’interface compilée et renvoie index.html pour les routes de l’app', async () => {
     const webRoot = scratchDir('bdesk-web-');
-    writeFileSync(join(webRoot, 'index.html'), '<!doctype html><title>beads-desktop</title>');
+    writeFileSync(join(webRoot, 'index.html'), '<!doctype html><title>Throughline</title>');
     const app = buildServer({ config, webRoot });
 
     const res = await app.inject({ method: 'GET', url: '/p/sais/t/beads_sais-udw' });
 
     expect(res.statusCode).toBe(200);
-    expect(res.body).toContain('<title>beads-desktop</title>');
+    expect(res.body).toContain('<title>Throughline</title>');
   });
 
   it('renvoie 404 en JSON pour une route API inconnue, même avec l’interface servie', async () => {
@@ -57,7 +57,7 @@ describe('serveur', () => {
 /** Une interface compilée minimale : index.html et un fichier dans assets/. */
 function webRootWithAssets(): string {
   const webRoot = scratchDir('bdesk-web-');
-  writeFileSync(join(webRoot, 'index.html'), '<!doctype html><title>beads-desktop</title>');
+  writeFileSync(join(webRoot, 'index.html'), '<!doctype html><title>Throughline</title>');
   mkdirSync(join(webRoot, 'assets'));
   writeFileSync(join(webRoot, 'assets', 'app.js'), 'console.log("app");');
   return webRoot;
@@ -102,7 +102,7 @@ describe('fallback de l’interface (routes de l’app)', () => {
     const res = await get(url);
 
     expect(res.statusCode).toBe(200);
-    expect(res.body).toContain('<title>beads-desktop</title>');
+    expect(res.body).toContain('<title>Throughline</title>');
   });
 
   it.each([

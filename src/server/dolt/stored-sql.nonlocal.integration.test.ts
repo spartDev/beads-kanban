@@ -276,7 +276,7 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)('d
     it('nr : la table est vide dans le working set et pleine dans HEAD ; refusée tout de même, d’une seule phrase', async () => {
       const { error } = await outcome(() => readIssueBase(checked('nr')));
 
-      expect((error as Error).message).toContain("« dolt_nonlocal_tables » n'est pas vide : bd semble être en train de migrer cette base");
+      expect((error as Error).message).toContain("« dolt_nonlocal_tables » n'est pas vide : la base semble en cours de migration par l'outil de tickets");
       expect((error as Error).message).not.toContain('(dans HEAD)');
     });
 

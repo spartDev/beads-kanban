@@ -368,7 +368,7 @@ EOF`);
     /** root passe outre les droits des fichiers : les cas qui en dépendent n'ont rien à prouver pour lui. */
     const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
     /** Le nom que `mkdtemp` donne au dossier de repli de dolt. */
-    const FALLBACK = /^beads-desktop-dolt-repli-/;
+    const FALLBACK = /^throughline-dolt-repli-/;
     /** Le dossier temporaire de chaque test : ce qu'il crée (dossiers de configuration, dossier de repli de dolt compris) y est retiré à sa fin. */
     let tmp = '';
 
@@ -741,7 +741,7 @@ EOF`);
       it('écarte de même le dossier par défaut quand quelqu’un y a posé un lien symbolique : le dossier temporaire est à tout le monde', async () => {
         const { createDoltClient } = await freshClient();
         const victim = scratch();
-        symlinkSync(victim, join(tmp, `beads-desktop-dolt-${process.getuid?.() ?? 'user'}`));
+        symlinkSync(victim, join(tmp, `throughline-dolt-${process.getuid?.() ?? 'user'}`));
         const fake = homeBoundDolt();
 
         const [row] = await createDoltClient({ binary: fake.binary }).open(fake.dir).query('select 1');

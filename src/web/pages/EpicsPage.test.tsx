@@ -60,7 +60,7 @@ describe('la page Epic : l’avancement', () => {
     await openEpic([EPIC, child('bdesk-a', 'Palette')]);
 
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Shell UI : thèmes, navigation et raccourcis');
-    await waitFor(() => expect(document.title).toBe('Shell UI : thèmes, navigation et raccourcis · beads-desktop · beads-desktop'));
+    await waitFor(() => expect(document.title).toBe('Shell UI : thèmes, navigation et raccourcis · beads-desktop · Throughline'));
   });
 
   it('compte les Livraisons parmi les Enfants, en nombre, avec la barre qui les dit', async () => {
@@ -1128,6 +1128,6 @@ describe('la liste des Epics', () => {
     renderApp('/p/bdesk/epics');
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Epics' })).toBeTruthy();
-    await waitFor(() => expect(document.title).toBe('Epics · beads-desktop · beads-desktop'));
+    await waitFor(() => expect(document.title).toBe('Epics · beads-desktop · Throughline'));
   });
 });

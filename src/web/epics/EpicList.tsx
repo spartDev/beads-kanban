@@ -73,7 +73,7 @@ export function EpicList({ projectId, issues }: { projectId: string; issues: rea
   if (epics === 0) {
     return (
       <Notice icon={Zap} title={list.empty}>
-        {list.emptyHint} <code>bd create --type epic</code>.
+        {list.emptyHint}
       </Notice>
     );
   }

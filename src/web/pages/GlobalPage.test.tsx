@@ -48,7 +48,7 @@ describe('la Vue globale', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Vue globale' })).toBeTruthy();
     expect(screen.getAllByRole('article')).toHaveLength(11);
     expect(plain(page().getByRole('article', { name: 'Débit' }).textContent)).toContain('18Livraisons sur la période');
-    await waitFor(() => expect(document.title).toBe('Vue globale · beads-desktop'));
+    await waitFor(() => expect(document.title).toBe('Vue globale · Throughline'));
   });
 
   it('montre la santé du flux de l’ensemble des Projets, et nomme le Projet de chaque Prêt', async () => {

@@ -1,4 +1,4 @@
-# beads-desktop
+# Throughline
 
 Interface web locale pour suivre les tickets beads de plusieurs projets et mesurer le flux de livraison.
 

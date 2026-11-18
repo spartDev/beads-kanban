@@ -1556,26 +1556,26 @@ describe('le panneau d’un ticket : le titre de l’onglet', () => {
     stubDefaultApi();
     const { user } = renderApp('/p/bdesk/kanban');
     await screen.findByRole('region', { name: 'En cours' });
-    await waitFor(() => expect(document.title).toBe('Kanban · beads-desktop · beads-desktop'));
+    await waitFor(() => expect(document.title).toBe('Kanban · beads-desktop · Throughline'));
 
     await user.click(within(screen.getByRole('region', { name: 'En cours' })).getByRole('link', { name: /Shell UI façon Linear/ }));
     await openPanel(/Shell UI façon Linear/);
-    expect(document.title).toBe('bdesk-38k.6 · beads-desktop · beads-desktop');
+    expect(document.title).toBe('bdesk-38k.6 · beads-desktop · Throughline');
 
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(document.title).toBe('Kanban · beads-desktop · beads-desktop');
+    expect(document.title).toBe('Kanban · beads-desktop · Throughline');
   });
 
   it('rend celui du kanban aussi quand le panneau, ouvert directement, se ferme', async () => {
     stubDefaultApi();
     const { user } = renderApp('/p/bdesk/t/bdesk-38k.6');
     await openPanel(/Shell UI façon Linear/);
-    expect(document.title).toBe('bdesk-38k.6 · beads-desktop · beads-desktop');
+    expect(document.title).toBe('bdesk-38k.6 · beads-desktop · Throughline');
 
     await user.click(screen.getByRole('button', { name: 'Fermer le panneau' }));
 
-    await waitFor(() => expect(document.title).toBe('Kanban · beads-desktop · beads-desktop'));
+    await waitFor(() => expect(document.title).toBe('Kanban · beads-desktop · Throughline'));
   });
 });
 

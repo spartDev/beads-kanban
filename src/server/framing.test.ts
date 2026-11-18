@@ -30,7 +30,7 @@ afterEach(async () => {
 /** Une interface compilée minimale : index.html, un fichier JavaScript dans assets/ et une icône. */
 function webRootWithAssets(): string {
   const webRoot = scratchDir('bdesk-web-');
-  writeFileSync(join(webRoot, 'index.html'), '<!doctype html><title>beads-desktop</title>');
+  writeFileSync(join(webRoot, 'index.html'), '<!doctype html><title>Throughline</title>');
   writeFileSync(join(webRoot, 'favicon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
   mkdirSync(join(webRoot, 'assets'));
   writeFileSync(join(webRoot, 'assets', 'app.js'), 'console.log("app");');
@@ -55,7 +55,7 @@ describe('le document HTML refuse d’être encadré par une page d’un autre s
     const res = await get(url);
 
     expect(res.statusCode).toBe(200);
-    expect(res.body).toContain('<title>beads-desktop</title>');
+    expect(res.body).toContain('<title>Throughline</title>');
     expect(res.headers['content-security-policy']).toBe(POLICY);
   });
 
@@ -181,7 +181,7 @@ describe('la valeur de l’en-tête, et où elle est posée (bdesk-38k.67)', () 
       const res = await get(url);
 
       expect(res.statusCode, url).toBe(200);
-      expect(res.body, url).toContain('<title>beads-desktop</title>');
+      expect(res.body, url).toContain('<title>Throughline</title>');
       expect(res.headers['content-security-policy'], url).toBe(POLICY);
     },
   );
@@ -201,11 +201,11 @@ describe('le document servi sous une autre casse : /INDEX.HTML (relecture de bde
 
     if (caseInsensitive) {
       expect(res.statusCode).toBe(200);
-      expect(res.body).toContain('<title>beads-desktop</title>');
+      expect(res.body).toContain('<title>Throughline</title>');
       expect(res.headers['content-security-policy']).toBe(POLICY);
     } else {
       expect(res.statusCode).toBe(404);
-      expect(res.body).not.toContain('<title>beads-desktop</title>');
+      expect(res.body).not.toContain('<title>Throughline</title>');
     }
   });
 });

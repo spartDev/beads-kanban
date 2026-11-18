@@ -42,7 +42,7 @@ export function GlobalPage() {
                 {text.configBefore}
                 <code>roots</code>
                 {text.configBetween}
-                <code>~/.config/beads-desktop/config.json</code>
+                <code>~/.config/throughline/config.json</code>
                 {text.configAfter}
               </p>
             </Notice>

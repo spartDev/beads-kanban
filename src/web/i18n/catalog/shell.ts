@@ -94,8 +94,8 @@ const fr = {
   },
   /** Titres et détails d'une erreur de chargement (`describeError`). */
   loadErrors: {
-    unreachable: 'Le serveur beads-desktop est injoignable',
-    unreachableDetail: 'Vérifiez que la commande beads-desktop tourne toujours, puis réessayez.',
+    unreachable: 'Le serveur Throughline est injoignable',
+    unreachableDetail: 'Vérifiez que la commande throughline tourne toujours, puis réessayez.',
     unreadableProject: 'Projet illisible',
     serverError: 'Le serveur a rencontré une erreur',
     notFound: 'Ressource introuvable',
@@ -207,9 +207,9 @@ const fr = {
       'Les métriques de flux de tous les Projets suivis, recalculées sur l’ensemble de leurs tickets, puis la liste des Projets.',
     projects: 'Projets suivis',
     none: 'Aucun Projet trouvé',
-    /** « beads-desktop scanne `~/Developer` à la recherche… » : le texte autour du dossier. */
-    scanBefore: 'beads-desktop scanne ',
-    scanAfter: ' à la recherche de workspaces beads stockés en Dolt.',
+    /** « Throughline scanne `~/Developer` à la recherche… » : le texte autour du dossier. */
+    scanBefore: 'Throughline scanne ',
+    scanAfter: ' à la recherche de Projets stockés en Dolt.',
     /** « Pour scanner d’autres dossiers, listez-les dans la clé `roots` de `config.json`, puis relancez la commande. » */
     configBefore: 'Pour scanner d’autres dossiers, listez-les dans la clé ',
     configBetween: ' de ',
@@ -326,8 +326,8 @@ const en: typeof fr = {
     refreshFailed: 'Refresh failed: the data shown may be out of date.',
   },
   loadErrors: {
-    unreachable: 'The beads-desktop server is unreachable',
-    unreachableDetail: 'Check that the beads-desktop command is still running, then try again.',
+    unreachable: 'The Throughline server is unreachable',
+    unreachableDetail: 'Check that the throughline command is still running, then try again.',
     unreadableProject: 'Unreadable project',
     serverError: 'The server ran into an error',
     notFound: 'Resource not found',
@@ -416,8 +416,8 @@ const en: typeof fr = {
     description: 'Flow metrics for all tracked projects, computed over all their tickets, then the list of projects.',
     projects: 'Tracked projects',
     none: 'No projects found',
-    scanBefore: 'beads-desktop scans ',
-    scanAfter: ' for beads workspaces stored in Dolt.',
+    scanBefore: 'Throughline scans ',
+    scanAfter: ' for projects stored in Dolt.',
     configBefore: 'To scan other folders, list them under the ',
     configBetween: ' key of ',
     configAfter: ', then run the command again.',

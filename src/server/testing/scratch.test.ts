@@ -173,7 +173,7 @@ describe('scratchDir à la collecte et dans un crochet', () => {
  * registre du fichier n'est donc pas dans le module, mais sur `globalThis` (bdesk-38k.60, relecture), où toutes les instances le retrouvent.
  */
 describe('module scratch rechargé en plein test', () => {
-  const STATE = Symbol.for('beads-desktop.scratch');
+  const STATE = Symbol.for('throughline.scratch');
   const holder = globalThis as unknown as Record<symbol, unknown>;
 
   it('une seconde instance partage le registre du fichier : ses dossiers sont retirés par le crochet de fin de fichier', async () => {

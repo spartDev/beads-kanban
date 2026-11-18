@@ -246,7 +246,7 @@ describe('API : refuse les requêtes d’une autre origine (bdesk-38k.64)', () =
       const res = await app.inject({ method: 'GET', url, headers: navigation });
 
       expect(res.statusCode, url).toBe(200);
-      expect(res.body, url).toContain('<title>beads-desktop</title>');
+      expect(res.body, url).toContain('<title>Throughline</title>');
     }
   });
 });

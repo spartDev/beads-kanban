@@ -191,7 +191,7 @@ describe('discoverProjects', () => {
     );
 
     expect(projects.map((p) => p.path)).toEqual([join(elsewhere, 'manuel')]);
-    expect(ignored).toEqual([{ path: join(elsewhere, 'vide'), reason: expect.stringContaining('.beads') }]);
+    expect(ignored).toEqual([{ path: join(elsewhere, 'vide'), reason: expect.stringContaining('aucun Projet') }]);
   });
 
   it('retire les Projets masqués, qu’ils viennent du scan ou de la configuration, sans les lister parmi les ignorés', async () => {

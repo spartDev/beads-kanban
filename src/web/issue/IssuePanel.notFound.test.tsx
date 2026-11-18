@@ -22,7 +22,7 @@ afterEach(() => {
 /** Le ticket que le Projet ne connaît pas. */
 const MISSING = 'bdesk-nouveau';
 const OTHER_PROJECT = 'L’identifiant est peut-être celui d’un autre Projet : la palette (⌘K) peut chercher dans tous les Projets.';
-const NOT_RECORDED_YET = 'Le ticket n’est peut-être pas encore enregistré par bd ; dans ce cas, il s’affichera ici dès qu’il le sera.';
+const NOT_RECORDED_YET = 'Le ticket n’est peut-être pas encore enregistré ; dans ce cas, il s’affichera ici dès qu’il le sera.';
 
 /**
  * Le panneau d'un ticket que le Projet ne connaît pas (404), dès que le serveur l'a dit. `live` : le flux des mises à jour en direct existe

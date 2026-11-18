@@ -56,7 +56,7 @@ describe('the kanban, in English', () => {
     }
     const rules: [column: string, hint: string, rule: string][] = [
       ['Backlog', 'Open, Blocked', 'Open ticket that is Blocked: it depends on at least one ticket that isn’t closed.'],
-      ['Ready', 'Open, not Blocked', 'Open ticket with no pending dependency (beads’ “ready”).'],
+      ['Ready', 'Open, not Blocked', 'Open ticket with no pending dependency.'],
       ['In progress', 'In progress, not Blocked', 'Ticket in progress or hooked to an agent, with no pending dependency.'],
       [
         'Blocked',
@@ -211,6 +211,6 @@ describe('the kanban, in English', () => {
     renderApp('/p/bdesk/kanban', { languageSwitch: true });
 
     expect(await screen.findByText('No tickets in this Project')).toBeTruthy();
-    expect(screen.getByText(/it will show up here within a few seconds/)).toBeTruthy();
+    expect(screen.getByText(/Tickets created in this Project will show up here within a few seconds/)).toBeTruthy();
   });
 });

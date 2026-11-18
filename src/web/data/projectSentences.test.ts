@@ -319,12 +319,12 @@ describe('les phrases du code de l’interface', () => {
 
   // Une phrase ajoutée à un vrai fichier, comme le fait un relecteur : la garde la refuse. Chaque fragment existe une fois dans le fichier, qu'on n'écrit pas : le test mute le texte en mémoire.
   const MUTANTS: [string, string, string, string][] = [
-    ['le gabarit du relecteur de bdesk-38k.73, dans l’avis « Aucun ticket dans ce Projet »', 'src/web/pages/KanbanPage.tsx', '{page.empty.before} <code>bd create</code>', '{page.empty.before} dans {`${project.name}`} <code>bd create</code>'],
-    ['`.toString()` dans le même avis', 'src/web/pages/KanbanPage.tsx', '{page.empty.before} <code>bd create</code>', '{page.empty.before} dans {project.name.toString()} <code>bd create</code>'],
+    ['le gabarit du relecteur de bdesk-38k.73, dans l’avis « Aucun ticket dans ce Projet »', 'src/web/pages/KanbanPage.tsx', '{page.empty.hint}', '{page.empty.hint} dans {`${project.name}`}'],
+    ['`.toString()` dans le même avis', 'src/web/pages/KanbanPage.tsx', '{page.empty.hint}', '{page.empty.hint} dans {project.name.toString()}'],
     ['des noms en gras que rend un `.map`, dans l’alerte de la palette', 'src/web/palette/CommandPalette.tsx', '{text.ticketsUnavailable(projectList(failedProjects, language))}', 'Tickets indisponibles : {failedProjects.map((project) => <strong key={project.id}>{project.name}</strong>)}.'],
     // Relecture finale, tour 2 : le nom dans un `<Link>`, au milieu de la phrase de l'avis d'une Epic absente (le relecteur), de celui du kanban vide, de l'alerte de la palette.
     ['le `<Link>` du relecteur, dans l’avis d’une Epic absente', 'src/web/pages/EpicsPage.tsx', '{words.notFoundHint}', 'L’Epic a peut-être été supprimée de <Link to={paths.epics(project.id)}>{project.name}</Link>, ou le lien vient d’un autre Projet.'],
-    ['un `<NavLink>` dans l’avis « Aucun ticket dans ce Projet »', 'src/web/pages/KanbanPage.tsx', '{page.empty.before} <code>bd create</code>', '{page.empty.before} dans <NavLink to="/">{project.name}</NavLink> <code>bd create</code>'],
+    ['un `<NavLink>` dans l’avis « Aucun ticket dans ce Projet »', 'src/web/pages/KanbanPage.tsx', '{page.empty.hint}', '{page.empty.hint} dans <NavLink to="/">{project.name}</NavLink>'],
     ['le nom confié tel quel au catalogue, dans la description de la page « À regarder » d’un Projet', 'src/web/pages/SignalsPage.tsx', 'text.projectDescription(projectInSentence(project, language))', 'text.projectDescription(project.name)'],
     ['le nom confié tel quel au catalogue, dans la raison d’un Abandon', 'src/web/ui/IssueBadges.tsx', 't.duplicateOf(of)', 't.duplicateOf(project.name)'],
     ['un nom en code entre deux textes du catalogue, sur la Vue globale', 'src/web/pages/GlobalPage.tsx', '<code>~/Developer</code>', '<code>{projects[0]?.name}</code>'],

@@ -195,8 +195,8 @@ describe('la garde du rendu sait lire ce qu’elle garde', () => {
   });
 
   it('lit le titre de l’onglet par parties : le repli seul dans une partie passe, au milieu d’un texte non', () => {
-    expect(fallbackInTitle('Kanban · Sans titre · beads-desktop')).toEqual([]);
-    expect(fallbackInTitle('Les tickets de Sans titre · beads-desktop')).toHaveLength(1);
+    expect(fallbackInTitle('Kanban · Sans titre · Throughline')).toEqual([]);
+    expect(fallbackInTitle('Les tickets de Sans titre · Throughline')).toHaveLength(1);
   });
 
   // La limite, écrite : le texte propre du `<strong>` est le repli seul. C'est le balayage du code qui lit cette forme (`data/projectSentences.test.ts`).

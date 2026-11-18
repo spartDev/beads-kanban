@@ -66,7 +66,7 @@ describe('the shell in English', () => {
     await waitFor(() => expect(text(projects)).toContain('Embedded Dolt'));
     expect(text(projects)).toContain('Dolt server');
     expect(screen.getByText('1 ignored folder')).toBeTruthy();
-    await waitFor(() => expect(document.title).toBe('Overview · beads-desktop'));
+    await waitFor(() => expect(document.title).toBe('Overview · Throughline'));
   });
 
   it('names the tabs of a project in English, in the sidebar and the breadcrumb', async () => {
@@ -97,7 +97,7 @@ describe('the Watch list in English', () => {
     expect(text(screen.getByRole('region', { name: 'Unusual WIP' }))).toBe(
       'Unusual WIPMy-Prompt-Manager: 6 tickets in progress, above 4.5, the P85 of daily WIP over the last 90 days',
     );
-    await waitFor(() => expect(document.title).toBe('Watch list · beads-desktop'));
+    await waitFor(() => expect(document.title).toBe('Watch list · Throughline'));
   });
 
   it('says when there is nothing to watch, and names the project in the description', async () => {
@@ -190,7 +190,7 @@ describe('the error and missing pages in English', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Page not found' })).toBeTruthy();
     expect(screen.getByRole('status', { name: 'This address does not match any page' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Go to the Overview' })).toBeTruthy();
-    await waitFor(() => expect(document.title).toBe('Page not found · beads-desktop'));
+    await waitFor(() => expect(document.title).toBe('Page not found · Throughline'));
   });
 
   it('a project that does not exist', async () => {

@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, LayoutGrid, Search } from 'lucide-react';
 import { Link, useLocation } from 'react-router';
 import { useProjects } from '../data/hooks';
 import { useT } from '../i18n';
+import { APP_NAME } from '../lib/appName';
 import { cx } from '../lib/cx';
 import { paths, sectionPath } from '../paths';
 import { BrandMark } from '../ui/Brand';
@@ -52,7 +53,7 @@ function MobileSwitcher() {
   const { pathname } = useLocation();
   const { projectId, project } = useCurrentProject();
   const t = useT();
-  const label = projectId ? (project?.name ?? projectId) : pathname === '/' ? t.shell.overview.title : 'beads-desktop';
+  const label = projectId ? (project?.name ?? projectId) : pathname === '/' ? t.shell.overview.title : APP_NAME;
 
   return (
     <button

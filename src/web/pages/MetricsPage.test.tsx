@@ -78,7 +78,7 @@ describe('la page Métriques d’un Projet', () => {
       expect(screen.getByRole('region', { name: chart })).toBeTruthy();
     }
     expect(screen.getByRole('heading', { level: 2, name: 'Découpage par type' })).toBeTruthy();
-    await waitFor(() => expect(document.title).toBe('Métriques · beads-desktop · beads-desktop'));
+    await waitFor(() => expect(document.title).toBe('Métriques · beads-desktop · Throughline'));
   });
 
   it('affiche les chiffres de la réponse, tels quels', async () => {

@@ -29,7 +29,7 @@ export function useRouteInfo(): RouteInfo {
   return useMemo(() => parsePath(pathname), [pathname]);
 }
 
-const LAST_PROJECT_KEY = 'beads-desktop:last-project';
+export const LAST_PROJECT_KEY = 'throughline:last-project';
 
 /** Retient le dernier Projet visité, pour que les onglets restent utilisables depuis la Vue globale. */
 export const rememberProject = (projectId: string): void => writeStorage(LAST_PROJECT_KEY, projectId);
