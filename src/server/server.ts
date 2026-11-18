@@ -87,7 +87,7 @@ export function buildServer({
   // 127.0.0.1 et lire l'API depuis le navigateur de l'utilisateur. Sa requête porte alors son nom dans Host.
   app.addHook('onRequest', async (req, reply) => {
     if (isLocalHost(req.headers.host, listeningPort(app), allowAnyLocalPort)) return;
-    return forbid(reply, "Hôte non autorisé : l'application n'est joignable que par 127.0.0.1 ou localhost.");
+    return forbid(reply, "Hôte non autorisé : l'application n'est joignable que par 127.0.0.1 ou localhost.", 'host-not-allowed');
   });
 
   // Protection contre les pages d'un autre site (bdesk-38k.64) : sans lire la réponse, une page ouverte dans le navigateur de l'utilisateur
@@ -97,7 +97,7 @@ export function buildServer({
   app.addHook('onRequest', async (req, reply) => {
     if (!isApiRoute(req)) return;
     if (isOwnRequest(req.headers, { port: listeningPort(app), anyPort: allowAnyLocalPort })) return;
-    return forbid(reply, "Origine non autorisée : l'API n'est jointe que par l'application elle-même (127.0.0.1 ou localhost).");
+    return forbid(reply, "Origine non autorisée : l'API n'est jointe que par l'application elle-même (127.0.0.1 ou localhost).", 'origin-not-allowed');
   });
 
   app.get('/api/health', async () => ({ status: 'ok' }));
@@ -140,9 +140,9 @@ export async function startServer(options: ServerOptions & { port?: number }): P
   return app;
 }
 
-/** Un 403 en JSON, de la forme des autres erreurs de l'API. */
-function forbid(reply: FastifyReply, message: string): FastifyReply {
-  const body: ApiErrorBody = { statusCode: 403, error: STATUS_CODES[403] ?? 'Forbidden', message };
+/** Un 403 en JSON, de la forme des autres erreurs de l'API, avec son code (sans paramètre). */
+function forbid(reply: FastifyReply, message: string, code: 'host-not-allowed' | 'origin-not-allowed'): FastifyReply {
+  const body: ApiErrorBody = { statusCode: 403, error: STATUS_CODES[403] ?? 'Forbidden', message, code, params: {} };
   return reply.code(403).send(body);
 }
 

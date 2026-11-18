@@ -177,7 +177,7 @@ describe('GET /api/projects/:projectId/events : le flux d’un Projet', () => {
 
     expect(stream.status).toBe(404);
     expect(stream.headers['content-type']).toContain('application/json');
-    expect(JSON.parse(stream.received())).toEqual({ statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope' });
+    expect(JSON.parse(stream.received())).toEqual({ statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope', code: 'project-not-found', params: { project: 'nope' } });
     expect(fake.state.subscribed).toEqual([]);
   });
 
@@ -625,7 +625,7 @@ describe('erreurs du flux : la même forme que les autres routes /api (relecture
 
     const events = await answer(port, EVENTS('nope'));
 
-    expect(events).toEqual({ status: 404, body: { statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope' } });
+    expect(events).toEqual({ status: 404, body: { statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope', code: 'project-not-found', params: { project: 'nope' } } });
   });
 });
 

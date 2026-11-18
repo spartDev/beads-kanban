@@ -2,6 +2,7 @@
  * Contrat de l'API HTTP (`src/server`), partagé avec l'interface.
  * Types seulement : aucun code d'exécution, importable des deux côtés.
  */
+import type { ApiErrorDetail } from './errors';
 
 export type ProjectMode = 'embedded' | 'server';
 export type ProjectStatus = 'ok' | 'unreadable';
@@ -275,14 +276,17 @@ export interface SignalsResponse {
   signals: ApiSignal[];
 }
 
-/** Corps des réponses d'erreur (même forme que celles de Fastify). */
-export interface ApiErrorBody {
+/**
+ * Corps des réponses d'erreur (même forme que celles de Fastify). `message` est en français (journal, autres clients) ; `code` et `params`, quand
+ * l'erreur est l'une de celles que l'API prévoit, disent la même chose pour que l'interface l'écrive dans sa langue (voir `errors.ts`).
+ */
+export type ApiErrorBody = {
   statusCode: number;
   error: string;
   message: string;
   /** Présent sur les 503 : pourquoi le Projet est illisible. */
   reason?: string;
-}
+} & (ApiErrorDetail | { code?: never; params?: never });
 
 /* -------------------------------------------------------------------------------------------------------------------
  * Mises à jour en direct : `GET /api/projects/:projectId/events`

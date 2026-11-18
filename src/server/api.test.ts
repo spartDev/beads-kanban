@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InvalidPeriodError } from '../domain/calendar';
 import type { TicketHistory } from '../domain/flow';
 import type { Issue, IssueDetail, MetricsResponse, Project } from '../shared/api';
+import { readApiErrorDetail } from '../shared/errors';
+import { ApiError, errorText } from '../web/data/apiError';
 import { ReadAborted } from './abort';
 import { createMetricsService, type MetricsQuery, type MetricsService } from './metrics/service';
 import {
@@ -160,7 +162,7 @@ describe('API des Projets', () => {
 
     expect(res.statusCode).toBe(404);
     expect(res.headers['content-type']).toContain('application/json');
-    expect(res.json()).toEqual({ statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope' });
+    expect(res.json()).toEqual({ statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope', code: 'project-not-found', params: { project: 'nope' } });
   });
 
   it('renvoie 404 en JSON pour un ticket inconnu', async () => {
@@ -191,6 +193,8 @@ describe('API des Projets', () => {
         statusCode: 503,
         error: 'Service Unavailable',
         message: 'Projet illisible : Base Dolt absente de ce poste',
+        code: 'project-unreadable',
+        params: { reason: 'Base Dolt absente de ce poste' }, // la raison seule, rien de plus que le message
         reason: 'Base Dolt absente de ce poste',
       });
     },
@@ -275,7 +279,7 @@ describe('API de la chronologie d’un ticket', () => {
     );
 
     expect(res.statusCode).toBe(404);
-    expect(res.json()).toEqual({ statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope' });
+    expect(res.json()).toEqual({ statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope', code: 'project-not-found', params: { project: 'nope' } });
   });
 
   it('renvoie 503 avec la raison quand l’historique du Projet est illisible, comme pour la fiche', async () => {
@@ -293,6 +297,8 @@ describe('API de la chronologie d’un ticket', () => {
       statusCode: 503,
       error: 'Service Unavailable',
       message: 'Projet illisible : Historique trop long (plus de 10 000 commits)',
+      code: 'project-unreadable',
+      params: { reason: 'Historique trop long (plus de 10 000 commits)' },
       reason: 'Historique trop long (plus de 10 000 commits)',
     });
   });
@@ -369,7 +375,7 @@ describe('API des Signaux', () => {
     const typo = await getSignals(serviceWith(), '?projet=beads-desktop');
 
     expect(unknown.statusCode).toBe(404);
-    expect(unknown.json()).toEqual({ statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope' });
+    expect(unknown.json()).toEqual({ statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope', code: 'project-not-found', params: { project: 'nope' } });
     expect(typo.statusCode).toBe(400);
   });
 });
@@ -483,7 +489,7 @@ describe('API des métriques', () => {
   it('renvoie 400 avec le message du domaine quand la période est refusée', async () => {
     const refusing: MetricsService = {
       async compute() {
-        throw new InvalidPeriodError('La plage est trop longue : 400 jours, au plus 366.');
+        throw new InvalidPeriodError('La plage est trop longue : 400 jours, au plus 366.', { code: 'period-too-long', params: { days: 400, max: 366 } });
       },
       signals: unused,
     };
@@ -491,7 +497,13 @@ describe('API des métriques', () => {
     const res = await getMetrics('', serviceWith(), refusing);
 
     expect(res.statusCode).toBe(400);
-    expect(res.json()).toEqual({ statusCode: 400, error: 'Bad Request', message: 'La plage est trop longue : 400 jours, au plus 366.' });
+    expect(res.json()).toEqual({
+      statusCode: 400,
+      error: 'Bad Request',
+      message: 'La plage est trop longue : 400 jours, au plus 366.',
+      code: 'period-too-long',
+      params: { days: 400, max: 366 },
+    });
   });
 
   it.each([
@@ -523,6 +535,8 @@ describe('API des métriques', () => {
       statusCode: 400,
       error: 'Bad Request',
       message: `La plage doit commencer le 1er janvier 1970 ou après : « from » (${from}) est trop tôt.`,
+      code: 'period-too-early',
+      params: { from },
     });
     expect(reads).toEqual([]); // refusée avant de lire un seul Projet
   });
@@ -543,7 +557,7 @@ describe('API des métriques', () => {
 
     expect(res.statusCode).toBe(404);
     expect(res.headers['content-type']).toContain('application/json');
-    expect(res.json()).toEqual({ statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope' });
+    expect(res.json()).toEqual({ statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope', code: 'project-not-found', params: { project: 'nope' } });
   });
 
   it('liste un Projet illisible dans la réponse, sans faire échouer le reste', async () => {
@@ -763,6 +777,167 @@ describe('API : requêtes abandonnées par le client (bdesk-38k.20)', () => {
 });
 
 /**
+ * bdesk-ewr.6 : chaque erreur que l'API prévoit garde son message français et porte son code et ses paramètres, d'où l'interface écrit la phrase
+ * dans sa langue. Les paramètres sont des morceaux du message : rien de ce qu'ils disent n'est absent du message.
+ */
+describe('API : codes d’erreur (bdesk-ewr.6)', () => {
+  const NOW = new Date('2026-10-23T18:00:00Z');
+  const metrics = createMetricsService(serviceWith(), { now: () => NOW, timeZone: 'Europe/Paris' });
+  const ask = (url: string, projects = serviceWith()) => buildServer({ config, projects, metrics }).inject({ method: 'GET', url });
+
+  /**
+   * Chaque paramètre (texte, nombre, élément de liste) se lit dans le message : les paramètres n'exposent rien de plus que lui. Et l'interface, qui
+   * lit le corps comme `apiGet`, écrit en français exactement le message du serveur, sauf pour un nombre de 1 000 ou plus, qu'elle groupe par trois
+   * chiffres (« 1 200 jours », quand le message dit « 1200 jours » : `apiError.test.ts`). Les cas d'ici restent sous 1 000.
+   */
+  function expectParamsWithinMessage(body: { statusCode: number; message: string; code: unknown; params: Record<string, unknown> }): void {
+    for (const value of Object.values(body.params)) {
+      for (const piece of Array.isArray(value) ? value : [value]) expect(body.message).toContain(String(piece));
+    }
+    const detail = readApiErrorDetail(body.code, body.params);
+    expect(detail).toBeDefined();
+    const shown = new ApiError(body.message, body.statusCode, { detail });
+    expect(errorText(shown, 'fr')).toBe(body.message);
+    expect(errorText(shown, 'en')).not.toBe(body.message);
+  }
+
+  it.each([
+    ['un paramètre inconnu', '/api/metrics?foo=1', 'query-unknown-parameter', { parameter: 'foo', expected: ['project', 'range', 'from', 'to', 'timeZone'] }],
+    ['un paramètre inconnu des Signaux', '/api/signals?range=7d', 'query-unknown-parameter', { parameter: 'range', expected: ['project', 'timeZone'] }],
+    ['un Projet vide', '/api/metrics?project=%20', 'query-empty-project', {}],
+    ['un Projet vide des Signaux', '/api/signals?project=', 'query-empty-project', {}],
+    ['range avec from et to', '/api/metrics?range=7d&from=2026-10-01&to=2026-10-02', 'query-range-and-dates', {}],
+    ['from sans to', '/api/metrics?from=2026-10-01', 'query-dates-together', {}],
+    ['un fuseau vide', '/api/metrics?timeZone=', 'query-empty-time-zone', {}],
+    ['un fuseau vide des Signaux', '/api/signals?timeZone=', 'query-empty-time-zone', {}],
+    ['un range inconnu', '/api/metrics?range=1y', 'query-invalid-range', { received: '1y', expected: ['7d', '30d', '90d'] }],
+    ['un range répété', '/api/metrics?range=7d&range=30d', 'query-repeated', { parameter: 'range' }],
+    ['une plage à l’envers', '/api/metrics?from=2026-10-15&to=2026-10-01', 'period-inverted', { from: '2026-10-15', to: '2026-10-01' }],
+    ['une fin dans le futur', '/api/metrics?from=2026-10-01&to=2026-10-24', 'period-in-future', { to: '2026-10-24', today: '2026-10-23' }],
+    ['une plage d’avant 1970', '/api/metrics?from=1969-12-31&to=1970-01-15', 'period-too-early', { from: '1969-12-31' }],
+    ['une plage trop longue', '/api/metrics?from=2025-01-01&to=2026-10-23', 'period-too-long', { days: 661, max: 366 }],
+    ['un jour qui n’existe pas', '/api/metrics?from=2026-02-30&to=2026-03-02', 'period-invalid-day', { parameter: 'from', received: '2026-02-30' }],
+    ['un « to » qui n’existe pas', '/api/metrics?from=2026-03-01&to=2026-02-30', 'period-invalid-day', { parameter: 'to', received: '2026-02-30' }],
+  ])('400 pour %s : message français, code et paramètres', async (_name, url, code, params) => {
+    const res = await ask(url);
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json();
+    expect(body).toEqual({ statusCode: 400, error: 'Bad Request', message: expect.any(String), code, params });
+    expectParamsWithinMessage(body);
+  });
+
+  it('un message de validation reste celui d’avant, en français', async () => {
+    const res = await ask('/api/metrics?range=1y');
+
+    expect(res.json().message).toBe('« range » doit valoir 7d, 30d ou 90d : reçu « 1y ».');
+  });
+
+  it.each([
+    ['un Projet inconnu', '/api/projects/nope/issues', { code: 'project-not-found', params: { project: 'nope' } }],
+    ['un Projet inconnu des métriques', '/api/metrics?project=nope', { code: 'project-not-found', params: { project: 'nope' } }],
+    ['un Projet inconnu du flux', '/api/projects/nope/events', { code: 'project-not-found', params: { project: 'nope' } }],
+  ])('404 pour %s', async (_name, url, detail) => {
+    const notFound = async (projectId: string): Promise<never> => {
+      throw new ProjectNotFoundError(projectId);
+    };
+    const res = await ask(url, serviceWith({ issues: notFound }));
+
+    expect(res.statusCode).toBe(404);
+    const body = res.json();
+    expect(body).toEqual({ statusCode: 404, error: 'Not Found', message: 'Projet inconnu : nope', ...detail });
+    expectParamsWithinMessage(body);
+  });
+
+  it('404 pour un ticket inconnu : le Projet et le ticket, rien d’autre', async () => {
+    const missing = async () => {
+      throw new IssueNotFoundError('beads-desktop', 'bdesk-zzz');
+    };
+    const res = await ask('/api/projects/beads-desktop/issues/bdesk-zzz', serviceWith({ issue: missing }));
+
+    expect(res.statusCode).toBe(404);
+    const body = res.json();
+    expect(body).toEqual({
+      statusCode: 404,
+      error: 'Not Found',
+      message: 'Ticket inconnu dans beads-desktop : bdesk-zzz',
+      code: 'issue-not-found',
+      params: { project: 'beads-desktop', issue: 'bdesk-zzz' },
+    });
+    expectParamsWithinMessage(body);
+  });
+
+  /** Une raison que le serveur écrit vraiment (`stored-sql.ts`, un verrou). */
+  const LOCKED = 'La base est tenue par un autre processus dolt : réessayez dans un instant.';
+
+  it('503 pour un Projet illisible : la raison seule, comme le message, sans l’adresse demandée ni son `?token=`', async () => {
+    const unreadable = async () => {
+      throw new ProjectUnreadableError('beads-desktop', LOCKED);
+    };
+    const res = await ask('/api/projects/beads-desktop/issues?token=secret', serviceWith({ issues: unreadable }));
+
+    expect(res.statusCode).toBe(503);
+    const body = res.json();
+    expect(body).toEqual({
+      statusCode: 503,
+      error: 'Service Unavailable',
+      message: `Projet illisible : ${LOCKED}`,
+      code: 'project-unreadable',
+      params: { reason: LOCKED },
+      reason: LOCKED,
+    });
+    expectParamsWithinMessage(body);
+    expect(res.body).not.toContain('secret');
+  });
+
+  it('500 : le message générique a son code ; un message que l’API n’a pas écrit n’en a pas', async () => {
+    const generic = await ask('/api/projects', serviceWith({ list: () => Promise.reject(null) }));
+    const raw = await ask('/api/projects', serviceWith({ list: () => Promise.reject(new Error('boum')) }));
+
+    expect(generic.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'Erreur inattendue.', code: 'unexpected', params: {} });
+    expectParamsWithinMessage(generic.json());
+    expect(raw.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'boum' });
+  });
+
+  it.each([
+    ['un Host étranger', { host: 'evil.example.com' }, 'host-not-allowed'],
+    ['une origine étrangère', { origin: 'https://evil.example.com' }, 'origin-not-allowed'],
+  ])('403 pour %s : son code, sans paramètre', async (_name, headers, code) => {
+    const res = await buildServer({ config, projects: serviceWith() }).inject({ method: 'GET', url: '/api/projects', headers });
+
+    expect(res.statusCode).toBe(403);
+    const body = res.json();
+    expect(body).toEqual({ statusCode: 403, error: 'Forbidden', message: expect.any(String), code, params: {} });
+    expectParamsWithinMessage(body);
+  });
+
+  it('500 : une lecture abandonnée alors que le client attend toujours a son code', async () => {
+    const res = await ask('/api/projects', serviceWith({ list: () => Promise.reject(new ReadAborted()) }));
+
+    expect(res.json()).toEqual({
+      statusCode: 500,
+      error: 'Internal Server Error',
+      message: 'Lecture abandonnée par son demandeur.',
+      code: 'read-aborted',
+      params: {},
+    });
+    expectParamsWithinMessage(res.json());
+  });
+
+  it('500 : un message vide ne dit rien : le message générique, avec son code', async () => {
+    const res = await ask('/api/projects', serviceWith({ list: () => Promise.reject(new Error('')) }));
+
+    expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'Erreur inattendue.', code: 'unexpected', params: {} });
+  });
+
+  it('4xx d’une erreur qui porte son propre code HTTP : pas de code d’API', async () => {
+    const res = await ask('/api/projects', serviceWith({ list: () => Promise.reject(Object.assign(new Error('théière'), { statusCode: 418 })) }));
+
+    expect(res.json()).toEqual({ statusCode: 418, error: "I'm a Teapot", message: 'théière' });
+  });
+});
+
+/**
  * bdesk-38k.49 : le gestionnaire d'erreurs de l'API répondait 500 sans rien écrire : un 500 en production ne laissait aucune trace. Le
  * journal du serveur (le `logger` de Fastify, que le CLI laisse au niveau `warn`) reçoit désormais une ligne par réponse qui est une panne
  * du serveur, et rien de ce qui est la faute de la requête ou l'abandon du client.
@@ -914,7 +1089,7 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
     const res = await app.inject({ method: 'GET', url: '/api/projects?token=s3cret-requete' });
 
     expect(res.statusCode).toBe(500);
-    expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'Erreur inattendue.' }); // un message, pas la valeur levée
+    expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: 'Erreur inattendue.', code: 'unexpected', params: {} }); // un message, pas la valeur levée
     const [line, ...others] = lines();
     expect(others).toEqual([]); // une seule ligne, même quand le gestionnaire de Fastify prend le relais
     expect(line).toMatchObject({
@@ -1133,7 +1308,7 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
    * bdesk-38k.52 (relecture, B1) : « Fastify ne reprend jamais la main » ne tient que si le gestionnaire ne lève pas. Or il lisait des accesseurs
    * de l'erreur (`Object.entries`, `cause`) et mettait son message tel quel dans le corps JSON : un accesseur qui lève, un message `BigInt` ou
    * circulaire (que `JSON.stringify` refuse) faisaient échouer le gestionnaire ou la réponse, et le gestionnaire par défaut de Fastify écrivait alors
-   * l'adresse demandée avec sa requête (`?token=…` mesuré sur un vrai serveur). Le corps ne reçoit que le message qui est un texte, la lecture de
+   * l'adresse demandée avec sa requête (`?token=…` mesuré sur un vrai serveur). Le corps ne reçoit que le message qui est un texte non vide, la lecture de
    * l'erreur est gardée propriété par propriété, et un filet autour de tout le gestionnaire écrit une ligne fixe et répond un 500 générique.
    */
   describe('un gestionnaire qui ne lève jamais (bdesk-38k.52)', () => {
@@ -1207,17 +1382,31 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       const { res, lines } = await ask(failing(thrown()));
 
       expect(res.statusCode).toBe(500);
-      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: body });
+      // Un message que l'API n'a pas écrit n'a pas de code ; le message générique, lui, a le sien.
+      const coded = body === GENERIC ? { code: 'unexpected', params: {} } : {};
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: body, ...coded });
       const [line, ...others] = lines();
       expect(others).toEqual([]); // la nôtre, pas aussi celle du gestionnaire de Fastify
       expect(line).toMatchObject({ level: ERROR, method: 'GET', route: '/api/projects', msg: 'Erreur inattendue', err: { message } });
+    });
+
+    it.each([
+      ['un message BigInt', () => Object.defineProperty(new ReadAborted(), 'message', { value: 10n })],
+      ['un message dont l’accesseur lève', () => Object.defineProperty(new ReadAborted(), 'message', { get: () => { throw new Error('accesseur-qui-leve'); } })],
+      ['un message vide', () => Object.defineProperty(new ReadAborted(), 'message', { value: '' })],
+    ])('500 : une ReadAborted dont %s : le message générique et son code, une seule ligne `error`, sans adresse (bdesk-ewr.6)', async (_name, thrown) => {
+      const { res, lines } = await ask(failing(thrown()));
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: GENERIC, code: 'unexpected', params: {} });
+      expect(lines()).toHaveLength(1);
     });
 
     it('500 : un `message` dont l’accesseur lève : réponse de l’API, une seule ligne `error`', async () => {
       const { res, lines } = await ask(failing(withGetter('message')));
 
       expect(res.statusCode).toBe(500);
-      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: GENERIC });
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: GENERIC, code: 'unexpected', params: {} });
       expect(lines()).toMatchObject([{ level: ERROR, msg: 'Erreur inattendue', err: { type: 'Error' } }]);
     });
 
@@ -1238,7 +1427,7 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       const { res, lines } = await ask(failing(withMessage(message(), { statusCode: 400 })));
 
       expect(res.statusCode).toBe(400);
-      expect(res.json()).toEqual({ statusCode: 400, error: 'Bad Request', message: GENERIC });
+      expect(res.json()).toEqual({ statusCode: 400, error: 'Bad Request', message: GENERIC, code: 'unexpected', params: {} });
       expect(res.body).not.toContain('s3cret');
       expect(lines()).toEqual([]); // une requête refusée n'est pas une panne
     });
@@ -1271,7 +1460,7 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       const { res, lines } = await ask(failing(thrown()));
 
       expect(res.statusCode).toBe(500);
-      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: GENERIC });
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: GENERIC, code: 'unexpected', params: {} });
       expect(lines()).toMatchObject([{ level: ERROR, method: 'GET', route: '/api/projects', msg: NET }]);
       expect(lines()[0]?.original).toEqual(original);
     });
@@ -1298,7 +1487,7 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       const { res, lines } = await ask(failing(thrown));
 
       expect(res.statusCode).toBe(500);
-      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: GENERIC });
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', message: GENERIC, code: 'unexpected', params: {} });
       expect(lines()).toMatchObject([{ level: ERROR, msg: NET }]);
       expect(lines()[0]?.original).toEqual({ type: 'Object' }); // pas une Error : pas de message, et son type est celui d'un objet
     });
@@ -1820,10 +2009,11 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
     });
 
     it.each([
-      ['une ReadAborted', () => new ReadAborted(), 'ReadAborted'],
-      ['une AbortError de la plateforme (DOMException)', () => new DOMException('The operation was aborted.', 'AbortError'), 'DOMException'],
-      ['une Error nommée AbortError', () => Object.assign(new Error('délai dépassé'), { name: 'AbortError' }), 'Error'],
-    ])('%s levée alors que le client attend toujours n’est pas son abandon : une panne, 500 et une ligne `error`', async (_name, thrown, type) => {
+      // Seule la nôtre porte le code `read-aborted` : son message est celui du catalogue ; les autres disent le leur, sans code.
+      ['une ReadAborted', () => new ReadAborted(), 'ReadAborted', { message: 'Lecture abandonnée par son demandeur.', code: 'read-aborted', params: {} }],
+      ['une AbortError de la plateforme (DOMException)', () => new DOMException('The operation was aborted.', 'AbortError'), 'DOMException', { message: 'The operation was aborted.' }],
+      ['une Error nommée AbortError', () => Object.assign(new Error('délai dépassé'), { name: 'AbortError' }), 'Error', { message: 'délai dépassé' }],
+    ])('%s levée alors que le client attend toujours n’est pas son abandon : une panne, 500 et une ligne `error`', async (_name, thrown, type, body) => {
       const { app, lines } = serve({
         list: async () => {
           throw thrown();
@@ -1833,7 +2023,7 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       const res = await app.inject({ method: 'GET', url: '/api/projects' });
 
       expect(res.statusCode).toBe(500);
-      expect(res.json()).toMatchObject({ statusCode: 500, error: 'Internal Server Error' });
+      expect(res.json()).toEqual({ statusCode: 500, error: 'Internal Server Error', ...body });
       // `type` est la classe de l'erreur : la copie plafonnée de `loggable` la garde, même pour un DOMException dont les accesseurs lèvent hors de lui
       expect(lines()).toMatchObject([{ level: ERROR, method: 'GET', route: '/api/projects', msg: 'Erreur inattendue', err: { type, message: expect.any(String) } }]);
     });

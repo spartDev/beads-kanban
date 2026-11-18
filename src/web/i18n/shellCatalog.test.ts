@@ -6,7 +6,8 @@ import { keyCaps } from '../lib/platform';
 import { signalKinds, signalSentence, SIGNAL_KINDS } from '../lib/signals';
 import { abandonReason } from '../ui/IssueBadges';
 
-/** Les fonctions pures de la zone shell que les autres zones appellent : françaises par défaut, anglaises sur demande (bdesk-ewr.2). */
+/** Les fonctions pures de la zone shell que les autres zones appellent : françaises par défaut, anglaises sur demande (bdesk-ewr.2) ; sauf
+ * `describeError`, qui demande toujours la langue (bdesk-ewr.6). */
 
 const DAY = 86_400_000;
 const NBSP = ' ';
@@ -49,7 +50,7 @@ describe('the shared helpers of the shell zone, in English', () => {
       title: 'The server ran into an error',
       detail: 'HTTP error 502',
     });
-    expect(describeError(new ApiError('Erreur HTTP 502', 502, { bare: true }))).toEqual({
+    expect(describeError(new ApiError('Erreur HTTP 502', 502, { bare: true }), 'fr')).toEqual({
       title: 'Le serveur a rencontré une erreur',
       detail: 'Erreur HTTP 502',
     });
@@ -62,7 +63,7 @@ describe('the shared helpers of the shell zone, in English', () => {
 
     expect(error).toBeInstanceOf(ApiError);
     expect(describeError(error, 'en')).toEqual({ title: 'The server ran into an error', detail: 'HTTP error 502' });
-    expect(describeError(error)).toEqual({ title: 'Le serveur a rencontré une erreur', detail: 'Erreur HTTP 502' });
+    expect(describeError(error, 'fr')).toEqual({ title: 'Le serveur a rencontré une erreur', detail: 'Erreur HTTP 502' });
   });
 
   it('says the signals', () => {
