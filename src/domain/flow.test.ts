@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeFlow, isWork, recordedTransitions, type TicketFlow, type TicketHistory } from './flow';
+import { analyzeFlow, isWork, recordedTransitions, type TicketFlow, type TicketHistory, writtenIntentOf } from './flow';
 import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing/random-histories';
 
 const at = (iso: string) => new Date(`${iso}Z`);
@@ -759,5 +759,94 @@ describe('recordedTransitions', () => {
 
   it('ne rend rien sans instantané', () => {
     expect(recordedTransitions([])).toEqual([]);
+  });
+});
+
+describe('Intention écrite (writtenIntentOf)', () => {
+  /** Un instantané : statut, instant et, s'il est connu, la présence des critères d'acceptation à ce commit. */
+  type Seen = [status: string, iso: string, criteria?: boolean];
+  const snapshots = (seen: Seen[]) =>
+    seen.map(([status, iso, criteria]) => ({ status, at: at(iso), ...(criteria === undefined ? {} : { hasAcceptanceCriteria: criteria }) }));
+  const intentOf = (seen: Seen[]) => writtenIntentOf(snapshots(seen));
+
+  it('oui : les critères étaient là au premier démarrage, écrits avant lui', () => {
+    expect(intentOf([['open', '2026-10-01T09:00', true], ['in_progress', '2026-10-02T09:00', true], ['closed', '2026-10-03T09:00', true]])).toBe(true);
+  });
+
+  it('oui : écrits dans le commit même du démarrage, ils comptent', () => {
+    expect(intentOf([['open', '2026-10-01T09:00', false], ['in_progress', '2026-10-02T09:00', true]])).toBe(true);
+  });
+
+  it('non : écrits après le démarrage, en cours de travail', () => {
+    expect(intentOf([['open', '2026-10-01T09:00', false], ['in_progress', '2026-10-02T09:00', false], ['closed', '2026-10-03T09:00', true]])).toBe(false);
+  });
+
+  it('non : écrits, puis vidés avant le démarrage, puis remplis de nouveau en cours de travail', () => {
+    expect(intentOf([['open', '2026-10-01T09:00', true], ['in_progress', '2026-10-02T09:00', false], ['blocked', '2026-10-02T12:00', true]])).toBe(false);
+  });
+
+  it('non : seul compte le premier démarrage, pas un second après un retour à ouvert', () => {
+    expect(
+      intentOf([
+        ['open', '2026-10-01T09:00', false],
+        ['in_progress', '2026-10-02T09:00', false],
+        ['open', '2026-10-03T09:00', true],
+        ['in_progress', '2026-10-04T09:00', true],
+      ]),
+    ).toBe(false);
+  });
+
+  it('lit le premier instantané de la série de travail, pas un suivant qui répète le statut', () => {
+    expect(intentOf([['open', '2026-10-01T09:00', false], ['in_progress', '2026-10-02T09:00', false], ['in_progress', '2026-10-02T12:00', true]])).toBe(false);
+  });
+
+  it('suit l’ordre des instantanés, pas leurs dates : une horloge qui recule ne change pas le premier démarrage', () => {
+    expect(intentOf([['open', '2026-10-05T09:00', false], ['in_progress', '2026-10-02T09:00', true]])).toBe(true);
+    // Deux démarrages, le second daté avant le premier : c'est le premier dans l'ordre qui compte, pas le plus ancien daté.
+    expect(
+      intentOf([
+        ['open', '2026-10-01T09:00', false],
+        ['in_progress', '2026-10-05T09:00', false],
+        ['open', '2026-10-06T09:00', true],
+        ['in_progress', '2026-10-02T09:00', true],
+      ]),
+    ).toBe(false);
+  });
+
+  it.each(['in_progress', 'hooked', 'blocked'])('prend tout Statut de travail pour un démarrage (%s), et la création elle-même si le ticket naît au travail', (status) => {
+    expect(intentOf([['open', '2026-10-01T09:00', false], [status, '2026-10-02T09:00', true]])).toBe(true);
+    expect(intentOf([[status, '2026-10-01T09:00', true], ['closed', '2026-10-02T09:00', false]])).toBe(true);
+  });
+
+  it('sans objet (null, pas false) pour un ticket jamais démarré, critères ou non, fermé ou non', () => {
+    expect(intentOf([['open', '2026-10-01T09:00', true]])).toBeNull();
+    expect(intentOf([['open', '2026-10-01T09:00', false], ['closed', '2026-10-02T09:00', false]])).toBeNull();
+    expect(intentOf([['open', '2026-10-01T09:00', true], ['deferred', '2026-10-02T09:00', true]])).toBeNull();
+  });
+
+  it('inconnue (null, pas false) quand l’historique ne dit rien des critères au premier démarrage, même s’il le dit ensuite', () => {
+    expect(intentOf([['open', '2026-10-01T09:00'], ['in_progress', '2026-10-02T09:00']])).toBeNull();
+    expect(intentOf([['open', '2026-10-01T09:00'], ['in_progress', '2026-10-02T09:00'], ['closed', '2026-10-03T09:00', true]])).toBeNull();
+  });
+
+  it('null pour un ticket sans historique', () => {
+    expect(writtenIntentOf([])).toBeNull();
+  });
+
+  it('est porté par le flux de chaque ticket, ouvert ou fermé, sans changer ses Transitions', () => {
+    const seen: Seen[] = [['open', '2026-10-01T09:00', true], ['in_progress', '2026-10-02T09:00', true], ['in_progress', '2026-10-02T12:00', false]];
+    const withCriteria = { id: 'a', type: 'task', statusSnapshots: snapshots(seen), dependencies: [] };
+    const closed = { ...withCriteria, id: 'b', statusSnapshots: snapshots([...seen, ['closed', '2026-10-03T09:00', false]]) };
+    const flows = analyzeFlow([withCriteria, closed]);
+
+    expect(flows.get('a')).toMatchObject({ outcome: { kind: 'open' }, writtenIntent: true });
+    expect(flows.get('b')).toMatchObject({ outcome: { kind: 'delivered' }, writtenIntent: true });
+    // Les critères ne font aucune Transition : le même flux que sans eux, hors l'Intention écrite.
+    const without = analyzeFlow([withCriteria, closed].map((t) => ({ ...t, statusSnapshots: t.statusSnapshots.map(({ status, at }) => ({ status, at })) })));
+    for (const id of ['a', 'b']) expect({ ...flows.get(id), writtenIntent: null }).toEqual(without.get(id));
+    expect(flows.get('a')?.transitions).toEqual([
+      { status: 'open', at: at('2026-10-01T09:00') },
+      { status: 'in_progress', at: at('2026-10-02T09:00') },
+    ]);
   });
 });

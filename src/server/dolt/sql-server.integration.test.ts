@@ -26,7 +26,7 @@ import { storedSqlEvidence } from './stored-sql';
  *   s-1 (P0), s-2 (P1), s-3 (P2, epic), s-4 (P3), s-5 (P4), s-6 (P1), s-7 (P3) créés le jour 1
  *   jour 2  s-5 fermé ; s-6 en cours et dépend de s-7 (blocks)
  *   jour 3  s-6 supprimé, avec sa dépendance
- *   jour 4  s-1 en cours
+ *   jour 4  s-1 en cours, ses critères d'acceptation écrits dans le même commit (une Intention écrite : la présence des critères arrive en chaîne, elle aussi)
  *   jour 5  s-6 recréé (P4, ouvert)
  *   jour 6  s-6 en cours
  */
@@ -91,7 +91,7 @@ function buildProject(root: string, name: string, mode: 'embedded' | 'server') {
   base.commit(2, 'jour 2');
   base.sql(`delete from dependencies where issue_id = 's-6'; delete from issues where id = 's-6'`);
   base.commit(3, 'jour 3 : s-6 supprimé');
-  base.sql(move('s-1', 'in_progress', 4));
+  base.sql(`${move('s-1', 'in_progress', 4)}; update issues set acceptance_criteria = 'Le tableau garde son ordre.' where id = 's-1'`);
   base.commit(4, 'jour 4');
   base.sql(create('s-6', 'task', 4, 5));
   base.commit(5, 'jour 5 : s-6 recréé');
@@ -199,14 +199,14 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)(
       const byId = new Map(servedHistories.map((history) => [history.id, history]));
 
       expect(byId.get('s-6')?.statusSnapshots).toEqual([
-        { status: 'open', at: new Date(day(5)) },
-        { status: 'in_progress', at: new Date(day(6)) },
+        { status: 'open', at: new Date(day(5)), hasAcceptanceCriteria: false },
+        { status: 'in_progress', at: new Date(day(6)), hasAcceptanceCriteria: false },
       ]);
       expect(byId.get('s-6')?.dependencies).toEqual([]);
-      // s-1, qui n'a pas de trou, garde tout son historique.
+      // s-1, qui n'a pas de trou, garde tout son historique. Ses critères, écrits au démarrage, en font une Intention écrite.
       expect(byId.get('s-1')?.statusSnapshots).toEqual([
-        { status: 'open', at: new Date(day(1)) },
-        { status: 'in_progress', at: new Date(day(4)) },
+        { status: 'open', at: new Date(day(1)), hasAcceptanceCriteria: false },
+        { status: 'in_progress', at: new Date(day(4)), hasAcceptanceCriteria: true },
       ]);
     });
 
