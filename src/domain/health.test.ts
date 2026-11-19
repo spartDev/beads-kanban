@@ -487,6 +487,62 @@ describe('Taux d’abandon : la part des Abandons parmi les tickets fermés', ()
   });
 });
 
+/**
+ * Un Renoncement (ADR 0008) : un ticket fermé qui porte le label `declined` au Dernier commit. Il n'est ni une Livraison ni un
+ * Abandon : le Taux d'abandon garde sa valeur (le Renoncement reste un ticket fermé, hors des Abandons), sa clôture compte dans le
+ * Taux de Réouverture, et la santé du flux dit combien la période en compte.
+ */
+describe('Renoncements', () => {
+  const DECLINED = { labels: ['declined'] };
+
+  it('compte les Renoncements de la période, datés de leur dernière clôture, et les compare à la période précédente', () => {
+    const tickets = [
+      closed('avant', '2026-10-15T23:00', '2026-10-16T08:00', DECLINED),
+      closed('r1', '2026-10-19T08:00', '2026-10-19T12:00', DECLINED),
+      worked('r2', '2026-10-19T08:00', '2026-10-19T09:00', '2026-10-20T12:00', DECLINED),
+      closed('livre', '2026-10-19T08:00', '2026-10-20T13:00'),
+      closed('doublon', '2026-10-19T08:00', '2026-10-20T14:00', { ...DECLINED, dependencies: [abandonLink('duplicates', 'livre', '2026-10-20T14:00')] }),
+      ticket('rouvert', [['open', '2026-10-19T08:00'], ['closed', '2026-10-19T12:00'], ['open', '2026-10-20T08:00']], DECLINED),
+    ];
+
+    expect(healthOf(tickets).declines).toEqual({ total: 2, trend: { previous: 1, delta: 1, ratio: 1 } });
+  });
+
+  it('garde le Taux d’abandon : un Renoncement est un ticket fermé, ni un Abandon ni une Livraison', () => {
+    const delivered = closed('a', '2026-10-19T08:00', '2026-10-19T12:00');
+    const duplicate = closed('d', '2026-10-19T08:00', '2026-10-19T13:00', { dependencies: [abandonLink('duplicates', 'a', '2026-10-19T13:00')] });
+    const wontFix = closed('w', '2026-10-19T08:00', '2026-10-20T14:00');
+    const declined = closed('n', '2026-10-19T08:00', '2026-10-20T15:00', DECLINED);
+
+    const before = healthOf([delivered, duplicate, wontFix, { ...declined, labels: [] }]).abandonment;
+    const after = healthOf([delivered, duplicate, wontFix, declined]).abandonment;
+
+    expect(after).toEqual(before);
+    expect(after).toMatchObject({ closed: 4, abandoned: 1, rate: 0.25 });
+  });
+
+  it('compte sa clôture dans le Taux de Réouverture, comme celle que suit une Réouverture', () => {
+    const declined = closed('n', '2026-10-19T08:00', '2026-10-19T12:00', DECLINED);
+    const reopened = ticket('r', [['open', '2026-10-19T08:00'], ['closed', '2026-10-19T12:00'], ['open', '2026-10-20T08:00'], ['closed', '2026-10-20T12:00']], DECLINED);
+
+    expect(healthOf([declined, reopened]).reopening).toMatchObject({ closures: 3, reopened: 1 });
+  });
+
+  it('sort de l’Efficacité du flux et de la Décomposition du Lead Time, mesurées sur les Livraisons', () => {
+    const health = healthOf([worked('n', '2026-10-19T08:00', '2026-10-19T09:00', '2026-10-20T12:00', DECLINED)]);
+
+    expect(health.efficiency).toMatchObject({ n: 0, ratio: null });
+    expect(health.leadTimeBreakdown).toMatchObject({ deliveries: 0, total: 0 });
+  });
+
+  it('n’en compte aucun sans le label : un « won’t fix » reste une Livraison', () => {
+    expect(healthOf([closed('w', '2026-10-19T08:00', '2026-10-20T14:00')]).declines).toEqual({
+      total: 0,
+      trend: { previous: 0, delta: 0, ratio: null },
+    });
+  });
+});
+
 describe('Décomposition du Lead Time, avec l’Attente de dépendance', () => {
   /**
    * `d` : créé à 08:00, livré à 12:00 (Lead Time 4 h, tout en Attente en Prêt). `w` : créé à 08:00, dépend de `d` depuis 09:00,

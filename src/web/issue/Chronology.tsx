@@ -250,6 +250,8 @@ function outcomeSentence({ outcome, reopenings }: IssueChronology, texts: Chrono
       return `${texts.outcome.delivered(format.formatInstant(outcome.at))}${reopened}`;
     case 'abandoned':
       return `${texts.outcome.abandoned(outcome.cause === 'duplicate', format.formatInstant(outcome.at))}${reopened}`;
+    case 'declined':
+      return `${texts.outcome.declined(format.formatInstant(outcome.at))}${reopened}`;
     case 'closed':
       return `${texts.outcome.closed(format.formatInstant(outcome.at))}${reopened}`;
   }

@@ -183,6 +183,48 @@ describe('la page Epic : l’avancement', () => {
 
     expect(pills()).toEqual(['Prêt 1', 'Terminé 1']);
   });
+
+  // ADR 0008 : un Renoncement n'est ni une Livraison ni un Enfant à livrer ; il est dit à part, comme un Abandon, et avec lui.
+  it('atteint 100 % quand le reste est livré, malgré un Renoncement, et le dit à part avec les Abandons', async () => {
+    await openEpic([
+      EPIC,
+      closedChild('bdesk-a', 'Livré', 3),
+      closedChild('bdesk-b', 'Décidé de ne pas le faire', 4, { declined: true }),
+      closedChild('bdesk-c', 'Doublon', 5, { abandon: { cause: 'duplicate', of: 'bdesk-a' } }),
+    ]);
+
+    const progress = section('Avancement');
+
+    expect(within(progress).getByText(/1 Livraison sur 1 Enfant\b/)).toBeTruthy();
+    expect(within(progress).getByText(/100\s%/)).toBeTruthy();
+    expect(within(progress).getByRole('progressbar').getAttribute('aria-valuemax')).toBe('1');
+    const summary = within(progress).getByRole('list', { name: 'Enfants par colonne' });
+    expect(within(summary).getAllByRole('listitem').map((item) => item.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+      'Terminé 3 dont 1 Abandon et 1 Renoncement',
+    ]);
+    expect(within(progress).getByText(/^1 Renoncement/).textContent).toBe(
+      '1 Renoncement (ticket qu’on a décidé de ne pas faire) n’est compté ni parmi les Livraisons ni parmi les Enfants à livrer.',
+    );
+    expect(within(section('Terminé')).getByText(/dont 1 Abandon et 1 Renoncement/)).toBeTruthy();
+  });
+
+  it('dit qu’il n’y a rien à livrer quand il ne reste que des Abandons et des Renoncements, sans afficher 0 %', async () => {
+    const { unmount } = await openEpic([
+      EPIC,
+      closedChild('bdesk-b', 'Décidé de ne pas le faire', 4, { declined: true }),
+      closedChild('bdesk-c', 'Doublon', 5, { abandon: { cause: 'duplicate', of: 'bdesk-x' } }),
+    ]);
+
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(within(section('Avancement')).getByText(/^Aucun Enfant à livrer/).textContent).toBe(
+      'Aucun Enfant à livrer : 2 Enfants sont des Abandons ou des Renoncements.',
+    );
+    unmount();
+
+    await openEpic([EPIC, closedChild('bdesk-b', 'Décidé de ne pas le faire', 4, { declined: true })]);
+
+    expect(within(section('Avancement')).getByText(/^Aucun Enfant à livrer/).textContent).toBe('Aucun Enfant à livrer : 1 Enfant est un Renoncement.');
+  });
 });
 
 describe('la page Epic : les Enfants par colonne', () => {
@@ -267,6 +309,18 @@ describe('la page Epic : les Enfants par colonne', () => {
     expect(within(abandoned).getByText('Abandon').getAttribute('title')).toBe('Abandon : doublon de bdesk-d1');
     expect(within(done).getByText(/dont 1 Abandon/)).toBeTruthy();
     expect(within(section('Prêt')).queryByText('Abandon')).toBeNull();
+  });
+
+  it('marque le Renoncement d’une pastille, et dit combien Terminé en compte', async () => {
+    await openEpic([EPIC, closedChild('bdesk-a', 'Livré', 3), closedChild('bdesk-r', 'Décidé de ne pas le faire', 2, { declined: true })]);
+
+    const done = section('Terminé');
+
+    expect(within(done).getAllByText('Renoncement')).toHaveLength(1);
+    const declined = within(done).getByRole('link', { name: /Décidé de ne pas le faire/ });
+    expect(within(declined).getByText('Renoncement').getAttribute('title')).toBe('Renoncement : décidé de ne pas le faire');
+    expect(within(done).getByText(/dont 1 Renoncement/)).toBeTruthy();
+    expect(within(within(done).getByRole('link', { name: /Livré/ })).queryByText('Renoncement')).toBeNull();
   });
 
   it('aligne les titres : l’identifiant de chaque ligne a la largeur du plus long, d’une colonne à l’autre', async () => {
@@ -384,6 +438,12 @@ describe('la page Epic : l’arborescence', () => {
     await openEpic([EPIC, closedChild('bdesk-d', 'Doublon', 2, { abandon: { cause: 'superseded', of: 'bdesk-n' } })], '/p/bdesk/epics?epic=bdesk-e1&view=tree');
 
     expect(within(screen.getByRole('list', { name: 'Arborescence' })).getByText('Abandon').getAttribute('title')).toBe('Abandon : remplacé par bdesk-n');
+  });
+
+  it('marque le Renoncement d’une pastille, comme les colonnes', async () => {
+    await openEpic([EPIC, closedChild('bdesk-r', 'Décidé de ne pas le faire', 2, { declined: true })], '/p/bdesk/epics?epic=bdesk-e1&view=tree');
+
+    expect(within(screen.getByRole('list', { name: 'Arborescence' })).getByText('Renoncement').getAttribute('title')).toBe('Renoncement : décidé de ne pas le faire');
   });
 });
 
@@ -556,7 +616,15 @@ describe('la page Epic : la prévision de fin', () => {
   it('est masquée quand tout est livré, et le dit', async () => {
     await openEpic(withThroughput(8, 0));
 
-    expect(forecast().textContent).toContain('Tous les Enfants sont livrés ou abandonnés : l’Epic peut être fermée.');
+    expect(forecast().textContent).toContain('Tous les Enfants sont livrés, abandonnés ou en Renoncement : l’Epic peut être fermée.');
+  });
+
+  it('est masquée quand le reste est livré, malgré un Renoncement : il n’y a plus rien à livrer', async () => {
+    const issues = withThroughput(8, 0);
+    issues.push(closedChild('bdesk-r', 'Décidé de ne pas le faire', 2, { declined: true }));
+    await openEpic(issues);
+
+    expect(forecast().textContent).toContain('Tous les Enfants sont livrés, abandonnés ou en Renoncement : l’Epic peut être fermée.');
   });
 
   it('est masquée pour une Epic sans Enfant', async () => {
@@ -568,6 +636,14 @@ describe('la page Epic : la prévision de fin', () => {
   it('ne compte pas un Abandon dans le Débit', async () => {
     const issues = withThroughput(3, 5);
     issues.push(closedChild('bdesk-ab', 'Doublon', 2, { abandon: { cause: 'duplicate', of: 'bdesk-l0' } }));
+    await openEpic(issues);
+
+    expect(forecast().textContent).toContain('Pas assez de Débit : 3 Livraisons');
+  });
+
+  it('ne compte pas un Renoncement dans le Débit', async () => {
+    const issues = withThroughput(3, 5);
+    issues.push(closedChild('bdesk-r', 'Décidé de ne pas le faire', 2, { declined: true }));
     await openEpic(issues);
 
     expect(forecast().textContent).toContain('Pas assez de Débit : 3 Livraisons');

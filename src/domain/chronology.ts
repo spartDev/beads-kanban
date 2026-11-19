@@ -136,7 +136,7 @@ function phasesOf(period: Interval, steps: Step[]): IssueBlockagePhase[] {
 /**
  * Repli de l'ADR 0001 pour un ticket qui n'a aucun statut dans l'historique (commité depuis qu'il a été lu, ou historique perdu) : on ne
  * connaît que sa date de création et, s'il est fermé, sa date de clôture. Ni Cycle Time (`started_at` n'est pas fiable),
- * ni Blocage, ni Livraison : sans l'historique des liens, on ne sait pas si c'est un Abandon.
+ * ni Blocage, ni Livraison : sans l'historique des liens, on ne sait pas si c'est un Abandon (ni, sans ses labels, un Renoncement).
  */
 export function chronologyFromDates({ createdAt, closedAt }: { createdAt: Date; closedAt: Date | null }): IssueChronology {
   const created = createdAt.getTime();
@@ -165,6 +165,7 @@ function toOutcome(outcome: Outcome): IssueOutcome {
     case 'abandoned':
       return { kind: 'abandoned', at: outcome.at.toISOString(), cause: outcome.cause };
     case 'delivered':
+    case 'declined':
     case 'closed':
       return { kind: outcome.kind, at: outcome.at.toISOString() };
   }

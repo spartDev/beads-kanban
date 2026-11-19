@@ -18,12 +18,16 @@ const enCounted =
   (n, count) =>
     `${count} ${n === 1 ? singular : plural}`;
 
+/** Ce que sont les Enfants fermés sans Livraison : des Abandons, des Renoncements, ou les deux. */
+export type ClosedUndelivered = 'dropped' | 'declined' | 'both';
+
 const fr = {
   /** Les noms comptés des phrases de la zone. */
   counted: {
     deliveries: frCounted('Livraison', 'Livraisons'),
     children: frCounted('Enfant', 'Enfants'),
     dropped: frCounted('Abandon', 'Abandons'),
+    declined: frCounted('Renoncement', 'Renoncements'),
     epics: frCounted('Epic', 'Epics'),
   },
   /** La page des Epics (`pages/EpicsPage.tsx`) : sa liste, ses états de chargement et d'erreur, ses pages d'adresse fausse. */
@@ -56,8 +60,8 @@ const fr = {
     summary: (epics: string, children: string) => `${epics} regroupant ${children}`,
     open: 'Epics ouvertes',
     closedEpics: 'Epics fermées',
-    /** `dropped` : les Abandons comptés. */
-    nothingToDeliver: (dropped: string) => `Aucun Enfant à livrer (${dropped})`,
+    /** `closed` : les Abandons et les Renoncements comptés (`closedUndelivered`). */
+    nothingToDeliver: (closed: string) => `Aucun Enfant à livrer (${closed})`,
     /** Nom de la barre d'avancement d'une Epic de la liste ; `epic` : son nom (`epicName`). */
     progressOf: (epic: string) => `Avancement de ${epic}`,
   },
@@ -71,17 +75,36 @@ const fr = {
     deliveriesSpoken: 'Livraisons',
     noChildren: 'Aucun Enfant',
     noChildrenSentence: 'Aucun Enfant : cette Epic ne regroupe encore aucun ticket.',
-    /** `n` : les Abandons, `children` : eux comptés en Enfants. */
-    nothingToDeliver: (n: number, children: string) =>
-      `Aucun Enfant à livrer : ${children} ${n >= 2 ? 'sont des Abandons' : 'est un Abandon'}.`,
+    /**
+     * `n` : les Enfants fermés sans Livraison, `children` : eux comptés en Enfants ; `closed` : ce qu'ils sont, des Abandons, des
+     * Renoncements ou les deux.
+     */
+    nothingToDeliver: (n: number, children: string, closed: ClosedUndelivered) =>
+      `Aucun Enfant à livrer : ${children} ${
+        closed === 'both'
+          ? 'sont des Abandons ou des Renoncements'
+          : closed === 'declined'
+            ? n >= 2
+              ? 'sont des Renoncements'
+              : 'est un Renoncement'
+            : n >= 2
+              ? 'sont des Abandons'
+              : 'est un Abandon'
+      }.`,
     bar: 'Avancement de l’Epic',
     byColumn: 'Enfants par colonne',
-    /** « dont 2 Abandons » ; `dropped` : les Abandons comptés. */
-    including: (dropped: string) => `dont ${dropped}`,
+    /** « dont 2 Abandons » ; `closed` : les Abandons et les Renoncements comptés (`closedUndelivered`). */
+    including: (closed: string) => `dont ${closed}`,
+    /** « 2 Abandons et 1 Renoncement » : deux noms comptés. */
+    and: (first: string, second: string) => `${first} et ${second}`,
     droppedNote: (n: number, count: string) =>
       n >= 2
         ? `${count} Abandons (doublons ou remplacés) ne sont comptés ni parmi les Livraisons ni parmi les Enfants à livrer.`
         : `${count} Abandon (doublon ou remplacé) n’est compté ni parmi les Livraisons ni parmi les Enfants à livrer.`,
+    declinedNote: (n: number, count: string) =>
+      n >= 2
+        ? `${count} Renoncements (tickets qu’on a décidé de ne pas faire) ne sont comptés ni parmi les Livraisons ni parmi les Enfants à livrer.`
+        : `${count} Renoncement (ticket qu’on a décidé de ne pas faire) n’est compté ni parmi les Livraisons ni parmi les Enfants à livrer.`,
   },
   /** La page d'une Epic (`EpicView.tsx`) : son en-tête et la section de ses Enfants. */
   epic: {
@@ -124,7 +147,7 @@ const fr = {
     hidden: 'Masquée',
     epicClosed: 'Epic fermée : il n’y a plus de fin à prévoir.',
     noChildren: 'Aucun Enfant à livrer.',
-    allDelivered: 'Tous les Enfants sont livrés ou abandonnés : l’Epic peut être fermée.',
+    allDelivered: 'Tous les Enfants sont livrés, abandonnés ou en Renoncement : l’Epic peut être fermée.',
     /** `deliveries` : les Livraisons comptées ; `days` : la fenêtre du Débit, en jours (7 au moins). Suivi de `youngEpic…` puis de `lowThroughputEnd`. */
     lowThroughput: (deliveries: string, days: string) => `Pas assez de Débit : ${deliveries} sur les ${days} derniers jours`,
     lowThroughputEnd: (needed: string) => `, il en faut au moins ${needed}.`,
@@ -140,7 +163,7 @@ const fr = {
     methodTitle: 'Méthode.',
     /** Suit le titre `methodTitle`. Les nombres : les jours du Débit récent, sa fenêtre minimale, les Livraisons qu'il faut au moins. */
     method: (recentDays: string, minWindowDays: string, minDeliveries: string) =>
-      `Le Débit récent de l’Epic (ses Livraisons des ${recentDays} derniers jours, ou depuis sa création si elle est plus récente, mais jamais sur moins de ${minWindowDays} jours : la mesure d’une Epic de moins de ${minWindowDays} jours remonte donc avant sa création) donne un rythme, appliqué aux Enfants qui restent à livrer : ceux en pause comptent, les Abandons non. La fourchette tient compte du hasard d’un petit nombre de Livraisons (plus ou moins la racine de leur nombre). Elle suppose que le rythme se maintient et qu’aucun Enfant n’est ajouté ; ce n’est pas un engagement. Sous ${minDeliveries} Livraisons récentes, elle est masquée.`,
+      `Le Débit récent de l’Epic (ses Livraisons des ${recentDays} derniers jours, ou depuis sa création si elle est plus récente, mais jamais sur moins de ${minWindowDays} jours : la mesure d’une Epic de moins de ${minWindowDays} jours remonte donc avant sa création) donne un rythme, appliqué aux Enfants qui restent à livrer : ceux en pause comptent, les Abandons et les Renoncements non. La fourchette tient compte du hasard d’un petit nombre de Livraisons (plus ou moins la racine de leur nombre). Elle suppose que le rythme se maintient et qu’aucun Enfant n’est ajouté ; ce n’est pas un engagement. Sous ${minDeliveries} Livraisons récentes, elle est masquée.`,
   },
   /**
    * La fourchette de la Prévision de fin (`forecastText.ts`), écrite pour les yeux (espace insécable avant l'unité) et dite pour
@@ -170,6 +193,7 @@ const en: typeof fr = {
     deliveries: enCounted('Delivery', 'Deliveries'),
     children: enCounted('Child', 'Children'),
     dropped: enCounted('Dropped', 'Dropped'),
+    declined: enCounted('Decline', 'Declines'),
     epics: enCounted('Epic', 'Epics'),
   },
   page: {
@@ -195,7 +219,7 @@ const en: typeof fr = {
     summary: (epics: string, children: string) => `${epics} grouping ${children}`,
     open: 'Open Epics',
     closedEpics: 'Closed Epics',
-    nothingToDeliver: (dropped: string) => `No Children to deliver (${dropped})`,
+    nothingToDeliver: (closed: string) => `No Children to deliver (${closed})`,
     progressOf: (epic: string) => `Progress of ${epic}`,
   },
   progress: {
@@ -205,14 +229,20 @@ const en: typeof fr = {
     deliveriesSpoken: 'delivered',
     noChildren: 'No Children',
     noChildrenSentence: 'No Children: this Epic doesn’t group any tickets yet.',
-    nothingToDeliver: (n: number, children: string) => `No Children to deliver: ${children} ${n === 1 ? 'is Dropped' : 'are Dropped'}.`,
+    nothingToDeliver: (n: number, children: string, closed: ClosedUndelivered) =>
+      `No Children to deliver: ${children} ${n === 1 ? 'is' : 'are'} ${closed === 'both' ? 'Dropped or Declined' : closed === 'declined' ? 'Declined' : 'Dropped'}.`,
     bar: 'Progress of the Epic',
     byColumn: 'Children by column',
-    including: (dropped: string) => `including ${dropped}`,
+    including: (closed: string) => `including ${closed}`,
+    and: (first: string, second: string) => `${first} and ${second}`,
     droppedNote: (n: number, count: string) =>
       n === 1
         ? `${count} Dropped ticket (duplicate or superseded) counts neither as a Delivery nor as a Child to deliver.`
         : `${count} Dropped tickets (duplicates or superseded) count neither as Deliveries nor as Children to deliver.`,
+    declinedNote: (n: number, count: string) =>
+      n === 1
+        ? `${count} Decline (a ticket decided against) counts neither as a Delivery nor as a Child to deliver.`
+        : `${count} Declines (tickets decided against) count neither as Deliveries nor as Children to deliver.`,
   },
   epic: {
     type: 'Type',
@@ -247,7 +277,7 @@ const en: typeof fr = {
     hidden: 'Hidden',
     epicClosed: 'Epic closed: there is no end left to forecast.',
     noChildren: 'No Children to deliver.',
-    allDelivered: 'All Children are Delivered or Dropped: the Epic can be closed.',
+    allDelivered: 'All Children are Delivered, Dropped or Declined: the Epic can be closed.',
     lowThroughput: (deliveries: string, days: string) => `Not enough Throughput: ${deliveries} over the last ${days} days`,
     lowThroughputEnd: (needed: string) => `; at least ${needed} are needed.`,
     youngEpicStart: ' (the Epic is only ',
@@ -257,7 +287,7 @@ const en: typeof fr = {
     paceEnd: (_n: number, children: string) => `, for ${children} remaining.`,
     methodTitle: 'Method.',
     method: (recentDays: string, minWindowDays: string, minDeliveries: string) =>
-      `The Epic’s Recent throughput (its Deliveries over the last ${recentDays} days, or since its creation if it is more recent, but never over fewer than ${minWindowDays} days: for an Epic under ${minWindowDays} days old, the measurement therefore reaches back before its creation) gives a pace, applied to the Children left to deliver: paused ones count, Dropped ones don’t. The range accounts for the randomness of a small number of Deliveries (plus or minus the square root of their number). It assumes the pace holds and no Child is added; it isn’t a commitment. Below ${minDeliveries} recent Deliveries, it is hidden.`,
+      `The Epic’s Recent throughput (its Deliveries over the last ${recentDays} days, or since its creation if it is more recent, but never over fewer than ${minWindowDays} days: for an Epic under ${minWindowDays} days old, the measurement therefore reaches back before its creation) gives a pace, applied to the Children left to deliver: paused ones count, Dropped and Declined ones don’t. The range accounts for the randomness of a small number of Deliveries (plus or minus the square root of their number). It assumes the pace holds and no Child is added; it isn’t a commitment. Below ${minDeliveries} recent Deliveries, it is hidden.`,
   },
   span: {
     days: 'days',

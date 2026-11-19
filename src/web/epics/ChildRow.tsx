@@ -7,7 +7,7 @@ import { typeMeta } from '../design/issue-palette';
 import { useFormat, useT, type DisplayFormat, type Messages } from '../i18n';
 import { COLUMN_META } from '../kanban/meta';
 import { paths } from '../paths';
-import { AbandonBadge, PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
+import { AbandonBadge, DeclineBadge, PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
 
 /** Combien d'identifiants bloquants la ligne nomme avant de compter le reste. */
 const NAMED_BLOCKERS = 2;
@@ -78,6 +78,7 @@ export function ChildRow({
       {/* Le titre passe à la ligne, sous l'identifiant, quand la place manque : jamais rogné. */}
       <span className="min-w-0 flex-1 basis-40 wrap-anywhere text-ink">{ticketTitle(issue)}</span>
       {issue.abandon ? <AbandonBadge abandon={issue.abandon} className="self-center" /> : null}
+      {issue.declined ? <DeclineBadge className="self-center" /> : null}
       <span className="flex max-w-full shrink-0 flex-wrap items-baseline gap-x-2 text-xs text-ink-3">
         {nested ? (
           <span className="tnum">
