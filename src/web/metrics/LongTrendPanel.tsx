@@ -33,7 +33,9 @@ const soundText = (texts: LongTrendTexts, format: DisplayFormat, count: number) 
  * tracé en pointillé, et la semaine en cours, comptée jusqu'à maintenant, est hachurée : ni l'un ni l'autre ne se lit comme une semaine ordinaire.
  *
  * Le Débit sain est dessiné sous le Débit, à la même échelle : la hauteur de ses barres se compare d'un coup d'œil à celle des Livraisons. Quand la Couverture
- * est faible, il n'est pas significatif : ses barres pâlissent, et le motif est écrit sous son titre, dans son nom et dans la légende du tableau.
+ * est faible, il n'est pas significatif : ses barres pâlissent, et le motif est écrit sous son titre, dans son nom et dans la légende du tableau. Celui de la
+ * semaine en cours est provisoire, comme la tuile le dit d'une période en cours : l'infobulle de sa barre et la remarque de sa ligne le disent, dès qu'elle a
+ * une Livraison qui pourrait revenir.
  */
 export function LongTrendPanel({ trend }: { trend: MetricsLongTrend }) {
   const { weeks, minDeliveries, soundSignificance } = trend;
@@ -96,7 +98,7 @@ export function LongTrendPanel({ trend }: { trend: MetricsLongTrend }) {
                 top={top}
                 color={SOUND}
                 label={[texts.soundThroughputLabel(soundText(texts, format, totalOf((week) => week.soundThroughput)), weekCount), soundNote].filter(Boolean).join(' ')}
-                describe={(count) => soundText(texts, format, count)}
+                describe={(count, week) => (week.partial ? texts.provisionalPoint(soundText(texts, format, count)) : soundText(texts, format, count))}
                 faint={soundNote !== undefined}
                 width={width}
                 height={height}
@@ -201,7 +203,7 @@ function BarPlot({
   /** Le nom du dessin, pour les lecteurs d'écran. */
   label: string;
   /** Le nombre d'une semaine, en mots, pour l'infobulle de sa barre. */
-  describe: (count: number) => string;
+  describe: (count: number, week: MetricsLongTrendWeek) => string;
   faint?: boolean;
   width: number;
   height: number;
@@ -246,7 +248,7 @@ function BarPlot({
               strokeWidth={1.25}
               strokeDasharray={week.partial ? '3 2' : undefined}
             >
-              <title>{texts.point(weekTitle(texts, format, week), describe(count))}</title>
+              <title>{texts.point(weekTitle(texts, format, week), describe(count, week))}</title>
             </rect>
           );
         })}
@@ -438,7 +440,9 @@ function LongTrendTable({ weeks, unreliable, soundNote }: { weeks: readonly Metr
             {week.reopeningRate === null ? '—' : texts.reopeningCell(formatPercent(week.reopeningRate), formatCount(week.reopened), formatCount(week.closures))}
           </td>
           <td className="px-3 py-1 text-ink-2">
-            {[week.partial ? texts.inProgress : '', week.throughput > 0 && !week.reliable ? unreliable : ''].filter(Boolean).join(texts.remarkSeparator)}
+            {[week.partial ? texts.inProgress : '', week.partial && week.throughput > 0 ? texts.soundProvisional : '', week.throughput > 0 && !week.reliable ? unreliable : '']
+              .filter(Boolean)
+              .join(texts.remarkSeparator)}
           </td>
         </tr>
       ))}

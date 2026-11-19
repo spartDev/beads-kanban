@@ -107,10 +107,21 @@ describe('MetricTiles : les sept tuiles', () => {
       expect(sound.querySelector('[data-provisional]')).toBeTruthy();
     });
 
-    it('dit « Aucune Livraison » quand le Projet n’a rien livré', () => {
-      renderTiles(emptyMetricsFixture());
+    it('dit « Aucune Livraison » quand le Projet n’a rien livré, sans se dire provisoire : rien ne peut revenir', () => {
+      const empty = emptyMetricsFixture();
+      expect(empty.tiles.soundThroughput.provisional).toBe(true); // la période court
+
+      renderTiles(empty);
 
       expect(plain(tile('Débit sain').querySelector('[data-gap]')?.textContent)).toBe('Aucune Livraison sur la période.');
+      expect(tile('Débit sain').querySelector('[data-provisional]')).toBeNull();
+    });
+
+    it('significatif et sans Livraison : ni écart, ni « Provisoire »', () => {
+      renderTiles(significant({ total: 0, deliveries: 0, trend: trendOf(0, 3) }));
+
+      expect(plain(tile('Débit sain').querySelector('[data-gap]')?.textContent)).toBe('Aucune Livraison sur la période.');
+      expect(tile('Débit sain').querySelector('[data-provisional]')).toBeNull();
     });
   });
 

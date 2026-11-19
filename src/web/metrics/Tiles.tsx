@@ -199,7 +199,8 @@ function ThroughputTile({ tile, comparison, className }: { tile: MetricsTiles['t
 /**
  * Le Débit sain, à côté du Débit : les Livraisons saines de la période, et leur écart avec le Débit (les Livraisons revenues). Comme le Taux d'échec, il ne
  * vaut que si la Couverture des bugs est assez haute : sinon la tuile le dit, avec le motif, garde le nombre observé en retrait et n'avance pas de tendance.
- * Tant que la période court, il est provisoire : ses Livraisons n'ont pas toutes eu le temps de revenir, et la tuile le dit en toutes lettres.
+ * Tant que la période court, il est provisoire : ses Livraisons n'ont pas toutes eu le temps de revenir, et la tuile le dit en toutes lettres. Sans aucune
+ * Livraison, il n'y a rien qui puisse revenir : elle ne le dit pas.
  */
 function SoundThroughputTile({ tile, comparison, className }: { tile: MetricsSoundThroughputTile; comparison: Comparison; className?: string }) {
   const t = useT();
@@ -207,7 +208,7 @@ function SoundThroughputTile({ tile, comparison, className }: { tile: MetricsSou
   const { language } = useLanguage();
   const texts = t.metrics.tiles;
   const help = t.metrics.metricHelp.soundThroughput;
-  const provisional = tile.provisional ? (
+  const provisional = tile.provisional && tile.deliveries > 0 ? (
     <p data-provisional="" className="flex items-start gap-1.5 text-micro leading-4 text-ink-2">
       <Hourglass size={12} aria-hidden="true" className="mt-0.5 shrink-0 text-ink-3" />
       {texts.provisional}

@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { PeriodSpec } from './calendar';
+import { analyzeFailures } from './failures';
+import { analyzeFlow, recordedTransitions } from './flow';
 import { longTrendOf } from './longTrend';
 import { analyzeProject, computeMetrics, MIN_FAILURE_BUGS, MIN_FAILURE_COVERAGE, type MetricsInput, type MetricsTicket } from './metrics';
+import { randomHistories, seededRandom } from './testing/random-histories';
 
 /**
  * Le Débit sain : les Livraisons saines d'une période, sans Bug d'origine et qu'aucune Réouverture n'a précédée (voir CONTEXT.md), à lire à côté du Débit.
@@ -122,17 +125,27 @@ describe('Débit sain : les Livraisons saines', () => {
     expect(report.tiles.soundThroughput).toMatchObject({ total: 1, deliveries: 1 });
   });
 
-  it('donne autant de Livraisons que le Débit, et le compare à la période précédente de même durée écoulée', () => {
+  it('donne autant de Livraisons que le Débit, et le compare au Débit sain de la période précédente de même durée écoulée', () => {
     const tickets = [
       worked('c1', '2026-10-15T08:00', '2026-10-18T08:00', '2026-10-20T10:00'),
       worked('c2', '2026-10-15T08:00', '2026-10-18T08:00', '2026-10-21T10:00'),
       worked('c-echec', '2026-10-15T08:00', '2026-10-18T08:00', '2026-10-21T11:00'),
       bug('b', '2026-10-22T08:00', 'c-echec'),
-      worked('p1', '2026-10-08T08:00', '2026-10-09T08:00', '2026-10-13T10:00'), // période précédente
+      // Période précédente, du 10 au 16 octobre : trois Livraisons, dont une seule saine.
+      worked('p-sain', '2026-10-08T08:00', '2026-10-09T08:00', '2026-10-13T10:00'),
+      ticket('p-rouvert', [
+        ['open', '2026-10-08T08:00'],
+        ['closed', '2026-10-09T08:00'],
+        ['open', '2026-10-10T08:00'], // Réouverture
+        ['closed', '2026-10-14T10:00'],
+      ]),
+      worked('p-echec', '2026-10-08T08:00', '2026-10-09T08:00', '2026-10-15T10:00'),
+      bug('p-b', '2026-10-16T08:00', 'p-echec'),
     ];
     const report = reportOf([project('p', tickets)], { range: '7d' });
 
-    expect(report.tiles.throughput.total).toBe(3);
+    expect(report.tiles.throughput).toMatchObject({ total: 3, trend: { previous: 3, delta: 0 } });
+    // La tendance compare des Livraisons saines entre elles : 2 contre 1, pas 2 contre les 3 Livraisons d'avant.
     expect(report.tiles.soundThroughput).toMatchObject({ total: 2, deliveries: 3, trend: { previous: 1, delta: 1, ratio: 1 } });
   });
 
@@ -142,6 +155,87 @@ describe('Débit sain : les Livraisons saines', () => {
     expect(soundOf(tickets, { range: '7d' }).provisional).toBe(true);
     expect(soundOf(tickets, { from: '2026-10-19', to: '2026-10-23' }).provisional).toBe(true); // une plage qui finit aujourd'hui
     expect(soundOf(tickets, PAST).provisional).toBe(false);
+  });
+});
+
+describe('Livraison saine : Livraison, sans Bug d’origine, sans Réouverture', () => {
+  /**
+   * La règle, recalculée à part : la Livraison et les Bugs d'origine tels que les donnent `analyzeFlow` et `analyzeFailures`, la Réouverture lue dans les
+   * instantanés du ticket (un changement de fermé vers un autre statut).
+   */
+  function expectedSound(tickets: MetricsTicket[]): Map<string, boolean> {
+    const flows = analyzeFlow(tickets);
+    const { originBugs } = analyzeFailures(tickets, flows);
+    return new Map(
+      tickets.map((t) => {
+        const delivered = flows.get(t.id)?.outcome.kind === 'delivered';
+        const changes = recordedTransitions(t.statusSnapshots);
+        const reopened = changes.some((change, index) => changes[index - 1]?.status === 'closed' && change.status !== 'closed');
+        return [t.id, delivered && (originBugs.get(t.id)?.length ?? 0) === 0 && !reopened];
+      }),
+    );
+  }
+
+  /** Chaque ticket mesuré, saine ou non selon `analyzeProject` ; les Epics n'y sont pas. */
+  const soundOfEach = (tickets: MetricsTicket[]) => new Map(analyzeProject(tickets).tickets.map((t) => [t.id, t.sound]));
+
+  it('tient sur un lot varié : Abandon qui transmet ses liens, bug relié à une Epic, Prise rendue, bug trouvé en cours de travail', () => {
+    const tickets: MetricsTicket[] = [
+      worked('propre', '2026-10-01T08:00', '2026-10-02T08:00', '2026-10-05T08:00'),
+      ticket('rouverte', [
+        ['open', '2026-10-01T08:00'],
+        ['closed', '2026-10-03T08:00'],
+        ['in_progress', '2026-10-04T08:00'],
+        ['closed', '2026-10-05T08:00'],
+      ]),
+      ticket('rendue', [
+        ['open', '2026-10-01T08:00'],
+        ['in_progress', '2026-10-02T08:00'],
+        ['open', '2026-10-03T08:00'], // Prise rendue
+        ['in_progress', '2026-10-04T08:00'],
+        ['closed', '2026-10-05T08:00'],
+      ]),
+      worked('en-echec', '2026-10-01T08:00', '2026-10-02T08:00', '2026-10-05T08:00'),
+      bug('b-direct', '2026-10-06T08:00', 'en-echec'),
+      // « heritee » n'est reliée qu'au doublon, créé après sa clôture ; le survivant, créé avant, hérite du lien à la date du doublon.
+      worked('heritee', '2026-10-01T08:00', '2026-10-02T08:00', '2026-10-05T08:00'),
+      bug('survivant', '2026-10-04T08:00'),
+      ticket('doublon', [['open', '2026-10-06T08:00'], ['closed', '2026-10-07T08:00']], {
+        type: 'bug',
+        dependencies: [
+          { type: 'discovered-from', target: 'heritee', addedAt: at('2026-10-06T08:00') },
+          { type: 'duplicates', target: 'survivant', addedAt: at('2026-10-07T08:00') },
+        ],
+      }),
+      // Une Epic n'est l'origine d'aucun échec, et n'est jamais une Livraison.
+      worked('epic', '2026-10-01T08:00', '2026-10-02T08:00', '2026-10-05T08:00', { type: 'epic' }),
+      bug('sur-epic', '2026-10-06T08:00', 'epic'),
+      worked('avant-bug', '2026-10-01T08:00', '2026-10-02T08:00', '2026-10-05T08:00'),
+      bug('trouve-en-cours', '2026-10-03T08:00', 'avant-bug'), // créé avant la clôture : trouvé en cours de travail
+      worked('abandon', '2026-10-01T08:00', '2026-10-02T08:00', '2026-10-05T08:00', {
+        dependencies: [{ type: 'supersedes', target: 'propre', addedAt: at('2026-10-05T08:00') }],
+      }),
+      worked('bug-livre', '2026-10-01T08:00', '2026-10-02T08:00', '2026-10-05T08:00', { type: 'bug' }),
+      ticket('ouvert', [['open', '2026-10-01T08:00']]),
+    ];
+    const sound = soundOfEach(tickets);
+
+    expect([...sound].filter(([, isSound]) => isSound).map(([id]) => id)).toEqual(['propre', 'rendue', 'avant-bug', 'bug-livre']);
+    expect(sound.has('epic')).toBe(false);
+    const expected = expectedSound(tickets);
+    for (const [id, isSound] of sound) expect([id, isSound]).toEqual([id, expected.get(id)]);
+  });
+
+  it.each([1, 2, 3, 4, 5, 6, 7, 8])('tient sur des historiques tirés au hasard (graine %i) : Réouvertures, bugs reliés, horloges qui reculent', (seed) => {
+    const tickets: MetricsTicket[] = randomHistories(seededRandom(seed), { tickets: 16, clockBack: 20, sharedClock: true }).map((t) => ({
+      ...t,
+      title: `Titre de ${t.id}`,
+      priority: 2,
+    }));
+    const sound = soundOfEach(tickets);
+    const expected = expectedSound(tickets);
+
+    for (const [id, isSound] of sound) expect([id, isSound]).toEqual([id, expected.get(id)]);
   });
 });
 

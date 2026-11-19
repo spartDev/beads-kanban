@@ -191,6 +191,8 @@ const fr = {
     soundThroughputLabel: (deliveries: string, weeks: string) => `Débit sain par semaine : ${deliveries} sur ${weeks} semaines.`,
     /** Sous le titre du Débit sain, et à la suite de son nom pour les lecteurs d'écran : `reason` est le motif écrit (`failureRateReason`). */
     notSignificant: (reason: string) => `Non significatif. ${reason}`,
+    /** Le Débit sain de la semaine en cours, dans l'infobulle de sa barre : `value` est déjà écrit (« 1 Livraison saine »). */
+    provisionalPoint: (value: string) => `${value}, provisoire : des Livraisons peuvent encore revenir`,
     lineLabel: (subject: string, n: number, measured: string, weeks: string) =>
       `${subject} : ${measured} ${n >= 2 ? 'semaines mesurées' : 'semaine mesurée'} sur ${weeks}.`,
     week: (range: string) => `Semaine du ${range}`,
@@ -206,6 +208,8 @@ const fr = {
     remarkColumn: 'Remarque',
     reopeningCell: (percent: string, reopened: string, closures: string) => `${percent} (${reopened} sur ${closures})`,
     inProgress: 'En cours',
+    /** La remarque de la semaine en cours, dès qu'elle a une Livraison : son Débit sain peut encore baisser. */
+    soundProvisional: 'Débit sain provisoire',
     remarkSeparator: ', ',
   },
   /** Les avis de la page (`Notices.tsx`). Le motif d'un Projet illisible vient du serveur, tel quel. */
@@ -381,6 +385,7 @@ const en: typeof fr = {
     soundDeliveries: (n, count) => (n === 0 ? 'no Sound deliveries' : `${count} ${n === 1 ? 'Sound delivery' : 'Sound deliveries'}`),
     soundThroughputLabel: (deliveries, weeks) => `Sound throughput per week: ${deliveries} over ${weeks} weeks.`,
     notSignificant: (reason) => `Not significant. ${reason}`,
+    provisionalPoint: (value) => `${value}, provisional: Deliveries may still come back`,
     lineLabel: (subject, n, measured, weeks) => `${subject}: ${measured} ${n === 1 ? 'week' : 'weeks'} measured out of ${weeks}.`,
     week: (range) => `Week of ${range}`,
     point: (week, value) => `${week}: ${value}`,
@@ -394,6 +399,7 @@ const en: typeof fr = {
     remarkColumn: 'Note',
     reopeningCell: (percent, reopened, closures) => `${percent} (${reopened} of ${closures})`,
     inProgress: 'In progress',
+    soundProvisional: 'Sound throughput provisional',
     remarkSeparator: ', ',
   },
   notices: {
