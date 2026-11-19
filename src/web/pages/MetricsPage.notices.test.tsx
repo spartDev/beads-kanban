@@ -48,7 +48,7 @@ describe('l’avis d’un réglage d’adresse ignoré', () => {
 describe('l’avis d’aucun Projet mesuré, et celui des Projets illisibles', () => {
   const unreadable = [
     { id: 'bdesk', name: 'beads-desktop', reason: 'Base Dolt verrouillée' },
-    { id: 'mpm', name: 'My-Prompt-Manager', reason: 'Base Dolt absente' },
+    { id: 'mpm', name: 'Mon-Pommier-Malin', reason: 'Base Dolt absente' },
   ];
 
   it('aucun Projet n’a pu être mesuré : deux régions de statut, chacune nommée par son titre', async () => {
@@ -71,7 +71,7 @@ describe('l’avis d’aucun Projet mesuré, et celui des Projets illisibles', (
     const notice = await screen.findByRole('status', { name: '2 Projets illisibles, absents de ces chiffres' });
 
     expect(within(notice).getAllByRole('listitem')).toHaveLength(2);
-    expect(within(notice).getAllByText('My-Prompt-Manager')).toHaveLength(1);
-    expect(notice.textContent).toBe('2 Projets illisibles, absents de ces chiffresbeads-desktop : Base Dolt verrouilléeMy-Prompt-Manager : Base Dolt absente');
+    expect(within(notice).getAllByText('Mon-Pommier-Malin')).toHaveLength(1);
+    expect(notice.textContent).toBe('2 Projets illisibles, absents de ces chiffresbeads-desktop : Base Dolt verrouilléeMon-Pommier-Malin : Base Dolt absente');
   });
 });

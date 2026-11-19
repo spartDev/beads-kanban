@@ -190,7 +190,7 @@ describe.each(SCREENS)('une surcouche ouverte d’un clic de WebKit rend le focu
 
       clickLikeWebKit(button);
       const dialog = await palette();
-      clickLikeWebKit(await within(dialog).findByRole('option', { name: /My-Prompt-Manager/ }));
+      clickLikeWebKit(await within(dialog).findByRole('option', { name: /Mon-Pommier-Malin/ }));
       await waitFor(() => expect(pathname(router)).toBe('/p/mpm/kanban'));
       exit.finish();
       await removed('Palette de commandes');

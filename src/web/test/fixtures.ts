@@ -1,8 +1,9 @@
+// Les Projets de ces fixtures portent des noms d'emprunt : le dépôt est public, aucun ne porte le nom ni les titres de tickets d'un autre Projet du poste.
 import type { Issue, IssueChronology, IssueDetail, Project, ProjectsResponse } from '../data/types';
 
 export const projects: Project[] = [
   { id: 'bdesk', name: 'beads-desktop', path: '/dev/beads-desktop', prefix: 'bdesk', mode: 'embedded', status: 'ok' },
-  { id: 'mpm', name: 'My-Prompt-Manager', path: '/dev/My-Prompt-Manager', prefix: 'mpm', mode: 'server', status: 'ok' },
+  { id: 'mpm', name: 'Mon-Pommier-Malin', path: '/dev/Mon-Pommier-Malin', prefix: 'mpm', mode: 'server', status: 'ok' },
   {
     id: 'legacy',
     name: 'legacy-api',
@@ -84,5 +85,5 @@ export const bdeskIssues: Issue[] = [
 ];
 
 export const mpmIssues: Issue[] = [
-  issue({ id: 'mpm-12', title: 'Recherche plein texte dans les prompts', type: 'feature' }),
+  issue({ id: 'mpm-12', title: 'Recherche plein texte dans les récoltes', type: 'feature' }),
 ];

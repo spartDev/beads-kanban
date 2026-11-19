@@ -76,7 +76,7 @@ export const projectInSentence = (project: { name: string; unnamed?: true }, lan
   project.unnamed ? words(language).thisProject : project.name;
 
 /**
- * Des Projets dans une phrase, après deux-points (« Tickets indisponibles : beads-desktop, My-Prompt-Manager. ») : leurs noms, séparés par une virgule et dans l'ordre, comme toujours. Ceux dont le nom est un repli
+ * Des Projets dans une phrase, après deux-points (« Tickets indisponibles : beads-desktop, Mon-Pommier-Malin. ») : leurs noms, séparés par une virgule et dans l'ordre, comme toujours. Ceux dont le nom est un repli
  * sont dits ensemble, après les autres : « un Projet sans nom », « 3 Projets sans nom ». « Sans titre, Sans titre » ne dirait pas combien, et se lirait comme deux Projets qui portent ce nom. Et dès que la liste en
  * compte, les noms qui se voient sont entre guillemets : « Sans titre, 3 Projets sans titre » se lisait comme quatre Projets sans titre quand l'un d'eux est un dossier qui s'appelle vraiment ainsi (bdesk-38k.73,
  * relecture). Le groupe est ce qui n'a pas de nom, jamais un nom, quel que soit le nom d'un dossier : même un dossier qui s'appelle « 3 Projets sans nom » y est entre guillemets, et se lit comme un dossier.

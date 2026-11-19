@@ -86,7 +86,7 @@ describe('SliceTable : le découpage', () => {
     const links = within(table()).getAllByRole('link');
     expect(links.map((link) => [link.textContent, link.getAttribute('href')])).toEqual([
       ['beads-desktop', '/p/bdesk/metrics?range=7d'],
-      ['My-Prompt-Manager', '/p/mpm/metrics?range=7d'],
+      ['Mon-Pommier-Malin', '/p/mpm/metrics?range=7d'],
     ]);
   });
 

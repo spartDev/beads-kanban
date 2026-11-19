@@ -221,15 +221,15 @@ describe('service de métriques', () => {
     it('liste dans la réponse un Projet que la découverte sait illisible, sans faire échouer le reste', async () => {
       const { service, calls } = fakeProjects({
         ...twoProjects(),
-        hcp: { status: 'unreadable', reason: 'Base Dolt absente de ce poste', name: 'HCP' },
+        jardin: { status: 'unreadable', reason: 'Base Dolt absente de ce poste', name: 'Jardin' },
       });
 
       const response = await createMetricsService(service, options).compute({ projects: [], ...week });
 
-      expect(response.unreadable).toEqual([{ id: 'hcp', name: 'HCP', reason: 'Base Dolt absente de ce poste' }]);
+      expect(response.unreadable).toEqual([{ id: 'jardin', name: 'Jardin', reason: 'Base Dolt absente de ce poste' }]);
       expect(response.projects.map((p) => p.id)).toEqual(['a', 'b']);
       expect(response.tiles.throughput.total).toBe(3);
-      expect(calls.head).not.toContain('hcp'); // inutile d'interroger ce qu'on sait illisible
+      expect(calls.head).not.toContain('jardin'); // inutile d'interroger ce qu'on sait illisible
     });
 
     it('liste un Projet dont la lecture échoue pendant le calcul', async () => {
@@ -245,12 +245,12 @@ describe('service de métriques', () => {
     });
 
     it('rend une réponse vide mais valide quand le seul Projet demandé est illisible', async () => {
-      const { service } = fakeProjects({ hcp: { status: 'unreadable', reason: 'Base absente', name: 'HCP' } });
+      const { service } = fakeProjects({ jardin: { status: 'unreadable', reason: 'Base absente', name: 'Jardin' } });
 
-      const response = await createMetricsService(service, options).compute({ projects: ['hcp'], ...week });
+      const response = await createMetricsService(service, options).compute({ projects: ['jardin'], ...week });
 
       expect(response.projects).toEqual([]);
-      expect(response.unreadable).toEqual([{ id: 'hcp', name: 'HCP', reason: 'Base absente' }]);
+      expect(response.unreadable).toEqual([{ id: 'jardin', name: 'Jardin', reason: 'Base absente' }]);
       expect(response.tiles.throughput.total).toBe(0);
       expect(response.cfd).toHaveLength(7);
     });
@@ -624,18 +624,18 @@ describe('service de métriques : santé du flux', () => {
   });
 
   it('laisse un Projet illisible hors de la santé du flux, sans la faire échouer', async () => {
-    const { service } = fakeProjects({ ...healthWorld(), hcp: { status: 'unreadable', reason: 'Base absente', name: 'HCP' } });
+    const { service } = fakeProjects({ ...healthWorld(), jardin: { status: 'unreadable', reason: 'Base absente', name: 'Jardin' } });
 
     const { health, unreadable } = await createMetricsService(service, options).compute({ projects: [], ...week });
 
-    expect(unreadable.map((p) => p.id)).toEqual(['hcp']);
+    expect(unreadable.map((p) => p.id)).toEqual(['jardin']);
     expect(health.abandonment.closed).toBe(3);
   });
 
   it('rend une santé vide mais valide quand aucun Projet n’a pu être mesuré', async () => {
-    const { service } = fakeProjects({ hcp: { status: 'unreadable', reason: 'Base absente', name: 'HCP' } });
+    const { service } = fakeProjects({ jardin: { status: 'unreadable', reason: 'Base absente', name: 'Jardin' } });
 
-    const { health } = await createMetricsService(service, options).compute({ projects: ['hcp'], ...week });
+    const { health } = await createMetricsService(service, options).compute({ projects: ['jardin'], ...week });
 
     expect(health.efficiency.ratio).toBeNull();
     expect(health.readyAges.tickets).toEqual([]);

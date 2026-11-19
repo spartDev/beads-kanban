@@ -94,7 +94,7 @@ describe('le panneau d’un ticket sur desktop : une couche posée sur la page, 
     const dialog = await palette();
     expect(within(dialog).getAllByRole('option').map((option) => option.textContent)).toEqual([
       expect.stringContaining('beads-desktop'),
-      expect.stringContaining('My-Prompt-Manager'),
+      expect.stringContaining('Mon-Pommier-Malin'),
       expect.stringContaining('legacy-api'),
     ]);
     expect(pathname(router)).toBe(TICKET);
