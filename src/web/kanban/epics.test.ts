@@ -11,7 +11,7 @@ describe('shortTitle : le titre court d’une Epic', () => {
   it.each([
     ['beads-desktop V1 : suivi des tickets et métriques de flux', 'beads-desktop V1'],
     ['Distribution : publication npm et installation via npx', 'Distribution'],
-    ['Prompt content integrity: Verbatim Prompt Mode', 'Prompt content integrity'],
+    ['Keyboard navigation pass: Visible Focus States', 'Keyboard navigation pass'],
     ['New color palette: semantic light/dark tokens', 'New color palette'],
     ['Page Epic – avancement, Enfants et prévision', 'Page Epic'],
     ['Refonte du shell — thèmes et navigation', 'Refonte du shell'],
@@ -713,7 +713,7 @@ describe('epicName et epicShortName : le nom d’une Epic', () => {
   });
 
   it('n’abrège jamais l’identifiant : coupé, il ne nommerait plus rien', () => {
-    const long = 'sanofi-ai-standards-cross-project-h3w';
+    const long = 'sentiers-alpins-sud-cross-project-h3w';
     expect(long.length).toBeGreaterThan(24);
     expect(epicShortName(epic('', long))).toBe(long);
     expect(epicName(epic('   ', long))).toBe(long);

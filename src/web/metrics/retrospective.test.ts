@@ -13,7 +13,7 @@ const signalsResponse = (overrides: Partial<SignalsResponse> = {}): SignalsRespo
   timeZoneHonoured: true,
   projects: [
     { id: 'bdesk', name: 'beads-desktop' },
-    { id: 'mpm', name: 'My-Prompt-Manager' },
+    { id: 'mpm', name: 'Mon-Pommier-Malin' },
   ],
   unreadable: [],
   signals: [
@@ -56,7 +56,7 @@ describe('rapport de rétrospective', () => {
     const text = build();
     expect(text).toContain('## Retravail (2 tickets)');
     expect(text).toContain('- `bdesk-r1` Palette ⌘K (beads-desktop) : 2 Réouvertures, Bug d’origine `bdesk-b9`');
-    expect(text).toContain('- `mpm-r2` Import des prompts (My-Prompt-Manager) : 1 Prise rendue');
+    expect(text).toContain('- `mpm-r2` Import des prompts (Mon-Pommier-Malin) : 1 Prise rendue');
   });
 
   it('dit quand rien n’est revenu sur la période', () => {
@@ -68,8 +68,8 @@ describe('rapport de rétrospective', () => {
     const text = build();
     expect(text).toContain('## Signaux en cours (3 Signaux, au 2 nov. à 20:00)');
     expect(text).toContain('### Dérive\n\n- `bdesk-d1` Refonte \\| kanban (beads-desktop) : 9 j de Cycle Time en cours, au-delà de 4 j, le P85 des Livraisons du même type');
-    expect(text).toContain('### Prêt qui stagne\n\n- `mpm-s1` Doc \\*export\\* (My-Prompt-Manager) : Prêt depuis 23 j');
-    expect(text).toContain('### WIP inhabituel\n\n- My-Prompt-Manager : 9 tickets en cours, au-delà de 6');
+    expect(text).toContain('### Prêt qui stagne\n\n- `mpm-s1` Doc \\*export\\* (Mon-Pommier-Malin) : Prêt depuis 23 j');
+    expect(text).toContain('### WIP inhabituel\n\n- Mon-Pommier-Malin : 9 tickets en cours, au-delà de 6');
     expect(text.indexOf('### Dérive')).toBeLessThan(text.indexOf('### Prêt qui stagne'));
     expect(text.endsWith('quotidien des 90 derniers jours\n')).toBe(true);
   });
@@ -137,11 +137,11 @@ describe('en anglais', () => {
     expect(text).toContain('\\* Fewer than 4 Deliveries in the week');
     expect(text).toContain('## Rework (2 tickets)');
     expect(text).toContain('- `bdesk-r1` Palette ⌘K (beads-desktop): 2 Reopens, Escaped bug `bdesk-b9`');
-    expect(text).toContain('- `mpm-r2` Import des prompts (My-Prompt-Manager): 1 Handback');
+    expect(text).toContain('- `mpm-r2` Import des prompts (Mon-Pommier-Malin): 1 Handback');
     expect(text).toContain('## Current Signals (3 Signals, as of Nov 2 at 20:00)');
     // L'échappement markdown ne dépend pas de la langue.
     expect(text).toContain('- `bdesk-d1` Refonte \\| kanban (beads-desktop): ');
-    expect(text).toContain('- `mpm-s1` Doc \\*export\\* (My-Prompt-Manager): ');
+    expect(text).toContain('- `mpm-s1` Doc \\*export\\* (Mon-Pommier-Malin): ');
   });
 
   it('accorde au singulier pour 1 exactement, et dit l’absence', () => {

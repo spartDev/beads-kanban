@@ -20,7 +20,7 @@ beforeEach(() => stubChartWidth(640));
 afterEach(() => vi.restoreAllMocks());
 
 const ctx: SeriesContext = {
-  projectName: (id) => ({ bdesk: 'beads-desktop', mpm: 'My-Prompt-Manager' })[id] ?? id,
+  projectName: (id) => ({ bdesk: 'beads-desktop', mpm: 'Mon-Pommier-Malin' })[id] ?? id,
   projectHue: (id) => (id === 'bdesk' ? 200 : 40),
 };
 

@@ -10,7 +10,7 @@ beforeEach(() => stubChartWidth(640));
 afterEach(() => vi.restoreAllMocks());
 
 const ctx: SeriesContext = {
-  projectName: (id) => ({ bdesk: 'beads-desktop', mpm: 'My-Prompt-Manager' })[id] ?? id,
+  projectName: (id) => ({ bdesk: 'beads-desktop', mpm: 'Mon-Pommier-Malin' })[id] ?? id,
   projectHue: (id) => (id === 'bdesk' ? 200 : 40),
 };
 
@@ -161,7 +161,7 @@ describe('CycleTimePanel : le nuage de points du Cycle Time', () => {
 
     fireEvent.pointerMove(hitArea(container), { clientX: Number(dot.getAttribute('cx')), clientY: Number(dot.getAttribute('cy')), pointerType: 'mouse' });
 
-    expect(container.querySelector('[data-chart-tooltip]')?.textContent).toContain('My-Prompt-Manager');
+    expect(container.querySelector('[data-chart-tooltip]')?.textContent).toContain('Mon-Pommier-Malin');
   });
 
   it('n’affiche rien quand aucune Livraison n’est assez proche, et retire l’infobulle', () => {

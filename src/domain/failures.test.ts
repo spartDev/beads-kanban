@@ -814,7 +814,7 @@ describe('analyzeFailures', () => {
     });
   });
 
-  describe('scénario My-Prompt-Manager (ieq.4 et ieq.5)', () => {
+  describe('scénario Mon-Pommier-Malin (ieq.4 et ieq.5)', () => {
     // Données réelles : chaque ticket de suivi est créé moins de 4 s après la clôture de sa cible. L'historique
     // Dolt ne date les liens qu'à la migration de bd (2026-10-18), bien après : seule la création du bug compte.
     const migration = at('2026-10-18T06:54:26.308');

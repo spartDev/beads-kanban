@@ -61,7 +61,7 @@ const detail: IssueDetail = {
 
 function serviceWith(overrides: Partial<ProjectService> = {}): ProjectService {
   return {
-    list: async () => ({ projects: [project], ignored: [{ path: '/Users/someone/Developer/bd-dashboard', reason: 'SQLite' }] }),
+    list: async () => ({ projects: [project], ignored: [{ path: '/Users/someone/Developer/fanfare-municipale', reason: 'SQLite' }] }),
     issues: async () => [issue],
     issue: async () => detail,
     histories: async () => [],
@@ -103,7 +103,7 @@ describe('API des Projets', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       projects: [project],
-      ignored: [{ path: '/Users/someone/Developer/bd-dashboard', reason: 'SQLite' }],
+      ignored: [{ path: '/Users/someone/Developer/fanfare-municipale', reason: 'SQLite' }],
     });
   });
 

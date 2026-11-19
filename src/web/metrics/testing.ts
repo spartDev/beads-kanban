@@ -314,7 +314,7 @@ export function metricsFixture(overrides: Partial<MetricsResponse> = {}): Metric
     timeZoneHonoured: true,
     projects: [
       { id: 'bdesk', name: 'beads-desktop' },
-      { id: 'mpm', name: 'My-Prompt-Manager' },
+      { id: 'mpm', name: 'Mon-Pommier-Malin' },
     ],
     unreadable: [],
     range: '7d',
@@ -357,7 +357,7 @@ export function metricsFixture(overrides: Partial<MetricsResponse> = {}): Metric
       priority: [slice('1', 'P1', { throughput: 1 }), slice('2', 'P2', { throughput: 4 }), slice('3', 'P3', { throughput: 10 })],
       project: [
         slice('bdesk', 'beads-desktop', { throughput: 2, wip: 2, coverage: { bugs: 1, linked: 0, ratio: 0 } }),
-        slice('mpm', 'My-Prompt-Manager', { throughput: 16, wip: 3, coverage: { bugs: 36, linked: 13, ratio: 13 / 36 } }),
+        slice('mpm', 'Mon-Pommier-Malin', { throughput: 16, wip: 3, coverage: { bugs: 36, linked: 13, ratio: 13 / 36 } }),
       ],
     },
     health: healthFixture(),

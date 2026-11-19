@@ -11,7 +11,7 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
 const ctx: SeriesContext = {
-  projectName: (id) => ({ bdesk: 'beads-desktop', mpm: 'My-Prompt-Manager' })[id] ?? id,
+  projectName: (id) => ({ bdesk: 'beads-desktop', mpm: 'Mon-Pommier-Malin' })[id] ?? id,
   projectHue: () => 120,
 };
 
@@ -138,12 +138,12 @@ describe('ReadyAgePanel : les Prêts qui stagnent', () => {
 
   it('nomme le Projet des Prêts quand il y en a plusieurs, et pas autrement', () => {
     renderPanel();
-    expect(plain(rows()[0]?.textContent)).toContain('My-Prompt-Manager');
+    expect(plain(rows()[0]?.textContent)).toContain('Mon-Pommier-Malin');
   });
 
   it('ne nomme pas le Projet d’un Projet seul', () => {
     renderPanel({ showProject: false });
-    expect(plain(rows()[0]?.textContent)).not.toContain('My-Prompt-Manager');
+    expect(plain(rows()[0]?.textContent)).not.toContain('Mon-Pommier-Malin');
   });
 
   it('replie la liste au-delà de douze Prêts, et la déplie à la demande', async () => {
@@ -187,7 +187,7 @@ describe('ReadyAgePanel : les Prêts qui stagnent', () => {
 
     expect(body).toHaveLength(6);
     expect(within(body[0]!).getAllByRole('columnheader').map((header) => header.textContent)).toEqual(['Ticket', 'Projet', 'Prêt depuis', 'Âge', 'Stagne']);
-    expect(within(body[1]!).getAllByRole('cell').map((cell) => plain(cell.textContent))).toEqual(['My-Prompt-Manager', '23 sept. 2026', '40 j 10 h', 'Oui']);
+    expect(within(body[1]!).getAllByRole('cell').map((cell) => plain(cell.textContent))).toEqual(['Mon-Pommier-Malin', '23 sept. 2026', '40 j 10 h', 'Oui']);
     expect(within(body[5]!).getAllByRole('cell').map((cell) => plain(cell.textContent))).toEqual(['beads-desktop', '2 nov. 2026', '5 h', 'Non']);
   });
 

@@ -76,12 +76,12 @@ describe('rank', () => {
   it('classe les Projets par préfixe, nom ou identifiant', () => {
     const projects = [
       { id: 'bdesk', name: 'beads-desktop', prefix: 'bdesk' },
-      { id: 'mpm', name: 'My-Prompt-Manager', prefix: 'mpm' },
+      { id: 'mpm', name: 'Mon-Pommier-Malin', prefix: 'mpm' },
     ];
     const describeProject = (p: (typeof projects)[number]): Searchable => ({ id: p.prefix, text: p.name, keywords: [p.id] });
 
     expect(rank(projects, 'mpm', describeProject).items.map((p) => p.id)).toEqual(['mpm']);
-    expect(rank(projects, 'prompt', describeProject).items.map((p) => p.id)).toEqual(['mpm']);
+    expect(rank(projects, 'pommier', describeProject).items.map((p) => p.id)).toEqual(['mpm']);
     expect(rank(projects, 'desk', describeProject).items.map((p) => p.id)).toEqual(['bdesk']);
   });
 

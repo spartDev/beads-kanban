@@ -52,20 +52,20 @@ const config = (overrides: Partial<Config> = {}): Config => ({ roots: [root], pr
 
 describe('discoverProjects', () => {
   it('liste les Projets Dolt embedded avec leur préfixe lu dans la base', async () => {
-    doltWorkspace('ai-cartography-360', {
+    doltWorkspace('aviron-club-360', {
       metadata: { dolt_mode: 'embedded', dolt_database: 'ac360' },
       database: ['embeddeddolt', 'ac360'],
     });
-    const db = folder('ai-cartography-360', '.beads', 'embeddeddolt', 'ac360');
+    const db = folder('aviron-club-360', '.beads', 'embeddeddolt', 'ac360');
 
     const { projects, ignored } = await discoverProjects(config(), { dolt: fakeDolt({ [db]: 'ac360' }) });
 
     expect(ignored).toEqual([]);
     expect(projects).toEqual([
       {
-        id: 'ai-cartography-360',
-        name: 'ai-cartography-360',
-        path: folder('ai-cartography-360'),
+        id: 'aviron-club-360',
+        name: 'aviron-club-360',
+        path: folder('aviron-club-360'),
         prefix: 'ac360',
         mode: 'embedded',
         status: 'ok',
@@ -84,7 +84,7 @@ describe('discoverProjects', () => {
   });
 
   it('signale illisible un Projet server dont la base est absente, sans planter, avec le préfixe de config.yaml', async () => {
-    doltWorkspace('hcpportal', {
+    doltWorkspace('jardin-partage', {
       metadata: { dolt_mode: 'server', dolt_database: 'b' },
       database: ['dolt'], // le dossier .beads/dolt/.dolt existe, mais pas la base .beads/dolt/b
       config: '# commentaire\nissue-prefix: b\nsync:\n  git-remote: git@example.com:x/y.git\n',
@@ -132,18 +132,18 @@ describe('discoverProjects', () => {
   });
 
   it('ignore avec une raison les workspaces SQLite, incomplets ou illisibles', async () => {
-    write(folder('bd-dashboard', '.beads', 'metadata.json'), JSON.stringify({ database: 'beads.db', jsonl_export: 'issues.jsonl' }));
-    write(folder('bd-dashboard', '.beads', 'beads.db'));
-    mkdirSync(folder('test-skill', '.beads', 'dolt'), { recursive: true });
+    write(folder('fanfare-municipale', '.beads', 'metadata.json'), JSON.stringify({ database: 'beads.db', jsonl_export: 'issues.jsonl' }));
+    write(folder('fanfare-municipale', '.beads', 'beads.db'));
+    mkdirSync(folder('tutoriel-photo', '.beads', 'dolt'), { recursive: true });
     write(folder('json-casse', '.beads', 'metadata.json'), '{ pas du json');
     write(folder('autre', '.beads', 'metadata.json'), JSON.stringify({ backend: 'postgres', database: 'x' }));
 
     const { projects, ignored } = await discoverProjects(config(), { dolt: fakeDolt() });
 
     expect(projects).toEqual([]);
-    expect(ignored.map((i) => i.path)).toEqual([folder('autre'), folder('bd-dashboard'), folder('json-casse'), folder('test-skill')]);
-    expect(ignored.find((i) => i.path === folder('bd-dashboard'))?.reason).toMatch(/SQLite \(beads\.db\).*Dolt/);
-    expect(ignored.find((i) => i.path === folder('test-skill'))?.reason).toContain('metadata.json');
+    expect(ignored.map((i) => i.path)).toEqual([folder('autre'), folder('fanfare-municipale'), folder('json-casse'), folder('tutoriel-photo')]);
+    expect(ignored.find((i) => i.path === folder('fanfare-municipale'))?.reason).toMatch(/SQLite \(beads\.db\).*Dolt/);
+    expect(ignored.find((i) => i.path === folder('tutoriel-photo'))?.reason).toContain('metadata.json');
     expect(ignored.find((i) => i.path === folder('json-casse'))?.reason).toContain('illisible');
     expect(ignored.find((i) => i.path === folder('autre'))?.reason).toContain('postgres');
   });
@@ -295,8 +295,8 @@ describe('discoverProjects', () => {
 
 describe('slugify', () => {
   it.each([
-    ['My-Prompt-Manager', 'my-prompt-manager'],
-    ['ai-cartography-360', 'ai-cartography-360'],
+    ['Mon-Pommier-Malin', 'mon-pommier-malin'],
+    ['aviron-club-360', 'aviron-club-360'],
     ['Mon Projet_été (v2)', 'mon-projet-ete-v2'],
     ['---', 'projet'],
   ])('%s → %s', (name, slug) => {

@@ -117,7 +117,7 @@ describe('analyzeFlow', () => {
       expect(closedWithLinks([duplicate, superseded])).toMatchObject({ kind: 'abandoned', cause: 'superseded', of: 'b' });
     });
 
-    // Un commit de lot de bd (auto-commit `batch`) réunit des liens écrits à des moments différents : dans sanofi-ai-standards, dix
+    // Un commit de lot de bd (auto-commit `batch`) réunit des liens écrits à des moments différents : dans sentiers-alpins-sud, dix
     // liens écrits le 28 avril entre 10:10:30 et 10:10:32 (heure locale) sont dans le seul commit de 08:31:51 UTC, 21 minutes plus tard.
     // Seul le created_at de leur ligne dit alors dans quel ordre ils ont été posés. Le kanban lit ce created_at ; les métriques
     // doivent lire le même.

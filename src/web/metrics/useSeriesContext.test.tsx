@@ -53,7 +53,7 @@ describe('la couleur d’un Projet dans les graphiques, avec la liste des Projet
   // [nom, préfixe, teinte] : relevé sur HEAD (173b090), `projectHue(préfixe || nom)`.
   it.each<[string, string, number]>([
     ['beads-desktop', 'bdesk', 11],
-    ['My-Prompt-Manager', 'mpm', 330],
+    ['Mon-Pommier-Malin', 'mpm', 330],
     ['beads-desktop', '', 260],
     ['legacy-api', '', 158],
     ['Mon Projet', '', 96],
@@ -72,7 +72,7 @@ describe('la couleur d’un Projet dans les graphiques, avec la liste des Projet
   it('est la teinte que la pastille du même Projet pose, pour chacun : barre latérale et graphiques disent la même couleur', () => {
     const known = [
       project(),
-      project({ id: 'mpm', name: 'My-Prompt-Manager', prefix: 'mpm', path: '/dev/mpm' }),
+      project({ id: 'mpm', name: 'Mon-Pommier-Malin', prefix: 'mpm', path: '/dev/mpm' }),
       project({ id: 'nu', name: 'legacy-api', prefix: '', path: '/dev/legacy-api' }),
       project({ id: 'st', name: 'Sans titre', prefix: '', path: '/dev/Sans titre' }),
       unnamed({ id: 'projet', path: '/dev/\u3164' }),

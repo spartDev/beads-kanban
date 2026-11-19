@@ -163,7 +163,7 @@ const SITES: Site[] = [
     zone: () => screen.getByRole('region', { name: 'Projets suivis' }),
     retry: retryIn(() => within(screen.getByRole('region', { name: 'Projets suivis' }))),
     loading: () => within(screen.getByRole('region', { name: 'Projets suivis' })).findByRole('status', { name: 'Chargement des Projets' }),
-    arrived: () => within(screen.getByRole('region', { name: 'Projets suivis' })).findByRole('link', { name: /My-Prompt-Manager/ }),
+    arrived: () => within(screen.getByRole('region', { name: 'Projets suivis' })).findByRole('link', { name: /Mon-Pommier-Malin/ }),
     title: () => screen.getByRole('heading', { level: 2, name: 'Projets suivis' }),
     automatic: true,
   },
@@ -253,7 +253,7 @@ const SITES: Site[] = [
     zone: () => sidebar().getByRole('region', { name: /^Projets/ }), // « Projets 2 » une fois la liste arrivée : le nombre s'ajoute au titre
     retry: retryIn(sidebar),
     loading: () => sidebar().findByRole('status', { name: 'Chargement des Projets' }),
-    arrived: () => sidebar().findByRole('link', { name: /My-Prompt-Manager/ }),
+    arrived: () => sidebar().findByRole('link', { name: /Mon-Pommier-Malin/ }),
     title: () => sidebar().getByRole('heading', { level: 2, name: /^Projets/ }),
     automatic: true,
   },

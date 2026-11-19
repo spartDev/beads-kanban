@@ -110,8 +110,8 @@ describe('describeSlices : par priorité', () => {
 
 describe('describeSlices : par Projet', () => {
   const slices = [
-    slice('mpm', 'My-Prompt-Manager', { significant: true, coverage: coverage(36, 30), throughput: 56, failedDeliveries: 7, failureRate: 7 / 56 }),
-    slice('sais', 'sanofi-ai-standards', { significant: false, coverage: coverage(28, 0), throughput: 5, failedDeliveries: 0, failureRate: 0 }),
+    slice('mpm', 'Mon-Pommier-Malin', { significant: true, coverage: coverage(36, 30), throughput: 56, failedDeliveries: 7, failureRate: 7 / 56 }),
+    slice('sais', 'sentiers-alpins-sud', { significant: false, coverage: coverage(28, 0), throughput: 5, failedDeliveries: 0, failureRate: 0 }),
     slice('vide', 'projet-vide', { significant: false, coverage: coverage(0, 0), throughput: 0, failedDeliveries: 0, failureRate: null }),
   ];
 
@@ -199,7 +199,7 @@ describe('describeSlices : par Projet', () => {
   it('lie chaque Projet à sa page Métriques', () => {
     const view = describeSlices({ slices, dimension: 'project', tiles: tiles(), ctx, projectHref: (id) => `/p/${id}/metrics?range=7d` }, 'fr');
     expect(view.rows.map((row) => row.href)).toEqual(['/p/mpm/metrics?range=7d', '/p/sais/metrics?range=7d', '/p/vide/metrics?range=7d']);
-    expect(view.rows[0]?.series).toMatchObject({ key: 'mpm', label: 'My-Prompt-Manager', color: 'oklch(var(--series-l) var(--series-c) 120)' });
+    expect(view.rows[0]?.series).toMatchObject({ key: 'mpm', label: 'Mon-Pommier-Malin', color: 'oklch(var(--series-l) var(--series-c) 120)' });
   });
 });
 

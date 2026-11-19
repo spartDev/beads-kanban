@@ -2,7 +2,7 @@ import type { Issue, IssueChronology, IssueDetail, Project, ProjectsResponse } f
 
 export const projects: Project[] = [
   { id: 'bdesk', name: 'beads-desktop', path: '/dev/beads-desktop', prefix: 'bdesk', mode: 'embedded', status: 'ok' },
-  { id: 'mpm', name: 'My-Prompt-Manager', path: '/dev/My-Prompt-Manager', prefix: 'mpm', mode: 'server', status: 'ok' },
+  { id: 'mpm', name: 'Mon-Pommier-Malin', path: '/dev/Mon-Pommier-Malin', prefix: 'mpm', mode: 'server', status: 'ok' },
   {
     id: 'legacy',
     name: 'legacy-api',

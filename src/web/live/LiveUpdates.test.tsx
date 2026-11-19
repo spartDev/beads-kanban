@@ -59,7 +59,7 @@ describe('le shell suit le Projet affiché', () => {
     serve();
     renderApp('/overview');
     const nav = await screen.findByRole('navigation', { name: 'Navigation principale' });
-    await within(nav).findByRole('link', { name: /My-Prompt-Manager/ }); // la liste des Projets est chargée
+    await within(nav).findByRole('link', { name: /Mon-Pommier-Malin/ }); // la liste des Projets est chargée
 
     expect(FakeEventSource.instances).toHaveLength(0);
   });
