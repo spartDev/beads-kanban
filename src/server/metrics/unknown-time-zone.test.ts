@@ -69,6 +69,9 @@ function projectsWith(statuses: [string, Date][]): ProjectService {
     issue: async () => {
       throw new Error('inutile ici');
     },
+    board: async () => {
+      throw new Error('inutile ici');
+    },
   };
 }
 

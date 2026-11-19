@@ -2,6 +2,7 @@ import { Writable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import { createMetricsService } from './metrics/service';
 import type { ProjectService } from './projects/service';
+import { withBoard } from './testing/board';
 import { buildServer } from './server';
 
 // `identify` (ce que le filet de `registerApi` écrit de l'erreur d'origine) est ici remplacé par une version qui lève : la ligne fixe du filet
@@ -30,7 +31,7 @@ describe('API : le filet du gestionnaire d’erreurs, quand identify lève (bdes
         throw new Error('prototype-illisible');
       },
     });
-    const projects: ProjectService = {
+    const projects: ProjectService = withBoard({
       list: async () => {
         throw thrown;
       },
@@ -40,7 +41,7 @@ describe('API : le filet du gestionnaire d’erreurs, quand identify lève (bdes
       },
       histories: async () => [],
       head: async () => 'h1',
-    };
+    });
     const metrics = createMetricsService(projects, { now: () => new Date('2026-10-23T18:00:00Z'), timeZone: 'Europe/Paris' });
     const app = buildServer({ config, projects, metrics, logger: { level: 'warn', stream } });
 

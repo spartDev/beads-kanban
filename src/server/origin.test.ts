@@ -10,6 +10,7 @@ import type { MetricsService } from './metrics/service';
 import { isOwnRequest } from './origin';
 import { IssueNotFoundError, ProjectNotFoundError, type ProjectService } from './projects/service';
 import { buildServer, startServer } from './server';
+import { withBoard } from './testing/board';
 import { openStream } from './testing/sse';
 
 /**
@@ -28,7 +29,7 @@ const project: Project = { id: 'beads-desktop', name: 'beads-desktop', path: '/d
  */
 function services() {
   const calls: string[] = [];
-  const projects: ProjectService = {
+  const projects: ProjectService = withBoard({
     list: async () => {
       calls.push('list');
       return { projects: [project], ignored: [] };
@@ -49,7 +50,7 @@ function services() {
       calls.push('head');
       return 'h1';
     },
-  };
+  });
   const metrics: MetricsService = {
     compute: async () => {
       calls.push('metrics');

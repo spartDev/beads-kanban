@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CUSTOM_STATUSES_SQL, ISSUE_PREFIX_SQL } from '../dolt/reader';
 import { readsOutsideHead, tableReads, tablesRead } from './reads-at-head';
 
 /**
@@ -77,6 +78,21 @@ describe('readsOutsideHead', () => {
 
   it('refuse une table qu’on ajouterait sans la clause, sans qu’il faille la nommer ici', () => {
     expect(readsOutsideHead(['select * from events'])).toHaveLength(1);
+  });
+
+  // bdesk-pz0.2 : la table `config` porte aussi les statuts que le Projet déclare, qui décident de la lecture des statuts des tickets et se lisent au
+  // dernier commit (ADR 0007). Seule la lecture du préfixe, par son texte exact, se fait dans le working set : la table n'est plus exemptée en entier.
+  it('ne laisse lire `config` dans le working set qu’à la lecture du préfixe, mot pour mot', () => {
+    expect(readsOutsideHead([ISSUE_PREFIX_SQL, CUSTOM_STATUSES_SQL])).toEqual([]);
+
+    const outside = readsOutsideHead([
+      "select `value` from config where `key` = 'status.custom'",
+      'select * from config',
+      "select `value` from config where `key` = 'issue_prefix' or `key` = 'status.custom'",
+      "select `value` from config  where `key` = 'issue_prefix'",
+    ]);
+    expect(outside).toHaveLength(4);
+    expect(outside.every((reason) => reason.startsWith("config lue sans « as of 'HEAD' »"))).toBe(true);
   });
 });
 

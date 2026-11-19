@@ -88,6 +88,9 @@ function fakeProjects(world: Record<string, FakeProject>) {
     async issue() {
       throw new Error('inutile ici');
     },
+    async board() {
+      throw new Error('inutile ici');
+    },
   };
   return { service, calls };
 }

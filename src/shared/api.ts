@@ -85,6 +85,36 @@ export interface IssueAbandon {
 /** `GET /api/projects/:projectId/issues` */
 export interface IssuesResponse {
   issues: Issue[];
+  /**
+   * Les statuts personnalisés que le Projet déclare, lus au Dernier commit, dans le même état que les tickets : les Statuts de relais
+   * et les autres (ADR 0007). Le kanban ne s'en sert pas encore : ranger les Statuts de relais parmi les statuts de travail, et leur
+   * donner des colonnes, est l'affaire de bdesk-pz0.3.
+   */
+  declaredStatuses: DeclaredStatuses;
+}
+
+/** Un Statut de relais (ADR 0007) : il porte le même nom dans tous les Projets, et c'est ce nom qui le fait reconnaître. */
+export type HandoffStatus = 'in_review' | 'in_integration' | 'awaiting_human';
+
+/** La catégorie qu'un Projet donne à un statut personnalisé : de départ (`active`), de travail (`wip`), de fin (`done`) ou gelé (`frozen`). */
+export type StatusCategory = 'active' | 'wip' | 'done' | 'frozen';
+
+/** Un statut personnalisé que le Projet déclare, tel que ses tickets le portent. */
+export interface CustomStatus {
+  name: string;
+  /** null : déclaré sans catégorie, ou avec une catégorie qui n'est pas l'une des quatre. */
+  category: StatusCategory | null;
+}
+
+/**
+ * Les statuts personnalisés d'un Projet, rangés par la règle du domaine (`declareStatuses`, src/domain/statuses.ts). Un Projet qui n'en
+ * déclare aucun a deux listes vides.
+ */
+export interface DeclaredStatuses {
+  /** Les Statuts de relais déclarés, chacun une fois, toujours dans le même ordre (`HANDOFF_STATUSES`), quels que soient l'ordre et les catégories de la déclaration. */
+  handoff: HandoffStatus[];
+  /** Les autres statuts personnalisés, dans l'ordre de la déclaration, chacun une fois (sa première déclaration fixe sa catégorie). */
+  others: CustomStatus[];
 }
 
 export interface IssueDependency {

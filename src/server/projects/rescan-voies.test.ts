@@ -58,7 +58,7 @@ function gatedPrefixes() {
     `    printf '{}\\n\\n{"rows": [{"value": "x"}]}\\n';;`,
     `  *"hashof('HEAD')"*) printf '{}\\n\\n{"rows": [{"head": "h1"}]}\\n';;`,
     `  *"where id ="*) printf '{}\\n\\n{"rows": [${TICKET}]}\\n{}\\n\\n{}\\n\\n';;`,
-    `  *"from dependencies"*"where label ="*) printf '{}\\n\\n{"rows": [${TICKET}]}\\n{}\\n\\n{}\\n\\n';;`,
+    `  *"from dependencies"*"where label ="*) printf '{}\\n\\n{"rows": [${TICKET}]}\\n{}\\n\\n{}\\n\\n{}\\n\\n';;`,
     `  *) printf '{}\\n\\n{"rows": [${TICKET}]}\\n{}\\n\\n';;`,
     `esac`,
   ].join('\n');

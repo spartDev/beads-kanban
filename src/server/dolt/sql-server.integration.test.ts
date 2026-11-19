@@ -29,6 +29,8 @@ import { storedSqlEvidence } from './stored-sql';
  *   jour 4  s-1 en cours, ses critères d'acceptation écrits dans le même commit (une Intention écrite : la présence des critères arrive en chaîne, elle aussi)
  *   jour 5  s-6 recréé (P4, ouvert)
  *   jour 6  s-6 en cours
+ *
+ * Dès le jour 1, le Projet déclare les trois Statuts de relais et un autre statut (`status.custom`, bdesk-pz0.2) : un texte, que le serveur rend comme le moteur.
  */
 
 /** Les métriques de la période close du 1er au 7 octobre 2026 : les commits des bases d'essai vont du 1er au 6, à 10:00 UTC. */
@@ -56,6 +58,9 @@ const create = (id: string, type: string, priority: number, n: number) =>
 const move = (id: string, status: string, n: number) =>
   `update issues set status = '${status}', updated_at = '${stamp(n)}', closed_at = ${status === 'closed' ? `'${stamp(n)}'` : 'null'} where id = '${id}'`;
 
+/** Les statuts personnalisés que le Projet déclare (bdesk-pz0.2) : ceux de la chaîne d'agents (ADR 0007), puis un autre, avec des blancs et une catégorie en capitales. */
+const DECLARATION = 'in_review:wip,in_integration:wip,awaiting_human:wip, qa_testing:WIP';
+
 /** Les priorités des tickets de la base : une seule vaut 2, la valeur par défaut que le lecteur donnait à tort à toutes derrière un serveur. */
 const PRIORITIES = { 's-1': 0, 's-2': 1, 's-3': 2, 's-4': 3, 's-5': 4, 's-6': 4, 's-7': 3 };
 
@@ -68,7 +73,7 @@ function buildProject(root: string, name: string, mode: 'embedded' | 'server') {
   const folder = join(beads, mode === 'embedded' ? 'embeddeddolt' : 'dolt');
   const database = join(folder, 'tdb');
   const base = createDatabase(env, database);
-  base.sql(`${SCHEMA} insert into config values ('issue_prefix', 's');`);
+  base.sql(`${SCHEMA} insert into config values ('issue_prefix', 's'), ('status.custom', '${DECLARATION}');`);
   base.sql(
     [
       create('s-1', 'task', 0, 1),
@@ -187,6 +192,13 @@ describe.skipIf(!hasBinary('dolt')).each([['embedded'], ['server']] as const)(
       const { issues } = body<IssuesResponse>(served, 'issues');
 
       expect(Object.fromEntries(issues.map((issue) => [issue.id, issue.priority]))).toEqual(PRIORITIES);
+    });
+
+    it('lit les statuts que le Projet déclare, rendus au kanban avec ses tickets (bdesk-pz0.2)', () => {
+      const { declaredStatuses } = body<IssuesResponse>(served, 'issues');
+
+      expect(declaredStatuses).toEqual({ handoff: ['in_review', 'in_integration', 'awaiting_human'], others: [{ name: 'qa_testing', category: 'wip' }] });
+      expect(body<IssuesResponse>(direct, 'issues').declaredStatuses).toEqual(declaredStatuses);
     });
 
     it('lit la priorité de la fiche : le ticket recréé a celle de sa seconde vie', () => {

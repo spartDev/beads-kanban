@@ -44,6 +44,9 @@ function fakeProjects(overrides: Partial<ProjectService> = {}) {
     issue: async () => {
       throw new Error('inutile');
     },
+    board: async () => {
+      throw new Error('inutile');
+    },
     issues: async () => {
       calls.issues++;
       return state.issues;

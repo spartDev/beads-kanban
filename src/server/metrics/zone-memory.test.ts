@@ -46,6 +46,9 @@ function delivered(): ProjectService {
     issue: async () => {
       throw new Error('inutile ici');
     },
+    board: async () => {
+      throw new Error('inutile ici');
+    },
   };
 }
 

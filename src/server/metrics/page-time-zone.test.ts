@@ -43,6 +43,9 @@ const projects: ProjectService = {
   issue: async () => {
     throw new Error('inutile ici');
   },
+  board: async () => {
+    throw new Error('inutile ici');
+  },
 };
 
 // Les noms que le moteur rend pour son fuseau (`Asia/Calcutta`, et non l'alias `Asia/Kolkata`) : un nom que `Intl` accepte aussi, et le serveur le lui renvoie.

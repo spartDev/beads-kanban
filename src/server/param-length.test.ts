@@ -8,6 +8,7 @@ import type { HeadWatcher } from './live/watcher';
 import { slugify } from './projects/discovery';
 import { ProjectNotFoundError, type ProjectService } from './projects/service';
 import { buildServer, MAX_PARAM_LENGTH, startServer } from './server';
+import { withBoard } from './testing/board';
 import { scratchDir } from './testing/scratch';
 import { openStream } from './testing/sse';
 
@@ -54,7 +55,7 @@ function recording(projectIds: string[], ticketIds: string[] = []) {
     closedAt: null,
     blockedBy: [],
   }));
-  const service: ProjectService = {
+  const service: ProjectService = withBoard({
     list: async () => ({ projects: known, ignored: [] }),
     issues: async (projectId) => {
       received.push({ method: 'issues', projectId });
@@ -71,7 +72,7 @@ function recording(projectIds: string[], ticketIds: string[] = []) {
       return [];
     },
     head: async () => 'h1',
-  };
+  });
   return { service, received };
 }
 
@@ -161,12 +162,10 @@ describe.each([
   it('GET …/issues d’un Projet inconnu à l’identifiant long : 404 de l’API (JSON, message du Projet), sans lecture', async () => {
     const projectId = slug(200, 'inconnu');
     const { service, received } = recording(['beads-desktop']);
-    const unknown: ProjectService = {
-      ...service,
-      issues: async (id) => {
-        throw new ProjectNotFoundError(id);
-      },
+    const notFound = async (id: string): Promise<never> => {
+      throw new ProjectNotFoundError(id);
     };
+    const unknown: ProjectService = { ...service, issues: notFound, board: notFound };
 
     const res = await server(unknown).inject({ method: 'GET', url: `/api/projects/${enc(projectId)}/issues` });
 

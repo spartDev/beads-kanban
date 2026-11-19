@@ -16,6 +16,7 @@ import { readTicketHistories } from './history';
 import {
   readClosureLabels,
   readComments,
+  readDeclaredStatuses,
   readDependencies,
   readIssue,
   readIssueBase,
@@ -397,6 +398,7 @@ describe.skipIf(!hasBinary('dolt'))('lectures groupées et abandonnées sur une 
       summaries: await readIssueSummaries(reader),
       dependencies: await readDependencies(reader),
       labels: await readClosureLabels(reader),
+      declaredStatuses: await readDeclaredStatuses(reader),
     });
     expect(await readIssueParts(reader, 't-1')).toEqual({
       record: await readIssue(reader, 't-1'),

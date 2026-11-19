@@ -1,5 +1,5 @@
 import type { TicketHistory } from '../../domain/flow';
-import type { Issue, IssueDetail, Project, ProjectsResponse } from '../../shared/api';
+import type { Issue, IssueDetail, IssuesResponse, Project, ProjectsResponse } from '../../shared/api';
 import type { ApiErrorDetail } from '../../shared/errors';
 import { ReadAborted } from '../abort';
 import type { Config } from '../config';
@@ -59,6 +59,12 @@ export interface ReadOptions {
 export interface ProjectService {
   /** Rescanne les racines et renvoie les Projets (lisibles ou non) et les dossiers ignorés. */
   list(): Promise<ProjectsResponse>;
+  /**
+   * Le kanban du Projet (`GET /api/projects/:projectId/issues`) : ses tickets, et les statuts personnalisés qu'il déclare, lus dans le même
+   * processus et le même état de la base (`readIssueBase`).
+   */
+  board(projectId: string, options?: ReadOptions): Promise<IssuesResponse>;
+  /** Les tickets du kanban, sans les statuts déclarés : ce que lisent les métriques et la Chronologie. Même lecture que `board`. */
   issues(projectId: string, options?: ReadOptions): Promise<Issue[]>;
   issue(projectId: string, issueId: string, options?: ReadOptions): Promise<IssueDetail>;
   /** Historique complet des tickets, pour `analyzeFlow`. */
@@ -216,16 +222,20 @@ export function createProjectService(
     }
   }
 
+  const board = async (projectId: string, { signal }: ReadOptions = {}): Promise<IssuesResponse> => {
+    const { summaries, dependencies, labels, declaredStatuses } = await read(projectId, readIssueBase, { signal });
+    return { issues: buildIssues(summaries, dependencies, labels), declaredStatuses };
+  };
+
   return {
     async list() {
       const { projects, ignored } = await discover(LIST_MAX_AGE_MS);
       return { projects: projects.map(toPublic), ignored };
     },
 
-    issues: async (projectId, { signal } = {}) => {
-      const { summaries, dependencies, labels } = await read(projectId, readIssueBase, { signal });
-      return buildIssues(summaries, dependencies, labels);
-    },
+    board,
+
+    issues: async (projectId, options) => (await board(projectId, options)).issues,
 
     issue: (projectId, issueId, { signal } = {}) =>
       read(

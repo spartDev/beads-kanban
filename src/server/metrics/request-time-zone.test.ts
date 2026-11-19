@@ -56,6 +56,9 @@ function lateDelivery() {
     issue: async () => {
       throw new Error('inutile ici');
     },
+    board: async () => {
+      throw new Error('inutile ici');
+    },
   };
   return { service, calls };
 }
