@@ -266,8 +266,21 @@ const fr = {
     markSeen: 'Tout vu',
     /** Ce qu'il fait, pour son infobulle et les lecteurs d'écran. `instant` : l'instant des données affichées. */
     markSeenHint: (instant: string) => `La prochaine fois, ne montrer que ce qui s’est passé après le ${instant}`,
+    /**
+     * À côté de « Tout vu », quand des Projets n'ont pas pu être lus : ce que le geste laissera de côté (le bouton reste utilisable, un Projet peut rester
+     * illisible longtemps). `since` : le début de la fenêtre affichée ; `projects` : leurs noms, écrits par `projectList`.
+     */
+    skippedByMarkSeen: (since: string, projects: string, n: number) =>
+      n >= 2
+        ? `« Tout vu » laissera de côté ce qui s’est passé depuis le ${since} dans ces Projets illisibles : ${projects}.`
+        : `« Tout vu » laissera de côté ce qui s’est passé depuis le ${since} dans ce Projet illisible : ${projects}.`,
     /** Annoncé une fois la visite notée. */
     markedSeen: (instant: string) => `Visite notée : tout est vu jusqu’au ${instant}.`,
+    /** Annoncé une fois la visite notée par-dessus des Projets illisibles : les mêmes paramètres que `markedSeen` et `skippedByMarkSeen`. */
+    markedSeenSkipping: (instant: string, since: string, projects: string, n: number) =>
+      n >= 2
+        ? `Visite notée : tout est vu jusqu’au ${instant}. Ce qui s’est passé depuis le ${since} dans ces Projets illisibles ne sera pas montré : ${projects}.`
+        : `Visite notée : tout est vu jusqu’au ${instant}. Ce qui s’est passé depuis le ${since} dans ce Projet illisible ne sera pas montré : ${projects}.`,
     /** Le nom de la région de statut qui annonce `markedSeen`. */
     lastVisit: 'Dernière visite',
     loading: 'Chargement de ce qui s’est passé depuis votre dernière visite',
@@ -496,7 +509,15 @@ const en: typeof fr = {
     failedDeliveries: (ids: string, n: number) => (n === 1 ? `Failed delivery: ${ids}` : `Failed deliveries: ${ids}`),
     markSeen: 'Mark all seen',
     markSeenHint: (instant: string) => `Next time, only show what happened after ${instant}`,
+    skippedByMarkSeen: (since: string, projects: string, n: number) =>
+      n === 1
+        ? `“Mark all seen” will leave out what happened since ${since} in this unreadable project: ${projects}.`
+        : `“Mark all seen” will leave out what happened since ${since} in these unreadable projects: ${projects}.`,
     markedSeen: (instant: string) => `Visit recorded: everything up to ${instant} is seen.`,
+    markedSeenSkipping: (instant: string, since: string, projects: string, n: number) =>
+      n === 1
+        ? `Visit recorded: everything up to ${instant} is seen. What happened since ${since} in this unreadable project will not be shown: ${projects}.`
+        : `Visit recorded: everything up to ${instant} is seen. What happened since ${since} in these unreadable projects will not be shown: ${projects}.`,
     lastVisit: 'Last visit',
     loading: 'Loading what happened since your last visit',
     loadFailed: 'Could not read what happened since your last visit',

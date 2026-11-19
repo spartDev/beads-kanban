@@ -9,10 +9,22 @@ import { readStorage, writeStorage } from './storage';
 export const LAST_VISIT_KEY = 'throughline:last-visit';
 
 /**
- * La Dernière visite enregistrée, en ISO 8601 ; `null` sans elle : jamais notée, stockage indisponible (lecture protégée, `readStorage`) ou valeur qui
- * n'est pas un instant (on remonte alors 24 heures, comme sans visite).
+ * La visite notée pendant cette session, gardée par le module : elle survit au démontage de l'accueil (on va sur une autre page, on revient), même quand le
+ * stockage refuse l'écriture (navigation privée, stockage bloqué, quota). Un rechargement de la page la perd ; le stockage, quand il marche, la garde.
+ */
+let noted: string | null = null;
+
+/** Oublie la visite notée pendant la session : pour les tests, qui vident aussi le stockage entre deux essais (`test/setup.ts`). */
+export function forgetNotedVisit(): void {
+  noted = null;
+}
+
+/**
+ * La Dernière visite, en ISO 8601 : celle notée pendant la session, sinon celle du stockage ; `null` sans elle : jamais notée, stockage indisponible (lecture
+ * protégée, `readStorage`) ou valeur qui n'est pas un instant (on remonte alors 24 heures, comme sans visite).
  */
 export function readLastVisit(): string | null {
+  if (noted !== null) return noted;
   const stored = readStorage(LAST_VISIT_KEY);
   if (stored === null) return null;
   const instant = Date.parse(stored);
@@ -20,12 +32,13 @@ export function readLastVisit(): string | null {
 }
 
 /**
- * La Dernière visite de ce navigateur, lue une fois au montage, et le geste qui la déplace. Un stockage indisponible (navigation privée, stockage bloqué)
- * n'empêche rien : la visite notée vaut pour la session (l'état du composant), et l'écriture, protégée, n'est simplement pas gardée.
+ * La Dernière visite de ce navigateur, lue au montage, et le geste qui la déplace. Un stockage indisponible n'empêche rien : la visite notée vaut pour la
+ * session (`noted`), et l'écriture, protégée, n'est simplement pas gardée.
  */
 export function useLastVisit(): { lastVisit: string | null; markSeen: (asOf: string) => void } {
   const [lastVisit, setLastVisit] = useState(readLastVisit);
   const markSeen = useCallback((asOf: string) => {
+    noted = asOf;
     setLastVisit(asOf);
     writeStorage(LAST_VISIT_KEY, asOf);
   }, []);

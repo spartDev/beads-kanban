@@ -1,11 +1,11 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SinceLastVisitGroup, SinceLastVisitResponse } from '../data/types';
 import { LAST_VISIT_KEY } from '../lib/lastVisit';
 import { withAsyncTimeout } from '../test/asyncTimeout';
 import { projectsResponse } from '../test/fixtures';
 import { setBrowserLanguages } from '../test/languages';
-import { renderApp, stubApi } from '../test/render';
+import { httpFailure, renderApp, stubApi } from '../test/render';
 import { withTimeZone } from '../test/timeZone';
 
 /**
@@ -58,7 +58,9 @@ const response = (since: string | null, groups: SinceLastVisitGroup[] = GROUPS):
   groups,
 });
 
-function serve(groups: SinceLastVisitGroup[] = GROUPS, reply: (since: string | null) => SinceLastVisitResponse | Error = (since) => response(since, groups)) {
+type Reply = NonNullable<Parameters<typeof stubApi>[0]['sinceLastVisit']>;
+
+function serve(groups: SinceLastVisitGroup[] = GROUPS, reply: Reply = (since) => response(since, groups)) {
   return stubApi({ projects: projectsResponse, issues: { bdesk: [], mpm: [] }, signals: {}, sinceLastVisit: reply });
 }
 
@@ -296,5 +298,127 @@ describe('« Depuis votre dernière visite » en anglais', () => {
     expect(within(region).getByRole('button', { name: 'Reopens: 1 ticket' })).toBeTruthy();
     expect(spoken(rows(region)[3]!)).toBe('New blockages: 0 tickets');
     expect(within(region).getByRole('button', { name: 'Mark all seen' })).toBeTruthy();
+  });
+});
+
+describe('« Depuis votre dernière visite » avec un Projet illisible', () => {
+  const locked = (since: string | null): SinceLastVisitResponse => ({
+    ...response(since),
+    projects: [{ id: 'bdesk', name: 'beads-desktop' }],
+    unreadable: [{ id: 'mpm', name: 'My-Prompt-Manager', reason: 'database is locked' }],
+  });
+
+  it('le dit dans la section, avec sa raison : ses événements ne sont pas dans les comptes', async () => {
+    serve(GROUPS, locked);
+    renderApp('/');
+    const region = await section();
+    await within(region).findByRole('button', { name: /^Réouvertures/ });
+
+    const notice = within(region).getByRole('status', { name: 'Un Projet illisible, absent de ces chiffres' });
+    expect(text(notice)).toContain('My-Prompt-Manager : database is locked');
+  });
+
+  it('« Tout vu » reste utilisable, mais dit à côté du bouton et dans l’annonce ce qu’il laisse de côté', async () => {
+    const fetchMock = serve(GROUPS, locked);
+    const { user } = renderApp('/');
+    const region = await section();
+    await within(region).findByRole('button', { name: /^Réouvertures/ });
+
+    const skipped = '« Tout vu » laissera de côté ce qui s’est passé depuis le 1 nov. 2026, 20:00 dans ce Projet illisible : My-Prompt-Manager.';
+    expect(within(region).getByText(skipped)).toBeTruthy();
+    const seeAll = within(region).getByRole('button', { name: 'Tout vu' });
+    expect(seeAll.getAttribute('aria-disabled')).toBeNull();
+    const described = seeAll.getAttribute('aria-describedby')!.split(' ').map((id) => text(document.getElementById(id)!));
+    expect(described).toEqual(['La prochaine fois, ne montrer que ce qui s’est passé après le 2 nov. 2026, 20:00', skipped]);
+
+    await user.click(seeAll);
+
+    expect(window.localStorage.getItem(LAST_VISIT_KEY)).toBe(AS_OF);
+    await waitFor(() => expect(asked(fetchMock)).toEqual([null, AS_OF]));
+    expect(text(within(region).getByRole('status', { name: 'Dernière visite' }))).toBe(
+      'Visite notée : tout est vu jusqu’au 2 nov. 2026, 20:00. Ce qui s’est passé depuis le 1 nov. 2026, 20:00 dans ce Projet illisible ne sera pas montré : My-Prompt-Manager.',
+    );
+  });
+
+  it('en anglais', async () => {
+    setBrowserLanguages(['en-US', 'en']);
+    serve(GROUPS, locked);
+    renderApp('/', { languageSwitch: true });
+    const region = await screen.findByRole('region', { name: 'Since your last visit' });
+    await within(region).findByRole('button', { name: /^Reopens/ });
+
+    expect(within(region).getByRole('status', { name: 'One unreadable Project, left out of these figures' })).toBeTruthy();
+    expect(text(region)).toContain('“Mark all seen” will leave out what happened since Nov 1, 2026, 20:00 in this unreadable project: My-Prompt-Manager.');
+  });
+
+  it('sans Projet illisible, rien n’est dit de plus', async () => {
+    serve();
+    renderApp('/');
+    const region = await section();
+    await within(region).findByRole('button', { name: /^Réouvertures/ });
+
+    expect(within(region).queryByText(/laissera de côté/)).toBeNull();
+    expect(within(region).getByRole('button', { name: 'Tout vu' }).getAttribute('aria-describedby')?.split(' ')).toHaveLength(1);
+  });
+});
+
+describe('« Depuis votre dernière visite », une Dernière visite que la fenêtre ne peut pas suivre', () => {
+  it('dans le futur : la section dit la fenêtre réelle, celle de la réponse, pas une date à venir', async () => {
+    const FUTURE = '2026-11-05T19:00:00.000Z';
+    window.localStorage.setItem(LAST_VISIT_KEY, FUTURE);
+    // Le serveur borne la fenêtre : elle commence et finit à l'instant des données.
+    const fetchMock = serve(GROUPS, () => response(AS_OF, GROUPS.map((group) => ({ ...group, tickets: [] }) as SinceLastVisitGroup)));
+    renderApp('/');
+
+    const region = await section();
+    await within(region).findByText('Réouvertures');
+    expect(asked(fetchMock)).toEqual([FUTURE]);
+    expect(text(region)).toContain('Depuis le 2 nov. 2026, 20:00, dans tous les Projets');
+    expect(text(region)).not.toContain('5 nov. 2026');
+  });
+
+  it('refusée par le serveur (400) : elle vaut comme pas de visite, sans laisser la section en erreur ni toucher au stockage', async () => {
+    const ANCIENT = '0050-01-01T00:00:00.000Z';
+    window.localStorage.setItem(LAST_VISIT_KEY, ANCIENT);
+    const fetchMock = serve(GROUPS, (since) =>
+      since === null
+        ? response(null)
+        : httpFailure(400, { statusCode: 400, error: 'Bad Request', message: 'refusé', code: 'query-invalid-instant', params: { parameter: 'since', received: since } }),
+    );
+    renderApp('/');
+
+    const region = await section();
+    await within(region).findByRole('button', { name: /^Réouvertures/ });
+    expect(asked(fetchMock)).toEqual([ANCIENT, null]);
+    expect(text(region)).toContain('Ces dernières 24 heures');
+    expect(within(region).queryByRole('alert')).toBeNull();
+    expect(window.localStorage.getItem(LAST_VISIT_KEY)).toBe(ANCIENT);
+  });
+});
+
+describe('« Depuis votre dernière visite », stockage indisponible, d’une page à l’autre', () => {
+  it('la visite notée tient quand on quitte l’accueil et qu’on y revient', async () => {
+    vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
+      throw new DOMException('Accès refusé', 'SecurityError');
+    });
+    vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => {
+      throw new DOMException('Quota dépassé', 'QuotaExceededError');
+    });
+    const fetchMock = serve();
+    const { user, router } = renderApp('/');
+    const region = await section();
+    await within(region).findByRole('button', { name: /^Réouvertures/ });
+    await user.click(within(region).getByRole('button', { name: 'Tout vu' }));
+    await waitFor(() => expect(asked(fetchMock)).toEqual([null, AS_OF]));
+
+    await act(async () => void router.navigate('/p/bdesk/signals'));
+    await screen.findByRole('heading', { level: 1, name: 'À regarder' });
+    expect(screen.queryByRole('region', { name: 'Depuis votre dernière visite' })).toBeNull();
+    await act(async () => void router.navigate('/'));
+
+    const back = await section();
+    await within(back).findByRole('button', { name: /^Réouvertures/ });
+    expect(text(back)).toContain('Depuis le 2 nov. 2026, 20:00');
+    expect(asked(fetchMock).at(-1)).toBe(AS_OF);
   });
 });

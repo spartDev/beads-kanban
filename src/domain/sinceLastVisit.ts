@@ -1,5 +1,4 @@
 import type { MetricsInput, TrackedTicket } from './metrics';
-import { statusAt } from './timeline';
 
 /**
  * « Depuis votre dernière visite » : ce qui s'est passé dans tous les Projets entre la Dernière visite et l'instant des données (voir CONTEXT.md), genre par
@@ -8,18 +7,19 @@ import { statusAt } from './timeline';
  * La fenêtre compte son premier instant et exclut le dernier, comme celle des métriques : un événement daté à l'instant des données ou après (l'horloge d'un
  * commit en avance) n'est pas encore arrivé. Il le sera dans la fenêtre suivante, qui commence là où celle-ci s'arrête quand l'utilisateur dit avoir tout vu :
  * rien n'est sauté, rien n'est compté deux fois.
+ *
+ * La limite de ce repère horaire : un commit dont l'horloge retarde (antidaté) et qui n'arrive dans la base qu'après « Tout vu » porte une date d'avant la
+ * Dernière visite. Il n'est jamais montré : la fenêtre suivante commence après lui, et la précédente avait été lue sans lui. Les Transitions gardent l'ordre de
+ * l'historique (CONTEXT.md), mais une fenêtre ne relit pas ce qu'une autre a couvert.
+ *
+ * Il n'y a pas de genre « passage en À valider » : la File de décisions montre ces tickets. Un ticket À valider à l'instant des données reste compté dans les
+ * autres genres (sa Réouverture, le Bug d'origine qu'il est, son Arrivée).
  */
 
 const HOUR = 3_600_000;
 
 /** Sans Dernière visite (l'utilisateur n'a jamais dit avoir tout vu dans ce navigateur), la fenêtre remonte 24 heures avant l'instant des données. */
 export const WITHOUT_LAST_VISIT = 24 * HOUR;
-
-/**
- * Le statut À valider (ADR 0007 : son nom est un contrat). Un ticket qui y est à l'instant des données n'entre dans aucun genre : il attend l'utilisateur, et
- * c'est la File de décisions qui le montre.
- */
-export const AWAITING_VALIDATION = 'awaiting_human';
 
 /** Une fenêtre de temps (ms epoch) : son premier instant compris, le premier instant qui suit exclu. */
 export interface LastVisitWindow {
@@ -62,8 +62,7 @@ interface Entry {
 }
 
 /**
- * Les genres de la fenêtre, dans l'ordre où l'accueil les montre, chacun avec ses tickets (une liste vide : rien de ce genre ne s'est passé). Les tickets
- * À valider à l'instant des données (`AWAITING_VALIDATION`) n'y sont pas.
+ * Les genres de la fenêtre, dans l'ordre où l'accueil les montre, chacun avec ses tickets (une liste vide : rien de ce genre ne s'est passé).
  *
  * Ajouter un genre : son nom dans `SinceKind`, sa ligne ici à sa place, son libellé dans les deux langues du catalogue (le compilateur le demande). Les
  * Livraisons sans Feu vert prendront la tête, avant les Réouvertures ; les Retours se placeront entre les Livraisons et les nouveaux Blocages. Un genre qui
@@ -71,11 +70,7 @@ interface Entry {
  * vide. Un genre rendu, même vide, est un genre disponible.
  */
 export function sinceLastVisit(projects: MetricsInput[], window: LastVisitWindow): SinceGroup[] {
-  const entries: Entry[] = projects.flatMap((project) =>
-    project.analysis.tickets
-      .filter((ticket) => statusAt(ticket.timeline, window.end) !== AWAITING_VALIDATION)
-      .map((ticket) => ({ project, ticket })),
-  );
+  const entries: Entry[] = projects.flatMap((project) => project.analysis.tickets.map((ticket) => ({ project, ticket })));
   return [
     { kind: 'reopenings', tickets: listed(entries, (ticket) => reopeningsOf(ticket, window)) },
     { kind: 'escapedBugs', tickets: escapedBugsIn(entries, window) },
@@ -108,6 +103,9 @@ function listed(entries: Entry[], eventsOf: (ticket: TrackedTicket) => number[])
 /**
  * Les Bugs d'origine trouvés dans la fenêtre : chaque bug une fois, avec les Livraisons qu'il y met en échec. Le bug est trouvé à la date qui compte pour le
  * Taux d'échec et le Retravail (`TrackedTicket.originBugs`) : la création du bug qui a constaté le défaut.
+ *
+ * Un bug relié après coup à une Livraison (le lien « découvert à partir de » posé après sa création) est donc daté de sa création, comme dans le Retravail du
+ * glossaire, et non du lien : créé avant la Dernière visite, il n'apparaît dans aucune fenêtre (avant le lien, il n'était pas un Bug d'origine).
  */
 function escapedBugsIn(entries: Entry[], window: LastVisitWindow): Array<SinceTicket & { deliveries: string[] }> {
   const found = new Map<string, { project: MetricsInput; at: number; deliveries: string[] }>();
@@ -127,7 +125,7 @@ function escapedBugsIn(entries: Entry[], window: LastVisitWindow): Array<SinceTi
   const byId = new Map(entries.map((entry) => [`${entry.project.id}\u0000${entry.ticket.id}`, entry]));
   return [...found]
     .flatMap(([key, { project, at, deliveries }]) => {
-      // Un bug À valider (écarté des entrées) n'est pas listé ; un bug sans historique non plus : on ne saurait pas le nommer.
+      // Un bug sans historique n'est pas listé : on ne saurait pas le nommer.
       const bug = byId.get(key)?.ticket;
       return bug ? [{ ...row(project, bug, at), deliveries: deliveries.sort(compareText) }] : [];
     })

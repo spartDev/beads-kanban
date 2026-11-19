@@ -284,8 +284,8 @@ export interface SignalsResponse {
  *                               vide ou répété : 400.
  *
  * Ce qui s'est passé dans tous les Projets lisibles entre `since` (compris) et `asOf` (exclu), genre par genre, les mauvaises nouvelles d'abord. Tiré des
- * mêmes analyses que les Signaux et les métriques. Un ticket À valider n'y figure pas : la File de décisions le montre. Pas de Projet à choisir : la Dernière
- * visite est unique, celle de l'accueil global.
+ * mêmes analyses que les Signaux et les métriques. Pas de Projet à choisir : la Dernière visite est unique, celle de l'accueil global. Un Projet illisible
+ * (`unreadable`) n'est pas compté : l'accueil le dit, et dit que « Tout vu » laissera de côté ce qui s'y est passé.
  * ---------------------------------------------------------------------------------------------------------------- */
 
 /**

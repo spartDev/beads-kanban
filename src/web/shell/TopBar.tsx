@@ -8,7 +8,7 @@ import { paths, sectionPath } from '../paths';
 import { BrandMark } from '../ui/Brand';
 import { ProjectTile } from '../ui/ProjectTile';
 import { Tip } from '../ui/Tip';
-import { isAllProjectsPage, useRouteInfo } from './navigation';
+import { allProjectsPage, useRouteInfo } from './navigation';
 import { usePalette } from './OverlayProvider';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -53,11 +53,12 @@ function MobileSwitcher() {
   const { pathname } = useLocation();
   const { projectId, project } = useCurrentProject();
   const t = useT();
+  const page = allProjectsPage(pathname);
   const label = projectId
     ? (project?.name ?? projectId)
-    : pathname === paths.home()
+    : page === 'home'
       ? t.shell.sections.signals
-      : pathname === paths.global()
+      : page === 'overview'
         ? t.shell.overview.title
         : APP_NAME;
 
@@ -84,7 +85,8 @@ function Breadcrumb() {
   const { section, issueId } = useRouteInfo();
   const { projectId, project } = useCurrentProject();
   const t = useT();
-  if (!projectId && !isAllProjectsPage(pathname)) return null;
+  const page = allProjectsPage(pathname);
+  if (!projectId && !page) return null;
 
   return (
     <nav aria-label={t.shell.layout.breadcrumb} className="hidden min-w-0 items-center gap-1.5 text-ui md:flex">
@@ -124,7 +126,7 @@ function Breadcrumb() {
             </>
           ) : null}
         </>
-      ) : pathname === paths.home() ? (
+      ) : page === 'home' ? (
         <span className="inline-flex items-center gap-2 font-semibold text-ink">
           <Eye size={15} strokeWidth={1.8} aria-hidden="true" className="text-ink-3" />
           {t.shell.sections.signals}

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeProject, type MetricsTicket } from './metrics';
-import { AWAITING_VALIDATION, lastVisitWindow, sinceLastVisit, WITHOUT_LAST_VISIT } from './sinceLastVisit';
+import { lastVisitWindow, sinceLastVisit, WITHOUT_LAST_VISIT } from './sinceLastVisit';
+
+/** Le statut À valider (ADR 0007 : son nom est un contrat). */
+const AWAITING_VALIDATION = 'awaiting_human';
 
 /**
  * « Depuis votre dernière visite » : ce qui s'est passé dans tous les Projets entre la Dernière visite et l'instant des données (voir CONTEXT.md). Les
@@ -161,20 +164,41 @@ describe('sinceLastVisit', () => {
     expect(listed([arrived, epic, old], 'arrivals')).toEqual([['nouveau', '2026-10-19T09:00:00']]);
   });
 
-  it('laisse de côté un ticket À valider, que la File de décisions montre', () => {
-    const awaiting = ticket('a-valider', [
-      ['open', '2026-10-18T13:00:00'],
-      ['in_progress', '2026-10-18T14:00:00'],
-      [AWAITING_VALIDATION, '2026-10-19T10:00:00'],
-    ]);
-    const validatedSince = ticket('valide', [
-      ['open', '2026-10-18T13:00:00'],
-      [AWAITING_VALIDATION, '2026-10-18T14:00:00'],
-      ['in_progress', '2026-10-19T10:00:00'],
+  it('compte un Bug d’origine dont le bug est À valider à l’instant des données : il n’y a pas de genre « passage en À valider », pas de filtre non plus', () => {
+    const delivery = ticket('livre', [['open', '2026-10-01T09:00:00'], ['closed', '2026-10-10T09:00:00']]);
+    const bug = ticket(
+      'bug',
+      [
+        ['open', '2026-10-18T20:00:00'],
+        ['in_progress', '2026-10-18T21:00:00'],
+        [AWAITING_VALIDATION, '2026-10-19T10:00:00'],
+      ],
+      { type: 'bug', dependencies: [{ type: 'discovered-from', target: 'livre', addedAt: at('2026-10-18T20:00:00') }] },
+    );
+
+    expect(listed([delivery, bug], 'escapedBugs')).toEqual([['bug', '2026-10-18T20:00:00']]);
+    expect(listed([delivery, bug], 'arrivals')).toEqual([['bug', '2026-10-18T20:00:00']]);
+  });
+
+  it('compte la Réouverture d’un ticket À valider à l’instant des données', () => {
+    const reopened = ticket('rouvert', [
+      ['open', '2026-10-01T09:00:00'],
+      ['closed', '2026-10-10T09:00:00'],
+      ['open', '2026-10-18T15:00:00'],
+      [AWAITING_VALIDATION, '2026-10-19T11:00:00'],
     ]);
 
-    expect(AWAITING_VALIDATION).toBe('awaiting_human');
-    expect(listed([awaiting, validatedSince], 'arrivals')).toEqual([['valide', '2026-10-18T13:00:00']]);
+    expect(listed([reopened], 'reopenings')).toEqual([['rouvert', '2026-10-18T15:00:00']]);
+  });
+
+  it('date de sa création un bug relié après coup à une Livraison, comme le Retravail : créé avant la fenêtre, il n’y est pas', () => {
+    const delivery = ticket('livre', [['open', '2026-10-01T09:00:00'], ['closed', '2026-10-10T09:00:00']]);
+    const linkedLater = ticket('bug', [['open', '2026-10-17T09:00:00']], {
+      type: 'bug',
+      dependencies: [{ type: 'discovered-from', target: 'livre', addedAt: at('2026-10-18T15:00:00') }],
+    });
+
+    expect(listed([delivery, linkedLater], 'escapedBugs')).toEqual([]);
   });
 
   it('range les tickets d’un genre du plus récent au plus ancien, puis par Projet et par identifiant, et nomme le Projet de chacun', () => {

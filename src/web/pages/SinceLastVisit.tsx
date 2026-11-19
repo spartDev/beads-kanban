@@ -1,13 +1,16 @@
 import { CheckCheck, ChevronRight } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Link } from 'react-router';
+import { ApiError } from '../data/apiError';
 import { ticketTitle } from '../data/helpers';
 import { useSinceLastVisit } from '../data/hooks';
+import { projectList } from '../data/projectNames';
 import type { SinceLastVisitGroup, SinceLastVisitResponse } from '../data/types';
 import { useFormat, useLanguage } from '../i18n';
 import { cx } from '../lib/cx';
 import { useLastVisit } from '../lib/lastVisit';
 import { useRetryFocus } from '../lib/useRetryFocus';
+import { UnreadableProjects } from '../metrics/Notices';
 import { paths } from '../paths';
 import { Button } from '../ui/Button';
 import { ErrorNotice, Skeleton } from '../ui/states';
@@ -21,25 +24,51 @@ import { type NamedProject, ProjectName, useProjectNamer } from './ProjectName';
  *
  * « Tout vu » prend pour Dernière visite l'instant des données affichées (`asOf`), pas l'heure du clic : un événement commité entre l'affichage et le clic
  * reste à voir. Rien d'autre ne la déplace : ni l'ouverture de la page, ni un rechargement.
+ *
+ * Un Projet illisible au moment de la lecture n'est pas compté : la section le dit (`UnreadableProjects`), et dit à côté de « Tout vu », puis dans l'annonce,
+ * que le geste laissera de côté ce qui s'y est passé depuis le début de la fenêtre. Le bouton reste utilisable : un Projet peut rester illisible longtemps.
+ *
+ * La période dite sous le titre est celle de la réponse (`since`) : une Dernière visite dans le futur (une horloge qui a reculé) donne une fenêtre vide, qui
+ * commence à l'instant des données, et non une date à venir. Une Dernière visite que le serveur refuse (400 : un instant qu'il ne sait pas lire) vaut comme
+ * pas de visite, plutôt qu'une section en erreur pour toujours.
  */
 export function SinceLastVisit() {
   const { lastVisit, markSeen } = useLastVisit();
-  const query = useSinceLastVisit(lastVisit);
+  // La Dernière visite que le serveur a refusée : on demande alors sans elle (24 heures), sans y toucher, jusqu'au prochain « Tout vu ».
+  const [refused, setRefused] = useState<string | null>(null);
+  const asked = lastVisit !== null && lastVisit !== refused ? lastVisit : null;
+  const query = useSinceLastVisit(asked);
   const retry = useRetryFocus(query);
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const format = useFormat();
+  const named = useProjectNamer();
   const text = t.shell.sinceLastVisit;
   const titleId = useId();
   const hintId = useId();
+  const skippedId = useId();
   // Ce que le lecteur d'écran entend une fois la visite notée : la liste, elle, repart en chargement.
   const [announced, setAnnounced] = useState('');
   const shown = query.data;
+  const unreadable = shown ? shown.unreadable.map(named) : [];
+  const skipped = shown && unreadable.length > 0 ? projectList(unreadable, language) : null;
+
+  useEffect(() => {
+    if (asked !== null && query.error instanceof ApiError && query.error.status === 400) setRefused(asked);
+  }, [asked, query.error]);
 
   const seeAll = () => {
     if (!shown) return;
     markSeen(shown.asOf);
-    setAnnounced(text.markedSeen(format.formatInstant(shown.asOf)));
+    const instant = format.formatInstant(shown.asOf);
+    setAnnounced(
+      skipped === null
+        ? text.markedSeen(instant)
+        : text.markedSeenSkipping(instant, format.formatInstant(shown.since), skipped, unreadable.length),
+    );
   };
+
+  // Le début de la fenêtre : celui de la réponse ; pendant le chargement, la Dernière visite, sans dépasser l'heure qu'il est.
+  const start = shown ? shown.since : asked === null ? null : new Date(Math.min(Date.parse(asked), Date.now())).toISOString();
 
   return (
     // Une zone de focus : « Réessayer » ne perd pas le focus quand le squelette remplace l'avis d'erreur (voir `ErrorNotice`). Sans contour : le focus y est transitoire.
@@ -47,30 +76,38 @@ export function SinceLastVisit() {
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div className="min-w-0 flex-1 basis-60">
           <SectionTitle id={titleId}>{text.title}</SectionTitle>
-          <p className="mt-1 wrap-anywhere text-ink-2">
-            {lastVisit === null ? text.withoutLastVisit : text.since(format.formatInstant(lastVisit))}
-          </p>
+          <p className="mt-1 wrap-anywhere text-ink-2">{asked === null || start === null ? text.withoutLastVisit : text.since(format.formatInstant(start))}</p>
         </div>
-        {/* Toujours là, pour que le focus ne tombe pas quand la liste repart en chargement après un clic : inerte tant que rien n'est affiché. */}
-        <Button
-          onClick={seeAll}
-          aria-disabled={shown ? undefined : true}
-          aria-describedby={shown ? hintId : undefined}
-          className="aria-disabled:cursor-default aria-disabled:opacity-50"
-        >
-          <CheckCheck size={15} aria-hidden="true" />
-          {text.markSeen}
-        </Button>
-        {shown ? (
-          <span id={hintId} hidden>
-            {text.markSeenHint(format.formatInstant(shown.asOf))}
-          </span>
-        ) : null}
+        <div className="flex min-w-0 max-w-full flex-col items-start gap-1.5 sm:max-w-xs sm:items-end">
+          {/* Toujours là, pour que le focus ne tombe pas quand la liste repart en chargement après un clic : inerte tant que rien n'est affiché. */}
+          <Button
+            onClick={seeAll}
+            aria-disabled={shown ? undefined : true}
+            aria-describedby={shown ? (skipped === null ? hintId : `${hintId} ${skippedId}`) : undefined}
+            className="aria-disabled:cursor-default aria-disabled:opacity-50"
+          >
+            <CheckCheck size={15} aria-hidden="true" />
+            {text.markSeen}
+          </Button>
+          {shown ? (
+            <span id={hintId} hidden>
+              {text.markSeenHint(format.formatInstant(shown.asOf))}
+            </span>
+          ) : null}
+          {shown && skipped !== null ? (
+            <p id={skippedId} className="wrap-anywhere text-xs text-ink-2 sm:text-right">
+              {text.skippedByMarkSeen(format.formatInstant(shown.since), skipped, unreadable.length)}
+            </p>
+          ) : null}
+        </div>
       </div>
 
       {shown ? (
-        <KindList response={shown} />
-      ) : query.isError ? (
+        <>
+          {unreadable.length > 0 ? <UnreadableProjects projects={unreadable} /> : null}
+          <KindList response={shown} />
+        </>
+      ) : query.isError && !(asked !== null && query.error instanceof ApiError && query.error.status === 400) ? (
         <ErrorNotice error={query.error} title={text.loadFailed} onRetry={retry} />
       ) : (
         <div role="status" aria-busy="true" aria-label={text.loading} className="flex flex-col gap-2">

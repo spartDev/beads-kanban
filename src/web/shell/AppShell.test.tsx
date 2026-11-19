@@ -88,17 +88,20 @@ describe('navigation', () => {
     expect(button.textContent).toContain('beads-desktop');
   });
 
-  it.each(['/', '/overview'])('pointe les onglets du mobile sur le dernier Projet visité depuis une page de tous les Projets (%s)', async (path) => {
+  it.each([
+    ['/', 'page'],
+    ['/overview', 'true'],
+  ])('pointe les onglets du mobile sur le dernier Projet visité depuis une page de tous les Projets (%s)', async (path, homeCurrent) => {
     stubDefaultApi();
     window.localStorage.setItem('throughline:last-project', 'mpm');
     renderApp(path);
 
     const tabs = await screen.findByRole('navigation', { name: 'Onglets' });
     await waitFor(() => expect(within(tabs).getByRole('link', { name: 'Kanban' }).getAttribute('href')).toBe('/p/mpm/kanban'));
-    // La première case réunit l'accueil et la Vue globale : elle est l'onglet courant sur l'une comme sur l'autre.
+    // La première case réunit l'accueil et la Vue globale : elle est l'onglet courant sur l'une comme sur l'autre, la page courante sur l'accueil seulement.
     const home = within(tabs).getByRole('link', { name: 'Accueil' });
     expect(home.getAttribute('href')).toBe('/');
-    expect(home.getAttribute('aria-current')).toBe('page');
+    expect(home.getAttribute('aria-current')).toBe(homeCurrent);
     expect(within(tabs).getAllByRole('link')).toHaveLength(5); // Accueil, Kanban, À regarder, Epics, Métriques
   });
 });
@@ -125,12 +128,15 @@ describe('états de chargement', () => {
     expect(await screen.findAllByRole('status', { name: 'Chargement des Projets' })).toHaveLength(2);
   });
 
-  it('invite à configurer les racines quand aucun Projet n’est trouvé', async () => {
+  it.each(['/overview', '/'])('invite à configurer les racines quand aucun Projet n’est trouvé (%s)', async (path) => {
     stubApi({ projects: { projects: [], ignored: [] } });
-    renderApp('/overview');
+    renderApp(path);
 
     expect(await screen.findByText('Aucun Projet trouvé')).toBeTruthy();
     expect(screen.getByText('~/.config/throughline/config.json')).toBeTruthy();
+    // L'accueil ne fait pas comme s'il y avait des Projets à suivre : ni « Depuis votre dernière visite », ni « Rien à regarder ».
+    expect(screen.queryByRole('region', { name: 'Depuis votre dernière visite' })).toBeNull();
+    expect(screen.queryByRole('status', { name: 'Rien à regarder' })).toBeNull();
   });
 
   it('liste les dossiers ignorés avec leur raison', async () => {

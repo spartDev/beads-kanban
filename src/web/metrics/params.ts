@@ -17,7 +17,7 @@ import { addDays } from './scales';
  * sans prévenir.
  */
 
-/** Une page de Projet (`/p/:projet/metrics`) ou la Vue globale (`/`). */
+/** Une page de Projet (`/p/:projet/metrics`) ou la Vue globale (`/overview`). */
 export type Scope = 'project' | 'global';
 export type Dimension = 'type' | 'priority' | 'project';
 export type PeriodChoice = { kind: 'preset'; range: MetricsRangePreset } | { kind: 'custom'; from: string; to: string };
@@ -40,6 +40,9 @@ const RANGE = 'range';
 const FROM = 'from';
 const TO = 'to';
 const BY = 'by';
+
+/** Les paramètres de l'adresse que la page Métriques lit : un lien vers l'accueil (`/`) qui en porte un est un ancien lien de la Vue globale (`routes.tsx`). */
+export const METRICS_PARAMS: readonly string[] = [RANGE, FROM, TO, BY];
 
 const DAY_MS = 86_400_000;
 export const PRESET_DAYS: Record<MetricsRangePreset, number> = { '7d': 7, '30d': 30, '90d': 90 };

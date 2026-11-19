@@ -223,7 +223,9 @@ export function createMetricsService(
     async sinceLastVisit({ since }, { signal } = {}) {
       if (signal?.aborted) throw new ReadAborted();
       // L'instant des données est pris avant de lire les HEAD : un commit postérieur porte une date d'après lui (hors de la fenêtre, qui l'exclut) et sera
-      // compté dans la suivante, qui commencera là quand l'utilisateur dira avoir tout vu.
+      // compté dans la suivante, qui commencera là quand l'utilisateur dira avoir tout vu. Pour la même raison, cette requête ne rejoint pas une lecture du HEAD
+      // lancée avant elle (celle des Signaux, que l'accueil demande en même temps) : `createHeadReader` en lance une après son arrivée. Seul le HEAD est relu,
+      // une lecture légère ; l'analyse, elle, est partagée par HEAD.
       const window = lastVisitWindow(since, now().getTime());
       const { measured, unreadable } = await measure([], signal);
       return {

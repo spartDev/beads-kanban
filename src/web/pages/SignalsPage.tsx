@@ -1,7 +1,7 @@
 import { CircleCheck } from 'lucide-react';
 import { type ReactNode, useId } from 'react';
 import { Link } from 'react-router';
-import { useSignals } from '../data/hooks';
+import { useProjects, useSignals } from '../data/hooks';
 import { projectInSentence } from '../data/projectNames';
 import { UnreadableProjects } from '../metrics/Notices';
 import type { ApiSignal, Project, SignalsResponse } from '../data/types';
@@ -12,6 +12,7 @@ import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useRetryFocus } from '../lib/useRetryFocus';
 import { paths } from '../paths';
 import { ErrorNotice, Notice, Skeleton } from '../ui/states';
+import { NoProjects } from './GlobalPage';
 import { Page } from './Page';
 import { type NamedProject, ProjectName, useProjectNamer } from './ProjectName';
 import { useProject } from './ProjectGate';
@@ -19,11 +20,20 @@ import { SinceLastVisit } from './SinceLastVisit';
 
 /**
  * L'accueil : « À regarder » tous Projets confondus. En tête, « Depuis votre dernière visite » (là seulement : la Dernière visite est unique), puis les
- * Signaux de tous les Projets suivis.
+ * Signaux de tous les Projets suivis. Sans aucun Projet suivi, ni l'un ni l'autre : des zéros et « Rien à regarder » tairaient qu'il n'y a rien à suivre,
+ * et l'accueil dit plutôt comment en faire suivre (`NoProjects`, l'avis de la Vue globale).
  */
 export function GlobalSignalsPage() {
   const t = useT();
+  const projects = useProjects();
   useDocumentTitle(t.shell.sections.signals);
+  if (projects.data?.projects.length === 0) {
+    return (
+      <Page title={t.shell.sections.signals} description={t.shell.signalsPage.globalDescription}>
+        <NoProjects />
+      </Page>
+    );
+  }
   return <SignalsView description={t.shell.signalsPage.globalDescription} lead={<SinceLastVisit />} />;
 }
 

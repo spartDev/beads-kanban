@@ -48,4 +48,28 @@ describe('useLastVisit', () => {
 
     expect(result.current.lastVisit).toBe('2026-11-02T19:00:00.000Z');
   });
+
+  it('la garde aussi d’un montage à l’autre quand le stockage ne lit ni n’écrit : on quitte l’accueil, on y revient', () => {
+    vi.spyOn(window.localStorage, 'getItem').mockImplementation(unavailable);
+    vi.spyOn(window.localStorage, 'setItem').mockImplementation(unavailable);
+    const first = renderHook(() => useLastVisit());
+    expect(first.result.current.lastVisit).toBeNull();
+    act(() => first.result.current.markSeen('2026-11-02T19:00:00.000Z'));
+    first.unmount();
+
+    const second = renderHook(() => useLastVisit());
+
+    expect(second.result.current.lastVisit).toBe('2026-11-02T19:00:00.000Z');
+    expect(readLastVisit()).toBe('2026-11-02T19:00:00.000Z');
+  });
+
+  it('préfère la visite notée pendant la session à une valeur plus ancienne que le stockage n’a pas pu remplacer (quota)', () => {
+    window.localStorage.setItem(LAST_VISIT_KEY, '2026-11-01T08:30:00.000Z');
+    vi.spyOn(window.localStorage, 'setItem').mockImplementation(unavailable);
+    const first = renderHook(() => useLastVisit());
+    act(() => first.result.current.markSeen('2026-11-02T19:00:00.000Z'));
+    first.unmount();
+
+    expect(renderHook(() => useLastVisit()).result.current.lastVisit).toBe('2026-11-02T19:00:00.000Z');
+  });
 });

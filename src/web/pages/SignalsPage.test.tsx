@@ -95,6 +95,26 @@ describe('l’accueil : la page « À regarder » de tous les Projets', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'À regarder' })).toBeTruthy();
   });
 
+  it.each(['?range=90d&by=type', '?from=2026-10-01&to=2026-10-31', '?by=status'])(
+    'un ancien lien de la Vue globale (/%s) mène à /overview, paramètres compris',
+    async (search) => {
+      stubSignals();
+      const { router } = renderApp(`/${search}`);
+
+      await waitFor(() => expect(router.state.location.pathname + router.state.location.search).toBe(`/overview${search}`));
+      expect(router.state.historyAction).toBe('REPLACE');
+      expect(await screen.findByRole('heading', { level: 1, name: 'Vue globale' })).toBeTruthy();
+    },
+  );
+
+  it('garde l’accueil quand les paramètres de l’adresse ne sont pas ceux de la Vue globale', async () => {
+    stubSignals();
+    const { router } = renderApp('/?utm=lettre');
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'À regarder' })).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/');
+  });
+
   it('porte en tête « Depuis votre dernière visite », avant les Signaux ; la page d’un Projet ne le porte pas', async () => {
     stubSignals();
     const app = renderApp('/');

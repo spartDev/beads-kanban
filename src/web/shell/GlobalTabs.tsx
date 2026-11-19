@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router';
 import { useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { paths } from '../paths';
-import { isAllProjectsPage } from './navigation';
+import { allProjectsPage } from './navigation';
 
 /**
  * Mobile : en tête des pages de tous les Projets, les liens de l'une à l'autre, l'accueil (« À regarder ») et la Vue globale. La barre d'onglets n'a qu'une
@@ -12,16 +12,17 @@ import { isAllProjectsPage } from './navigation';
 export function GlobalTabs() {
   const { pathname } = useLocation();
   const t = useT();
-  if (!isAllProjectsPage(pathname)) return null;
+  const page = allProjectsPage(pathname);
+  if (!page) return null;
 
   return (
     <nav aria-label={t.shell.layout.allProjectsPages} className="px-4 pt-4 md:hidden">
       <ul className="grid grid-cols-2 gap-1 rounded-lg border border-line bg-well p-1">
         <li>
-          <GlobalTab to={paths.home()} icon={Eye} label={t.shell.sections.signals} current={pathname === paths.home()} />
+          <GlobalTab to={paths.home()} icon={Eye} label={t.shell.sections.signals} current={page === 'home'} />
         </li>
         <li>
-          <GlobalTab to={paths.global()} icon={LayoutGrid} label={t.shell.overview.title} current={pathname === paths.global()} />
+          <GlobalTab to={paths.global()} icon={LayoutGrid} label={t.shell.overview.title} current={page === 'overview'} />
         </li>
       </ul>
     </nav>

@@ -28,8 +28,16 @@ export const HOME_SHORTCUT = 'g h';
 /** Séquence « g puis… » de la Vue globale. */
 export const OVERVIEW_SHORTCUT = 'g v';
 
-/** Les pages de tous les Projets : l'accueil et la Vue globale. Le premier onglet du mobile les réunit (voir `TabBar`, `GlobalTabs`). */
-export const isAllProjectsPage = (pathname: string): boolean => pathname === paths.home() || pathname === paths.global();
+/**
+ * La page de tous les Projets que montre `pathname` : l'accueil (`home`) ou la Vue globale (`overview`) ; `undefined` ailleurs. Une barre oblique finale
+ * (`/overview/`) ne change pas la page, comme pour le routeur. Le premier onglet du mobile les réunit (voir `TabBar`, `GlobalTabs`).
+ */
+export function allProjectsPage(pathname: string): 'home' | 'overview' | undefined {
+  const path = pathname.replace(/\/+$/, '') || '/';
+  if (path === paths.home()) return 'home';
+  if (path === paths.global()) return 'overview';
+  return undefined;
+}
 
 /** Ce que désigne l'URL courante : Projet, section, ticket. */
 export function useRouteInfo(): RouteInfo {
