@@ -109,7 +109,7 @@ describe('l’alerte de la palette quand les tickets d’un Projet sont indispon
       projects: { projects, ignored: [] },
       issues: Object.fromEntries(projects.map((subject) => [subject.id, new Error('database is locked')])),
     });
-    const app = renderApp('/');
+    const app = renderApp('/overview');
     await screen.findByRole('navigation', { name: 'Navigation principale' });
     await app.user.keyboard('{Control>}k{/Control}');
     const dialog = await screen.findByRole('dialog', { name: 'Palette de commandes' });

@@ -46,6 +46,8 @@ const api = {
   'query-invalid-range': ({ received, expected }) => `« range » doit valoir ${orFr(expected)} : reçu ${quotedFr(received)}.`,
   'query-not-text': ({ parameter }) => `${quotedFr(parameter)} doit être un texte.`,
   'query-repeated': ({ parameter }) => `${quotedFr(parameter)} ne peut être donné qu'une fois.`,
+  'query-invalid-instant': ({ parameter, received }) =>
+    `${quotedFr(parameter)} doit être un instant ISO 8601, avec sa date, son heure et son fuseau : reçu ${quotedFr(received)}.`,
   'period-inverted': ({ from, to }) => `La plage commence après sa fin : « from » (${from}) doit être avant « to » (${to}).`,
   'period-in-future': ({ to, today }) => `« to » (${to}) est dans le futur : la plage ne peut pas dépasser aujourd'hui (${today}).`,
   'period-too-early': ({ from }) => `La plage doit commencer le 1er janvier 1970 ou après : « from » (${from}) est trop tôt.`,
@@ -77,6 +79,8 @@ const en: typeof fr = {
     'query-invalid-range': ({ received, expected }) => `“range” must be ${orEn(expected)}: got ${quotedEn(received)}.`,
     'query-not-text': ({ parameter }) => `${quotedEn(parameter)} must be a string.`,
     'query-repeated': ({ parameter }) => `${quotedEn(parameter)} can only be given once.`,
+    'query-invalid-instant': ({ parameter, received }) =>
+      `${quotedEn(parameter)} must be an ISO 8601 instant, with its date, time and time zone: got ${quotedEn(received)}.`,
     'period-inverted': ({ from, to }) => `The range starts after it ends: “from” (${from}) must be before “to” (${to}).`,
     'period-in-future': ({ to, today }) => `“to” (${to}) is in the future: the range cannot go past today (${today}).`,
     'period-too-early': ({ from }) => `The range must start on or after January 1, 1970: “from” (${from}) is too early.`,

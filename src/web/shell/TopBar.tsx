@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, LayoutGrid, Search } from 'lucide-react';
+import { ChevronDown, ChevronRight, Eye, LayoutGrid, Search } from 'lucide-react';
 import { Link, useLocation } from 'react-router';
 import { useProjects } from '../data/hooks';
 import { useT } from '../i18n';
@@ -8,7 +8,7 @@ import { paths, sectionPath } from '../paths';
 import { BrandMark } from '../ui/Brand';
 import { ProjectTile } from '../ui/ProjectTile';
 import { Tip } from '../ui/Tip';
-import { useRouteInfo } from './navigation';
+import { allProjectsPage, useRouteInfo } from './navigation';
 import { usePalette } from './OverlayProvider';
 import { ThemeToggle } from './ThemeToggle';
 
@@ -53,7 +53,14 @@ function MobileSwitcher() {
   const { pathname } = useLocation();
   const { projectId, project } = useCurrentProject();
   const t = useT();
-  const label = projectId ? (project?.name ?? projectId) : pathname === '/' ? t.shell.overview.title : APP_NAME;
+  const page = allProjectsPage(pathname);
+  const label = projectId
+    ? (project?.name ?? projectId)
+    : page === 'home'
+      ? t.shell.sections.signals
+      : page === 'overview'
+        ? t.shell.overview.title
+        : APP_NAME;
 
   return (
     <button
@@ -78,7 +85,8 @@ function Breadcrumb() {
   const { section, issueId } = useRouteInfo();
   const { projectId, project } = useCurrentProject();
   const t = useT();
-  if (!projectId && pathname !== '/') return null;
+  const page = allProjectsPage(pathname);
+  if (!projectId && !page) return null;
 
   return (
     <nav aria-label={t.shell.layout.breadcrumb} className="hidden min-w-0 items-center gap-1.5 text-ui md:flex">
@@ -118,6 +126,11 @@ function Breadcrumb() {
             </>
           ) : null}
         </>
+      ) : page === 'home' ? (
+        <span className="inline-flex items-center gap-2 font-semibold text-ink">
+          <Eye size={15} strokeWidth={1.8} aria-hidden="true" className="text-ink-3" />
+          {t.shell.sections.signals}
+        </span>
       ) : (
         <span className="inline-flex items-center gap-2 font-semibold text-ink">
           <LayoutGrid size={15} strokeWidth={1.8} aria-hidden="true" className="text-ink-3" />

@@ -97,7 +97,7 @@ describe('la page Métriques quand le fuseau du navigateur change', () => {
 
   it('garde aussi la hauteur des chiffres de la Vue globale, que le Projet ou la page ne change pas', async () => {
     const server = serverHolding('Asia/Tokyo');
-    const { user } = await loaded('/');
+    const { user } = await loaded('/overview');
     resize.emit(figures(), 3174);
 
     await travelTo('Asia/Tokyo', user);
@@ -172,7 +172,7 @@ describe('la page Métriques quand le fuseau du navigateur change', () => {
     const { router } = await loaded('/p/bdesk/metrics');
     resize.emit(figures(), 4090);
 
-    await act(async () => void router.navigate('/'));
+    await act(async () => void router.navigate('/overview'));
 
     expect((await skeleton()).getAttribute('style')).toBeNull();
   });

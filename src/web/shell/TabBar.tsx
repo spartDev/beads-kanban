@@ -1,19 +1,23 @@
-import { LayoutGrid, type LucideIcon } from 'lucide-react';
+import { House, type LucideIcon } from 'lucide-react';
 import { Link, useLocation } from 'react-router';
 import { useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { paths, sectionPath } from '../paths';
-import { SECTIONS, useRouteInfo, useTabsProject } from './navigation';
+import { allProjectsPage, SECTIONS, useRouteInfo, useTabsProject } from './navigation';
 
 /**
- * Barre d'onglets du mobile : la barre latérale repliée. Vue globale, puis les onglets du
- * Projet courant (ou, depuis la Vue globale, du dernier Projet visité).
+ * Barre d'onglets du mobile : la barre latérale repliée, en cinq cases. L'accueil, puis les onglets du Projet courant (ou, depuis une page de tous les
+ * Projets, du dernier Projet visité). La première case réunit les deux pages de tous les Projets, l'accueil (« À regarder ») et la Vue globale : elle est
+ * l'onglet courant sur l'une comme sur l'autre, et chacune porte en tête les liens qui mènent de l'une à l'autre (`GlobalTabs`). Une sixième case ne
+ * tiendrait pas à 375 px, et deux cases « À regarder » (celle de tous les Projets, celle du Projet) se confondraient. Sur l'accueil, elle est la page courante
+ * (`aria-current="page"`) ; sur la Vue globale, où elle ne mène pas, elle est seulement l'onglet courant (`aria-current="true"`).
  */
 export function TabBar() {
   const { pathname } = useLocation();
   const { projectId, section } = useRouteInfo();
   const project = useTabsProject();
   const t = useT();
+  const allProjects = allProjectsPage(pathname);
 
   return (
     <nav
@@ -22,7 +26,12 @@ export function TabBar() {
     >
       <ul className="grid grid-cols-5">
         <li>
-          <Tab to={paths.global()} icon={LayoutGrid} label={t.shell.overview.title} current={pathname === '/'} />
+          <Tab
+            to={paths.home()}
+            icon={House}
+            label={t.shell.layout.home}
+            current={allProjects === 'home' ? 'page' : allProjects === 'overview' ? 'true' : false}
+          />
         </li>
         {SECTIONS.map(({ id, icon }) => (
           <li key={id}>
@@ -30,7 +39,7 @@ export function TabBar() {
               to={project ? sectionPath(id, project.id) : undefined}
               icon={icon}
               label={t.shell.sections[id]}
-              current={project?.id === projectId && (section === id || (id === 'kanban' && section === 'issue'))}
+              current={project?.id === projectId && (section === id || (id === 'kanban' && section === 'issue')) ? 'page' : false}
             />
           </li>
         ))}
@@ -49,7 +58,8 @@ function Tab({
   to?: string;
   icon: LucideIcon;
   label: string;
-  current: boolean;
+  /** La valeur d'`aria-current` : `page` quand l'onglet mène à la page affichée, `true` quand il en est seulement l'onglet ; `false` sinon. */
+  current: 'page' | 'true' | false;
 }) {
   const className = cx(
     'group relative flex h-14 flex-col items-center justify-center gap-1 text-micro font-medium',
@@ -66,7 +76,7 @@ function Tab({
     </>
   );
   return to ? (
-    <Link to={to} aria-current={current ? 'page' : undefined} className={className}>
+    <Link to={to} aria-current={current || undefined} className={className}>
       {content}
     </Link>
   ) : (

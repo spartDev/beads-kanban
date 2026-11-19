@@ -285,6 +285,54 @@ export interface SignalsResponse {
   signals: ApiSignal[];
 }
 
+/* -------------------------------------------------------------------------------------------------------------------
+ * Depuis votre dernière visite : `GET /api/since-last-visit`
+ *
+ *   ?since=<instant ISO 8601>   la Dernière visite (voir CONTEXT.md) : l'instant que l'interface a reçu dans `asOf` quand l'utilisateur a dit avoir tout vu.
+ *                               Absent : 24 heures avant l'instant des données. Un instant qui n'est pas ISO 8601 (avec sa date, son heure et son fuseau),
+ *                               vide ou répété : 400.
+ *
+ * Ce qui s'est passé dans tous les Projets lisibles entre `since` (compris) et `asOf` (exclu), genre par genre, les mauvaises nouvelles d'abord. Tiré des
+ * mêmes analyses que les Signaux et les métriques. Pas de Projet à choisir : la Dernière visite est unique, celle de l'accueil global. Un Projet illisible
+ * (`unreadable`) n'est pas compté : l'accueil le dit, et dit que « Tout vu » laissera de côté ce qui s'y est passé.
+ * ---------------------------------------------------------------------------------------------------------------- */
+
+/**
+ * Les genres, dans l'ordre de la réponse : Réouvertures, Bugs d'origine, Livraisons, nouveaux Blocages, Arrivées. Les Livraisons sans Feu vert et les Retours
+ * de relecture ou d'intégration s'y ajouteront quand leurs mesures existeront ; l'interface montre les genres que la réponse donne, et seulement eux.
+ */
+export type SinceLastVisitKind = 'reopenings' | 'escapedBugs' | 'deliveries' | 'newBlockages' | 'arrivals';
+
+/** Un ticket d'un genre. `project` est l'identifiant du Projet ; `at`, l'instant de son dernier événement de ce genre dans la fenêtre. */
+export interface SinceLastVisitTicket {
+  project: string;
+  id: string;
+  title: string;
+  type: string;
+  priority: number;
+  at: string;
+}
+
+/** Un genre et ses tickets, du plus récent au plus ancien ; son compte est leur nombre, zéro compris. Un Bug d'origine nomme les Livraisons qu'il met en échec. */
+export type SinceLastVisitGroup =
+  | { kind: Exclude<SinceLastVisitKind, 'escapedBugs'>; tickets: SinceLastVisitTicket[] }
+  | { kind: 'escapedBugs'; tickets: Array<SinceLastVisitTicket & { deliveries: string[] }> };
+
+/** `GET /api/since-last-visit` */
+export interface SinceLastVisitResponse {
+  /** Le début de la fenêtre, compris : la Dernière visite demandée, ou 24 heures avant `asOf` sans elle (jamais après `asOf`). */
+  since: string;
+  /**
+   * L'instant des données, fin exclue de la fenêtre : ce qui est daté à cet instant ou après n'est pas encore arrivé. C'est lui que « Tout vu » garde pour
+   * Dernière visite, pas l'heure du clic : un événement commité entre l'affichage et le clic n'est pas sauté.
+   */
+  asOf: string;
+  projects: Array<{ id: string; name: string }>;
+  unreadable: MetricsUnreadableProject[];
+  /** Les genres disponibles, dans l'ordre (voir `SinceLastVisitKind`), même vides. */
+  groups: SinceLastVisitGroup[];
+}
+
 /**
  * Corps des réponses d'erreur (même forme que celles de Fastify). `message` est en français (journal, autres clients) ; `code` et `params`, quand
  * l'erreur est l'une de celles que l'API prévoit, disent la même chose pour que l'interface l'écrive dans sa langue (voir `errors.ts`).

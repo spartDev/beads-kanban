@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 async function openPalette() {
-  const app = renderApp('/');
+  const app = renderApp('/overview');
   await screen.findByRole('navigation', { name: 'Navigation principale' });
   await app.user.keyboard('{Control>}k{/Control}');
   const dialog = await screen.findByRole('dialog', { name: 'Palette de commandes' });

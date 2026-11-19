@@ -885,7 +885,7 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
     const { router } = await loaded();
     await screen.findByRole('status', { name: NOTICE });
 
-    await go(router, '/');
+    await go(router, '/overview');
     expect(await screen.findByRole('heading', { level: 1, name: 'Vue globale' })).toBeTruthy();
     await waitFor(() => expect(metricsRequests(fetchMock).at(-1)).toBe('/api/metrics?range=30d&timeZone=Europe%2FParis'));
     // La Vue globale attend ses chiffres : l'avis est déjà là, et ne parle pas de « ces chiffres » faute d'en montrer.
@@ -904,7 +904,7 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
     api(serverInUtc);
     const { router } = await loaded();
     await screen.findByRole('status', { name: NOTICE });
-    await go(router, '/');
+    await go(router, '/overview');
     await screen.findByRole('heading', { level: 2, name: 'Indicateurs' });
     await screen.findByRole('status', { name: NOTICE });
 
@@ -926,7 +926,7 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
 
     try {
       process.env.TZ = 'Asia/Tokyo'; // le navigateur change de fuseau pendant que la page est ouverte
-      await go(router, '/');
+      await go(router, '/overview');
       expect(await screen.findByRole('heading', { level: 1, name: 'Vue globale' })).toBeTruthy();
       await waitFor(() => expect(release).toBeDefined());
       // En attendant la réponse de Tokyo, la réponse en UTC, pour Paris, ne dit rien du fuseau de Tokyo.
@@ -963,7 +963,7 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
       const { router, queryClient, user } = await loaded();
       await screen.findByRole('status', { name: NOTICE });
 
-      await go(router, '/');
+      await go(router, '/overview');
       expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy(); // la Vue globale n'a jamais abouti
       expect(screen.getByRole('status', { name: NOTICE })).toBeTruthy(); // l'avis vient de la réponse du Projet
       const overall = { period: { kind: 'preset', range: '30d' }, timeZone: 'Europe/Paris' } as const;
@@ -1011,7 +1011,7 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
       act(() => void vi.advanceTimersByTime(FIVE_MINUTES + 1_000));
       expect(inCache(queryClient, 'bdesk')).toBe(0);
       const before = metricsRequests(fetchMock).length;
-      await go(router, '/');
+      await go(router, '/overview');
 
       expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy();
       expect(metricsRequests(fetchMock)).toHaveLength(before + 1);
@@ -1027,7 +1027,7 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
       await screen.findByRole('heading', { level: 1, name: 'Kanban' });
 
       act(() => void vi.advanceTimersByTime(2 * 60_000));
-      await go(router, '/');
+      await go(router, '/overview');
 
       expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy();
       expect(screen.getByRole('status', { name: NOTICE })).toBeTruthy();

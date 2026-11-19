@@ -113,7 +113,7 @@ describe('l’avis des Projets illisibles, dans la Vue globale', () => {
     stubMetricsApi({ projects: { projects, ignored: [] }, issues: { bdesk: bdeskIssues } }, () =>
       metricsOf([{ id: 'bdesk', name: 'beads-desktop' }], { unreadable: [entry('st', 'Sans titre', 'verrou'), entry('blanc', BLANK, 'verrou')] }),
     );
-    renderApp('/');
+    renderApp('/overview');
 
     expect(await textOf('2 Projets illisibles, absents de ces chiffres')).toBe('2 Projets illisibles, absents de ces chiffres« Sans titre » : verrouUn Projet sans nom : verrou');
   });

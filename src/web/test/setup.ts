@@ -1,6 +1,7 @@
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach } from 'vitest';
 import { installEventLoopYield } from '../../testing/event-loop';
+import { forgetNotedVisit } from '../lib/lastVisit';
 import { setBrowserLanguages } from './languages';
 import { installMatchMedia } from './matchMedia';
 
@@ -46,6 +47,7 @@ installEventLoopYield();
 beforeEach(() => {
   installMatchMedia(false);
   window.localStorage.clear();
+  forgetNotedVisit(); // la Dernière visite notée pendant la session, que le module garde à côté du stockage
   document.documentElement.removeAttribute('data-theme');
   // La suite est en français (ADR 0006) : un navigateur français, même une fois le sélecteur de langue activé.
   setBrowserLanguages(['fr-FR', 'fr']);
