@@ -209,7 +209,7 @@ const fr = {
     outsideProject: '(hors du Projet)',
     notDelivered: '. Fermé sans être une Livraison.',
     /** La phrase d'un Renoncement (ADR 0008), suivie de `notDelivered`. */
-    declined: 'Renoncement : l’utilisateur a décidé de ne pas le faire',
+    declined: 'Renoncement : décidé de ne pas le faire',
     blockedStatusOnly: 'Statut bloqué, sans dépendance en suspens',
     blockedWaitingOn: 'Bloqué : attend',
   },
@@ -481,7 +481,7 @@ const en: typeof fr = {
     untitled: '(untitled)',
     outsideProject: '(outside the Project)',
     notDelivered: '. Closed without being a Delivery.',
-    declined: 'Decline: the user decided not to do it',
+    declined: 'Decline: decided not to do it',
     blockedStatusOnly: 'Blocked status, with no pending dependency',
     blockedWaitingOn: 'Blocked: waiting on',
   },

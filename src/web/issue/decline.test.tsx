@@ -51,12 +51,10 @@ describe('le panneau d’un Renoncement', () => {
     expect(pill?.getAttribute('title')).toBe('Renoncement : décidé de ne pas le faire');
   });
 
-  it('dit que l’utilisateur a décidé de ne pas le faire, et que ce n’est pas une Livraison', async () => {
+  it('dit qu’on a décidé de ne pas le faire, et que ce n’est pas une Livraison', async () => {
     const dialog = await openClosed(true, { kind: 'declined', at: CLOSED_AT });
 
-    expect(within(dialog).getByText(/^Renoncement : l’utilisateur/).textContent).toBe(
-      'Renoncement : l’utilisateur a décidé de ne pas le faire. Fermé sans être une Livraison.',
-    );
+    expect(within(dialog).getByText(/^Renoncement : décidé/).textContent).toBe('Renoncement : décidé de ne pas le faire. Fermé sans être une Livraison.');
   });
 
   it('le date dans la Chronologie, de sa clôture', async () => {
@@ -85,7 +83,7 @@ describe('the panel of a Decline, in English', () => {
 
     const status = within(dialog).getByText('closed').closest('dd');
     expect(status && within(status).getByText('Decline').getAttribute('title')).toBe('Decline: decided not to do it');
-    expect(within(dialog).getByText(/^Decline: the user/).textContent).toBe('Decline: the user decided not to do it. Closed without being a Delivery.');
+    expect(within(dialog).getByText(/^Decline: decided/).textContent).toBe('Decline: decided not to do it. Closed without being a Delivery.');
     const timeline = await within(dialog).findByRole('region', { name: 'Timeline' });
     expect(await within(timeline).findByText(/^Decline on Oct 5, 2026/)).toBeTruthy();
   });

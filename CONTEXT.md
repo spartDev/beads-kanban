@@ -73,11 +73,11 @@ _English_: Child
 _Avoid_: sous-tâche
 
 **Enfant à livrer**:
-Un Enfant d'une Epic qu'il reste à livrer, ou qui l'a été : tous ses Enfants, sauf ses Epics imbriquées (elles regroupent des Enfants sans être livrées) et ses Abandons (fermés sans être livrés, ils n'ont plus rien à livrer).
+Un Enfant d'une Epic qu'il reste à livrer, ou qui l'a été : tous ses Enfants, sauf ses Epics imbriquées (elles regroupent des Enfants sans être livrées) et ses Abandons et ses Renoncements (fermés sans être livrés, ils n'ont plus rien à livrer).
 _English_: Child to deliver
 
 **Avancement**:
-Le nombre de Livraisons parmi les Enfants à livrer d'une Epic. Les Abandons n'y comptent ni comme livrés ni comme à livrer, pour qu'une Epic dont il ne reste rien à livrer atteigne 100 %.
+Le nombre de Livraisons parmi les Enfants à livrer d'une Epic. Les Abandons et les Renoncements n'y comptent ni comme livrés ni comme à livrer, pour qu'une Epic dont il ne reste rien à livrer atteigne 100 %.
 _English_: Progress
 _Avoid_: progression
 
@@ -131,7 +131,7 @@ _English_: Completion forecast
 _Avoid_: date de fin, échéance
 
 **Bug d'origine**:
-Un ticket de type bug, créé à ou après la dernière clôture d'une Livraison à laquelle il est relié par un lien « découvert à partir de » actif. Les deux dates sont celles de l'historique du Projet, dans l'ordre de ses changements : un bug créé après la clôture d'une Livraison, dans cet historique, lui est postérieur, même si une horloge s'est trompée. Le ticket relié est autre que lui-même : un bug n'est jamais son propre Bug d'origine. Un bug créé avant cette clôture, ou relié à un ticket qui n'est pas une Livraison (ouvert, Abandon), a été trouvé en cours de travail : il n'est l'origine d'aucun échec. Un bug relié à une Epic n'est l'origine d'aucun échec et n'est pas compté comme relié. Un bug en Abandon n'est jamais un Bug d'origine : il décrit le même défaut qu'un autre bug. Il transmet ses liens au bug qui le remplace ; pour ces liens, la date qui compte est celle de sa propre création, car c'est lui qui a constaté le défaut.
+Un ticket de type bug, créé à ou après la dernière clôture d'une Livraison à laquelle il est relié par un lien « découvert à partir de » actif. Les deux dates sont celles de l'historique du Projet, dans l'ordre de ses changements : un bug créé après la clôture d'une Livraison, dans cet historique, lui est postérieur, même si une horloge s'est trompée. Le ticket relié est autre que lui-même : un bug n'est jamais son propre Bug d'origine. Un bug créé avant cette clôture, ou relié à un ticket qui n'est pas une Livraison (ouvert, Abandon, Renoncement), a été trouvé en cours de travail : il n'est l'origine d'aucun échec. Un bug relié à une Epic n'est l'origine d'aucun échec et n'est pas compté comme relié. Un bug en Abandon n'est jamais un Bug d'origine : il décrit le même défaut qu'un autre bug. Il transmet ses liens au bug qui le remplace ; pour ces liens, la date qui compte est celle de sa propre création, car c'est lui qui a constaté le défaut.
 _English_: Escaped bug
 
 **Taux d'échec**:
@@ -386,7 +386,7 @@ Les tickets À valider, du plus ancien au plus récent, chacun avec son attente 
 _English_: Decision queue
 
 **Renoncement**:
-Un ticket fermé que l'utilisateur a décidé de ne pas faire, marqué à sa clôture par le label `declined`. Ce n'est ni une Livraison ni un Abandon. Rien n'est rétroactif : un « won't fix » sans ce label reste une Livraison, et la cause ne se devine jamais au texte de la raison de clôture.
+Un ticket fermé que l'utilisateur a décidé de ne pas faire, marqué à sa clôture par le label `declined`. Ce n'est ni une Livraison ni un Abandon. Rien n'est rétroactif : un « won't fix » sans ce label reste une Livraison, et la cause ne se devine jamais au texte de la raison de clôture. Un ticket qui porte aussi un lien « doublon de » ou « remplacé par » est un Abandon, pas un Renoncement. Un bug en Renoncement reste un Bug d'origine : il constate un défaut qu'on décide de ne pas corriger, alors qu'un bug en Abandon décrit le défaut d'un autre bug.
 _English_: Decline
 _Avoid_: won't fix, rejet
 

@@ -186,8 +186,8 @@ const sumOf = (cells: number[][]) => cells.flat().reduce((total, count) => total
 
 /**
  * La santé du flux de la Vue globale sur 7 jours : 15 Livraisons démarrées (31 j de Cycle Time dont 2,5 j de Blocage), 21
- * clôtures dont 2 suivies d'une Réouverture (deux tickets en Retravail), 20 tickets fermés dont 2 Abandons et 1 Renoncement, 6 Livraisons qui
- * ont attendu une dépendance, 5 Prêts dont 3 stagnent, 100 Transitions.
+ * clôtures dont 2 suivies d'une Réouverture (deux tickets en Retravail), 20 tickets fermés dont 2 Abandons (aucun Renoncement), 6 Livraisons
+ * qui ont attendu une dépendance, 5 Prêts dont 3 stagnent, 100 Transitions.
  */
 export function healthFixture(overrides: Partial<MetricsHealth> = {}): MetricsHealth {
   const cells = activityCells();
@@ -202,7 +202,7 @@ export function healthFixture(overrides: Partial<MetricsHealth> = {}): MetricsHe
       ],
     },
     abandonment: { closed: 20, abandoned: 2, duplicates: 1, superseded: 1, rate: 0.1, trend: trendOf(0.1, 0.05) },
-    declines: { total: 1, trend: trendOf(1, 0) },
+    declines: { total: 0, trend: trendOf(0, 0) },
     leadTimeBreakdown: {
       deliveries: 18,
       total: 120 * DAY,
