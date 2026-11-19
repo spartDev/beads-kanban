@@ -1,11 +1,9 @@
+import { isWork } from '../../domain/flow';
 import type { TicketSignals } from '../data/hooks';
 import type { ApiSignal } from '../data/types';
 import { CATALOGS } from '../i18n/catalog';
 import type { Language } from '../i18n/language';
 import { FORMATS } from '../metrics/format';
-
-/** Statuts de travail : en cours, rattaché à un agent, bloqué. Seul un ticket en travail peut dériver ou être en Blocage long. */
-const WORK_STATUSES = new Set(['in_progress', 'hooked', 'blocked']);
 
 /** Les sortes de Signal, dans l'ordre de la page « À regarder ». */
 const KINDS: readonly ApiSignal['kind'][] = ['drift', 'longBlockage', 'stagnantReady', 'unusualWip'];
@@ -19,10 +17,11 @@ export const SIGNAL_KINDS = signalKinds('fr');
 
 /**
  * Les Signaux d'un ticket tels que l'écran les montre. La réponse des Signaux peut être en retard sur celle des tickets (deux requêtes, l'une plus
- * lente) : un ticket qui n'est plus en travail ne dérive plus et n'est plus en Blocage long, quoi qu'elle dise.
+ * lente) : un ticket qui n'est plus en statut de travail (`isWork`, Statuts de relais compris) ne dérive plus et n'est plus en Blocage long, quoi
+ * qu'elle dise. Seule limite : sans les statuts que déclare le Projet, un statut qu'il déclare de catégorie `wip` n'y est pas compté (bdesk-pz0.4).
  */
 export function shownSignals(status: string, signals: TicketSignals | undefined): TicketSignals {
-  return signals !== undefined && WORK_STATUSES.has(status) ? signals : {};
+  return signals !== undefined && isWork(status) ? signals : {};
 }
 
 /** Ce que dit un Signal, sans le nom de sa sorte ni celui de son ticket : de combien il dépasse la normale. Dans la langue de l'interface. */

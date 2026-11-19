@@ -1,5 +1,7 @@
+import type { DeclaredStatuses } from '../shared/api';
 import { type AbandonCause, closureOf } from './abandon';
 import { type Interval, intersect, measure } from './intervals';
+import { HANDOFF_STATUSES, isDeclaredWip, NO_DECLARED_STATUSES } from './statuses';
 
 export type { AbandonCause };
 
@@ -91,9 +93,23 @@ export interface TicketFlow {
   writtenIntent: boolean | null;
 }
 
-const WORK_STATUSES = new Set(['in_progress', 'hooked', 'blocked']);
-/** Statut de travail : en cours, rattaché à un agent, bloqué. Ce que le Cycle Time et le WIP comptent. */
-export const isWork = (status: string) => WORK_STATUSES.has(status);
+/** Les statuts de travail de tout Projet : en cours, rattaché à un agent, bloqué, et les Statuts de relais, reconnus à leur nom (ADR 0007). */
+const WORK_STATUSES: ReadonlySet<string> = new Set(['in_progress', 'hooked', 'blocked', ...HANDOFF_STATUSES]);
+
+/**
+ * Statut de travail (CONTEXT.md) : en cours, rattaché à un agent, bloqué, un Statut de relais (déclaré ou non), ou un autre statut que le Projet
+ * déclare de catégorie `wip` (`declared`, défaut : aucune déclaration). Ce que le Cycle Time, le WIP, la Dérive, le Blocage long, la Prise rendue
+ * et l'Efficacité du flux comptent.
+ */
+export const isWork = (status: string, declared: DeclaredStatuses = NO_DECLARED_STATUSES): boolean =>
+  WORK_STATUSES.has(status) || isDeclaredWip(status, declared);
+
+/**
+ * Prise rendue (CONTEXT.md) : une Transition d'un statut de travail autre que À valider vers ouvert. Deux Transitions se suivent sans clôture
+ * entre elles. Remettre à ouvert un ticket À valider est un Report, pas une Prise rendue.
+ */
+export const isHandback = (from: string, to: string, declared: DeclaredStatuses = NO_DECLARED_STATUSES): boolean =>
+  to === 'open' && from !== 'awaiting_human' && isWork(from, declared);
 
 /**
  * Le flux de chaque ticket : ses Transitions, son issue et ses durées (Lead Time, Cycle Time, temps bloqué, Attente de
@@ -111,16 +127,19 @@ export const isWork = (status: string) => WORK_STATUSES.has(status);
  *
  * Ces dates ne se contredisent pas sur ce que le lecteur Dolt rend : il met d'accord les dates des commits de la lignée sur son ordre
  * (`ascendingDates`) avant de donner les historiques au domaine. Cette limite est celle d'un historique qui vient d'ailleurs.
+ *
+ * `declared` : les statuts personnalisés que le Projet déclare (défaut : aucun), qui disent lesquels de ses autres statuts sont de travail (`isWork`).
  */
-export function analyzeFlow(tickets: TicketHistory[]): Map<TicketId, TicketFlow> {
+export function analyzeFlow(tickets: TicketHistory[], declared: DeclaredStatuses = NO_DECLARED_STATUSES): Map<TicketId, TicketFlow> {
   const transitionsById = new Map(tickets.map((t) => [t.id, toTransitions(t.statusSnapshots)]));
-  return new Map(tickets.map((t) => [t.id, analyzeTicket(t, transitionsById)]));
+  return new Map(tickets.map((t) => [t.id, analyzeTicket(t, transitionsById, declared)]));
 }
 
-function analyzeTicket(ticket: TicketHistory, transitionsById: Map<TicketId, Transition[]>): TicketFlow {
+function analyzeTicket(ticket: TicketHistory, transitionsById: Map<TicketId, Transition[]>, declared: DeclaredStatuses): TicketFlow {
+  const working = (status: string) => isWork(status, declared);
   const transitions = transitionsById.get(ticket.id) ?? [];
   const reopenings = transitions.filter((_, i) => transitions[i - 1]?.status === 'closed').length;
-  const writtenIntent = writtenIntentOf(ticket.statusSnapshots);
+  const writtenIntent = writtenIntentOf(ticket.statusSnapshots, declared);
   const created = transitions[0];
   const last = transitions.at(-1);
   if (!created || last?.status !== 'closed') {
@@ -135,9 +154,9 @@ function analyzeTicket(ticket: TicketHistory, transitionsById: Map<TicketId, Tra
       writtenIntent,
     };
   }
-  const work = periods(transitions, isWork);
+  const work = periods(transitions, working);
   const blockage = blockagePeriods(ticket, transitions, transitionsById);
-  const firstStart = transitions.find((t) => isWork(t.status))?.at.getTime() ?? last.at.getTime();
+  const firstStart = transitions.find((t) => working(t.status))?.at.getTime() ?? last.at.getTime();
   const backlogBeforeStart = intersect(periods(transitions, (s) => s === 'open'), [[created.at.getTime(), firstStart]]);
   return {
     transitions,
@@ -161,9 +180,11 @@ function analyzeTicket(ticket: TicketHistory, transitionsById: Map<TicketId, Tra
  *
  * Limite : l'historique suit la lignée du premier parent, qui ne voit qu'un instantané par commit. Un démarrage fait sur une branche fusionnée par un commit de fusion (branches qui ont divergé, ou `--no-ff`), ou dans un
  * commit de lot, n'y apparaît qu'avec l'état de la fusion ou du lot : des critères écrits juste après le démarrage, avant ce commit, y donnent true.
+ *
+ * `declared` : les statuts personnalisés que le Projet déclare (défaut : aucun), comme pour `analyzeFlow`.
  */
-export function writtenIntentOf(snapshots: readonly StatusSnapshot[]): boolean | null {
-  return snapshots.find((snapshot) => isWork(snapshot.status))?.hasAcceptanceCriteria ?? null;
+export function writtenIntentOf(snapshots: readonly StatusSnapshot[], declared: DeclaredStatuses = NO_DECLARED_STATUSES): boolean | null {
+  return snapshots.find((snapshot) => isWork(snapshot.status, declared))?.hasAcceptanceCriteria ?? null;
 }
 
 /**

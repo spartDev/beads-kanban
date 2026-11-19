@@ -58,7 +58,7 @@ describe.skipIf(process.platform === 'win32')('Vue globale quittée à froid, pu
       `sleep 0.15`,
       `case "$kind" in`,
       `  hist) printf '{}\\n\\n{"rows": []}\\n';;`,
-      `  *) case "$q" in *"from dependencies"*"where label ="*) printf '{}\\n\\n{"rows": [${ticket}]}\\n{}\\n\\n{}\\n\\n{}\\n\\n';; *) printf '{}\\n\\n{"rows": [${ticket}]}\\n{}\\n\\n';; esac;;`,
+      `  *) case "$q" in *"from dependencies"*"where label ="*) printf '{}\\n\\n{"rows": [${ticket}]}\\n{}\\n\\n{}\\n\\n{}\\n\\n';; *status.custom*) printf '{}\\n\\n{"rows": [${ticket}]}\\n{}\\n\\n{}\\n\\n';; *) printf '{}\\n\\n{"rows": [${ticket}]}\\n{}\\n\\n';; esac;;`,
       `esac`,
     ].join('\n');
     const fake = fakeDolt(body);

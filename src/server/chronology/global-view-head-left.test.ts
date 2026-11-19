@@ -81,6 +81,7 @@ describe.skipIf(process.platform === 'win32')('Vue globale quittée, puis une le
       `    i=0; while [ ! -e "$d/go" ] && [ $i -lt 600 ]; do sleep 0.05; i=$((i+1)); done`,
       `    printf '{}\\n\\n{"rows": [{"head": "h1"}]}\\n'; exit 0;;`,
       `  *"from dependencies"*"where label ="*) printf '{}\\n\\n{"rows": [${ticket}]}\\n{}\\n\\n{}\\n\\n{}\\n\\n';;`,
+      `  *status.custom*) printf '{}\\n\\n{"rows": [${ticket}]}\\n{}\\n\\n{}\\n\\n';;`,
       `  *) printf '{}\\n\\n{"rows": [${ticket}]}\\n{}\\n\\n';;`,
       `esac`,
     ].join('\n');

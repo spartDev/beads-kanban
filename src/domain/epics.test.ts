@@ -306,6 +306,20 @@ describe('groupByColumn : les Enfants rangés par la règle de colonne du kanban
   it('range les Abandons dans Terminé, avec les Livraisons : ils sont fermés', () => {
     expect(ids(groupByColumn(children).done)).toContain('doublon');
   });
+
+  it('range un Enfant d’un Statut de relais en En cours, et en Bloqué en Blocage, tant que la page n’a pas leurs colonnes (provisoire, bdesk-pz0.4)', () => {
+    const relayed = [
+      child('relu', { status: 'in_review' }),
+      child('integre', { status: 'in_integration' }),
+      child('valide', { status: 'awaiting_human' }),
+      child('relu-coince', { status: 'in_review', blockedBy: ['x'] }),
+    ];
+    const groups = groupByColumn(relayed);
+
+    expect(ids(groups.inProgress)).toEqual(['relu', 'integre', 'valide']);
+    expect(ids(groups.blocked)).toEqual(['relu-coince']);
+    expect(Object.keys(groups).sort()).toEqual([...COLUMNS, 'paused'].sort());
+  });
 });
 
 describe('epicTree : l’arborescence des Enfants, à tous les niveaux', () => {

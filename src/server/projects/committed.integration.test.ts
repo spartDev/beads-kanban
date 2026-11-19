@@ -2,7 +2,7 @@ import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { columnFor } from '../../domain/columns';
-import type { Issue } from '../../shared/api';
+import type { Issue, MetricsCfdPoint } from '../../shared/api';
 import { createChronologyService } from '../chronology/service';
 import { createDoltClient, type DoltClient, queryAll } from '../dolt/client';
 import { createMetricsService } from '../metrics/service';
@@ -110,14 +110,15 @@ function buildProject(root: string, name: string, { commitDayThree }: { commitDa
   return base;
 }
 
-type Columns = { backlog: number; ready: number; inProgress: number; blocked: number; done: number };
+/** Les colonnes d'un point du CFD : celles des Statuts de relais n'y sont que si un ticket les a (aucun ici). */
+type Columns = Omit<MetricsCfdPoint, 'date'>;
 
 /** Les tickets du tableau par colonne, comme le CFD les compte : sans les Epics, ni « En pause ». */
 function boardCounts(issues: Issue[]): Columns {
   const counts: Columns = { backlog: 0, ready: 0, inProgress: 0, blocked: 0, done: 0 };
   for (const issue of issues) {
     const column = issue.type === 'epic' ? null : columnFor(issue.status, issue.blockedBy.length > 0);
-    if (column) counts[column]++;
+    if (column) counts[column] = (counts[column] ?? 0) + 1;
   }
   return counts;
 }

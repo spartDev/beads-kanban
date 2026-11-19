@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { columnFor } from '../../domain/columns';
+import { baseColumnOf, columnFor } from '../../domain/columns';
 import type { EpicProgress } from '../../domain/epics';
 import { ticketTitle } from '../data/helpers';
 import type { Issue } from '../data/types';
@@ -14,10 +14,10 @@ const NAMED_BLOCKERS = 2;
 
 type Words = Messages['epics']['children'];
 
-/** La colonne d'un ticket écrite pour une ligne, ou « En pause ». */
+/** La colonne d'un ticket écrite pour une ligne, ou « En pause ». Un Statut de relais s'y écrit En cours, comme au tableau (`baseColumnOf`, provisoire). */
 function columnLabel(issue: Pick<Issue, 'status' | 'blockedBy'>, words: Words): string {
   const column = columnFor(issue.status, issue.blockedBy.length > 0);
-  return column === null ? words.paused : COLUMN_META[column].label;
+  return column === null ? words.paused : COLUMN_META[baseColumnOf(column)].label;
 }
 
 /** Ce qui retient un ticket qui n'est pas fermé : les tickets dont il dépend, ou le seul statut bloqué ; rien sinon. */

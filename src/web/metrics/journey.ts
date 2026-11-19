@@ -56,6 +56,13 @@ export interface JourneyView {
   empty: boolean;
 }
 
+/**
+ * Les tickets du tronçon En cours au relevé : tous ceux en statut de travail, En cours, dans une colonne de relais (absente quand aucun Projet mesuré n'en a)
+ * ou Bloqué. Le tronçon couvre tout le Cycle Time, et le temps des Statuts de relais en fait partie.
+ */
+const workStock = ({ inProgress, inReview = 0, inIntegration = 0, awaitingHuman = 0, blocked }: MetricsCfdPoint): number =>
+  inProgress + inReview + inIntegration + awaitingHuman + blocked;
+
 export function describeJourney(
   { tiles, health, cfd }: { tiles: Pick<MetricsTiles, 'arrivals' | 'throughput'>; health: Pick<MetricsHealth, 'leadTimeBreakdown' | 'readyAges'>; cfd: readonly MetricsCfdPoint[] },
   language: Language,
@@ -71,7 +78,7 @@ export function describeJourney(
   const stages = [
     { key: 'backlog', label: texts.backlog, doing: texts.backlogDoing, duration: breakdown.dependencyWait, share: share(breakdown.dependencyWait), stock: last ? last.backlog : null },
     { key: 'ready', label: texts.ready, doing: texts.readyDoing, duration: breakdown.readyWait, share: share(breakdown.readyWait), stock: last ? last.ready : null },
-    { key: 'work', label: texts.work, doing: texts.workDoing, duration: working, share: share(working), stock: last ? last.inProgress + last.blocked : null },
+    { key: 'work', label: texts.work, doing: texts.workDoing, duration: working, share: share(working), stock: last ? workStock(last) : null },
   ] as const satisfies readonly JourneyStage[];
 
   return {

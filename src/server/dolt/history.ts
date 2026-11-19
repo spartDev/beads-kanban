@@ -1,8 +1,9 @@
 import { ABANDON_LINK_TYPES } from '../../domain/abandon';
 import type { DependencyHistory, StatusSnapshot, TicketHistory } from '../../domain/flow';
+import type { DeclaredStatuses } from '../../shared/api';
 import { type DoltDatabase, DoltQueryError, parseDoltDate, parseDoltInteger, queryAll, type Row, sqlIdent, sqlString } from './client';
 import { ascendingDates } from './commit-dates';
-import { asText, AT_HEAD, CLOSURE_LABELS_SQL, TARGET_COLUMNS, toDependency, toLabelRecords } from './reader';
+import { asText, AT_HEAD, CLOSURE_LABELS_SQL, CUSTOM_STATUSES_SQL, TARGET_COLUMNS, toDeclaredStatuses, toDependency, toLabelRecords } from './reader';
 import { revisionTablesSql, StoredSqlError, storedSqlInSource } from './stored-sql';
 
 /** Un commit de l'historique Dolt, tel que listé par `dolt_log`. */
@@ -100,6 +101,16 @@ const MAX_SCHEMA_ERAS = 4;
  */
 const PLACED_AT = `case when ${sqlIdent('type')} in (${ABANDON_LINK_TYPES.map(sqlString).join(', ')}) then ${sqlIdent('created_at')} end as ${sqlIdent('created_at')}`;
 
+/**
+ * L'historique des tickets d'un Projet, tel que le rend `readTicketHistories` : ses tickets et, à côté d'eux, les statuts personnalisés que le
+ * Projet déclare au dernier commit (ADR 0007), lus dans le même processus. Un tableau qui porte un champ de plus, comme celui que rend
+ * `RegExp.prototype.exec` porte `index` : qui ne lit que les tickets s'en sert comme d'un tableau. `declaredStatuses` est absent quand le Projet
+ * ne déclare rien, comme les `labels` d'un ticket qui n'en porte pas, et quand l'historique vient d'ailleurs (un essai) : aucun statut déclaré.
+ * Les métriques et la Chronologie le donnent au domaine (`analyzeProject`, `analyzeChronologies`), pour lequel les Statuts de relais sont des
+ * statuts de travail sans déclaration, et les autres statuts personnalisés seulement s'ils sont déclarés de catégorie `wip`.
+ */
+export type ProjectHistory = TicketHistory[] & { declaredStatuses?: DeclaredStatuses };
+
 export interface ReadHistoryOptions {
   /**
    * L'instant de la lecture (défaut : l'horloge de la machine) : un commit daté après lui l'est forcément à tort (`ascendingDates`).
@@ -117,18 +128,21 @@ export interface ReadHistoryOptions {
  * le type qu'ils y ont (`AT_HEAD`, `reader.ts`) : la liste est celle du tableau, qui lit le même état, et un ticket supprimé ou retypé
  * sans commit y est tel qu'au dernier commit. Avec eux, dans le même processus, les labels de la règle de clôture au dernier commit
  * (`CLOSURE_LABELS_SQL` : le label du Renoncement, ADR 0008), les mêmes que lit le tableau ; un ticket qui n'en porte aucun n'a pas de `labels`.
+ * Dans ce processus encore, les statuts personnalisés que le Projet déclare au dernier commit (`CUSTOM_STATUSES_SQL`), que le tableau lit
+ * aussi : `ProjectHistory.declaredStatuses`. Une requête de plus dans un processus déjà lancé, pas un processus de plus (ADR 0003) : mesuré sur
+ * une base d'essai de 1 200 commits, ce groupe passe de 116 à 118 ms (médianes de onze lectures alternées), dans le bruit de la mesure.
  *
  * Les dates des commits sont celles de `dolt_log`, rendues croissantes le long de la lignée (`ascendingDates`, ADR 0001) : l'horloge
  * d'une machine peut reculer ou avancer, et un commit vient quand même après les précédents. Les statuts de tous les tickets et les
  * dépendances lisent ainsi des dates qui respectent l'ordre des commits, ce que la borne par ticket du domaine ne fait pas. Aucune date
  * de commit n'y est postérieure à l'instant de la lecture, relevé une fois les commits lus.
  */
-export async function readTicketHistories(db: DoltDatabase, { now = () => new Date() }: ReadHistoryOptions = {}): Promise<TicketHistory[]> {
+export async function readTicketHistories(db: DoltDatabase, { now = () => new Date() }: ReadHistoryOptions = {}): Promise<ProjectHistory> {
   const commitsRequest = db
     .query(COMMITS_SQL)
     .then((rows) => rows.map((row): Commit => ({ hash: asText(row.commit_hash), at: parseDoltDate(row.date) })));
-  const [[tickets = [], closureLabels = []], statusChanges, recordedCommits, appearances] = await Promise.all([
-    queryAll(db, [`select id, issue_type from issues ${AT_HEAD} order by id`, CLOSURE_LABELS_SQL]),
+  const [[tickets = [], closureLabels = [], declared = []], statusChanges, recordedCommits, appearances] = await Promise.all([
+    queryAll(db, [`select id, issue_type from issues ${AT_HEAD} order by id`, CLOSURE_LABELS_SQL, CUSTOM_STATUSES_SQL]),
     readStatusChanges(db),
     commitsRequest,
     readDependencyAppearances(db, commitsRequest),
@@ -159,7 +173,7 @@ export async function readTicketHistories(db: DoltDatabase, { now = () => new Da
   const labels = new Map<string, string[]>();
   for (const { issueId, label } of toLabelRecords(closureLabels)) labels.set(issueId, [...(labels.get(issueId) ?? []), label]);
 
-  return tickets.map((row) => {
+  const histories: ProjectHistory = tickets.map((row) => {
     const id = asText(row.id);
     const own = labels.get(id);
     return {
@@ -170,6 +184,9 @@ export async function readTicketHistories(db: DoltDatabase, { now = () => new Da
       ...(own ? { labels: own } : {}),
     };
   });
+  const declaredStatuses = toDeclaredStatuses(declared);
+  if (declaredStatuses.handoff.length > 0 || declaredStatuses.others.length > 0) histories.declaredStatuses = declaredStatuses;
+  return histories;
 }
 
 /**

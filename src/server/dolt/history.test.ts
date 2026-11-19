@@ -175,8 +175,13 @@ const issueColumns = (fields: string[]) => ({ match: /^show columns from dolt_hi
 
 /** La lecture des labels de la règle de clôture (`CLOSURE_LABELS_SQL`) : une base factice n'en porte aucun, sauf réponse donnée. */
 const LABELS = /^select issue_id, label from labels /;
+/** La lecture des statuts que déclare le Projet (`CUSTOM_STATUSES_SQL`, bdesk-pz0.3) : une base factice n'en déclare aucun, sauf réponse donnée. */
+const DECLARED = /^select `value` from config /;
 
-/** Une base factice qui répond selon la requête reçue ; sans label de clôture, sauf si `answers` en donne (`{ match: LABELS, rows }`) ; et `show columns from dolt_history_issues` rend le schéma de bd (`ISSUE_COLUMNS`), sauf réponse donnée. */
+/**
+ * Une base factice qui répond selon la requête reçue ; sans label de clôture ni statut déclaré, sauf si `answers` en donne (`{ match: LABELS, rows }`,
+ * `{ match: DECLARED, rows }`) ; et `show columns from dolt_history_issues` rend le schéma de bd (`ISSUE_COLUMNS`), sauf réponse donnée.
+ */
 function fakeDb(answers: { match: RegExp; rows: Row[] }[]): DoltDatabase & { queries: string[] } {
   const queries: string[] = [];
   return {
@@ -184,7 +189,8 @@ function fakeDb(answers: { match: RegExp; rows: Row[] }[]): DoltDatabase & { que
     queries,
     async query(sql) {
       queries.push(sql);
-      const answer = [...answers, issueColumns(ISSUE_COLUMNS)].find((a) => a.match.test(sql)) ?? (LABELS.test(sql) ? { rows: [] } : undefined);
+      const answer =
+        [...answers, issueColumns(ISSUE_COLUMNS)].find((a) => a.match.test(sql)) ?? (LABELS.test(sql) || DECLARED.test(sql) ? { rows: [] } : undefined);
       if (!answer) throw new Error(`requête inattendue : ${sql}`);
       return answer.rows;
     },
@@ -271,8 +277,8 @@ describe('readTicketHistories', () => {
 
     // Un ticket supprimé, ou dont le type a changé, sans commit : l'historique le dit tel qu'il est au dernier commit, comme le tableau.
     expect(readsOutsideHead(db.queries)).toEqual([]);
-    // La liste des tickets et les labels de clôture sont les seules tables de bd que le lecteur lit hors de l'historique : le filet les a bien vues.
-    expect(tablesRead(db.queries)).toEqual(new Set(['issues', 'labels']));
+    // La liste des tickets, les labels de clôture et les statuts déclarés sont les seules tables de bd que le lecteur lit hors de l'historique : le filet les a bien vues.
+    expect(tablesRead(db.queries)).toEqual(new Set(['issues', 'labels', 'config']));
   });
 
   // ADR 0008 : le label du Renoncement se lit au dernier commit, avec la liste des tickets, et rien d'autre que lui.
@@ -298,7 +304,11 @@ describe('readTicketHistories', () => {
     await readTicketHistories(grouped);
 
     expect(groups.filter((sqls) => sqls.some((sql) => LABELS.test(sql)))).toEqual([
-      ["select id, issue_type from issues as of 'HEAD' order by id", "select issue_id, label from labels as of 'HEAD' where label = 'declined' order by issue_id"],
+      [
+        "select id, issue_type from issues as of 'HEAD' order by id",
+        "select issue_id, label from labels as of 'HEAD' where label = 'declined' order by issue_id",
+        "select `value` from config as of 'HEAD' where `key` = 'status.custom'",
+      ],
     ]);
   });
 
@@ -1089,5 +1099,60 @@ describe('readTicketHistories : présence des critères d’acceptation', () => 
     await expect(readTicketHistories(db)).rejects.toBe(failure);
     expect(db.queries).not.toContain('show columns from dolt_history_issues');
     expect(statusQueries(db)).toHaveLength(1);
+  });
+});
+
+describe('readTicketHistories : les statuts que déclare le Projet, avec l’historique (bdesk-pz0.3)', () => {
+  const answers = (declared: Row[]) => [
+    { match: /from issues/, rows: [{ id: 'p-1', issue_type: 'task' }] },
+    {
+      match: /lag\(/,
+      rows: [
+        { id: 'p-1', status: 'open', changed_at: '2026-10-01 10:00:00.000', restart: 1, commit_hash: 'c0' },
+        { id: 'p-1', status: 'qa_testing', changed_at: '2026-10-02 10:00:00.000', restart: 0, commit_hash: 'c1' },
+        { id: 'p-1', status: 'closed', changed_at: '2026-10-03 10:00:00.000', restart: 0, commit_hash: 'c2' },
+      ],
+    },
+    {
+      match: /select l\.commit_hash/,
+      rows: [
+        { commit_hash: 'c0', date: '2026-10-01 10:00:00.000' },
+        { commit_hash: 'c1', date: '2026-10-02 10:00:00.000' },
+        { commit_hash: 'c2', date: '2026-10-03 10:00:00.000' },
+      ],
+    },
+    columns(CURRENT_COLUMNS),
+    { match: /^select .* from dolt_history_dependencies$/s, rows: [] },
+    { match: DECLARED, rows: declared },
+  ];
+
+  it('les rend à côté des tickets, tels que la règle du domaine les range, au dernier commit et dans le même groupe de lectures', async () => {
+    const db = fakeDb(answers([{ value: 'in_review:wip,qa_testing:wip,on_hold:frozen' }]));
+    const groups: string[][] = [];
+    const grouped: DoltDatabase = { ...db, queryAll: async (sqls) => (groups.push([...sqls]), Promise.all(sqls.map((sql) => db.query(sql)))) };
+
+    const histories = await readTicketHistories(grouped);
+
+    expect(histories.declaredStatuses).toEqual({
+      handoff: ['in_review'],
+      others: [
+        { name: 'qa_testing', category: 'wip' },
+        { name: 'on_hold', category: 'frozen' },
+      ],
+    });
+    expect(histories.map((history) => history.id)).toEqual(['p-1']);
+    expect(groups.filter((sqls) => sqls.some((sql) => DECLARED.test(sql)))).toHaveLength(1);
+    expect(readsOutsideHead(db.queries)).toEqual([]);
+    // Ce que le domaine en fait : le temps du statut déclaré wip compte dans le Cycle Time.
+    expect(analyzeFlow(histories, histories.declaredStatuses).get('p-1')?.cycleTime).toBe(24 * 3_600_000);
+  });
+
+  it('n’en rend aucun, sans champ, quand le Projet ne déclare rien : un tableau de tickets comme avant', async () => {
+    for (const declared of [[], [{ value: '' }], [{}]]) {
+      const histories = await readTicketHistories(fakeDb(answers(declared)));
+
+      expect(histories).not.toHaveProperty('declaredStatuses');
+      expect(analyzeFlow(histories, histories.declaredStatuses).get('p-1')?.cycleTime).toBeNull();
+    }
   });
 });

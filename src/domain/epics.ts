@@ -1,5 +1,5 @@
 import type { Issue } from '../shared/api';
-import { type Column, COLUMNS, columnFor } from './columns';
+import { type BaseColumn, baseColumnOf, COLUMNS, columnFor } from './columns';
 
 /**
  * Une Epic et ses Enfants : ce qu'elle regroupe, son avancement, ses Enfants rangés par colonne, leur arborescence et la
@@ -120,17 +120,21 @@ export function epicProgress(children: readonly Pick<EpicTicket, 'status' | 'aba
   return { children: children.length, delivered, abandoned, declined, remaining, total, ratio: total === 0 ? null : delivered / total };
 }
 
-/** Les colonnes du kanban, plus « En pause » : ce qu'aucune colonne n'accueille. */
-export type EpicGroup = Column | 'paused';
+/** Les colonnes de tout Projet, plus « En pause » : ce qu'aucune colonne n'accueille. */
+export type EpicGroup = BaseColumn | 'paused';
 
 /**
  * Les Enfants rangés par colonne, selon la règle du kanban et du CFD (`columnFor` : le statut et le Blocage, ce dernier
  * lu dans `blockedBy`). Terminé les garde tous, sans la fenêtre de jours du tableau, Abandons et Renoncements compris. Chaque colonne y est,
- * vide ou non ; l'ordre des Enfants est celui reçu.
+ * vide ou non ; l'ordre des Enfants est celui reçu. Un Enfant d'un Statut de relais est rangé, pour l'instant, en En cours (`baseColumnOf`) :
+ * la page Epic n'a pas encore les colonnes de relais.
  */
 export function groupByColumn<T extends Pick<EpicTicket, 'status' | 'blockedBy'>>(children: readonly T[]): Record<EpicGroup, T[]> {
   const groups: Record<EpicGroup, T[]> = { backlog: [], ready: [], inProgress: [], blocked: [], done: [], paused: [] };
-  for (const child of children) groups[columnFor(child.status, child.blockedBy.length > 0) ?? 'paused'].push(child);
+  for (const child of children) {
+    const column = columnFor(child.status, child.blockedBy.length > 0);
+    groups[column === null ? 'paused' : baseColumnOf(column)].push(child);
+  }
   return groups;
 }
 

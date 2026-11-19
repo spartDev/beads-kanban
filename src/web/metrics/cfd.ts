@@ -46,8 +46,17 @@ const utcMidnight = (day: string): number => {
   return Date.UTC(year, month - 1, date);
 };
 
+/**
+ * PROVISOIRE (bdesk-pz0.4 donnera leurs bandes aux colonnes des Statuts de relais) : le point tel que la pile le dessine, les tickets En relecture,
+ * En intégration et À valider comptés dans En cours, où le CFD les rangeait avant d'avoir leurs colonnes. Aucun ne disparaît de la pile, du total
+ * ni du tableau des valeurs.
+ */
+export function withHandoffInProgress({ inReview = 0, inIntegration = 0, awaitingHuman = 0, ...point }: MetricsCfdPoint): MetricsCfdPoint {
+  return { ...point, inProgress: point.inProgress + inReview + inIntegration + awaitingHuman };
+}
+
 export function toCfdRows(points: readonly MetricsCfdPoint[]): CfdRow[] {
-  return points.map((point) => ({ ...point, time: utcMidnight(point.date), total: cfdTotal(point) }));
+  return points.map(withHandoffInProgress).map((point) => ({ ...point, time: utcMidnight(point.date), total: cfdTotal(point) }));
 }
 
 /** Les colonnes empilées, de bas en haut ; Terminé peut être masqué pour agrandir les bandes du travail en cours. */

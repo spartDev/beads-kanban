@@ -1056,3 +1056,39 @@ describe('service de métriques : « Depuis votre dernière visite »', () => {
     expect(arrivals(response)).toEqual(['a-1']);
   });
 });
+
+describe('service de métriques : les statuts que déclare le Projet (bdesk-pz0.3)', () => {
+  /** Démarré le 20, passé dans `status` le 21, encore là à NOW (le 23). */
+  const working = (id: string, status: string): TicketHistory => ({
+    id,
+    type: 'task',
+    statusSnapshots: [
+      { status: 'open', at: at('2026-10-19T12:00') },
+      { status: 'in_progress', at: at('2026-10-20T12:00') },
+      { status, at: at('2026-10-21T12:00') },
+    ],
+    dependencies: [],
+  });
+  const tickets = () => [working('a-1', 'qa_testing'), working('a-2', 'in_review')];
+  const issues = [issueOf('a-1'), issueOf('a-2')];
+
+  it('analyse l’historique avec les statuts déclarés lus avec lui : un statut déclaré wip compte dans le WIP et le CFD', async () => {
+    const declaredStatuses = { handoff: [], others: [{ name: 'qa_testing', category: 'wip' as const }] };
+    const { service } = fakeProjects({ a: { histories: Object.assign(tickets(), { declaredStatuses }), issues } });
+
+    const response = await createMetricsService(service, options).compute({ projects: [], ...week });
+
+    expect(response.tiles.wip.current).toBe(2);
+    expect(response.cfd.at(-1)).toMatchObject({ inProgress: 1, inReview: 1 });
+  });
+
+  it('compte sans déclaration les Statuts de relais, et laisse « En pause » un autre statut personnalisé', async () => {
+    const { service } = fakeProjects({ a: { histories: tickets(), issues } });
+
+    const response = await createMetricsService(service, options).compute({ projects: [], ...week });
+
+    expect(response.tiles.wip.current).toBe(1);
+    expect(response.inProgress.map(({ id, status }) => [id, status])).toEqual([['a-2', 'in_review']]);
+    expect(response.cfd.at(-1)).toMatchObject({ inProgress: 0, inReview: 1 });
+  });
+});

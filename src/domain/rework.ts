@@ -1,5 +1,5 @@
 import type { MetricsRework, MetricsReworkTicket } from '../shared/api';
-import { isWork } from './flow';
+import { isHandback } from './flow';
 import type { MetricsInput, TrackedTicket } from './metrics';
 
 /** Une fenêtre de temps (ms epoch) : son premier instant compris, le premier instant qui suit exclu. */
@@ -19,7 +19,8 @@ const compareText = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 /**
  * Le Retravail de la fenêtre (voir CONTEXT.md) : chaque ticket qui y a subi une Réouverture ou une Prise rendue, ou dont une Livraison y a reçu un Bug
  * d'origine (daté de la création du bug qui a constaté le défaut). Les Transitions d'un ticket se suivent sans répéter un statut : un changement depuis
- * fermé est une Réouverture, un changement d'un statut de travail vers ouvert une Prise rendue.
+ * fermé est une Réouverture, un changement d'un statut de travail autre que À valider vers ouvert une Prise rendue (`isHandback`, avec les statuts que
+ * déclare le Projet). Remettre à ouvert un ticket À valider est un Report : ni Prise rendue ni Retravail.
  */
 export function reworkIn(entries: Entry[], window: Window): MetricsRework {
   const rows = entries.flatMap(({ project, ticket }): Array<{ shown: MetricsReworkTicket; last: number }> => {
@@ -29,7 +30,7 @@ export function reworkIn(entries: Entry[], window: Window): MetricsRework {
       const previous = steps[index - 1];
       if (!previous || !within(step.at, window)) return;
       if (previous.status === 'closed' && step.status !== 'closed') reopenings++;
-      else if (isWork(previous.status) && step.status === 'open') returns++;
+      else if (isHandback(previous.status, step.status, project.analysis.declaredStatuses)) returns++;
       else return;
       last = Math.max(last, step.at);
     });

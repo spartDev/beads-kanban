@@ -7,9 +7,12 @@
  * « En pause » (le CFD le laisse hors des colonnes) et le tri. Reste propre à chacun, aussi, la façon de savoir qu'un
  * ticket est en Blocage : l'historique des dépendances pour le CFD, `blockedBy` pour le tableau.
  */
+import type { DeclaredStatuses, HandoffStatus } from '../shared/api';
+import { HANDOFF_STATUSES, isDeclaredWip, NO_DECLARED_STATUSES } from './statuses';
 
 /**
- * Les identifiants des colonnes, dans l'ordre du flux (« En pause » n'en est pas une : c'est ce qui n'est dans aucune).
+ * Les colonnes de tout Projet, dans l'ordre du flux (« En pause » n'en est pas une : c'est ce qui n'est dans aucune). Celles des Statuts de
+ * relais s'y ajoutent pour les Projets qui en ont (`columnsOf`).
  *
  * Rien que les identifiants : les libellés, pictogrammes et règles écrites des colonnes sont des `ColumnMeta`, dans le
  * `COLUMNS` de `src/web/kanban/meta.ts` (même nom, même ordre, autre contenu). Côté tableau, ces identifiants sont
@@ -17,7 +20,32 @@
  */
 export const COLUMNS = ['backlog', 'ready', 'inProgress', 'blocked', 'done'] as const;
 
-export type Column = (typeof COLUMNS)[number];
+/** Une colonne de tout Projet. */
+export type BaseColumn = (typeof COLUMNS)[number];
+
+/** Les colonnes des Statuts de relais, dans l'ordre de `HANDOFF_STATUSES` : En relecture, En intégration, À valider. */
+export const HANDOFF_COLUMNS = ['inReview', 'inIntegration', 'awaitingHuman'] as const;
+
+export type HandoffColumn = (typeof HANDOFF_COLUMNS)[number];
+
+export type Column = BaseColumn | HandoffColumn;
+
+/** La colonne de chaque Statut de relais. */
+export const HANDOFF_COLUMN: Readonly<Record<HandoffStatus, HandoffColumn>> = {
+  in_review: 'inReview',
+  in_integration: 'inIntegration',
+  awaiting_human: 'awaitingHuman',
+};
+
+/**
+ * Les colonnes d'un Projet, dans l'ordre du flux : celles de tout Projet et, entre En cours et Bloqué, celles de ses Statuts de relais visibles
+ * (`visibleHandoffStatuses`, `statuses.ts`), dans leur ordre. Le relais suit le développement ; Bloqué reste la dernière colonne avant Terminé,
+ * puisqu'il reçoit tout statut de travail en Blocage, de relais compris. Sans Statut de relais, les cinq colonnes d'avant, dans le même ordre.
+ */
+export function columnsOf(handoff: readonly HandoffStatus[]): Column[] {
+  const relay = HANDOFF_STATUSES.filter((status) => handoff.includes(status)).map((status) => HANDOFF_COLUMN[status]);
+  return ['backlog', 'ready', 'inProgress', ...relay, 'blocked', 'done'];
+}
 
 /**
  * La colonne d'un ticket selon son statut et son Blocage ; `null` : « En pause », hors des colonnes.
@@ -25,14 +53,23 @@ export type Column = (typeof COLUMNS)[number];
  *   closed                       Terminé, en Blocage ou non
  *   blocked                      Bloqué
  *   in_progress, hooked          En cours ; Bloqué en Blocage
+ *   in_review                    En relecture ; Bloqué en Blocage
+ *   in_integration               En intégration ; Bloqué en Blocage
+ *   awaiting_human               À valider ; Bloqué en Blocage
  *   open                         Prêt ; Backlog en Blocage
+ *   autre, déclaré de catégorie  En cours ; Bloqué en Blocage
+ *   wip par le Projet
  *   deferred, pinned, autre      En pause, en Blocage ou non (un statut inconnu de beads n'est pas perdu pour autant)
+ *
+ * Les Statuts de relais se reconnaissent à leur nom, déclarés ou non (ADR 0007) : `declared` (défaut : aucune déclaration) ne sert qu'aux autres
+ * statuts personnalisés, dont seule la catégorie `wip` donne une colonne. Un ticket est donc dans En cours, une colonne de relais ou Bloqué
+ * exactement quand il est dans un statut de travail (`isWork`, `flow.ts`) : ce que comptent le Cycle Time et le WIP.
  *
  * `blocked` : le ticket dépend d'au moins un ticket non fermé (dépendance `blocks` en suspens, voir « Blocage » dans
  * CONTEXT.md). Le statut bloqué se lit dans `status` : que l'appelant le compte ou non dans `blocked` ne change rien.
  * `status` est indéfini avant la création du ticket.
  */
-export function columnFor(status: string | undefined, blocked: boolean): Column | null {
+export function columnFor(status: string | undefined, blocked: boolean, declared: DeclaredStatuses = NO_DECLARED_STATUSES): Column | null {
   switch (status) {
     case 'closed':
       return 'done';
@@ -41,9 +78,27 @@ export function columnFor(status: string | undefined, blocked: boolean): Column 
     case 'in_progress':
     case 'hooked':
       return blocked ? 'blocked' : 'inProgress';
+    case 'in_review':
+    case 'in_integration':
+    case 'awaiting_human':
+      return blocked ? 'blocked' : HANDOFF_COLUMN[status];
     case 'open':
       return blocked ? 'backlog' : 'ready';
-    default:
+    case undefined:
       return null;
+    default:
+      if (!isDeclaredWip(status, declared)) return null;
+      return blocked ? 'blocked' : 'inProgress';
   }
 }
+
+/**
+ * PROVISOIRE (bdesk-pz0.4 donnera leurs colonnes aux Statuts de relais) : la colonne où le montre un écran qui n'a encore que les colonnes de tout
+ * Projet, le tableau et la page Epic. Un ticket d'une colonne de relais y reste en En cours, comme avant que les Statuts de relais aient leurs
+ * colonnes : aucun ne disparaît. Toute autre colonne est la sienne.
+ */
+export function baseColumnOf(column: Column): BaseColumn {
+  return isHandoffColumn(column) ? 'inProgress' : column;
+}
+
+const isHandoffColumn = (column: Column): column is HandoffColumn => (HANDOFF_COLUMNS as readonly Column[]).includes(column);

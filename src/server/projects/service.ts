@@ -1,10 +1,9 @@
-import type { TicketHistory } from '../../domain/flow';
 import type { Issue, IssueDetail, IssuesResponse, Project, ProjectsResponse } from '../../shared/api';
 import type { ApiErrorDetail } from '../../shared/errors';
 import { ReadAborted } from '../abort';
 import type { Config } from '../config';
 import { type DoltClient, type DoltDatabase, DoltNotFoundError, DoltQueryError, withOptions } from '../dolt/client';
-import { readTicketHistories } from '../dolt/history';
+import { type ProjectHistory, readTicketHistories } from '../dolt/history';
 import { readHead, readIssueBase, readIssueParts } from '../dolt/reader';
 import { createCheckedDoltClient } from '../dolt/stored-sql';
 import { type Discovery, type DiscoveredProject, discoverProjects } from './discovery';
@@ -67,8 +66,8 @@ export interface ProjectService {
   /** Les tickets du kanban, sans les statuts déclarés : ce que lisent les métriques et la Chronologie. Même lecture que `board`. */
   issues(projectId: string, options?: ReadOptions): Promise<Issue[]>;
   issue(projectId: string, issueId: string, options?: ReadOptions): Promise<IssueDetail>;
-  /** Historique complet des tickets, pour `analyzeFlow`. */
-  histories(projectId: string, options?: ReadOptions): Promise<TicketHistory[]>;
+  /** Historique complet des tickets, pour `analyzeFlow`, avec les statuts que le Projet déclare, lus dans le même processus (`ProjectHistory`). */
+  histories(projectId: string, options?: ReadOptions): Promise<ProjectHistory>;
   /**
    * Hash du dernier commit Dolt du Projet : change à chaque commit, donc clé d'invalidation des calculs. Lecture de la voie `light`, qui ne fait pas la
    * queue derrière les autres (voir `QueryOptions.lane`) : quelques dizaines de millisecondes. Un demandeur qui part (`options.signal`) est libéré aussitôt

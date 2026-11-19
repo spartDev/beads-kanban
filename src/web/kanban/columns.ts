@@ -1,4 +1,4 @@
-import { type Column, COLUMNS, columnFor } from '../../domain/columns';
+import { type BaseColumn, baseColumnOf, COLUMNS, columnFor } from '../../domain/columns';
 import { descendantIds } from '../../domain/epics';
 import type { Issue } from '../data/types';
 import { startOfLocalDay } from '../lib/localDay';
@@ -8,7 +8,7 @@ import { startOfLocalDay } from '../lib/localDay';
  *
  *   Backlog   ticket ouvert, en Blocage
  *   Prêt      ticket ouvert, hors Blocage
- *   En cours  statut de travail (en cours, rattaché à un agent), hors Blocage
+ *   En cours  statut de travail (en cours, rattaché à un agent), hors Blocage ; pour l'instant aussi les Statuts de relais (voir `columnOf`)
  *   Bloqué    statut de travail en Blocage, ou statut bloqué
  *   Terminé   ticket fermé ces `doneDays` derniers jours, aujourd'hui compris (14 par défaut) : des jours calendaires
  *             du fuseau du navigateur, comme les périodes de la page Métriques (`resolvePeriod`) et CONTEXT.md. Avec 14
@@ -24,10 +24,10 @@ import { startOfLocalDay } from '../lib/localDay';
  * entier, c'est `src/server/projects/board-vs-cfd.test.ts` (il passe par `buildIssues`, du serveur).
  */
 
-/** Les colonnes, dans l'ordre du flux : celles du domaine, que le CFD partage. */
+/** Les colonnes, dans l'ordre du flux : celles de tout Projet, du domaine, que le CFD partage. */
 export const COLUMN_IDS = COLUMNS;
 
-export type ColumnId = Column;
+export type ColumnId = BaseColumn;
 
 /** Une colonne, ou le tiroir « En pause ». */
 export type Lane = ColumnId | 'paused';
@@ -57,6 +57,9 @@ export const isBlocked = (issue: Pick<Issue, 'status' | 'blockedBy'>): boolean =
  * (fermé avant la fenêtre de Terminé, ou fermé sans date lisible : son ancienneté est inconnue).
  *
  * Un ticket fermé est dans Terminé s'il l'a été ces `doneDays` derniers jours, aujourd'hui compris (`closedWithin`).
+ *
+ * PROVISOIRE (bdesk-pz0.4) : le tableau n'a pas encore les colonnes des Statuts de relais, que le CFD a déjà ; un ticket En relecture, En
+ * intégration ou À valider y reste en En cours (`baseColumnOf`), comme avant, plutôt que perdu. En Blocage, il est dans Bloqué, comme au CFD.
  */
 export function columnOf(issue: IssueFacts, { now, doneDays = DEFAULT_DONE_DAYS }: PlacementOptions): Lane | null {
   const column = columnFor(issue.status, isBlocked(issue));
@@ -64,7 +67,7 @@ export function columnOf(issue: IssueFacts, { now, doneDays = DEFAULT_DONE_DAYS 
   if (column === null) return 'paused';
   // Le CFD cumule tous les tickets fermés ; le tableau ne garde dans Terminé que ceux de la fenêtre.
   if (column === 'done') return closedWithin(issue.closedAt, now, doneDays) ? 'done' : null;
-  return column;
+  return baseColumnOf(column);
 }
 
 /**

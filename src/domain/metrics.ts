@@ -1,4 +1,6 @@
 import type {
+  DeclaredStatuses,
+  HandoffStatus,
   MetricsBucket,
   MetricsCfdPoint,
   MetricsCountTile,
@@ -19,10 +21,11 @@ import type {
   MetricsWipTile,
 } from '../shared/api';
 import { addDays, type BucketSpan, bucketsOf, daysOf, type Period, type PeriodSpec, resolvePeriod, startOfDay } from './calendar';
-import { type Column, COLUMNS } from './columns';
+import { type Column, COLUMNS, columnsOf, HANDOFF_COLUMNS } from './columns';
 import { analyzeFailures } from './failures';
 import { type AbandonCause, analyzeFlow, isWork, type TicketHistory } from './flow';
 import { isSoundDelivery } from './sound';
+import { HANDOFF_STATUSES, NO_DECLARED_STATUSES, visibleHandoffStatuses } from './statuses';
 import { buildTimeline, columnAt, isWorking, statusAt, stepsOf, type TicketTimeline } from './timeline';
 
 /**
@@ -67,7 +70,7 @@ export interface TrackedTicket {
   sound: boolean;
   /** Ses Bugs d'origine, chacun avec la date qui compte (`FailureAnalysis.originBugsFound`) ; vide si elle n'en a pas ou n'est pas une Livraison. */
   originBugs: Array<{ id: string; at: number }>;
-  /** Premier passage en statut de travail. */
+  /** Premier passage en statut de travail (Statuts de relais et statuts déclarés de catégorie `wip` compris). */
   startedAt: number | null;
   /**
    * Intention écrite : ses critères d'acceptation étaient renseignés à son premier démarrage (`writtenIntentOf`). null s'il n'a jamais été démarré (`startedAt`
@@ -92,6 +95,13 @@ export interface ProjectAnalysis {
   tickets: TrackedTicket[];
   /** Les bugs hors Abandon, et ceux dont l'origine est renseignée (Couverture), toutes dates confondues. */
   coverage: { bugs: number; linked: number };
+  /** Les statuts personnalisés que le Projet déclare, ceux avec lesquels ses tickets ont été analysés : ils disent lesquels de ses autres statuts sont de travail. */
+  declaredStatuses: DeclaredStatuses;
+  /**
+   * Les Statuts de relais qui ont leur colonne dans son CFD (`visibleHandoffStatuses`) : ceux qu'il déclare, et ceux qu'un de ses tickets mesurés a
+   * portés, à quelque moment que ce soit de son historique. Vide pour un Projet qui n'en a ni déclaré ni porté : son CFD garde ses cinq colonnes.
+   */
+  handoff: HandoffStatus[];
 }
 
 export interface MetricsInput {
@@ -139,9 +149,12 @@ export function durationStats(values: readonly number[]): MetricsDurationStats {
   return { median: percentile(sorted, 50), p85: percentile(sorted, 85), n: sorted.length };
 }
 
-/** Analyse les tickets d'un Projet : Transitions, Livraisons, Bugs d'origine, Blocage dans le temps. */
-export function analyzeProject(tickets: MetricsTicket[]): ProjectAnalysis {
-  const flows = analyzeFlow(tickets);
+/**
+ * Analyse les tickets d'un Projet : Transitions, Livraisons, Bugs d'origine, Blocage dans le temps. `declared` : les statuts personnalisés que le
+ * Projet déclare (défaut : aucun), lus dans le même état que son historique ; les Statuts de relais sont des statuts de travail sans eux.
+ */
+export function analyzeProject(tickets: MetricsTicket[], declared: DeclaredStatuses = NO_DECLARED_STATUSES): ProjectAnalysis {
+  const flows = analyzeFlow(tickets, declared);
   const failures = analyzeFailures(tickets, flows);
   const stepsById = new Map([...flows].map(([id, flow]) => [id, stepsOf(flow.transitions)]));
 
@@ -165,19 +178,27 @@ export function analyzeProject(tickets: MetricsTicket[]): ProjectAnalysis {
         failed: originBugs.length > 0,
         sound: isSoundDelivery(flow, originBugs),
         originBugs: (failures.originBugsFound.get(ticket.id) ?? []).map(({ bug, at }) => ({ id: bug, at: at.getTime() })),
-        startedAt: steps.find((step) => isWork(step.status))?.at ?? null,
+        startedAt: steps.find((step) => isWork(step.status, declared))?.at ?? null,
         writtenIntent: flow.writtenIntent,
         abandonedAt: flow.outcome.kind === 'abandoned' ? flow.outcome.at.getTime() : null,
         abandonCause: flow.outcome.kind === 'abandoned' ? flow.outcome.cause : null,
         declinedAt: flow.outcome.kind === 'declined' ? flow.outcome.at.getTime() : null,
         blockedTime: deliveredAt === null ? null : flow.blockedTime,
         dependencyWait: deliveredAt === null ? null : flow.dependencyWait,
-        timeline: buildTimeline(ticket, steps, stepsById),
+        timeline: buildTimeline(ticket, steps, stepsById, declared),
       },
     ];
   });
 
-  return { tickets: tracked, coverage: { bugs: failures.coverage.bugs, linked: failures.coverage.linked } };
+  return {
+    tickets: tracked,
+    coverage: { bugs: failures.coverage.bugs, linked: failures.coverage.linked },
+    declaredStatuses: declared,
+    handoff: visibleHandoffStatuses(
+      declared.handoff,
+      tracked.flatMap(({ timeline }) => timeline.steps.map((step) => step.status)),
+    ),
+  };
 }
 
 /** Un ticket mesuré, avec le Projet qui le porte. */
@@ -228,7 +249,7 @@ export function computeMetrics(projects: MetricsInput[], { period: spec, now, ti
     },
     buckets: throughputBuckets(bucketsOf(current, resolved.unit, timeZone), delivered, arrived),
     cycleTimeScatter: cycleTimeScatter(delivered),
-    cfd: cumulativeFlow(entries, current, timeZone, asOf),
+    cfd: cumulativeFlow(entries, columnsOf(handoffOf(projects)), current, timeZone, asOf),
     inProgress: inProgress(entries, asOf),
     slices: slicesOf(entries, projects, elapsed),
   };
@@ -424,17 +445,26 @@ function cycleTimeScatter(deliveries: Entry[]): MetricsCycleTimePoint[] {
     .sort((a, b) => compareText(a.deliveredAt, b.deliveredAt) || compareText(a.project, b.project) || compareText(a.id, b.id));
 }
 
+/** Les Statuts de relais qui ont leur colonne dans le CFD des Projets mesurés : ceux qui l'ont dans le CFD de l'un d'eux. */
+function handoffOf(projects: MetricsInput[]): HandoffStatus[] {
+  return HANDOFF_STATUSES.filter((status) => projects.some(({ analysis }) => analysis.handoff.includes(status)));
+}
+
 /**
  * CFD : le nombre de tickets de chaque colonne à la fin de chaque jour de la période, à `asOf` pour le jour en cours.
  * Chaque ticket reste dans sa colonne d'un changement au suivant : pour chaque segment, on retient les jours dont
  * l'instant d'échantillonnage tombe dedans (différences successives, puis cumul), sans repasser sur chaque ticket
  * à chaque jour.
+ *
+ * Chaque point a les colonnes `columns`, dans leur ordre : celles de tout Projet, et celles des Statuts de relais qu'a l'un des Projets mesurés
+ * (`handoffOf`). Une colonne de relais qui n'y est pas n'a eu aucun ticket : aucun Projet mesuré n'en a porté le statut.
  */
-function cumulativeFlow(entries: Entry[], period: Period, timeZone: string, asOf: number): MetricsCfdPoint[] {
+function cumulativeFlow(entries: Entry[], columns: readonly Column[], period: Period, timeZone: string, asOf: number): MetricsCfdPoint[] {
   const days = daysOf(period);
   const samples = days.map((day) => Math.min(startOfDay(addDays(day, 1), timeZone), asOf));
   const zeros = () => new Array<number>(days.length + 1).fill(0);
-  const changes: Record<Column, number[]> = { backlog: zeros(), ready: zeros(), inProgress: zeros(), blocked: zeros(), done: zeros() };
+  const all: readonly Column[] = [...COLUMNS, ...HANDOFF_COLUMNS];
+  const changes = Object.fromEntries(all.map((column) => [column, zeros()])) as Record<Column, number[]>;
   const bump = (series: number[], index: number, by: number) => {
     series[index] = (series[index] ?? 0) + by;
   };
@@ -452,10 +482,10 @@ function cumulativeFlow(entries: Entry[], period: Period, timeZone: string, asOf
     });
   }
 
-  const running: Record<Column, number> = { backlog: 0, ready: 0, inProgress: 0, blocked: 0, done: 0 };
+  const running = Object.fromEntries(all.map((column) => [column, 0])) as Record<Column, number>;
   return days.map((date, i) => {
-    for (const column of COLUMNS) running[column] += changes[column][i] ?? 0;
-    return { date, ...running };
+    for (const column of all) running[column] += changes[column][i] ?? 0;
+    return Object.fromEntries([['date', date], ...columns.map((column) => [column, running[column]])]) as MetricsCfdPoint;
   });
 }
 
