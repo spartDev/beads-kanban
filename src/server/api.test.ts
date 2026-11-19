@@ -6,7 +6,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InvalidPeriodError } from '../domain/calendar';
 import type { TicketHistory } from '../domain/flow';
-import type { Issue, IssueDetail, MetricsResponse, Project } from '../shared/api';
+import type { Issue, IssueDetail, MetricsResponse, Project, SinceLastVisitResponse } from '../shared/api';
 import { readApiErrorDetail } from '../shared/errors';
 import { ApiError, errorText } from '../web/data/apiError';
 import { ReadAborted } from './abort';
@@ -380,6 +380,82 @@ describe('API des Signaux', () => {
   });
 });
 
+describe('API de « Depuis votre dernière visite »', () => {
+  const NOW = new Date('2026-10-19T12:00:00Z');
+  const HOUR = 3_600_000;
+  const ago = (hours: number) => new Date(NOW.getTime() - hours * HOUR);
+  /** Une Livraison il y a 2 heures, une Arrivée il y a 30 heures, un ticket rouvert il y a 50 heures. */
+  const histories: TicketHistory[] = [
+    { id: 'l', type: 'task', statusSnapshots: [{ status: 'open', at: ago(100) }, { status: 'closed', at: ago(2) }], dependencies: [] },
+    { id: 'a', type: 'task', statusSnapshots: [{ status: 'open', at: ago(30) }], dependencies: [] },
+    {
+      id: 'r',
+      type: 'task',
+      statusSnapshots: [{ status: 'open', at: ago(100) }, { status: 'closed', at: ago(60) }, { status: 'open', at: ago(50) }],
+      dependencies: [],
+    },
+  ];
+  const issues = histories.map((h): Issue => ({ ...issue, id: h.id, title: `Titre de ${h.id}`, type: 'task', priority: 2 }));
+  const getSince = (projects: ProjectService, query = '') =>
+    buildServer({ config, projects, metrics: createMetricsService(projects, { now: () => NOW, timeZone: 'Europe/Paris' }) }).inject({
+      method: 'GET',
+      url: `/api/since-last-visit${query}`,
+    });
+  const counts = (body: SinceLastVisitResponse) => body.groups.map((group) => [group.kind, group.tickets.map((ticket) => ticket.id)]);
+
+  it('sans Dernière visite, sert les dernières 24 heures de tous les Projets, genre par genre, dates en ISO', async () => {
+    const res = await getSince(serviceWith({ histories: async () => histories, issues: async () => issues }));
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<SinceLastVisitResponse>();
+    expect(body).toMatchObject({ since: ago(24).toISOString(), asOf: NOW.toISOString(), projects: [{ id: 'beads-desktop', name: 'beads-desktop' }], unreadable: [] });
+    expect(counts(body)).toEqual([
+      ['reopenings', []],
+      ['escapedBugs', []],
+      ['deliveries', ['l']],
+      ['newBlockages', []],
+      ['arrivals', []],
+    ]);
+    expect(body.groups[2]?.tickets).toEqual([
+      { project: 'beads-desktop', id: 'l', title: 'Titre de l', type: 'task', priority: 2, at: ago(2).toISOString() },
+    ]);
+  });
+
+  it('remonte jusqu’à la Dernière visite demandée', async () => {
+    const res = await getSince(serviceWith({ histories: async () => histories, issues: async () => issues }), `?since=${ago(72).toISOString()}`);
+
+    const body = res.json<SinceLastVisitResponse>();
+    expect(body.since).toBe(ago(72).toISOString());
+    expect(counts(body)).toEqual([
+      ['reopenings', ['r']],
+      ['escapedBugs', []],
+      ['deliveries', ['l']],
+      ['newBlockages', []],
+      ['arrivals', ['a']],
+    ]);
+  });
+
+  it('liste un Projet illisible dans la réponse, sans faire échouer le reste', async () => {
+    const res = await getSince(
+      serviceWith({
+        histories: async () => {
+          throw new ProjectUnreadableError('beads-desktop', 'database is locked');
+        },
+      }),
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ projects: [], unreadable: [{ id: 'beads-desktop', reason: 'database is locked' }] });
+  });
+
+  it('refuse une Dernière visite qui n’est pas un instant ISO 8601, avec son code', async () => {
+    const res = await getSince(serviceWith(), '?since=hier');
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'query-invalid-instant', params: { parameter: 'since', received: 'hier' } });
+  });
+});
+
 describe('API des métriques', () => {
   const NOW = new Date('2026-10-23T18:00:00Z'); // vendredi 23 octobre 2026, 20:00 à Paris
 
@@ -397,6 +473,7 @@ describe('API des métriques', () => {
         return metricsOver(serviceWith()).compute(query);
       },
       signals: unused,
+      sinceLastVisit: unused,
     };
   };
 
@@ -492,6 +569,7 @@ describe('API des métriques', () => {
         throw new InvalidPeriodError('La plage est trop longue : 400 jours, au plus 366.', { code: 'period-too-long', params: { days: 400, max: 366 } });
       },
       signals: unused,
+      sinceLastVisit: unused,
     };
 
     const res = await getMetrics('', serviceWith(), refusing);
@@ -692,6 +770,7 @@ describe('API : requêtes abandonnées par le client (bdesk-38k.20)', () => {
         return new Promise((_resolve, reject) => options?.signal?.addEventListener('abort', () => reject(new ReadAborted())));
       },
       signals: unused,
+      sinceLastVisit: unused,
     };
     const app = buildServer({ config, projects: serviceWith(), metrics });
     const controller = new AbortController();

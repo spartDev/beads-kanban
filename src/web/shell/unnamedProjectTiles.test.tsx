@@ -113,7 +113,7 @@ describe('le fil d’Ariane et le sélecteur mobile', () => {
 describe('la Vue globale', () => {
   it('liste les Projets avec les mêmes pastilles que la barre latérale', async () => {
     api();
-    renderApp('/');
+    renderApp('/overview');
 
     const list = await screen.findByRole('region', { name: 'Projets suivis' });
 

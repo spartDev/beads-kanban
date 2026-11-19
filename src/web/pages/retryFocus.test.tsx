@@ -143,7 +143,7 @@ const SITES: Site[] = [
   },
   {
     name: 'les métriques de la Vue globale',
-    path: '/',
+    path: '/overview',
     failing: METRICS,
     zone: main,
     retry: retryIn(inMain),
@@ -154,7 +154,7 @@ const SITES: Site[] = [
   },
   {
     name: 'les Projets suivis de la Vue globale',
-    path: '/',
+    path: '/overview',
     failing: PROJECTS,
     zone: () => screen.getByRole('region', { name: 'Projets suivis' }),
     retry: retryIn(() => within(screen.getByRole('region', { name: 'Projets suivis' }))),

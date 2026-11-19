@@ -13,7 +13,7 @@ import { ShortcutKeys } from '../ui/Kbd';
 import { ProjectTile } from '../ui/ProjectTile';
 import { Skeleton } from '../ui/states';
 import { Tip } from '../ui/Tip';
-import { SECTIONS, useRouteInfo } from './navigation';
+import { HOME_SHORTCUT, OVERVIEW_SHORTCUT, SECTIONS, useRouteInfo } from './navigation';
 import { usePalette, useShortcutsHelp } from './OverlayProvider';
 import { LanguageToggle } from './LanguageToggle';
 import { ThemeToggle } from './ThemeToggle';
@@ -64,14 +64,16 @@ export function Sidebar() {
 
       <nav aria-label={t.shell.layout.primaryNavigation} className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
         <div className="flex flex-col gap-1">
+          {/* L'accueil, « À regarder » tous Projets confondus, puis la Vue globale : les pages de tous les Projets, avant ceux-ci. */}
+          <NavLink to={paths.home()} end className={rowClass}>
+            <Eye size={17} strokeWidth={1.9} aria-hidden="true" className={rowIconClass} />
+            {t.shell.sections.signals}
+            <RowHint keys={HOME_SHORTCUT} />
+          </NavLink>
           <NavLink to={paths.global()} end className={rowClass}>
             <LayoutGrid size={17} strokeWidth={1.9} aria-hidden="true" className={rowIconClass} />
             {t.shell.overview.title}
-            <RowHint keys="g v" />
-          </NavLink>
-          <NavLink to={paths.signals()} end className={rowClass}>
-            <Eye size={17} strokeWidth={1.9} aria-hidden="true" className={rowIconClass} />
-            {t.shell.sections.signals}
+            <RowHint keys={OVERVIEW_SHORTCUT} />
           </NavLink>
         </div>
         <ProjectList />

@@ -25,10 +25,10 @@ const stubSignals = (signals: Record<string, ApiSignal[]> = { bdesk: BDESK, mpm:
 const text = (element: Element) => element.textContent?.replaceAll(NBSP, ' ') ?? '';
 const requested = (fetchMock: ReturnType<typeof stubApi>) => fetchMock.mock.calls.map(([input]) => String(input));
 
-describe('la page « À regarder » de la Vue globale', () => {
+describe('l’accueil : la page « À regarder » de tous les Projets', () => {
   it('groupe les Signaux de tous les Projets par sorte, dans l’ordre Dérive, Blocage long, Prêt qui stagne, WIP inhabituel', async () => {
     stubSignals();
-    renderApp('/signals');
+    renderApp('/');
 
     await screen.findByRole('region', { name: 'WIP inhabituel' });
     const titled = screen.getAllByRole('region').filter((group) => group.hasAttribute('data-signal-group'));
@@ -40,7 +40,7 @@ describe('la page « À regarder » de la Vue globale', () => {
 
   it('nomme le Projet de chaque Signal, mène au ticket et dit de combien il dépasse la normale', async () => {
     stubSignals();
-    renderApp('/signals');
+    renderApp('/');
 
     const drift = await screen.findByRole('region', { name: 'Dérive' });
     const link = within(drift).getByRole('link', { name: 'Titre de bdesk-w' });
@@ -56,7 +56,7 @@ describe('la page « À regarder » de la Vue globale', () => {
 
   it('dit quels Projets n’ont pas pu être lus', async () => {
     stubSignals();
-    renderApp('/signals');
+    renderApp('/');
 
     await screen.findByRole('region', { name: 'Dérive' });
     expect(text(document.body)).toContain('legacy-api');
@@ -64,20 +64,49 @@ describe('la page « À regarder » de la Vue globale', () => {
 
   it('dit qu’il n’y a rien à regarder quand aucun Signal n’est levé', async () => {
     stubSignals({});
-    renderApp('/signals');
+    renderApp('/');
 
     expect(await screen.findByText(/Rien à regarder/)).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Dérive' })).toBeNull();
   });
 
-  it('s’ouvre depuis la barre latérale, sous la Vue globale', async () => {
+  it('est la première entrée de la barre latérale, avant la Vue globale, qui a désormais sa propre adresse', async () => {
     stubSignals();
-    const { user, router } = renderApp('/');
+    const { user, router } = renderApp('/p/bdesk/kanban');
 
     const nav = await screen.findByRole('navigation', { name: 'Navigation principale' });
-    await user.click(within(nav).getByRole('link', { name: /^À regarder/ }));
+    const [home, overview] = within(nav).getAllByRole('link').slice(0, 2);
+    expect(home?.textContent).toMatch(/^À regarder/);
+    expect(overview?.textContent).toMatch(/^Vue globale/);
+    await user.click(home!);
+    expect(router.state.location.pathname).toBe('/');
+    expect(home?.getAttribute('aria-current')).toBe('page');
+    await user.click(overview!);
+    expect(router.state.location.pathname).toBe('/overview');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Vue globale' })).toBeTruthy();
+  });
 
-    expect(router.state.location.pathname).toBe('/signals');
+  it('l’ancienne adresse, /signals, mène à l’accueil sans rester dans l’historique', async () => {
+    stubSignals();
+    const { router } = renderApp('/signals');
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+    expect(router.state.historyAction).toBe('REPLACE');
+    expect(await screen.findByRole('heading', { level: 1, name: 'À regarder' })).toBeTruthy();
+  });
+
+  it('porte en tête « Depuis votre dernière visite », avant les Signaux ; la page d’un Projet ne le porte pas', async () => {
+    stubSignals();
+    const app = renderApp('/');
+
+    const since = await screen.findByRole('region', { name: 'Depuis votre dernière visite' });
+    const drift = await screen.findByRole('region', { name: 'Dérive' });
+    expect(since.compareDocumentPosition(drift) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    app.unmount();
+
+    renderApp('/p/bdesk/signals');
+    await screen.findByRole('region', { name: 'Dérive' });
+    expect(screen.queryByRole('region', { name: 'Depuis votre dernière visite' })).toBeNull();
   });
 });
 

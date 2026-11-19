@@ -9,12 +9,13 @@ import type {
   MetricsResponse,
   ProjectsResponse,
   SignalsResponse,
+  SinceLastVisitResponse,
 } from '../shared/api';
 import type { ApiErrorDetail } from '../shared/errors';
 import { isAbortError, ReadAborted } from './abort';
 import { type ChronologyService, createChronologyService } from './chronology/service';
 import { attempt, clip, identify, loggable, shown, statusOf, UNEXPECTED } from './errorLog';
-import { InvalidMetricsQueryError, parseMetricsQuery, parseSignalsQuery } from './metrics/query';
+import { InvalidMetricsQueryError, parseMetricsQuery, parseSignalsQuery, parseSinceLastVisitQuery } from './metrics/query';
 import type { MetricsService } from './metrics/service';
 import {
   IssueNotFoundError,
@@ -24,7 +25,7 @@ import {
 } from './projects/service';
 
 /**
- * Routes `/api/projects…`, `/api/metrics` et `/api/signals` ; les erreurs des services deviennent des réponses JSON (400, 404, 503). Chaque lecture
+ * Routes `/api/projects…`, `/api/metrics`, `/api/signals` et `/api/since-last-visit` ; les erreurs des services deviennent des réponses JSON (400, 404, 503). Chaque lecture
  * reçoit le signal de sa requête (`req.signal`, abandonné quand le client ferme la connexion avant la réponse, par exemple quand
  * l'interface annule un `fetch`) : les lectures Dolt qu'il attendait seules sont retirées de la file ; celles dont le processus est
  * lancé vont au bout, sans être tuées, et leur résultat est jeté (ADR 0003).
@@ -81,6 +82,11 @@ export async function registerApi(
   app.get<{ Querystring: Record<string, unknown> }>(
     '/api/signals',
     (req): Promise<SignalsResponse> => metrics.signals(parseSignalsQuery(req.query), { signal: req.signal }),
+  );
+
+  app.get<{ Querystring: Record<string, unknown> }>(
+    '/api/since-last-visit',
+    (req): Promise<SinceLastVisitResponse> => metrics.sinceLastVisit(parseSinceLastVisitQuery(req.query), { signal: req.signal }),
   );
 
   app.get<{ Querystring: Record<string, unknown> }>(

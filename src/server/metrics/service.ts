@@ -4,7 +4,16 @@ import { computeHealth } from '../../domain/health';
 import { longTrendOf } from '../../domain/longTrend';
 import { analyzeProject, computeMetrics, type MetricsInput, type ProjectAnalysis } from '../../domain/metrics';
 import { type Signal, signalsOf } from '../../domain/signals';
-import type { ApiSignal, MetricsResponse, SignalsResponse, MetricsUnreadableProject, Project } from '../../shared/api';
+import { lastVisitWindow, type SinceGroup, sinceLastVisit } from '../../domain/sinceLastVisit';
+import type {
+  ApiSignal,
+  MetricsResponse,
+  MetricsUnreadableProject,
+  Project,
+  SignalsResponse,
+  SinceLastVisitGroup,
+  SinceLastVisitResponse,
+} from '../../shared/api';
 import { ReadAborted } from '../abort';
 import { ANALYSIS_GRACE_MS, Flight } from '../flight';
 import { createHeadReader } from '../projects/head-reader';
@@ -39,6 +48,16 @@ export interface MetricsService {
    * `compute` pour un Projet inconnu (`ProjectNotFoundError`), illisible ou disparu (listé dans la réponse) et pour un demandeur qui part.
    */
   signals(query: SignalsQuery, options?: ReadOptions): Promise<SignalsResponse>;
+  /**
+   * Ce qui s'est passé dans tous les Projets lisibles depuis la Dernière visite (24 heures sans elle), jusqu'à l'instant présent, tiré de la même analyse
+   * que les métriques et les Signaux (même cache, par HEAD). Un Projet illisible ou disparu est listé dans la réponse ; un demandeur qui part, comme `compute`.
+   */
+  sinceLastVisit(query: SinceLastVisitQuery, options?: ReadOptions): Promise<SinceLastVisitResponse>;
+}
+
+export interface SinceLastVisitQuery {
+  /** La Dernière visite (ms epoch) ; absente, le service remonte 24 heures. */
+  since?: number;
 }
 
 export interface SignalsQuery {
@@ -201,6 +220,20 @@ export function createMetricsService(
         signals: signalsOf(measured, { now: at.getTime(), timeZone: zone }).map(toApiSignal),
       };
     },
+    async sinceLastVisit({ since }, { signal } = {}) {
+      if (signal?.aborted) throw new ReadAborted();
+      // L'instant des données est pris avant de lire les HEAD : un commit postérieur porte une date d'après lui (hors de la fenêtre, qui l'exclut) et sera
+      // compté dans la suivante, qui commencera là quand l'utilisateur dira avoir tout vu.
+      const window = lastVisitWindow(since, now().getTime());
+      const { measured, unreadable } = await measure([], signal);
+      return {
+        since: new Date(window.start).toISOString(),
+        asOf: new Date(window.end).toISOString(),
+        projects: measured.map(({ id, name }) => ({ id, name })),
+        unreadable,
+        groups: sinceLastVisit(measured, window).map(toApiGroup),
+      };
+    },
     async compute({ projects: ids, period, timeZone: asked }, { signal } = {}) {
       if (signal?.aborted) throw new ReadAborted();
       const at = now();
@@ -249,4 +282,10 @@ function toApiSignal(signal: Signal): ApiSignal {
     default:
       return signal;
   }
+}
+
+/** Un genre du domaine tel que l'API l'envoie : les instants en ISO. */
+function toApiGroup(group: SinceGroup): SinceLastVisitGroup {
+  const dated = <T extends { at: number }>(ticket: T): Omit<T, 'at'> & { at: string } => ({ ...ticket, at: new Date(ticket.at).toISOString() });
+  return group.kind === 'escapedBugs' ? { kind: group.kind, tickets: group.tickets.map(dated) } : { kind: group.kind, tickets: group.tickets.map(dated) };
 }

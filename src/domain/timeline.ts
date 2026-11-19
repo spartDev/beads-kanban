@@ -27,6 +27,11 @@ export interface TicketTimeline {
   segments: ColumnSegment[];
   /** Périodes en statut de travail ; la dernière court jusqu'à l'infini si le ticket l'est encore. */
   work: Interval[];
+  /**
+   * Périodes de Blocage, tant que le ticket n'est pas fermé (la règle de sa Chronologie) : statut bloqué, ou dépendance `blocks` active vers un ticket
+   * du Projet pas encore fermé. Triées, disjointes : celles qui se chevauchent n'en font qu'une. La dernière court jusqu'à l'infini si elle dure encore.
+   */
+  blockages: Interval[];
 }
 
 const END = Number.POSITIVE_INFINITY;
@@ -50,7 +55,7 @@ export function stepsOf(transitions: Transition[]): Step[] {
  */
 export function buildTimeline(ticket: TicketHistory, steps: Step[], stepsById: Map<TicketId, Step[]>): TicketTimeline {
   const first = steps[0];
-  if (!first) return { steps, segments: [], work: [] };
+  if (!first) return { steps, segments: [], work: [], blockages: [] };
 
   const blockage = union([...periodsOf(steps, (status) => status === 'blocked'), ...dependencyBlockage(ticket, stepsById)]);
   // Tout ce qui change la colonne change à l'un de ces instants : un statut, ou le début ou la fin d'un Blocage.
@@ -63,7 +68,9 @@ export function buildTimeline(ticket: TicketHistory, steps: Step[], stepsById: M
     const column = columnFor(statusIn(steps, from), blockage.some(([start, end]) => start <= from && from < end));
     if (segments.at(-1)?.column !== column || segments.length === 0) segments.push({ from, column });
   }
-  return { steps, segments, work: periodsOf(steps, isWork) };
+  // La colonne d'un ticket fermé est Terminé, en Blocage ou non ; ses périodes de Blocage, elles, s'arrêtent à sa clôture : un ticket fermé n'attend rien.
+  const blockages = intersect(blockage, periodsOf(steps, (status) => status !== 'closed'));
+  return { steps, segments, work: periodsOf(steps, isWork), blockages };
 }
 
 /** La colonne du ticket à cet instant ; null avant sa création ou en « En pause ». */

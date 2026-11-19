@@ -33,7 +33,7 @@ afterEach(() => {
 
 const page = () => within(screen.getByRole('main'));
 
-async function loaded(path = '/') {
+async function loaded(path = '/overview') {
   const app = renderApp(path);
   await screen.findByRole('heading', { level: 2, name: 'Indicateurs' });
   return app;
@@ -91,7 +91,7 @@ describe('la Vue globale', () => {
 
   it('mène chaque Projet du tableau à sa page Métriques, période conservée', async () => {
     api();
-    const { user, router } = await loaded('/?range=7d');
+    const { user, router } = await loaded('/overview?range=7d');
 
     const table = screen.getByRole('table', { name: 'Métriques de la période par projet' });
     const link = within(table).getByRole('link', { name: 'My-Prompt-Manager' });
@@ -123,7 +123,7 @@ describe('la Vue globale', () => {
 
   it('affiche la liste des Projets même quand le calcul des métriques échoue', async () => {
     api(() => new Error('database is locked'));
-    renderApp('/');
+    renderApp('/overview');
 
     expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy();
     expect(await within(page().getByRole('region', { name: 'Projets suivis' })).findByRole('link', { name: /My-Prompt-Manager/ })).toBeTruthy();
@@ -131,7 +131,7 @@ describe('la Vue globale', () => {
 
   it('reprend la période de l’adresse', async () => {
     const fetchMock = api();
-    await loaded('/?range=90d&by=type');
+    await loaded('/overview?range=90d&by=type');
 
     expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?range=90d&timeZone=Europe%2FParis']);
     expect(screen.getByRole('heading', { level: 2, name: 'Découpage par type' })).toBeTruthy();
@@ -139,7 +139,7 @@ describe('la Vue globale', () => {
 
   it('ne propose pas, en Vue globale, un découpage inconnu : retombe sur celui par Projet, en le disant', async () => {
     api();
-    await loaded('/?by=status');
+    await loaded('/overview?by=status');
 
     expect(screen.getByText(/Le découpage « status » n’existe pas/)).toBeTruthy();
     expect(screen.getByRole('heading', { level: 2, name: 'Découpage par projet' })).toBeTruthy();

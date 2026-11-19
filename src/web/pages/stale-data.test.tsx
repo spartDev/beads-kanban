@@ -58,7 +58,7 @@ describe('un rafraîchissement des Projets en échec', () => {
 
   it('garde la liste de la Vue globale', async () => {
     const fetchMock = stubDefaultApi();
-    const app = renderApp('/');
+    const app = renderApp('/overview');
     const page = within(await screen.findByRole('main'));
     expect(await page.findByRole('link', { name: /My-Prompt-Manager/ })).toBeTruthy();
 
@@ -155,7 +155,7 @@ describe('bandeau « actualisation impossible »', () => {
 
   it('n’apparaît pas quand le premier chargement échoue : c’est la page qui porte l’erreur', async () => {
     stubApi({ projects: new Error('spawn dolt ENOENT') });
-    renderApp('/');
+    renderApp('/overview');
 
     expect((await screen.findAllByRole('alert')).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Actualisation impossible/)).toBeNull();

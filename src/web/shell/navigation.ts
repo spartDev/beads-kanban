@@ -5,7 +5,7 @@ import { useProjects } from '../data/hooks';
 import { isReadable } from '../data/helpers';
 import type { Project } from '../data/types';
 import { readStorage, writeStorage } from '../lib/storage';
-import { parsePath, sectionPath, type ProjectSection, type RouteInfo } from '../paths';
+import { parsePath, paths, sectionPath, type ProjectSection, type RouteInfo } from '../paths';
 
 /** Un onglet d'un Projet. Son nom est dans le catalogue : `t.shell.sections[id]`. */
 export interface SectionDefinition {
@@ -23,6 +23,14 @@ export const SECTIONS: readonly SectionDefinition[] = [
   { id: 'metrics', icon: ChartNoAxesColumn, shortcut: 'g m' },
 ];
 
+/** Séquence « g puis… » de l'accueil, « À regarder » tous Projets confondus (« h » : home ; « a » mène à celui du Projet). */
+export const HOME_SHORTCUT = 'g h';
+/** Séquence « g puis… » de la Vue globale. */
+export const OVERVIEW_SHORTCUT = 'g v';
+
+/** Les pages de tous les Projets : l'accueil et la Vue globale. Le premier onglet du mobile les réunit (voir `TabBar`, `GlobalTabs`). */
+export const isAllProjectsPage = (pathname: string): boolean => pathname === paths.home() || pathname === paths.global();
+
 /** Ce que désigne l'URL courante : Projet, section, ticket. */
 export function useRouteInfo(): RouteInfo {
   const { pathname } = useLocation();
@@ -31,7 +39,7 @@ export function useRouteInfo(): RouteInfo {
 
 export const LAST_PROJECT_KEY = 'throughline:last-project';
 
-/** Retient le dernier Projet visité, pour que les onglets restent utilisables depuis la Vue globale. */
+/** Retient le dernier Projet visité, pour que les onglets restent utilisables depuis l'accueil et la Vue globale. */
 export const rememberProject = (projectId: string): void => writeStorage(LAST_PROJECT_KEY, projectId);
 
 /**

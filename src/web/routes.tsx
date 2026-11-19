@@ -12,6 +12,11 @@ import { RouteError } from './pages/RouteError';
 import { paths } from './paths';
 import { AppShell } from './shell/AppShell';
 
+/** L'ancienne adresse de « À regarder » tous Projets confondus, devenue l'accueil. */
+function RedirectToHome() {
+  return <Navigate to={paths.home()} replace />;
+}
+
 function RedirectToKanban() {
   const { projectId = '' } = useParams();
   return <Navigate to={paths.kanban(projectId)} replace />;
@@ -34,8 +39,9 @@ export const routes: RouteObject[] = [
       {
         errorElement: <RouteError />,
         children: [
-          { index: true, element: <GlobalPage /> },
-          { path: 'signals', element: <GlobalSignalsPage /> },
+          { index: true, element: <GlobalSignalsPage /> },
+          { path: 'overview', element: <GlobalPage /> },
+          { path: 'signals', element: <RedirectToHome /> },
           {
             path: 'p/:projectId',
             element: <ProjectGate />,

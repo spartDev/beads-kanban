@@ -6,7 +6,10 @@ export const PROJECT_SECTIONS = ['kanban', 'signals', 'epics', 'metrics'] as con
 export type ProjectSection = (typeof PROJECT_SECTIONS)[number];
 
 export const paths = {
-  global: () => '/',
+  /** L'accueil : « À regarder » tous Projets confondus, en tête « Depuis votre dernière visite ». */
+  home: () => '/',
+  /** La Vue globale : les métriques de tous les Projets et leur liste. */
+  global: () => '/overview',
   project: (projectId: string) => `/p/${enc(projectId)}`,
   /** Avec `epicId`, le kanban ne montre que les Enfants de cette Epic (`?epic=`). */
   kanban: (projectId: string, epicId?: string) =>
@@ -15,8 +18,8 @@ export const paths = {
   epics: (projectId: string, epicId?: string) =>
     `/p/${enc(projectId)}/epics${epicId ? `?epic=${enc(epicId)}` : ''}`,
   metrics: (projectId: string) => `/p/${enc(projectId)}/metrics`,
-  /** Les Signaux d'un Projet ; sans Projet, ceux de la Vue globale. */
-  signals: (projectId?: string) => (projectId === undefined ? '/signals' : `/p/${enc(projectId)}/signals`),
+  /** Les Signaux d'un Projet ; sans Projet, ceux de tous les Projets, qui sont l'accueil (`/signals` y redirige). */
+  signals: (projectId?: string) => (projectId === undefined ? '/' : `/p/${enc(projectId)}/signals`),
   issue: (projectId: string, issueId: string) => `/p/${enc(projectId)}/t/${enc(issueId)}`,
 } as const;
 
@@ -39,7 +42,7 @@ function decode(segment: string): string {
   }
 }
 
-/** Ce que l'URL désigne : Projet courant, section, ticket. Vide pour la Vue globale. */
+/** Ce que l'URL désigne : Projet courant, section, ticket. Vide pour l'accueil et la Vue globale. */
 export function parsePath(pathname: string): RouteInfo {
   const [root, projectId, section, issueId] = pathname.split('/').filter(Boolean).map(decode);
   if (root !== 'p' || !projectId) return {};

@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router';
 import { useT } from '../i18n';
 import { paths, sectionPath } from '../paths';
 import { useShortcuts, type ShortcutDefinition } from '../shortcuts/ShortcutsProvider';
-import { SECTIONS, useTabsProject } from './navigation';
+import { HOME_SHORTCUT, OVERVIEW_SHORTCUT, SECTIONS, useTabsProject } from './navigation';
 import { usePalette, useShortcutsHelp } from './OverlayProvider';
 
 /** D'où vient la touche : l'élément qui la reçoit, celui qui a le focus (le clavier le déplace lui-même, dans tous les moteurs). C'est l'origine de la surcouche qu'elle ouvre (voir `OverlayProvider`). */
@@ -37,8 +37,15 @@ export function useGlobalShortcuts(): void {
       run: (event) => help.show(sourceOf(event)),
     },
     {
+      id: 'nav.home',
+      keys: HOME_SHORTCUT,
+      label: labels.goToHome,
+      group: labels.groups.navigation,
+      run: () => void navigate(paths.home()),
+    },
+    {
       id: 'nav.global',
-      keys: 'g v',
+      keys: OVERVIEW_SHORTCUT,
       label: labels.goToOverview,
       group: labels.groups.navigation,
       run: () => void navigate(paths.global()),

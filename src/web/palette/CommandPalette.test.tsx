@@ -313,7 +313,7 @@ describe('Entrée prend la première ligne, sur toutes les pages : une ligne de 
     await waitFor(() => expect(pathname(router)).toBe('/p/bdesk/t/bdesk-38k.6'));
   });
 
-  it('page Vue globale : les tickets de tous les Projets arrivent après la saisie, Entrée ouvre le ticket tapé', async () => {
+  it('page de tous les Projets : les tickets de tous les Projets arrivent après la saisie, Entrée ouvre le ticket tapé', async () => {
     const release = holdIssueLists(stubDefaultApi());
     const { dialog, user, router } = await openPalette('/');
     await user.keyboard('mpm-12');
@@ -856,7 +856,7 @@ describe('Entrée pressée avant l’arrivée des tickets : elle ouvre le ticket
     await waitFor(() => expect(pathname(router)).toBe('/p/bdesk/epics?epic=bdesk-38k'));
   });
 
-  it('l’id d’un ticket d’un autre Projet, sur la Vue globale, s’ouvre quand sa liste arrive', async () => {
+  it('l’id d’un ticket d’un autre Projet, sur une page de tous les Projets, s’ouvre quand sa liste arrive', async () => {
     const release = holdIssueLists(stubDefaultApi());
     const { user, router } = await openPalette('/');
     fakeClock();
@@ -1153,7 +1153,7 @@ describe('Entrée retenue : une ligne sélectionnée la fait tomber, car Entrée
 
 describe.each([
   ['Métriques', '/p/bdesk/metrics'],
-  ['la Vue globale', '/'],
+  ['la Vue globale', '/overview'],
 ])('Entrée pressée avant la liste des Projets (cache froid), sur %s', (_page, path) => {
   it('est retenue comme les autres : le ticket tapé s’ouvre quand les Projets, puis les tickets, arrivent', async () => {
     const release = holdProjects(stubDefaultApi());
@@ -1329,7 +1329,7 @@ describe('aria-activedescendant : le champ désigne la ligne sélectionnée, pr�
     const { dialog } = await openPalette('/p/bdesk/kanban');
 
     await expectActiveDescendantToFollowSelection(dialog, 'à l’ouverture');
-    expect(selectedRows(dialog)).toEqual([expect.stringContaining('Vue globale')]);
+    expect(selectedRows(dialog)).toEqual([expect.stringContaining('À regarder')]);
   });
 
   it('Kanban, « bdesk-38k » tapé touche à touche : après chaque caractère, le champ désigne la ligne sélectionnée', async () => {
@@ -1365,9 +1365,9 @@ describe('aria-activedescendant : le champ désigne la ligne sélectionnée, pr�
 
     await user.keyboard('{Control>}a{/Control}{Backspace}');
 
-    await waitFor(() => expect(within(dialog).getAllByRole('option')[0]?.textContent).toContain('Vue globale'));
+    await waitFor(() => expect(within(dialog).getAllByRole('option')[0]?.textContent).toContain('À regarder'));
     await expectActiveDescendantToFollowSelection(dialog, 'saisie vidée');
-    expect(selectedRows(dialog)).toEqual([expect.stringContaining('Vue globale')]);
+    expect(selectedRows(dialog)).toEqual([expect.stringContaining('À regarder')]);
   });
 
   it('flèches, Début, Fin et survol : le champ désigne la ligne choisie', async () => {
@@ -1389,7 +1389,7 @@ describe('aria-activedescendant : le champ désigne la ligne sélectionnée, pr�
   describe('des lignes arrivent et disparaissent', () => {
     it.each([
       ['Métriques', '/p/bdesk/metrics', 'bdesk-38k.6', /Shell UI façon Linear/],
-      ['la Vue globale', '/', 'mpm-12', /Recherche plein texte/],
+      ['la Vue globale', '/overview', 'mpm-12', /Recherche plein texte/],
     ])('page %s, tickets lents : la première ligne qui arrive est sélectionnée d’office, le champ la désigne', async (_page, path, typed, name) => {
       const release = holdIssueLists(stubDefaultApi());
       const { dialog, user } = await openPalette(path);

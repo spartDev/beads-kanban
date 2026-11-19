@@ -1,13 +1,15 @@
-import { LayoutGrid, type LucideIcon } from 'lucide-react';
+import { House, type LucideIcon } from 'lucide-react';
 import { Link, useLocation } from 'react-router';
 import { useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { paths, sectionPath } from '../paths';
-import { SECTIONS, useRouteInfo, useTabsProject } from './navigation';
+import { isAllProjectsPage, SECTIONS, useRouteInfo, useTabsProject } from './navigation';
 
 /**
- * Barre d'onglets du mobile : la barre latérale repliée. Vue globale, puis les onglets du
- * Projet courant (ou, depuis la Vue globale, du dernier Projet visité).
+ * Barre d'onglets du mobile : la barre latérale repliée, en cinq cases. L'accueil, puis les onglets du Projet courant (ou, depuis une page de tous les
+ * Projets, du dernier Projet visité). La première case réunit les deux pages de tous les Projets, l'accueil (« À regarder ») et la Vue globale : elle est
+ * l'onglet courant sur l'une comme sur l'autre, et chacune porte en tête les liens qui mènent de l'une à l'autre (`GlobalTabs`). Une sixième case ne
+ * tiendrait pas à 375 px, et deux cases « À regarder » (celle de tous les Projets, celle du Projet) se confondraient.
  */
 export function TabBar() {
   const { pathname } = useLocation();
@@ -22,7 +24,7 @@ export function TabBar() {
     >
       <ul className="grid grid-cols-5">
         <li>
-          <Tab to={paths.global()} icon={LayoutGrid} label={t.shell.overview.title} current={pathname === '/'} />
+          <Tab to={paths.home()} icon={House} label={t.shell.layout.home} current={isAllProjectsPage(pathname)} />
         </li>
         {SECTIONS.map(({ id, icon }) => (
           <li key={id}>

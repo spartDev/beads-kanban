@@ -365,3 +365,36 @@ describe('le CFD range les tickets avec la règle partagée (columnFor)', () => 
     }
   });
 });
+
+describe('périodes de Blocage', () => {
+  it('réunit le statut bloqué et les dépendances qui se chevauchent, la dernière ouverte tant qu’elle dure', () => {
+    const t = timelines([
+      ticket('b', [['open', '2026-10-01T09:00'], ['closed', '2026-10-04T09:00']]),
+      ticket('c', [['open', '2026-10-01T09:00']]),
+      ticket('a', [['open', '2026-10-01T09:00'], ['in_progress', '2026-10-02T09:00'], ['blocked', '2026-10-03T09:00'], ['in_progress', '2026-10-05T09:00']], {
+        dependencies: [blocks('b', '2026-10-02T12:00'), blocks('c', '2026-10-06T09:00')],
+      }),
+    ]);
+
+    expect(t('a').blockages).toEqual([
+      [ms('2026-10-02T12:00'), ms('2026-10-05T09:00')],
+      [ms('2026-10-06T09:00'), Number.POSITIVE_INFINITY],
+    ]);
+  });
+
+  it('s’arrête à la clôture du ticket et reprend à sa Réouverture, si la dépendance l’attend toujours : un ticket fermé n’est pas en Blocage', () => {
+    const t = timelines([
+      ticket('c', [['open', '2026-10-01T09:00']]),
+      ticket('a', [['open', '2026-10-01T09:00'], ['closed', '2026-10-03T09:00'], ['open', '2026-10-05T09:00']], {
+        dependencies: [blocks('c', '2026-10-02T09:00')],
+      }),
+      ticket('f', [['open', '2026-10-01T09:00'], ['closed', '2026-10-02T09:00']], { dependencies: [blocks('c', '2026-10-03T09:00')] }),
+    ]);
+
+    expect(t('a').blockages).toEqual([
+      [ms('2026-10-02T09:00'), ms('2026-10-03T09:00')],
+      [ms('2026-10-05T09:00'), Number.POSITIVE_INFINITY],
+    ]);
+    expect(t('f').blockages).toEqual([]);
+  });
+});

@@ -68,7 +68,8 @@ describe('le panneau d’un ticket sur desktop : une couche posée sur la page, 
     ['m', '/p/bdesk/metrics'],
     ['e', '/p/bdesk/epics'],
     ['k', '/p/bdesk/kanban'],
-    ['v', '/'],
+    ['v', '/overview'],
+    ['h', '/'],
   ])('« g » puis « %s » navigue quand le focus est dans le panneau', async (second, destination) => {
     screenIs(false);
     stubDefaultApi();

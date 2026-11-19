@@ -57,7 +57,7 @@ describe('le shell suit le Projet affiché', () => {
 
   it('ne suit rien sur la Vue globale', async () => {
     serve();
-    renderApp('/');
+    renderApp('/overview');
     const nav = await screen.findByRole('navigation', { name: 'Navigation principale' });
     await within(nav).findByRole('link', { name: /My-Prompt-Manager/ }); // la liste des Projets est chargée
 

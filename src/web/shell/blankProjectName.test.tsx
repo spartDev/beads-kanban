@@ -104,7 +104,7 @@ describe('un Projet lisible dont le nom ne se voit pas', () => {
 describe('un Projet illisible dont le nom ne se voit pas', () => {
   it.each(NAMES)('la barre latérale l’écrit « Sans titre » et dit pourquoi il est illisible quand le nom est %s', async (_kind, name) => {
     stubApi({ projects: { projects: [unreadable(name)], ignored: [] } });
-    renderApp('/');
+    renderApp('/overview');
 
     const nav = await loadedSidebar();
 
@@ -117,7 +117,7 @@ describe('un Projet illisible dont le nom ne se voit pas', () => {
 describe('la Vue globale et la palette', () => {
   it.each(NAMES)('la Vue globale liste le Projet « Sans titre », sous un lien nommé, quand le nom est %s', async (_kind, name) => {
     stubMetricsApi({ projects: { projects: [readable(name), readable('beads-desktop', { id: 'bdesk', prefix: 'bdesk' })], ignored: [] }, issues: { blanc: bdeskIssues, bdesk: bdeskIssues } }, () => metricsFixture());
-    renderApp('/');
+    renderApp('/overview');
 
     const list = within(await screen.findByRole('region', { name: 'Projets suivis' }));
 
@@ -149,7 +149,7 @@ describe('le tableau des métriques par Projet, sur la Vue globale', () => {
   it.each(NAMES)('le lien de la ligne d’un Projet dont le nom est %s se nomme « Sans titre », et son en-tête de ligne aussi', async (_kind, name) => {
     const measured = [{ id: 'blanc', name }, { id: 'bdesk', name: 'beads-desktop' }];
     stubMetricsApi({ projects: { projects: [readable(name), readable('beads-desktop', { id: 'bdesk', prefix: 'bdesk' })], ignored: [] }, issues: { blanc: bdeskIssues, bdesk: bdeskIssues } }, () => metricsOf(measured));
-    renderApp('/');
+    renderApp('/overview');
 
     const rows = await table();
 
@@ -164,7 +164,7 @@ describe('le tableau des métriques par Projet, sur la Vue globale', () => {
     const names = ['-', ':', 'Mon Projet'];
     const measured = names.map((name, index) => ({ id: `p${index}`, name }));
     stubMetricsApi({ projects: { projects: measured.map(({ id, name }) => readable(name, { id, prefix: id })), ignored: [] }, issues: Object.fromEntries(measured.map(({ id }) => [id, bdeskIssues])) }, () => metricsOf(measured));
-    renderApp('/');
+    renderApp('/overview');
 
     const rows = await table();
 

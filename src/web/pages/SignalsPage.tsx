@@ -1,8 +1,8 @@
 import { CircleCheck } from 'lucide-react';
-import { useId } from 'react';
+import { type ReactNode, useId } from 'react';
 import { Link } from 'react-router';
-import { useProjects, useSignals } from '../data/hooks';
-import { projectInSentence, projectLabel } from '../data/projectNames';
+import { useSignals } from '../data/hooks';
+import { projectInSentence } from '../data/projectNames';
 import { UnreadableProjects } from '../metrics/Notices';
 import type { ApiSignal, Project, SignalsResponse } from '../data/types';
 import { useLanguage, useT } from '../i18n';
@@ -13,13 +13,18 @@ import { useRetryFocus } from '../lib/useRetryFocus';
 import { paths } from '../paths';
 import { ErrorNotice, Notice, Skeleton } from '../ui/states';
 import { Page } from './Page';
+import { type NamedProject, ProjectName, useProjectNamer } from './ProjectName';
 import { useProject } from './ProjectGate';
+import { SinceLastVisit } from './SinceLastVisit';
 
-/** La page « À regarder » de la Vue globale : les Signaux de tous les Projets suivis. */
+/**
+ * L'accueil : « À regarder » tous Projets confondus. En tête, « Depuis votre dernière visite » (là seulement : la Dernière visite est unique), puis les
+ * Signaux de tous les Projets suivis.
+ */
 export function GlobalSignalsPage() {
   const t = useT();
   useDocumentTitle(t.shell.sections.signals);
-  return <SignalsView description={t.shell.signalsPage.globalDescription} />;
+  return <SignalsView description={t.shell.signalsPage.globalDescription} lead={<SinceLastVisit />} />;
 }
 
 /** La page « À regarder » d'un Projet : ses seuls Signaux. */
@@ -40,7 +45,7 @@ export function ProjectSignalsPage() {
  * Les Signaux, groupés par sorte (l'ordre du serveur : Dérive, Blocage long, Prêt qui stagne, WIP inhabituel, le plus en excès d'abord). Un Signal vit tant
  * que sa condition est vraie : il n'y a rien à écarter, la page se relit avec les données.
  */
-function SignalsView({ project, description }: { project?: Project; description: string }) {
+function SignalsView({ project, description, lead }: { project?: Project; description: string; lead?: ReactNode }) {
   const query = useSignals(project?.id);
   const retry = useRetryFocus(query);
   const t = useT();
@@ -48,6 +53,7 @@ function SignalsView({ project, description }: { project?: Project; description:
 
   return (
     <Page title={t.shell.sections.signals} description={description}>
+      {lead}
       {query.data ? (
         <SignalGroups response={query.data} />
       ) : query.isError ? (
@@ -64,13 +70,8 @@ function SignalsView({ project, description }: { project?: Project; description:
 }
 
 function SignalGroups({ response }: { response: SignalsResponse }) {
-  // Les Projets tels que les phrases les nomment : ceux de la liste des Projets (`namedProjects`), à défaut ceux de la réponse.
-  const known = useProjects().data?.projects ?? [];
+  const named = useProjectNamer();
   const { language, t } = useLanguage();
-  const named = <T extends { id: string; name: string }>(project: T): T & { unnamed?: true } => {
-    const listed = known.find((candidate) => candidate.id === project.id);
-    return listed ? { ...project, name: listed.name, ...(listed.unnamed ? { unnamed: true as const } : {}) } : project;
-  };
   const projects = response.projects.map(named);
   const groups = signalKinds(language).map(({ kind, label }) => ({ kind, label, signals: response.signals.filter((signal) => signal.kind === kind) })).filter(
     (group) => group.signals.length > 0,
@@ -90,9 +91,7 @@ function SignalGroups({ response }: { response: SignalsResponse }) {
   );
 }
 
-type Named = { id: string; name: string; unnamed?: true };
-
-function SignalGroup({ label, signals, projects }: { label: string; signals: ApiSignal[]; projects: Named[] }) {
+function SignalGroup({ label, signals, projects }: { label: string; signals: ApiSignal[]; projects: NamedProject[] }) {
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} data-signal-group className="flex flex-col gap-2">
@@ -110,14 +109,7 @@ function SignalGroup({ label, signals, projects }: { label: string; signals: Api
   );
 }
 
-/** Le Projet d'un Signal, comme une ligne de liste le nomme : un libellé, que ce qui le qualifie suit. */
-function ProjectName({ id, projects }: { id: string; projects: Named[] }) {
-  const project = projects.find((candidate) => candidate.id === id) ?? { id, name: id };
-  const { language } = useLanguage();
-  return <>{projectLabel(project, projects, language)}</>;
-}
-
-function SignalRow({ signal, projects }: { signal: ApiSignal; projects: Named[] }) {
+function SignalRow({ signal, projects }: { signal: ApiSignal; projects: NamedProject[] }) {
   const { language, t } = useLanguage();
   if (signal.kind === 'unusualWip') {
     return (
