@@ -2,7 +2,7 @@ import type { Zone } from './zone';
 
 /**
  * Zone « shell » (bdesk-ewr.2) : `shell/`, `palette/`, `shortcuts/`, `live/`, `ui/`, `data/`, `lib/` (dont `signals.ts`), `theme/`, titres d'onglet, et les pages
- * qui n'appartiennent à aucune autre zone (Vue globale, À regarder, page introuvable, erreur de route). Le sélecteur de langue
+ * qui n'appartiennent à aucune autre zone (Vue globale, accueil « À regarder » et « Depuis votre dernière visite », page introuvable, erreur de route). Le sélecteur de langue
  * (`LanguageToggle`, entrées de la palette) y a ses textes.
  *
  * Textes partagés que les autres zones lisent ici : `common` (Réessayer, Sans titre…), `sections` (noms des onglets d'un Projet),
@@ -44,6 +44,10 @@ const fr = {
     primaryNavigation: 'Navigation principale',
     /** La barre d'onglets du mobile. */
     tabs: 'Onglets',
+    /** Son premier onglet, qui mène à l'accueil et réunit les pages de tous les Projets : « À regarder » et la Vue globale. */
+    home: 'Accueil',
+    /** Sur mobile, le nom des liens entre ces deux pages, posés en haut de chacune. */
+    allProjectsPages: 'Pages de tous les Projets',
     breadcrumb: "Fil d'Ariane",
     /** Suite du nom du bouton du Projet sur mobile, pour les lecteurs d'écran : « bdesk, changer de Projet ». */
     switchProject: ', changer de Projet',
@@ -67,6 +71,7 @@ const fr = {
     groups: { general: 'Général', navigation: 'Navigation' },
     togglePalette: 'Ouvrir la palette de commandes',
     showHelp: 'Afficher les raccourcis clavier',
+    goToHome: 'Aller à l’accueil',
     goToOverview: 'Aller à la Vue globale',
     switchProject: 'Changer de Projet',
     /** « Aller à Métriques » : le nom d'un onglet (`sections`). */
@@ -196,8 +201,10 @@ const fr = {
     currentProject: 'Projet courant',
     active: 'Actif',
     allProjects: 'Tous les Projets',
+    /** Mots qui trouvent l'accueil (« À regarder » de tous les Projets), en plus de son nom. */
+    homeKeywords: ['accueil', 'dernière visite', 'nouveautés', 'tous les projets'],
     /** Mots qui trouvent la Vue globale, en plus de son nom. */
-    overviewKeywords: ['accueil', 'tous les projets'],
+    overviewKeywords: ['tous les projets', 'métriques'],
     /** Mots qui trouvent l'aide des raccourcis, en plus de son nom. */
     shortcutsKeywords: ['aide', 'touches', 'clavier'],
   },
@@ -228,7 +235,7 @@ const fr = {
   /** La page « À regarder » : son titre est le nom de son onglet (`sections.signals`). */
   signalsPage: {
     globalDescription:
-      'Ce qui mérite d’être regardé maintenant, dans tous les Projets : Dérives, Blocages longs, Prêts qui stagnent, WIP inhabituel.',
+      'Ce qui s’est passé depuis votre dernière visite, puis ce qui mérite d’être regardé maintenant, dans tous les Projets : Dérives, Blocages longs, Prêts qui stagnent, WIP inhabituel.',
     /** `project` : le Projet comme une phrase le nomme (`projectInSentence`). */
     projectDescription: (project: string) =>
       `Ce qui mérite d’être regardé maintenant dans ${project} : Dérives, Blocages longs, Prêts qui stagnent, WIP inhabituel.`,
@@ -238,6 +245,52 @@ const fr = {
     nothing: 'Aucune Dérive, aucun Blocage long, aucun Prêt qui stagne ni aucun WIP inhabituel en ce moment.',
     /** Entre le Projet d'un WIP inhabituel et ce qu'il dit : « bdesk : 7 tickets en cours… ». */
     separator: ' : ',
+  },
+  /** « Depuis votre dernière visite », en tête de l'accueil (voir « Dernière visite » dans CONTEXT.md). Les instants arrivent écrits (`formatInstant`). */
+  sinceLastVisit: {
+    title: 'Depuis votre dernière visite',
+    /** `instant` : la Dernière visite. */
+    since: (instant: string) => `Depuis le ${instant}, dans tous les Projets, les mauvaises nouvelles d’abord.`,
+    withoutLastVisit:
+      'Ces dernières 24 heures, dans tous les Projets, les mauvaises nouvelles d’abord : aucune visite n’est encore notée dans ce navigateur.',
+    /** Les genres, au pluriel : ce sont des listes de tickets. */
+    kinds: {
+      reopenings: 'Réouvertures',
+      escapedBugs: 'Bugs d’origine',
+      deliveries: 'Livraisons',
+      newBlockages: 'Nouveaux Blocages',
+      arrivals: 'Arrivées',
+    },
+    /**
+     * Un genre et son compte, tels que les lecteurs d'écran les disent (« Livraisons : 3 tickets ») : la ligne, elle, montre le nom et le nombre seul.
+     * `kind` : le nom du genre ; `count` : le nombre écrit.
+     */
+    spokenKind: (kind: string, count: string, n: number) => (n >= 2 ? `${kind} : ${count} tickets` : `${kind} : ${count} ticket`),
+    /** Un Bug d'origine, sous son titre : les Livraisons qu'il met en échec (`ids` : leurs identifiants, déjà joints). */
+    failedDeliveries: (ids: string, n: number) => (n >= 2 ? `Livraisons en échec : ${ids}` : `Livraison en échec : ${ids}`),
+    /** Le bouton qui note la visite : la Dernière visite devient l'instant des données affichées. */
+    markSeen: 'Tout vu',
+    /** Ce qu'il fait, pour son infobulle et les lecteurs d'écran. `instant` : l'instant des données affichées. */
+    markSeenHint: (instant: string) => `La prochaine fois, ne montrer que ce qui s’est passé après le ${instant}`,
+    /**
+     * À côté de « Tout vu », quand des Projets n'ont pas pu être lus : ce que le geste laissera de côté (le bouton reste utilisable, un Projet peut rester
+     * illisible longtemps). `since` : le début de la fenêtre affichée ; `projects` : leurs noms, écrits par `projectList`.
+     */
+    skippedByMarkSeen: (since: string, projects: string, n: number) =>
+      n >= 2
+        ? `« Tout vu » laissera de côté ce qui s’est passé depuis le ${since} dans ces Projets illisibles : ${projects}.`
+        : `« Tout vu » laissera de côté ce qui s’est passé depuis le ${since} dans ce Projet illisible : ${projects}.`,
+    /** Annoncé une fois la visite notée. */
+    markedSeen: (instant: string) => `Visite notée : tout est vu jusqu’au ${instant}.`,
+    /** Annoncé une fois la visite notée par-dessus des Projets illisibles : les mêmes paramètres que `markedSeen` et `skippedByMarkSeen`. */
+    markedSeenSkipping: (instant: string, since: string, projects: string, n: number) =>
+      n >= 2
+        ? `Visite notée : tout est vu jusqu’au ${instant}. Ce qui s’est passé depuis le ${since} dans ces Projets illisibles ne sera pas montré : ${projects}.`
+        : `Visite notée : tout est vu jusqu’au ${instant}. Ce qui s’est passé depuis le ${since} dans ce Projet illisible ne sera pas montré : ${projects}.`,
+    /** Le nom de la région de statut qui annonce `markedSeen`. */
+    lastVisit: 'Dernière visite',
+    loading: 'Chargement de ce qui s’est passé depuis votre dernière visite',
+    loadFailed: 'Impossible de lire ce qui s’est passé depuis votre dernière visite',
   },
   notFound: {
     title: 'Page introuvable',
@@ -290,6 +343,8 @@ const en: typeof fr = {
     search: 'Search',
     primaryNavigation: 'Main navigation',
     tabs: 'Tabs',
+    home: 'Home',
+    allProjectsPages: 'Pages for all projects',
     breadcrumb: 'Breadcrumb',
     switchProject: ', switch project',
     shortcuts: 'Keyboard shortcuts',
@@ -310,6 +365,7 @@ const en: typeof fr = {
     groups: { general: 'General', navigation: 'Navigation' },
     togglePalette: 'Open the command palette',
     showHelp: 'Show keyboard shortcuts',
+    goToHome: 'Go to Home',
     goToOverview: 'Go to the Overview',
     switchProject: 'Switch project',
     goTo: (place: string) => `Go to ${place}`,
@@ -413,7 +469,8 @@ const en: typeof fr = {
     currentProject: 'Current project',
     active: 'Active',
     allProjects: 'All projects',
-    overviewKeywords: ['home', 'all projects'],
+    homeKeywords: ['home', 'last visit', 'news', 'all projects'],
+    overviewKeywords: ['all projects', 'metrics'],
     shortcutsKeywords: ['help', 'keys', 'keyboard'],
   },
   pages: {
@@ -437,7 +494,7 @@ const en: typeof fr = {
   },
   signalsPage: {
     globalDescription:
-      'What deserves a look right now, across all projects: drifts, long blockages, stale ready tickets, unusual WIP.',
+      'What happened since your last visit, then what deserves a look right now, across all projects: drifts, long blockages, stale ready tickets, unusual WIP.',
     projectDescription: (project: string) =>
       `What deserves a look right now in ${project}: drifts, long blockages, stale ready tickets, unusual WIP.`,
     loadFailed: 'Could not read signals',
@@ -445,6 +502,34 @@ const en: typeof fr = {
     nothingTitle: 'Nothing to watch',
     nothing: 'No drift, long blockage, stale ready ticket or unusual WIP right now.',
     separator: ': ',
+  },
+  sinceLastVisit: {
+    title: 'Since your last visit',
+    since: (instant: string) => `Since ${instant}, across all projects, bad news first.`,
+    withoutLastVisit: 'The last 24 hours, across all projects, bad news first: no visit has been recorded in this browser yet.',
+    kinds: {
+      reopenings: 'Reopens',
+      escapedBugs: 'Escaped bugs',
+      deliveries: 'Deliveries',
+      newBlockages: 'New blockages',
+      arrivals: 'Arrivals',
+    },
+    spokenKind: (kind: string, count: string, n: number) => (n === 1 ? `${kind}: ${count} ticket` : `${kind}: ${count} tickets`),
+    failedDeliveries: (ids: string, n: number) => (n === 1 ? `Failed delivery: ${ids}` : `Failed deliveries: ${ids}`),
+    markSeen: 'Mark all seen',
+    markSeenHint: (instant: string) => `Next time, only show what happened after ${instant}`,
+    skippedByMarkSeen: (since: string, projects: string, n: number) =>
+      n === 1
+        ? `“Mark all seen” will leave out what happened since ${since} in this unreadable project: ${projects}.`
+        : `“Mark all seen” will leave out what happened since ${since} in these unreadable projects: ${projects}.`,
+    markedSeen: (instant: string) => `Visit recorded: everything up to ${instant} is seen.`,
+    markedSeenSkipping: (instant: string, since: string, projects: string, n: number) =>
+      n === 1
+        ? `Visit recorded: everything up to ${instant} is seen. What happened since ${since} in this unreadable project will not be shown: ${projects}.`
+        : `Visit recorded: everything up to ${instant} is seen. What happened since ${since} in these unreadable projects will not be shown: ${projects}.`,
+    lastVisit: 'Last visit',
+    loading: 'Loading what happened since your last visit',
+    loadFailed: 'Could not read what happened since your last visit',
   },
   notFound: {
     title: 'Page not found',

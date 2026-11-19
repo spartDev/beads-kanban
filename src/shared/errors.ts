@@ -56,6 +56,8 @@ export const API_ERROR_PARAMS = {
   'query-not-text': { parameter: 'string' },
   /** 400 : un paramètre donné plusieurs fois. */
   'query-repeated': { parameter: 'string' },
+  /** 400 : un paramètre (`since`) qui n'est pas un instant ISO 8601, avec sa date, son heure et son fuseau. */
+  'query-invalid-instant': { parameter: 'string', received: 'string' },
   /** 400 : `from` après `to`. */
   'period-inverted': { from: 'string', to: 'string' },
   /** 400 : `to` après aujourd'hui (`today`, dans le fuseau de la requête). */

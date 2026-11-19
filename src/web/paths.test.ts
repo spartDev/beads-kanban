@@ -3,7 +3,10 @@ import { parsePath, paths } from './paths';
 
 describe('paths', () => {
   it('construit les URL de l’application', () => {
-    expect(paths.global()).toBe('/');
+    expect(paths.home()).toBe('/');
+    expect(paths.global()).toBe('/overview');
+    expect(paths.signals()).toBe('/');
+    expect(paths.signals('bdesk')).toBe('/p/bdesk/signals');
     expect(paths.kanban('bdesk')).toBe('/p/bdesk/kanban');
     expect(paths.kanban('bdesk', 'bdesk-38k')).toBe('/p/bdesk/kanban?epic=bdesk-38k');
     expect(paths.epics('bdesk')).toBe('/p/bdesk/epics');
@@ -21,6 +24,7 @@ describe('paths', () => {
 describe('parsePath', () => {
   it('lit le Projet, la section et le ticket', () => {
     expect(parsePath('/')).toEqual({});
+    expect(parsePath('/overview')).toEqual({});
     expect(parsePath('/p/bdesk')).toEqual({ projectId: 'bdesk' });
     expect(parsePath('/p/bdesk/kanban')).toEqual({ projectId: 'bdesk', section: 'kanban' });
     expect(parsePath('/p/bdesk/metrics/')).toEqual({ projectId: 'bdesk', section: 'metrics' });

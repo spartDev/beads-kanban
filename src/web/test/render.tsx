@@ -5,7 +5,7 @@ import { StrictMode } from 'react';
 import { vi } from 'vitest';
 import { createMemoryRouter, type InitialEntry, RouterProvider } from 'react-router';
 import { epicOf } from '../../domain/epics';
-import type { ApiSignal, Issue, IssueChronology, IssueDetail, IssueEpic, IssueRef, ProjectsResponse } from '../data/types';
+import type { ApiSignal, Issue, IssueChronology, IssueDetail, IssueEpic, IssueRef, ProjectsResponse, SinceLastVisitResponse } from '../data/types';
 import { LanguageProvider } from '../i18n';
 import { routes } from '../routes';
 import { ThemeProvider } from '../theme/ThemeProvider';
@@ -36,6 +36,11 @@ interface ApiFixture {
    * des Projets lisibles ; un Projet dont les Signaux sont une erreur y est listé illisible.
    */
   signals?: Record<string, Reply<ApiSignal[]>>;
+  /**
+   * « Depuis votre dernière visite » (`/api/since-last-visit`), selon la Dernière visite demandée (`since`, `null` sans elle) ; à défaut, les cinq genres,
+   * vides, des Projets lisibles, de 24 heures avant l'heure du test (ou de `since`) à cette heure.
+   */
+  sinceLastVisit?: (since: string | null) => Reply<SinceLastVisitResponse>;
 }
 
 const isFailure = (value: unknown): value is HttpFailure =>
@@ -67,12 +72,16 @@ function epicNamedBy(listed: Issue, list: Issue[]): IssueEpic | null {
 }
 
 /** Remplace fetch par un faux serveur d'API ; renvoie le mock pour inspecter les appels. */
-export function stubApi({ projects, issues = {}, details = {}, chronologies = {}, signals = {} }: ApiFixture) {
+export function stubApi({ projects, issues = {}, details = {}, chronologies = {}, signals = {}, sinceLastVisit }: ApiFixture) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const { pathname } = new URL(String(input), 'http://localhost');
     if (pathname === '/api/projects') return respond(projects);
 
     if (pathname === '/api/signals') return signalsReply(new URL(String(input), 'http://localhost').searchParams);
+    if (pathname === '/api/since-last-visit') {
+      const since = new URL(String(input), 'http://localhost').searchParams.get('since');
+      return respond(sinceLastVisit ? sinceLastVisit(since) : nothingSince(since));
+    }
     const match = /^\/api\/projects\/([^/]+)\/issues(?:\/([^/]+)(\/chronology)?)?$/.exec(pathname);
     const projectId = match?.[1] ? decodeURIComponent(match[1]) : undefined;
     const issueId = match?.[2] ? decodeURIComponent(match[2]) : undefined;
@@ -102,6 +111,19 @@ export function stubApi({ projects, issues = {}, details = {}, chronologies = {}
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
+
+  /** Les cinq genres de « Depuis votre dernière visite », vides, sur les Projets lisibles. */
+  function nothingSince(since: string | null): Reply<SinceLastVisitResponse> {
+    if (projects instanceof Error || isFailure(projects)) return projects;
+    const asOf = new Date();
+    return {
+      since: since ?? new Date(asOf.getTime() - 86_400_000).toISOString(),
+      asOf: asOf.toISOString(),
+      projects: projects.projects.filter((project) => project.status === 'ok').map(({ id, name }) => ({ id, name })),
+      unreadable: [],
+      groups: (['reopenings', 'escapedBugs', 'deliveries', 'newBlockages', 'arrivals'] as const).map((kind) => ({ kind, tickets: [] })),
+    };
+  }
 
   /**
    * `/api/signals` : les Signaux des Projets demandés, ou de tous, comme le serveur. Un Projet dont les Signaux sont une réponse d'erreur (`httpFailure`) y est

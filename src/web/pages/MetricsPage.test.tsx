@@ -67,8 +67,8 @@ describe('la page Métriques d’un Projet', () => {
 
     expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?project=bdesk&range=30d&timeZone=Europe%2FParis']);
     expect(screen.getByRole('heading', { level: 1, name: 'Métriques' })).toBeTruthy();
-    // Six indicateurs, puis cinq tuiles de santé du flux.
-    expect(screen.getAllByRole('article')).toHaveLength(11);
+    // Sept indicateurs (le Débit sain à côté du Débit), puis cinq tuiles de santé du flux.
+    expect(screen.getAllByRole('article')).toHaveLength(12);
     for (const chart of ['Tendance longue', 'Flux cumulé', 'Débit', 'Cycle Time', 'Âge des tickets en cours']) {
       expect(screen.getByRole('region', { name: chart })).toBeTruthy();
     }
@@ -87,6 +87,10 @@ describe('la page Métriques d’un Projet', () => {
 
     const debit = page().getByRole('article', { name: 'Débit' });
     expect(plain(debit.textContent)).toContain('18Livraisons sur la période');
+    // Le Débit sain, juste après le Débit : non significatif dans la réponse (Couverture de 19 %), le nombre observé reste lisible.
+    const sound = page().getByRole('article', { name: 'Débit sain' });
+    expect(debit.nextElementSibling).toBe(sound);
+    expect(plain(sound.textContent)).toContain('Observé : 14 sur 18 Livraisons');
     expect(plain(page().getByRole('article', { name: 'Lead Time' }).textContent)).toContain('6,9 jmédiane');
     expect(plain(page().getByRole('article', { name: 'WIP' }).textContent)).toContain('11en cours à 20:00');
   });
@@ -464,7 +468,7 @@ describe('états de la page Métriques', () => {
     const notice = screen.getByText('Un Projet illisible, absent de ces chiffres');
     expect(notice).toBeTruthy();
     expect(plain(notice.closest('[role="status"]')?.textContent)).toContain('My-Prompt-Manager : Base Dolt verrouillée par un autre processus');
-    expect(screen.getAllByRole('article')).toHaveLength(11);
+    expect(screen.getAllByRole('article')).toHaveLength(12);
   });
 
   it('dit qu’aucun Projet n’a pu être mesuré, au lieu de montrer des zéros', async () => {
@@ -543,7 +547,7 @@ describe('états de la page Métriques', () => {
     await act(() => queryClient.refetchQueries({ queryKey: metricsKey({ project: 'bdesk', period: { kind: 'preset', range: '30d' }, timeZone: 'Europe/Paris' }), exact: true }).catch(() => undefined));
     await waitFor(() => expect(screen.getByText(/Actualisation impossible/)).toBeTruthy());
 
-    expect(screen.getAllByRole('article')).toHaveLength(11);
+    expect(screen.getAllByRole('article')).toHaveLength(12);
     expect(screen.queryByText('Impossible de calculer les métriques')).toBeNull();
   });
 
@@ -565,7 +569,7 @@ describe('la page Métriques quand le navigateur ne nomme pas son fuseau (TZ vid
     await loaded();
 
     expect(screen.getByRole('heading', { level: 1, name: 'Métriques' })).toBeTruthy();
-    expect(screen.getAllByRole('article')).toHaveLength(11);
+    expect(screen.getAllByRole('article')).toHaveLength(12);
   });
 
   it('compte « aujourd’hui » en UTC, comme Date : une plage qui finit demain en UTC est refusée avant d’être demandée', async () => {
@@ -881,7 +885,7 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
     const { router } = await loaded();
     await screen.findByRole('status', { name: NOTICE });
 
-    await go(router, '/');
+    await go(router, '/overview');
     expect(await screen.findByRole('heading', { level: 1, name: 'Vue globale' })).toBeTruthy();
     await waitFor(() => expect(metricsRequests(fetchMock).at(-1)).toBe('/api/metrics?range=30d&timeZone=Europe%2FParis'));
     // La Vue globale attend ses chiffres : l'avis est déjà là, et ne parle pas de « ces chiffres » faute d'en montrer.
@@ -900,7 +904,7 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
     api(serverInUtc);
     const { router } = await loaded();
     await screen.findByRole('status', { name: NOTICE });
-    await go(router, '/');
+    await go(router, '/overview');
     await screen.findByRole('heading', { level: 2, name: 'Indicateurs' });
     await screen.findByRole('status', { name: NOTICE });
 
@@ -922,7 +926,7 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
 
     try {
       process.env.TZ = 'Asia/Tokyo'; // le navigateur change de fuseau pendant que la page est ouverte
-      await go(router, '/');
+      await go(router, '/overview');
       expect(await screen.findByRole('heading', { level: 1, name: 'Vue globale' })).toBeTruthy();
       await waitFor(() => expect(release).toBeDefined());
       // En attendant la réponse de Tokyo, la réponse en UTC, pour Paris, ne dit rien du fuseau de Tokyo.
@@ -959,7 +963,7 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
       const { router, queryClient, user } = await loaded();
       await screen.findByRole('status', { name: NOTICE });
 
-      await go(router, '/');
+      await go(router, '/overview');
       expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy(); // la Vue globale n'a jamais abouti
       expect(screen.getByRole('status', { name: NOTICE })).toBeTruthy(); // l'avis vient de la réponse du Projet
       const overall = { period: { kind: 'preset', range: '30d' }, timeZone: 'Europe/Paris' } as const;
@@ -1007,7 +1011,7 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
       act(() => void vi.advanceTimersByTime(FIVE_MINUTES + 1_000));
       expect(inCache(queryClient, 'bdesk')).toBe(0);
       const before = metricsRequests(fetchMock).length;
-      await go(router, '/');
+      await go(router, '/overview');
 
       expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy();
       expect(metricsRequests(fetchMock)).toHaveLength(before + 1);
@@ -1023,7 +1027,7 @@ describe('la page Métriques quand le serveur ne connaît pas le fuseau du navig
       await screen.findByRole('heading', { level: 1, name: 'Kanban' });
 
       act(() => void vi.advanceTimersByTime(2 * 60_000));
-      await go(router, '/');
+      await go(router, '/overview');
 
       expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy();
       expect(screen.getByRole('status', { name: NOTICE })).toBeTruthy();

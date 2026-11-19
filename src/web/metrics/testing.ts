@@ -17,6 +17,7 @@ import type {
   MetricsProject,
   MetricsReadyTicket,
   MetricsResponse,
+  MetricsSignificance,
   MetricsSlice,
   MetricsTrend,
 } from '../../shared/api';
@@ -235,14 +236,34 @@ export function emptyHealthFixture(overrides: Partial<MetricsHealth> = {}): Metr
   };
 }
 
+/** La significativité du Débit sain des fixtures : la Couverture de leur Taux d'échec, 19 %, trop faible. */
+export const LOW_COVERAGE: MetricsSignificance = {
+  coverage: { bugs: 67, linked: 13, ratio: 13 / 67 },
+  significant: false,
+  reasons: ['low-coverage'],
+  thresholds: { minCoverage: 0.5, minBugs: 5 },
+};
+
+/** Une Couverture suffisante : 30 bugs sur 40 ont une origine renseignée. */
+export const ENOUGH_COVERAGE: MetricsSignificance = {
+  coverage: { bugs: 40, linked: 30, ratio: 0.75 },
+  significant: true,
+  reasons: [],
+  thresholds: { minCoverage: 0.5, minBugs: 5 },
+};
+
 /** Minuit à Paris de ce jour : 22:00Z la veille en heure d'été, 23:00Z en heure d'hiver (depuis le 25 octobre 2026). */
 const parisMidnight = (day: string) => `${addDays(day, -1)}T${day > '2026-10-25' ? '23' : '22'}:00:00.000Z`;
 
 /**
  * La Tendance longue des fixtures : les 12 semaines qui finissent par celle du 2 novembre 2026 (en cours, à `AS_OF`). `deliveries[i]` est le Débit de la
- * semaine i ; son Lead Time au P85 vaut i + 1 jours, fiable à partir de 4 Livraisons ; ses clôtures sont ses Livraisons, et une sur quatre est rouverte.
+ * semaine i ; son Lead Time au P85 vaut i + 1 jours, fiable à partir de 4 Livraisons ; ses clôtures sont ses Livraisons, et une sur quatre est rouverte :
+ * les autres sont ses Livraisons saines. Le Débit sain n'est pas significatif (`LOW_COVERAGE`), sauf à dire le contraire (`soundSignificance`).
  */
-export function longTrendFixture(deliveries: readonly number[] = [5, 6, 4, 0, 3, 7, 5, 8, 6, 4, 5, 1]): MetricsLongTrend {
+export function longTrendFixture(
+  deliveries: readonly number[] = [5, 6, 4, 0, 3, 7, 5, 8, 6, 4, 5, 1],
+  soundSignificance: MetricsSignificance = LOW_COVERAGE,
+): MetricsLongTrend {
   const weeks = deliveries.map((throughput, index): MetricsLongTrendWeek => {
     const from = addDays('2026-08-17', 7 * index);
     const reopened = Math.floor(throughput / 4);
@@ -253,6 +274,7 @@ export function longTrendFixture(deliveries: readonly number[] = [5, 6, 4, 0, 3,
       end: parisMidnight(addDays(from, 7)),
       partial: index === deliveries.length - 1,
       throughput,
+      soundThroughput: throughput - reopened,
       leadTimeP85: throughput === 0 ? null : (index + 1) * DAY,
       reliable: throughput >= 4,
       closures: throughput,
@@ -260,7 +282,7 @@ export function longTrendFixture(deliveries: readonly number[] = [5, 6, 4, 0, 3,
       reopeningRate: throughput === 0 ? null : reopened / throughput,
     };
   });
-  return { weeks, minDeliveries: 4 };
+  return { weeks, minDeliveries: 4, soundSignificance };
 }
 
 /**
@@ -303,6 +325,8 @@ export function metricsFixture(overrides: Partial<MetricsResponse> = {}): Metric
     previousAsOf: PREVIOUS_AS_OF,
     tiles: {
       throughput: { total: 18, trend: trendOf(18, 28) },
+      // 14 des 18 Livraisons sont saines, contre 22 des 28 de la période précédente ; non significatif, comme le Taux d'échec, et provisoire : la période court.
+      soundThroughput: { total: 14, deliveries: 18, ...LOW_COVERAGE, provisional: true, trend: trendOf(14, 22) },
       leadTime: durationTile(594_878_465, 1_398_268_193.5, 18, [59_296_172.5, 345_927_383.55]),
       cycleTime: durationTile(177_911_777, 196_921_694.8, 15, [15_146_964, 244_272_997]),
       failureRate: {
@@ -349,6 +373,7 @@ export function emptyMetricsFixture(overrides: Partial<MetricsResponse> = {}): M
     projects: [{ id: 'bdesk', name: 'beads-desktop' }],
     tiles: {
       throughput: { total: 0, trend: trendOf(0, 0) },
+      soundThroughput: { total: 0, deliveries: 0, ...LOW_COVERAGE, coverage: { bugs: 0, linked: 0, ratio: null }, reasons: ['few-bugs'], provisional: true, trend: trendOf(0, 0) },
       leadTime: durationTile(null, null, 0, [null, null]),
       cycleTime: durationTile(null, null, 0, [null, null]),
       failureRate: { ...base.tiles.failureRate, deliveries: 0, failed: 0, rate: null, coverage: { bugs: 0, linked: 0, ratio: null }, reasons: ['few-bugs'], reason: 'Trop peu de bugs pour conclure : 0 (minimum 5).', trend: noTrend },

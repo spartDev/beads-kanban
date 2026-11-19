@@ -992,3 +992,64 @@ describe('service de métriques : demandes abandonnées (bdesk-38k.20)', () => {
     expect(result).not.toHaveProperty('unreadable');
   });
 });
+
+describe('service de métriques : « Depuis votre dernière visite »', () => {
+  const HOUR = 3_600_000;
+  const T = Date.parse('2026-10-23T18:00:00Z');
+  const opened = (id: string, created: number): TicketHistory => ({ id, type: 'task', statusSnapshots: [{ status: 'open', at: new Date(created) }], dependencies: [] });
+
+  /**
+   * L'horloge avance pendant les lectures : d'une heure pendant celle du HEAD, d'une heure encore pendant celle des historiques. Le Projet porte une Arrivée d'avant
+   * T et une autre d'après T, commitée pendant la lecture : celle-ci n'est pas dans la fenêtre qui finit à T, et sera dans la suivante, qui commence là.
+   */
+  function movingClock() {
+    let clock = T;
+    const { service } = fakeProjects({
+      a: { histories: [opened('a-avant', T - HOUR), opened('a-pendant', T + HOUR / 2)], issues: [issueOf('a-avant'), issueOf('a-pendant')] },
+    });
+    const ticking: ProjectService = {
+      ...service,
+      async head(id, options) {
+        clock += HOUR;
+        return service.head(id, options);
+      },
+      async histories(id, options) {
+        clock += HOUR;
+        return service.histories(id, options);
+      },
+    };
+    return createMetricsService(ticking, { now: () => new Date(clock), timeZone: 'Europe/Paris' });
+  }
+
+  const arrivals = (response: { groups: { kind: string; tickets: { id: string }[] }[] }) =>
+    response.groups.find((group) => group.kind === 'arrivals')?.tickets.map((ticket) => ticket.id);
+
+  it('prend l’instant des données avant de lire le HEAD et les historiques : une horloge qui avance pendant la lecture ne déplace pas la fin de la fenêtre', async () => {
+    const response = await movingClock().sinceLastVisit({});
+
+    expect(response.asOf).toBe(new Date(T).toISOString());
+    expect(response.since).toBe(new Date(T - 24 * HOUR).toISOString());
+    expect(arrivals(response)).toEqual(['a-avant']);
+  });
+
+  it('la fenêtre suivante, qui commence à cet instant, montre ce qui a été commité pendant la lecture', async () => {
+    const metrics = movingClock();
+    const first = await metrics.sinceLastVisit({});
+    const second = await metrics.sinceLastVisit({ since: Date.parse(first.asOf) });
+
+    expect(arrivals(first)).toEqual(['a-avant']);
+    expect(arrivals(second)).toEqual(['a-pendant']);
+  });
+
+  it('range à part un Projet illisible au moment de la lecture, avec sa raison : ses événements ne sont pas comptés', async () => {
+    const { service } = fakeProjects({
+      a: { histories: [opened('a-1', T - HOUR)], issues: [issueOf('a-1')] },
+      b: { status: 'unreadable', reason: 'database is locked', histories: [opened('b-1', T - HOUR)], issues: [issueOf('b-1')] },
+    });
+    const response = await createMetricsService(service, { now: () => new Date(T), timeZone: 'Europe/Paris' }).sinceLastVisit({});
+
+    expect(response.unreadable).toEqual([{ id: 'b', name: 'Nom de b', reason: 'database is locked' }]);
+    expect(response.projects).toEqual([{ id: 'a', name: 'Nom de a' }]);
+    expect(arrivals(response)).toEqual(['a-1']);
+  });
+});

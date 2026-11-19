@@ -38,14 +38,14 @@ beforeEach(() => {
 describe('the shell in English', () => {
   it('names the navigation, the projects and the controls in English', async () => {
     stub();
-    renderEnglish('/');
+    renderEnglish('/overview');
 
     const navigation = await screen.findByRole('navigation', { name: 'Main navigation' });
     expect(document.documentElement.lang).toBe('en');
     expect(screen.getByRole('link', { name: 'Skip to content' })).toBeTruthy();
     expect(screen.getByRole('main', { name: 'Content' })).toBeTruthy();
     expect(within(navigation).getByRole('link', { name: /Overview/ })).toBeTruthy();
-    expect(within(navigation).getByRole('link', { name: 'Watch list' })).toBeTruthy();
+    expect(within(navigation).getByRole('link', { name: /^Watch list/ })).toBeTruthy();
     expect(within(navigation).getByRole('heading', { name: /Projects/ })).toBeTruthy();
     // La raison d'un Projet illisible vient du serveur : elle n'est pas traduite.
     await waitFor(() => expect(text(navigation)).toContain('Unreadable: Base Dolt verrouillée par un autre processus'));
@@ -59,7 +59,7 @@ describe('the shell in English', () => {
 
   it('writes the Overview in English, and its tab title', async () => {
     stub();
-    renderEnglish('/');
+    renderEnglish('/overview');
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Overview' })).toBeTruthy();
     const projects = await screen.findByRole('region', { name: 'Tracked projects' });
@@ -86,10 +86,23 @@ describe('the shell in English', () => {
 describe('the Watch list in English', () => {
   it('groups the signals under their English names and says them in English', async () => {
     stub();
-    renderEnglish('/signals');
+    renderEnglish('/');
 
     const drift = await screen.findByRole('region', { name: 'Drift' });
     expect(screen.getByRole('heading', { level: 1, name: 'Watch list' })).toBeTruthy();
+    // En tête, « Depuis votre dernière visite » : les genres sous leurs noms anglais (CONTEXT.md), dans l'ordre, les mauvaises nouvelles d'abord.
+    const since = await screen.findByRole('region', { name: 'Since your last visit' });
+    expect(text(since)).toContain('The last 24 hours, across all projects, bad news first: no visit has been recorded in this browser yet.');
+    await waitFor(() =>
+      expect([...since.querySelectorAll(':scope > ul > li .sr-only')].map((row) => row.textContent)).toEqual([
+        'Reopens: 0 tickets',
+        'Escaped bugs: 0 tickets',
+        'Deliveries: 0 tickets',
+        'New blockages: 0 tickets',
+        'Arrivals: 0 tickets',
+      ]),
+    );
+    expect(within(since).getByRole('button', { name: 'Mark all seen' })).toBeTruthy();
     expect(text(drift)).toContain('12 d of Cycle Time so far, above 8.7 d, the P85 of deliveries of the same type');
     const ready = screen.getByRole('region', { name: 'Stale ready' });
     expect(within(ready).getByRole('link', { name: 'Untitled' })).toBeTruthy();
@@ -112,7 +125,7 @@ describe('the Watch list in English', () => {
 describe('the command palette in English', () => {
   it('opens with the same keys, and searches in English', async () => {
     stub();
-    const { user } = renderEnglish('/');
+    const { user } = renderEnglish('/overview');
     await screen.findByRole('navigation', { name: 'Main navigation' });
 
     await user.keyboard('{Control>}k{/Control}');
@@ -166,7 +179,7 @@ describe('the command palette in English', () => {
 describe('the keyboard shortcuts help in English', () => {
   it('lists the same keys under English labels and groups', async () => {
     stub();
-    const { user } = renderEnglish('/');
+    const { user } = renderEnglish('/overview');
     await screen.findByRole('navigation', { name: 'Main navigation' });
 
     await user.keyboard('?');
@@ -176,6 +189,7 @@ describe('the keyboard shortcuts help in English', () => {
     expect(text(general)).toContain('Open the command palette');
     expect(text(general)).toContain('CtrlK');
     const navigation = within(list).getByRole('region', { name: 'Navigation' });
+    expect(text(navigation)).toContain('Go to HomeGthenH');
     expect(text(navigation)).toContain('Go to the OverviewGthenV');
     expect(text(navigation)).toContain('Go to MetricsGthenM');
     expect(within(help).getByRole('button', { name: 'Close' })).toBeTruthy();
@@ -204,7 +218,7 @@ describe('the error and missing pages in English', () => {
 
   it('projects that do not load', async () => {
     stubApi({ projects: new Error('database is locked') });
-    renderEnglish('/');
+    renderEnglish('/overview');
 
     const main = await screen.findByRole('main');
     await waitFor(() => expect(text(main)).toContain('Could not load projects'));

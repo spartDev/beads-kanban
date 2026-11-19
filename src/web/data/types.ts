@@ -31,6 +31,10 @@ export type {
   ProjectsResponse,
   SignalTicket,
   SignalsResponse,
+  SinceLastVisitGroup,
+  SinceLastVisitKind,
+  SinceLastVisitResponse,
+  SinceLastVisitTicket,
 } from '../../shared/api';
 
 /**

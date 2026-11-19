@@ -285,6 +285,54 @@ export interface SignalsResponse {
   signals: ApiSignal[];
 }
 
+/* -------------------------------------------------------------------------------------------------------------------
+ * Depuis votre dernière visite : `GET /api/since-last-visit`
+ *
+ *   ?since=<instant ISO 8601>   la Dernière visite (voir CONTEXT.md) : l'instant que l'interface a reçu dans `asOf` quand l'utilisateur a dit avoir tout vu.
+ *                               Absent : 24 heures avant l'instant des données. Un instant qui n'est pas ISO 8601 (avec sa date, son heure et son fuseau),
+ *                               vide ou répété : 400.
+ *
+ * Ce qui s'est passé dans tous les Projets lisibles entre `since` (compris) et `asOf` (exclu), genre par genre, les mauvaises nouvelles d'abord. Tiré des
+ * mêmes analyses que les Signaux et les métriques. Pas de Projet à choisir : la Dernière visite est unique, celle de l'accueil global. Un Projet illisible
+ * (`unreadable`) n'est pas compté : l'accueil le dit, et dit que « Tout vu » laissera de côté ce qui s'y est passé.
+ * ---------------------------------------------------------------------------------------------------------------- */
+
+/**
+ * Les genres, dans l'ordre de la réponse : Réouvertures, Bugs d'origine, Livraisons, nouveaux Blocages, Arrivées. Les Livraisons sans Feu vert et les Retours
+ * de relecture ou d'intégration s'y ajouteront quand leurs mesures existeront ; l'interface montre les genres que la réponse donne, et seulement eux.
+ */
+export type SinceLastVisitKind = 'reopenings' | 'escapedBugs' | 'deliveries' | 'newBlockages' | 'arrivals';
+
+/** Un ticket d'un genre. `project` est l'identifiant du Projet ; `at`, l'instant de son dernier événement de ce genre dans la fenêtre. */
+export interface SinceLastVisitTicket {
+  project: string;
+  id: string;
+  title: string;
+  type: string;
+  priority: number;
+  at: string;
+}
+
+/** Un genre et ses tickets, du plus récent au plus ancien ; son compte est leur nombre, zéro compris. Un Bug d'origine nomme les Livraisons qu'il met en échec. */
+export type SinceLastVisitGroup =
+  | { kind: Exclude<SinceLastVisitKind, 'escapedBugs'>; tickets: SinceLastVisitTicket[] }
+  | { kind: 'escapedBugs'; tickets: Array<SinceLastVisitTicket & { deliveries: string[] }> };
+
+/** `GET /api/since-last-visit` */
+export interface SinceLastVisitResponse {
+  /** Le début de la fenêtre, compris : la Dernière visite demandée, ou 24 heures avant `asOf` sans elle (jamais après `asOf`). */
+  since: string;
+  /**
+   * L'instant des données, fin exclue de la fenêtre : ce qui est daté à cet instant ou après n'est pas encore arrivé. C'est lui que « Tout vu » garde pour
+   * Dernière visite, pas l'heure du clic : un événement commité entre l'affichage et le clic n'est pas sauté.
+   */
+  asOf: string;
+  projects: Array<{ id: string; name: string }>;
+  unreadable: MetricsUnreadableProject[];
+  /** Les genres disponibles, dans l'ordre (voir `SinceLastVisitKind`), même vides. */
+  groups: SinceLastVisitGroup[];
+}
+
 /**
  * Corps des réponses d'erreur (même forme que celles de Fastify). `message` est en français (journal, autres clients) ; `code` et `params`, quand
  * l'erreur est l'une de celles que l'API prévoit, disent la même chose pour que l'interface l'écrive dans sa langue (voir `errors.ts`).
@@ -435,6 +483,34 @@ export interface MetricsFailureRateTile {
   trend: MetricsTrend;
 }
 
+/**
+ * Ce qui rend significative une mesure tirée des Bugs d'origine (Débit sain, Tendance longue) : la Couverture de tous les bugs des Projets mesurés, toutes dates
+ * confondues, et les seuils du Taux d'échec. La règle est la sienne, et ses motifs aussi (`MetricsFailureRateTile`).
+ */
+export interface MetricsSignificance {
+  coverage: MetricsCoverage;
+  /** Faux si la Couverture est sous `thresholds.minCoverage` ou s'il y a moins de `thresholds.minBugs` bugs. */
+  significant: boolean;
+  /** Vide quand la mesure est significative. */
+  reasons: MetricsFailureRateReason[];
+  thresholds: { minCoverage: number; minBugs: number };
+}
+
+/**
+ * Débit sain : les Livraisons saines de la période (sans Bug d'origine, qu'aucune Réouverture n'a précédée), à lire à côté du Débit. Un Bug d'origine trouvé
+ * bien après la période rend sa Livraison malsaine après coup, comme il la met en échec dans le Taux d'échec.
+ */
+export interface MetricsSoundThroughputTile extends MetricsSignificance {
+  /** Livraisons saines de la période. */
+  total: number;
+  /** Livraisons de la période (le Débit) : `deliveries - total` sont revenues, rouvertes ou mises en échec. */
+  deliveries: number;
+  /** La période court encore (`asOf` précède `period.end`) : ses Livraisons n'ont pas toutes eu le temps de revenir. */
+  provisional: boolean;
+  /** Tendance du nombre de Livraisons saines. */
+  trend: MetricsTrend;
+}
+
 export interface MetricsWipTile {
   /** Tickets en statut de travail (en cours, rattaché à un agent, bloqué) à `asOf` : maintenant si la période court jusqu'à aujourd'hui. */
   current: number;
@@ -447,6 +523,8 @@ export interface MetricsWipTile {
 export interface MetricsTiles {
   /** Débit : Livraisons de la période. */
   throughput: MetricsCountTile;
+  /** Débit sain : Livraisons saines de la période, parmi celles du Débit. */
+  soundThroughput: MetricsSoundThroughputTile;
   /** Lead Time des Livraisons de la période. */
   leadTime: MetricsDurationTile;
   /** Cycle Time des Livraisons de la période ; les tickets jamais démarrés n'y sont pas. */
@@ -744,6 +822,8 @@ export interface MetricsLongTrendWeek {
   partial: boolean;
   /** Livraisons de la semaine. */
   throughput: number;
+  /** Parmi elles, les Livraisons saines : le Débit sain de la semaine (voir `MetricsLongTrend.soundSignificance`). */
+  soundThroughput: number;
   /** P85 du Lead Time des Livraisons de la semaine ; null sans Livraison. */
   leadTimeP85: number | null;
   /** Au moins `MetricsLongTrend.minDeliveries` Livraisons : en dessous, le centile est montré, mais ne dit pas grand-chose. */
@@ -764,6 +844,8 @@ export interface MetricsLongTrend {
   weeks: MetricsLongTrendWeek[];
   /** Le seuil de `reliable` : 4 Livraisons. */
   minDeliveries: number;
+  /** Si le Débit sain des semaines est significatif : une seule Couverture pour les 12, celle de tous les bugs, comme pour la tuile du Débit sain. */
+  soundSignificance: MetricsSignificance;
 }
 
 export interface MetricsHealth {

@@ -59,6 +59,10 @@ function services() {
       calls.push('signals');
       throw new ProjectNotFoundError('nope');
     },
+    sinceLastVisit: async () => {
+      calls.push('sinceLastVisit');
+      throw new ProjectNotFoundError('nope');
+    },
   };
   return { calls, projects, metrics };
 }
@@ -108,6 +112,7 @@ const API_ROUTES: [name: string, url: string, status: number][] = [
   ['la fiche d’un ticket', '/api/projects/beads-desktop/issues/bdesk-38k.4', 404],
   ['la chronologie d’un ticket', '/api/projects/beads-desktop/issues/bdesk-38k.4/chronology', 404],
   ['les métriques', '/api/metrics?range=7d', 404],
+  ['depuis la dernière visite', '/api/since-last-visit', 404],
   ['le flux en direct', '/api/projects/beads-desktop/events', 200],
 ];
 

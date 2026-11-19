@@ -38,7 +38,7 @@ describe('navigation', () => {
 
   it('affiche un Projet illisible grisé, avec sa raison, sans lien', async () => {
     stubDefaultApi();
-    renderApp('/');
+    renderApp('/overview');
 
     const nav = await sidebar();
     await within(nav).findByRole('link', { name: /beads-desktop/ });
@@ -88,22 +88,28 @@ describe('navigation', () => {
     expect(button.textContent).toContain('beads-desktop');
   });
 
-  it('pointe les onglets du mobile sur le dernier Projet visité quand on est en Vue globale', async () => {
+  it.each([
+    ['/', 'page'],
+    ['/overview', 'true'],
+  ])('pointe les onglets du mobile sur le dernier Projet visité depuis une page de tous les Projets (%s)', async (path, homeCurrent) => {
     stubDefaultApi();
     window.localStorage.setItem('throughline:last-project', 'mpm');
-    renderApp('/');
+    renderApp(path);
 
     const tabs = await screen.findByRole('navigation', { name: 'Onglets' });
     await waitFor(() => expect(within(tabs).getByRole('link', { name: 'Kanban' }).getAttribute('href')).toBe('/p/mpm/kanban'));
-    expect(within(tabs).getByRole('link', { name: 'Vue globale' }).getAttribute('aria-current')).toBe('page');
-    expect(within(tabs).getAllByRole('link')).toHaveLength(5); // Vue globale, Kanban, À regarder, Epics, Métriques
+    // La première case réunit l'accueil et la Vue globale : elle est l'onglet courant sur l'une comme sur l'autre, la page courante sur l'accueil seulement.
+    const home = within(tabs).getByRole('link', { name: 'Accueil' });
+    expect(home.getAttribute('href')).toBe('/');
+    expect(home.getAttribute('aria-current')).toBe(homeCurrent);
+    expect(within(tabs).getAllByRole('link')).toHaveLength(5); // Accueil, Kanban, À regarder, Epics, Métriques
   });
 });
 
 describe('états de chargement', () => {
   it('signale un serveur en panne et propose de réessayer', async () => {
     stubApi({ projects: new Error('spawn dolt ENOENT') });
-    const { user } = renderApp('/');
+    const { user } = renderApp('/overview');
 
     expect((await screen.findAllByRole('alert')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('Réessayer').length).toBeGreaterThan(0);
@@ -116,23 +122,26 @@ describe('états de chargement', () => {
 
   it('annonce le chargement comme un statut nommé : un aria-label sur un div sans rôle serait ignoré', async () => {
     stubDefaultApi().mockImplementation(() => new Promise<Response>(() => undefined));
-    renderApp('/');
+    renderApp('/overview');
 
     // La barre latérale et la Vue globale attendent la même liste de Projets.
     expect(await screen.findAllByRole('status', { name: 'Chargement des Projets' })).toHaveLength(2);
   });
 
-  it('invite à configurer les racines quand aucun Projet n’est trouvé', async () => {
+  it.each(['/overview', '/'])('invite à configurer les racines quand aucun Projet n’est trouvé (%s)', async (path) => {
     stubApi({ projects: { projects: [], ignored: [] } });
-    renderApp('/');
+    renderApp(path);
 
     expect(await screen.findByText('Aucun Projet trouvé')).toBeTruthy();
     expect(screen.getByText('~/.config/throughline/config.json')).toBeTruthy();
+    // L'accueil ne fait pas comme s'il y avait des Projets à suivre : ni « Depuis votre dernière visite », ni « Rien à regarder ».
+    expect(screen.queryByRole('region', { name: 'Depuis votre dernière visite' })).toBeNull();
+    expect(screen.queryByRole('status', { name: 'Rien à regarder' })).toBeNull();
   });
 
   it('liste les dossiers ignorés avec leur raison', async () => {
     stubDefaultApi();
-    const { user } = renderApp('/');
+    const { user } = renderApp('/overview');
 
     await user.click(await screen.findByText('1 dossier ignoré'));
 
@@ -233,7 +242,7 @@ describe('palette ⌘K', () => {
 
   it('montre les Projets illisibles, désactivés, avec leur raison', async () => {
     stubDefaultApi();
-    const { user, router } = renderApp('/');
+    const { user, router } = renderApp('/overview');
     await sidebar();
 
     const dialog = await openPalette(user);
@@ -242,12 +251,12 @@ describe('palette ⌘K', () => {
     expect(option.textContent).toContain('Base Dolt verrouillée');
 
     await user.click(option);
-    expect(pathname(router)).toBe('/');
+    expect(pathname(router)).toBe('/overview');
   });
 
   it('cherche dans tous les Projets depuis la Vue globale', async () => {
     stubDefaultApi();
-    const { user } = renderApp('/');
+    const { user } = renderApp('/overview');
     await sidebar();
 
     const dialog = await openPalette(user);
@@ -325,6 +334,8 @@ describe('raccourcis clavier', () => {
     await user.keyboard('ge');
     await waitFor(() => expect(pathname(router)).toBe('/p/bdesk/epics'));
     await user.keyboard('gv');
+    await waitFor(() => expect(pathname(router)).toBe('/overview'));
+    await user.keyboard('gh');
     await waitFor(() => expect(pathname(router)).toBe('/'));
   });
 
@@ -358,12 +369,12 @@ describe('raccourcis clavier', () => {
 
   it('désactive les raccourcis d’onglet tant qu’aucun Projet n’est lisible', async () => {
     stubApi({ projects: { projects: [], ignored: [] } });
-    const { user, router } = renderApp('/');
+    const { user, router } = renderApp('/overview');
     await screen.findByText('Aucun Projet trouvé');
 
     await user.keyboard('gk');
 
-    expect(pathname(router)).toBe('/');
+    expect(pathname(router)).toBe('/overview');
   });
 });
 

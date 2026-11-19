@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError, errorText } from '../../web/data/apiError';
-import { InvalidMetricsQueryError, parseMetricsQuery } from './query';
+import { InvalidMetricsQueryError, parseMetricsQuery, parseSinceLastVisitQuery } from './query';
 
 describe('parseMetricsQuery', () => {
   it('prend les 30 derniers jours de la Vue globale quand rien n’est précisé', () => {
@@ -93,6 +93,42 @@ describe('parseMetricsQuery', () => {
     const refused = thrown as InvalidMetricsQueryError;
     expect(refused.detail).toEqual(detail);
     // L'interface écrit en français exactement le message du serveur (ce refus ne passe pas par l'API, où `api.test.ts` le vérifie pour les autres).
+    expect(errorText(new ApiError(refused.message, 400, { detail: refused.detail }), 'fr')).toBe(refused.message);
+  });
+});
+
+describe('parseSinceLastVisitQuery', () => {
+  it('ne donne pas de Dernière visite quand la requête n’en a pas : 24 heures, que le service compte', () => {
+    expect(parseSinceLastVisitQuery({})).toEqual({});
+  });
+
+  it.each([
+    ['en UTC', '2026-10-18T12:00:00.000Z', Date.UTC(2026, 9, 18, 12)],
+    ['sans millisecondes', '2026-10-18T12:00:00Z', Date.UTC(2026, 9, 18, 12)],
+    ['avec un décalage', '2026-10-18T14:00:00+02:00', Date.UTC(2026, 9, 18, 12)],
+  ])('lit une Dernière visite ISO 8601 %s', (_name, since, expected) => {
+    expect(parseSinceLastVisitQuery({ since })).toEqual({ since: expected });
+  });
+
+  it.each([
+    ['un instant sans fuseau, qui dépendrait de celui du serveur', { since: '2026-10-18T12:00:00' }, 'query-invalid-instant'],
+    ['un jour sans heure', { since: '2026-10-18' }, 'query-invalid-instant'],
+    ['un instant qui n’existe pas', { since: '2026-02-30T12:00:00Z' }, 'query-invalid-instant'],
+    ['un texte', { since: 'hier' }, 'query-invalid-instant'],
+    ['une Dernière visite vide', { since: '' }, 'query-invalid-instant'],
+    ['une Dernière visite répétée', { since: ['2026-10-18T12:00:00Z', '2026-10-18T13:00:00Z'] }, 'query-repeated'],
+    ['un paramètre inconnu', { project: 'bdesk' }, 'query-unknown-parameter'],
+  ])('refuse %s', (_name, query, code) => {
+    let thrown: unknown;
+    try {
+      parseSinceLastVisitQuery(query);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(InvalidMetricsQueryError);
+    const refused = thrown as InvalidMetricsQueryError;
+    expect(refused.detail.code).toBe(code);
     expect(errorText(new ApiError(refused.message, 400, { detail: refused.detail }), 'fr')).toBe(refused.message);
   });
 });

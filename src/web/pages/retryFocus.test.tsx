@@ -117,6 +117,10 @@ interface Site {
 const ISSUES = /\/api\/projects\/bdesk\/issues$/;
 const PROJECTS = /\/api\/projects$/;
 const METRICS = /\/api\/metrics/;
+const SINCE_LAST_VISIT = /\/api\/since-last-visit/;
+
+/** « Depuis votre dernière visite », en tête de l'accueil : une section nommée, zone de focus à elle, dont l'échec laisse les Signaux en place. */
+const sinceLastVisit = () => screen.getByRole('region', { name: 'Depuis votre dernière visite' });
 
 const SITES: Site[] = [
   {
@@ -143,7 +147,7 @@ const SITES: Site[] = [
   },
   {
     name: 'les métriques de la Vue globale',
-    path: '/',
+    path: '/overview',
     failing: METRICS,
     zone: main,
     retry: retryIn(inMain),
@@ -154,13 +158,24 @@ const SITES: Site[] = [
   },
   {
     name: 'les Projets suivis de la Vue globale',
-    path: '/',
+    path: '/overview',
     failing: PROJECTS,
     zone: () => screen.getByRole('region', { name: 'Projets suivis' }),
     retry: retryIn(() => within(screen.getByRole('region', { name: 'Projets suivis' }))),
     loading: () => within(screen.getByRole('region', { name: 'Projets suivis' })).findByRole('status', { name: 'Chargement des Projets' }),
     arrived: () => within(screen.getByRole('region', { name: 'Projets suivis' })).findByRole('link', { name: /My-Prompt-Manager/ }),
     title: () => screen.getByRole('heading', { level: 2, name: 'Projets suivis' }),
+    automatic: true,
+  },
+  {
+    name: '« Depuis votre dernière visite », sur l’accueil',
+    path: '/',
+    failing: SINCE_LAST_VISIT,
+    zone: sinceLastVisit,
+    retry: retryIn(() => within(sinceLastVisit())),
+    loading: () => within(sinceLastVisit()).findByRole('status', { name: 'Chargement de ce qui s’est passé depuis votre dernière visite' }),
+    arrived: () => within(sinceLastVisit()).findByText('Réouvertures'),
+    title: () => screen.getByRole('heading', { level: 2, name: 'Depuis votre dernière visite' }),
     automatic: true,
   },
   {
