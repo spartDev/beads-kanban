@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReadAborted } from '../abort';
 import type { DoltClient, QueryOptions, Row } from '../dolt/client';
 import { assertReadOnly } from '../dolt/read-only';
+import { CUSTOM_STATUSES_SQL } from '../dolt/reader';
 import { buildServer } from '../server';
 import { scratchDir } from '../testing/scratch';
 import { createProjectService, IssueNotFoundError, ProjectNotFoundError, ProjectUnreadableError } from './service';
@@ -281,7 +282,7 @@ describe('lectures regroupées et abandonnables (bdesk-38k.20)', () => {
     expect(detail).toMatchObject({ id: 'x-1', labels: [], comments: [] });
     expect(seen.processes).toBe(2);
     expect(seen.singles).toEqual([]);
-    expect(seen.groups.map((group) => group.length).sort()).toEqual([3, 3]);
+    expect(seen.groups.map((group) => group.length).sort()).toEqual([3, 4]);
   });
 
   it('nomme l’Epic de la fiche sans un processus de plus : elle se tire des tickets que la fiche lit déjà (bdesk-38k.29)', async () => {
@@ -312,7 +313,7 @@ describe('lectures regroupées et abandonnables (bdesk-38k.20)', () => {
     // Les mêmes deux processus que pour une fiche sans Epic, et les mêmes requêtes, mot pour mot : l'Epic ne coûte aucune lecture.
     expect(withEpic.seen.processes).toBe(2);
     expect(withEpic.seen.singles).toEqual([]);
-    expect(withEpic.seen.groups.map((group) => group.length).sort()).toEqual([3, 3]);
+    expect(withEpic.seen.groups.map((group) => group.length).sort()).toEqual([3, 4]);
     expect(withEpic.seen.groups).toEqual(withoutEpic.seen.groups);
   });
 
@@ -322,6 +323,25 @@ describe('lectures regroupées et abandonnables (bdesk-38k.20)', () => {
     expect(await serviceFor(dolt).issues('a')).toHaveLength(1);
 
     expect(seen.processes).toBe(1);
+  });
+
+  // bdesk-pz0.2 : les statuts que le Projet déclare viennent avec ses tickets, dans le groupe que le kanban lisait déjà : pas un processus de plus, et le même
+  // état de la base pour un ticket `in_review` et la déclaration du Projet.
+  it('lit le kanban en un seul processus : les tickets et les statuts que le Projet déclare, du même groupe que la liste', async () => {
+    const declaring = (sql: string): Row[] => (sql.includes(CUSTOM_STATUSES_SQL) ? [{ value: 'in_review:wip,in_integration:wip,awaiting_human:wip,qa_testing:wip' }] : answer(sql));
+    const { dolt, seen } = groupingDolt(declaring);
+    const list = groupingDolt(declaring);
+
+    const board = await serviceFor(dolt).board('a');
+    await serviceFor(list.dolt).issues('a');
+
+    expect(board.issues.map((issue) => issue.id)).toEqual(['x-1']);
+    expect(board.declaredStatuses).toEqual({ handoff: ['in_review', 'in_integration', 'awaiting_human'], others: [{ name: 'qa_testing', category: 'wip' }] });
+    expect(seen.processes).toBe(1);
+    expect(seen.singles).toEqual([]);
+    expect(seen.groups).toHaveLength(1);
+    expect(seen.groups[0]).toContain(CUSTOM_STATUSES_SQL);
+    expect(seen.groups).toEqual(list.seen.groups);
   });
 
   it('lit le HEAD par la voie `light`, sans signal quand le demandeur n’en a pas (le sondage du direct)', async () => {

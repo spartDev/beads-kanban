@@ -50,7 +50,7 @@ describe.skipIf(process.platform === 'win32')('Vue globale quittée à froid (bd
       `     while [ ! -e "$(dirname "$0")/release" ]; do sleep 0.02; done`,
       `     case "$q" in`,
       `       *"where id ="*) printf '{}\\n\\n{"rows": [${ticket}]}\\n{}\\n\\n{}\\n\\n';;`,
-      `       *"from dependencies"*"where label ="*) printf '{}\\n\\n{"rows": [${ticket}]}\\n{}\\n\\n{}\\n\\n';;`,
+      `       *"from dependencies"*"where label ="*) printf '{}\\n\\n{"rows": [${ticket}]}\\n{}\\n\\n{}\\n\\n{}\\n\\n';;`,
       `       *) printf '{}\\n\\n{"rows": [${ticket}]}\\n{}\\n\\n';;`,
       `     esac;;`,
       `esac`,

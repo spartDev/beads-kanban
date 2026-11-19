@@ -12,6 +12,8 @@
  * `as of hashof('HEAD')` n'est pas la clause), jamais d'une lecture du working set qui passe en silence.
  */
 
+import { ISSUE_PREFIX_SQL } from '../dolt/reader';
+
 /** Une table lue par une requête, et si la clause `as of 'HEAD'` la suit. */
 export interface TableRead {
   table: string;
@@ -257,15 +259,16 @@ const DOLT_HISTORY_TABLES = new Set(['dolt_log', 'dolt_commit_ancestors']);
 const isDoltHistory = (table: string) => DOLT_HISTORY_TABLES.has(table) || table.startsWith('dolt_history_');
 
 /**
- * Les autres tables qui n'ont pas à porter la clause : le préfixe des tickets (`config`), qui identifie le Projet et ne décrit aucun
- * ticket (ADR 0001). Toute autre table lue, `issues`, `dependencies`, `labels`, `comments` ou une qu'on ajouterait, doit la porter :
- * l'oubli est un échec, pas un silence.
+ * La seule lecture qui n'a pas à porter la clause : celle du préfixe des tickets (`ISSUE_PREFIX_SQL`, table `config`), qui identifie le Projet et ne
+ * décrit aucun ticket (ADR 0001). Elle est reconnue à son texte exact, non à sa table : la même table porte les statuts que le Projet déclare
+ * (`CUSTOM_STATUSES_SQL`), qui décident de la lecture des statuts des tickets et se lisent au dernier commit (bdesk-pz0.2, ADR 0007). Toute autre
+ * lecture, de `config`, `issues`, `dependencies`, `labels`, `comments` ou d'une table qu'on ajouterait, doit la porter : l'oubli est un échec, pas un silence.
  */
-const NOT_TICKET_STATE = new Set(['config']);
+const WORKING_SET_READS: ReadonlySet<string> = new Set([ISSUE_PREFIX_SQL]);
 
 /** Ce que la règle reproche à cette lecture, ou rien. */
 function reproach({ table, atHead }: TableRead): string | undefined {
-  if (isDoltHistory(table) || NOT_TICKET_STATE.has(table)) return undefined;
+  if (isDoltHistory(table)) return undefined;
   if (table.startsWith('dolt_')) return `${table} n'est pas une table de l'historique de Dolt (dolt_log, dolt_commit_ancestors, dolt_history_*)`;
   return atHead ? undefined : `${table} lue sans « as of 'HEAD' »`;
 }
@@ -273,7 +276,7 @@ function reproach({ table, atHead }: TableRead): string | undefined {
 /** Les lectures de tables de tickets qui ne portent pas la clause, ou de tables de Dolt hors de l'historique, une phrase chacune : vide quand la règle est tenue. */
 export function readsOutsideHead(sqls: readonly string[]): string[] {
   return sqls.flatMap((sql) =>
-    tableReads(sql).flatMap((read) => {
+    (WORKING_SET_READS.has(sql) ? [] : tableReads(sql)).flatMap((read) => {
       const reason = reproach(read);
       return reason === undefined ? [] : [`${reason} : ${sql.replace(/\s+/g, ' ').trim().slice(0, 140)}`];
     }),

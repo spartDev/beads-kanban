@@ -6,7 +6,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InvalidPeriodError } from '../domain/calendar';
 import type { TicketHistory } from '../domain/flow';
-import type { Issue, IssueDetail, MetricsResponse, Project, SinceLastVisitResponse } from '../shared/api';
+import type { DeclaredStatuses, Issue, IssueDetail, MetricsResponse, Project, SinceLastVisitResponse } from '../shared/api';
 import { readApiErrorDetail } from '../shared/errors';
 import { ApiError, errorText } from '../web/data/apiError';
 import { ReadAborted } from './abort';
@@ -18,6 +18,7 @@ import {
   ProjectUnreadableError,
 } from './projects/service';
 import { buildServer } from './server';
+import { withBoard } from './testing/board';
 
 const config = { roots: [], projects: [], hiddenProjects: [] };
 
@@ -60,14 +61,14 @@ const detail: IssueDetail = {
 };
 
 function serviceWith(overrides: Partial<ProjectService> = {}): ProjectService {
-  return {
+  return withBoard({
     list: async () => ({ projects: [project], ignored: [{ path: '/Users/someone/Developer/fanfare-municipale', reason: 'SQLite' }] }),
     issues: async () => [issue],
     issue: async () => detail,
     histories: async () => [],
     head: async () => 'h1',
     ...overrides,
-  };
+  });
 }
 
 /** Une méthode de service que le test n'appelle pas. */
@@ -107,20 +108,21 @@ describe('API des Projets', () => {
     });
   });
 
-  it('GET /api/projects/:projectId/issues renvoie { issues }', async () => {
+  it('GET /api/projects/:projectId/issues renvoie { issues, declaredStatuses }', async () => {
     const seen: string[] = [];
+    const declaredStatuses = { handoff: ['in_review', 'awaiting_human'], others: [{ name: 'qa_testing', category: 'wip' }] } as const satisfies DeclaredStatuses;
     const res = await get(
       serviceWith({
-        issues: async (projectId) => {
+        board: async (projectId) => {
           seen.push(projectId);
-          return [issue];
+          return { issues: [issue], declaredStatuses: { handoff: [...declaredStatuses.handoff], others: [...declaredStatuses.others] } };
         },
       }),
       '/api/projects/beads-desktop/issues',
     );
 
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ issues: [issue] });
+    expect(res.json()).toEqual({ issues: [issue], declaredStatuses });
     expect(seen).toEqual(['beads-desktop']);
   });
 

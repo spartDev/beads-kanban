@@ -24,6 +24,7 @@ function fakeProjects(heads: Record<string, string | Error>, ids = Object.keys(h
   };
   const service: ProjectService = {
     list: async () => ({ projects: ids.map(project), ignored: [] }),
+    board: unexpected('board'),
     issues: unexpected('issues'),
     issue: unexpected('issue'),
     histories: unexpected('histories'),

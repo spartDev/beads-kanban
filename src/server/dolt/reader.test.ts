@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { readsOutsideHead, tableReads } from '../testing/reads-at-head';
 import { type DoltDatabase, DoltQueryError, type QueryOptions, type Row } from './client';
 import {
+  CUSTOM_STATUSES_SQL,
+  parseCustomStatuses,
   readClosureLabels,
   readComments,
+  readDeclaredStatuses,
   readDependencies,
   readHead,
   readIssue,
@@ -194,7 +197,7 @@ describe('l’état des tickets est celui du dernier commit (bdesk-38k.36)', () 
 
     const sqls = grouped.groups.flat();
     expect(readsOutsideHead(sqls)).toEqual([]);
-    expect(sqls.map((sql) => tableReads(sql).map(({ table }) => table))).toEqual([['issues'], ['dependencies'], ['labels'], ['issues'], ['labels'], ['comments']]);
+    expect(sqls.map((sql) => tableReads(sql).map(({ table }) => table))).toEqual([['issues'], ['dependencies'], ['labels'], ['config'], ['issues'], ['labels'], ['comments']]);
   });
 });
 
@@ -305,10 +308,11 @@ describe('readIssueBase : ce que le kanban et toutes les fiches du Projet partag
   const answer = (sql: string): Row[] => {
     if (sql.includes('from dependencies')) return [{ issue_id: 'xx-2', depends_on_issue_id: 'xx-1', type: 'blocks' }];
     if (sql.includes('from labels')) return [{ issue_id: 'xx-1', label: 'declined' }];
+    if (sql.includes('from config')) return [{ value: 'in_review:wip,in_integration:wip,awaiting_human:wip' }];
     return [{ id: 'xx-1', title: 'T', issue_type: 'task', status: 'open', priority: 1, created_at: '2026-10-19 16:46:38', updated_at: '2026-10-19 16:46:38' }];
   };
 
-  it('lit les résumés des tickets, les dépendances et les labels de clôture dans UN processus', async () => {
+  it('lit les résumés des tickets, les dépendances, les labels de clôture et les statuts déclarés dans UN processus', async () => {
     const { db, groups, singles } = groupedDb(answer);
 
     const base = await readIssueBase(db);
@@ -318,9 +322,10 @@ describe('readIssueBase : ce que le kanban et toutes les fiches du Projet partag
     expect(base.summaries.map((s) => s.id)).toEqual(['xx-1']);
     expect(base.dependencies).toEqual([{ from: 'xx-2', to: 'xx-1', type: 'blocks' }]);
     expect(base.labels).toEqual([{ issueId: 'xx-1', label: 'declined' }]);
+    expect(base.declaredStatuses).toEqual({ handoff: ['in_review', 'in_integration', 'awaiting_human'], others: [] });
   });
 
-  it('envoie les mêmes requêtes que readIssueSummaries, readDependencies et readClosureLabels', async () => {
+  it('envoie les mêmes requêtes que readIssueSummaries, readDependencies, readClosureLabels et readDeclaredStatuses', async () => {
     const grouped = groupedDb(answer);
     const single = fakeDb();
 
@@ -328,6 +333,7 @@ describe('readIssueBase : ce que le kanban et toutes les fiches du Projet partag
     await readIssueSummaries(single);
     await readDependencies(single);
     await readClosureLabels(single);
+    await readDeclaredStatuses(single);
 
     expect(grouped.groups[0]).toEqual(single.queries);
   });
@@ -335,8 +341,8 @@ describe('readIssueBase : ce que le kanban et toutes les fiches du Projet partag
   it('se replie sur une lecture par requête avec une base qui ne sait pas grouper', async () => {
     const db = fakeDb([]);
 
-    expect(await readIssueBase(db)).toEqual({ summaries: [], dependencies: [], labels: [] });
-    expect(db.queries).toHaveLength(3);
+    expect(await readIssueBase(db)).toEqual({ summaries: [], dependencies: [], labels: [], declaredStatuses: { handoff: [], others: [] } });
+    expect(db.queries).toHaveLength(4);
   });
 
   // ADR 0008 : le seul label que lit la règle de clôture, au dernier commit ; une ligne par ticket qui le porte, pas tous les labels du Projet.
@@ -394,5 +400,105 @@ describe('readIssueParts : ce qui est propre à une fiche', () => {
 
     expect(await readIssueParts(db, 'xx-1')).toEqual({ record: null, labels: [], comments: [] });
     expect(db.queries).toHaveLength(3);
+  });
+});
+
+/**
+ * Les statuts personnalisés que le Projet déclare (bdesk-pz0.2, ADR 0007) : la clé `status.custom` de la table `config`, au dernier commit. bd y écrit des noms séparés par des
+ * virgules, chacun suivi ou non de `:catégorie` (vérifié avec bd 1.3.1 : `in_review:wip,in_integration:wip,awaiting_human:wip`). Il refuse d'écrire une valeur mal formée, mais la
+ * base vient d'un remote partagé : ce qu'on y trouve est lu sans jamais rendre le Projet illisible.
+ */
+describe('parseCustomStatuses : ce qu’écrit une déclaration de statuts', () => {
+  it('lit la déclaration de la chaîne d’agents, telle que bd l’écrit', () => {
+    expect(parseCustomStatuses('in_review:wip,in_integration:wip,awaiting_human:wip')).toEqual([
+      { name: 'in_review', category: 'wip' },
+      { name: 'in_integration', category: 'wip' },
+      { name: 'awaiting_human', category: 'wip' },
+    ]);
+  });
+
+  it('ne lit rien d’une valeur vide, faite de blancs ou de virgules', () => {
+    expect(parseCustomStatuses('')).toEqual([]);
+    expect(parseCustomStatuses('   ')).toEqual([]);
+    expect(parseCustomStatuses(' , ,, ')).toEqual([]);
+  });
+
+  it('lit un nom sans catégorie, comme les anciennes versions de bd l’écrivent : sa catégorie est inconnue', () => {
+    expect(parseCustomStatuses('awaiting_review,awaiting_testing')).toEqual([
+      { name: 'awaiting_review', category: null },
+      { name: 'awaiting_testing', category: null },
+    ]);
+  });
+
+  it('ne tient pas compte des blancs autour d’une entrée, d’un nom ou d’une catégorie, ni d’une virgule en trop', () => {
+    expect(parseCustomStatuses(' in_review : wip ,\tqa_testing:frozen\n, ,awaiting_human ,')).toEqual([
+      { name: 'in_review', category: 'wip' },
+      { name: 'qa_testing', category: 'frozen' },
+      { name: 'awaiting_human', category: null },
+    ]);
+  });
+
+  it('rend les doublons tels quels, dans l’ordre : c’est la règle du domaine qui n’en garde qu’un (`declareStatuses`)', () => {
+    expect(parseCustomStatuses('qa:wip,in_review:wip,qa:done,in_review')).toEqual([
+      { name: 'qa', category: 'wip' },
+      { name: 'in_review', category: 'wip' },
+      { name: 'qa', category: 'done' },
+      { name: 'in_review', category: null },
+    ]);
+  });
+
+  it('lit une catégorie inconnue, vide ou en double comme inconnue, sans perdre le statut ni ceux qui suivent', () => {
+    expect(parseCustomStatuses('qa:review,parked:,triage:wip:done,later:wip:wip,shipped:done')).toEqual([
+      { name: 'qa', category: null },
+      { name: 'parked', category: null },
+      { name: 'triage', category: null },
+      { name: 'later', category: null },
+      { name: 'shipped', category: 'done' },
+    ]);
+  });
+
+  it('lit la catégorie sans tenir compte de sa casse, et garde le nom tel qu’il est écrit, casse comprise', () => {
+    expect(parseCustomStatuses('in_review:WIP,On_Hold:Frozen,QA:Active')).toEqual([
+      { name: 'in_review', category: 'wip' },
+      { name: 'On_Hold', category: 'frozen' },
+      { name: 'QA', category: 'active' },
+    ]);
+  });
+
+  it('ne lit pas une entrée sans nom', () => {
+    expect(parseCustomStatuses(':wip, :done,in_review:wip')).toEqual([{ name: 'in_review', category: 'wip' }]);
+  });
+});
+
+describe('readDeclaredStatuses : la clé status.custom, au dernier commit', () => {
+  it('ne déclare rien quand la clé est absente : aucune ligne', async () => {
+    expect(await readDeclaredStatuses(fakeDb([]))).toEqual({ handoff: [], others: [] });
+  });
+
+  it('ne déclare rien d’une valeur vide ou NULL (absente de la sortie JSON)', async () => {
+    expect(await readDeclaredStatuses(fakeDb([{ value: '' }]))).toEqual({ handoff: [], others: [] });
+    expect(await readDeclaredStatuses(fakeDb([{}]))).toEqual({ handoff: [], others: [] });
+  });
+
+  it('range ce que la valeur déclare : Statuts de relais, puis les autres avec leur catégorie, chacun une fois', async () => {
+    const db = fakeDb([{ value: 'qa_testing:wip, awaiting_human:wip,in_review:wip,qa_testing:done,in_progress:wip,on_hold:frozen,in_review' }]);
+
+    expect(await readDeclaredStatuses(db)).toEqual({
+      handoff: ['in_review', 'awaiting_human'],
+      others: [
+        { name: 'qa_testing', category: 'wip' },
+        { name: 'on_hold', category: 'frozen' },
+      ],
+    });
+  });
+
+  it('lit la clé dans l’état du dernier commit, non dans le working set : elle décide de la lecture des statuts des tickets (ADR 0001, ADR 0007)', async () => {
+    const db = fakeDb([]);
+
+    await readDeclaredStatuses(db);
+
+    expect(db.queries).toEqual([CUSTOM_STATUSES_SQL]);
+    expect(CUSTOM_STATUSES_SQL).toBe("select `value` from config as of 'HEAD' where `key` = 'status.custom'");
+    expect(readsOutsideHead(db.queries)).toEqual([]);
   });
 });

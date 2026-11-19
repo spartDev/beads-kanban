@@ -76,7 +76,7 @@ export async function registerApi(
 
   app.get<{ Params: { projectId: string } }>(
     '/api/projects/:projectId/issues',
-    async (req): Promise<IssuesResponse> => ({ issues: await projects.issues(req.params.projectId, { signal: req.signal }) }),
+    (req): Promise<IssuesResponse> => projects.board(req.params.projectId, { signal: req.signal }),
   );
 
   app.get<{ Querystring: Record<string, unknown> }>(

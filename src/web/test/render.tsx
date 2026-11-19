@@ -5,7 +5,7 @@ import { StrictMode } from 'react';
 import { vi } from 'vitest';
 import { createMemoryRouter, type InitialEntry, RouterProvider } from 'react-router';
 import { epicOf } from '../../domain/epics';
-import type { ApiSignal, Issue, IssueChronology, IssueDetail, IssueEpic, IssueRef, ProjectsResponse, SinceLastVisitResponse } from '../data/types';
+import type { ApiSignal, Issue, IssueChronology, IssueDetail, IssueEpic, IssueRef, IssuesResponse, ProjectsResponse, SinceLastVisitResponse } from '../data/types';
 import { LanguageProvider } from '../i18n';
 import { routes } from '../routes';
 import { ThemeProvider } from '../theme/ThemeProvider';
@@ -89,7 +89,8 @@ export function stubApi({ projects, issues = {}, details = {}, chronologies = {}
     const list = projectId ? issues[projectId] : undefined;
     if (!projectId || !list) return notFound(`Projet inconnu : ${projectId ?? ''}`);
 
-    if (issueId === undefined) return respond(list, (data) => ({ issues: data }));
+    // Comme le serveur, la liste vient avec les statuts que le Projet déclare (bdesk-pz0.2) : aucun ici, et l'interface ne les lit pas encore.
+    if (issueId === undefined) return respond(list, (data): IssuesResponse => ({ issues: data, declaredStatuses: { handoff: [], others: [] } }));
 
     if (chronologyOnly) {
       const scripted = chronologies[`${projectId}/${issueId}`];
