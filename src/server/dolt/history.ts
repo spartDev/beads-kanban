@@ -56,8 +56,12 @@ const CRITERIA_COLUMN = 'acceptance_criteria';
  * un appel : le garde de lecture seule l'admet sans toucher à sa liste de fonctions. Il ne crée aucune Transition : le filtre ne regarde que le statut et la vie du
  * ticket ; seule l'Intention écrite le lit (`writtenIntentOf`, `flow.ts`).
  *
+ * Les blancs sont ceux d'ICU (`[:space:]`, la propriété White_Space), et le Panneau juge avec `trim()` (`TextSections.tsx`) : ils diffèrent sur deux caractères. Des critères
+ * faits du seul U+FEFF (marque d'ordre des octets) donnent 1, quand le Panneau n'en montre rien ; faits du seul U+0085 (ligne suivante), 0, quand le Panneau les montre.
+ * Le motif reste tel quel : ces cas sont marginaux, et un autre motif n'a pas été essayé derrière un `dolt sql-server`.
+ *
  * Le texte suit les sous-requêtes jusqu'au filtre, et le test ne porte que sur les lignes gardées : Dolt ne lit le texte d'une ligne que quand on le compare. Mesuré sur
- * une base d'essai de 2 084 commits (450 407 lignes d'historique, 1 106 changements de statut), cette requête coûte ainsi 4 % de plus (2,68 s → 2,77 s, médianes de
+ * une base d'essai de 2 084 commits (450 407 lignes d'historique, 1 106 changements de statut), cette requête coûte ainsi 3,4 % de plus (2,68 s → 2,77 s, médianes de
  * onze lectures alternées), contre 12 à 22 % pour le même test fait sur chaque ligne d'historique, dans la sous-requête la plus profonde.
  */
 function statusChangesSql(criteria: boolean): string {
@@ -170,13 +174,18 @@ export async function readTicketHistories(db: DoltDatabase, { now = () => new Da
  * Une base d'un bd d'avant la colonne fait échouer cette lecture. Ce sont alors les colonnes de `dolt_history_issues` qui décident, jamais le texte de l'erreur : elles sont
  * celles du schéma courant, comme pour `dolt_history_dependencies` (`dependencyColumns`). Sans la colonne, l'historique se relit sans les critères, et ses tickets n'ont pas
  * d'Intention écrite connue plutôt qu'un Projet illisible (deux lectures de plus, sur ces seules bases) ; avec elle, l'erreur est bien celle de la lecture, et elle sort telle
- * quelle. Ce qui n'est pas un échec de Dolt (un abandon, `ReadAborted`) ou que la vérification du SQL stocké refuse (`StoredSqlError`) sort aussitôt.
+ * quelle. Sortent aussitôt ce qui n'est pas un échec de Dolt (un abandon, `ReadAborted`), le SQL stocké que la vérification refuse (`StoredSqlError`) et une base tenue
+ * par un autre processus (`locked`) : pour celle-ci, le client a déjà retenté, et la lecture des colonnes retenterait à son tour sans rien y changer.
+ *
+ * Les autres refus de la vérification (une de ses requêtes que Dolt refuse, une base qui change plus vite qu'elle) ne sont pas des `StoredSqlError` et prennent le repli :
+ * la lecture des colonnes passe par la même vérification, qui la refuse de même tant que la cause demeure, et c'est ce refus qui sort ; si elle aboutit, la colonne
+ * décide, comme plus haut.
  */
 async function readStatusChanges(db: DoltDatabase): Promise<Row[]> {
   try {
     return await db.query(statusChangesSql(true));
   } catch (err) {
-    if (!(err instanceof DoltQueryError) || err instanceof StoredSqlError) throw err;
+    if (!(err instanceof DoltQueryError) || err instanceof StoredSqlError || err.locked) throw err;
     const shown = await db.query('show columns from dolt_history_issues');
     if (shown.some((row) => asText(row.Field) === CRITERIA_COLUMN)) throw err;
     return db.query(statusChangesSql(false));

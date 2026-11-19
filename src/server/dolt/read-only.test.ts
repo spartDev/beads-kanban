@@ -752,6 +752,23 @@ describe('assertReadOnly', () => {
       expect(queries.some((sql) => sql.startsWith('show columns from'))).toBe(true);
     });
 
+    it('le repli d’un schéma sans la colonne des critères passe aussi : la lecture des colonnes de l’historique des tickets, puis celle des statuts sans eux', async () => {
+      // La lecture des statuts avec les critères échoue après le garde, comme sur la base d'un bd d'avant leur colonne ; `answer` n'a pas cette colonne.
+      const { db, queries, refused } = guardedDb((sql) => {
+        if (sql.includes('as has_criteria')) throw new DoltQueryError("Dolt ne trouve pas la colonne « acceptance_criteria » que l'app lit.", '/projet');
+        return answer(sql);
+      });
+
+      await readTicketHistories(db);
+
+      expect(refused).toEqual([]);
+      expect(queries).toContain('show columns from dolt_history_issues');
+      const statusReads = queries.filter((sql) => sql.includes('lag('));
+      expect(statusReads).toHaveLength(2);
+      expect(statusReads[0]).toContain('as has_criteria');
+      expect(statusReads[1]).not.toContain('acceptance_criteria');
+    });
+
     it('le test voit un refus : un garde qui refuserait une requête du lecteur ferait échouer le test', async () => {
       const { db, refused } = guardedDb(answer);
 

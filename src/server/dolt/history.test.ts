@@ -1052,6 +1052,7 @@ describe('readTicketHistories : présence des critères d’acceptation', () => 
   it.each([
     ['un abandon', new ReadAborted()],
     ['un refus de la vérification du SQL stocké', new StoredSqlError(['vue « issues »'], '/projet')],
+    ['une base tenue par un autre processus (le client a déjà retenté)', new DoltQueryError('La base est tenue par un autre processus dolt : réessayez dans un instant.', '/projet', true)],
   ])('rend aussitôt %s, sans lire les colonnes ni relire', async (_, failure) => {
     const db = database([1, 1, 1], ISSUE_COLUMNS.filter((column) => column !== 'acceptance_criteria'), failure);
 

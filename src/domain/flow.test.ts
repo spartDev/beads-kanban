@@ -731,6 +731,10 @@ describe('Intention écrite (writtenIntentOf)', () => {
     expect(intentOf([['open', '2026-10-01T09:00', false], ['in_progress', '2026-10-02T09:00', false], ['in_progress', '2026-10-02T12:00', true]])).toBe(false);
   });
 
+  it('suit l’ordre des instantanés, pas leurs dates : une horloge qui recule ne change pas le premier démarrage', () => {
+    expect(intentOf([['open', '2026-10-05T09:00', false], ['in_progress', '2026-10-02T09:00', true]])).toBe(true);
+  });
+
   it.each(['in_progress', 'hooked', 'blocked'])('prend tout Statut de travail pour un démarrage (%s), et la création elle-même si le ticket naît au travail', (status) => {
     expect(intentOf([['open', '2026-10-01T09:00', false], [status, '2026-10-02T09:00', true]])).toBe(true);
     expect(intentOf([[status, '2026-10-01T09:00', true], ['closed', '2026-10-02T09:00', false]])).toBe(true);
