@@ -11,8 +11,10 @@ import type {
   MetricsFailureRateTile,
   MetricsInProgressTicket,
   MetricsReport,
+  MetricsSignificance,
   MetricsSlice,
   MetricsSlices,
+  MetricsSoundThroughputTile,
   MetricsTrend,
   MetricsWipTile,
 } from '../shared/api';
@@ -20,10 +22,11 @@ import { addDays, type BucketSpan, bucketsOf, daysOf, type Period, type PeriodSp
 import { type Column, COLUMNS } from './columns';
 import { analyzeFailures } from './failures';
 import { type AbandonCause, analyzeFlow, isWork, type TicketHistory } from './flow';
+import { isSoundDelivery } from './sound';
 import { buildTimeline, columnAt, isWorking, statusAt, stepsOf, type TicketTimeline } from './timeline';
 
 /**
- * Métriques de flux, DORA transposées : Débit, Lead Time, Cycle Time, Taux d'échec, Temps de rétablissement, WIP,
+ * Métriques de flux, DORA transposées : Débit, Débit sain, Lead Time, Cycle Time, Taux d'échec, Temps de rétablissement, WIP,
  * Arrivées. Du code pur : l'historique des tickets entre, un rapport sérialisable sort (durées en ms, dates ISO).
  *
  * Deux temps. `analyzeProject` fait le travail lourd, indépendant de la période et de l'heure qu'il est : un Projet par
@@ -60,6 +63,8 @@ export interface TrackedTicket {
   cycleTime: number | null;
   /** Livraison ayant au moins un Bug d'origine. */
   failed: boolean;
+  /** Livraison saine : sans Bug d'origine, qu'aucune Réouverture n'a précédée (`isSoundDelivery`) ; faux si le ticket n'est pas une Livraison. */
+  sound: boolean;
   /** Ses Bugs d'origine, chacun avec la date qui compte (`FailureAnalysis.originBugsFound`) ; vide si elle n'en a pas ou n'est pas une Livraison. */
   originBugs: Array<{ id: string; at: number }>;
   /** Premier passage en statut de travail. */
@@ -141,6 +146,7 @@ export function analyzeProject(tickets: MetricsTicket[]): ProjectAnalysis {
     const created = steps[0];
     if (!flow || !created || ticket.type === 'epic') return [];
     const deliveredAt = flow.outcome.kind === 'delivered' ? flow.outcome.at.getTime() : null;
+    const originBugs = failures.originBugs.get(ticket.id) ?? [];
     return [
       {
         id: ticket.id,
@@ -151,7 +157,8 @@ export function analyzeProject(tickets: MetricsTicket[]): ProjectAnalysis {
         deliveredAt,
         leadTime: deliveredAt === null ? null : flow.leadTime,
         cycleTime: deliveredAt === null ? null : flow.cycleTime,
-        failed: (failures.originBugs.get(ticket.id)?.length ?? 0) > 0,
+        failed: originBugs.length > 0,
+        sound: isSoundDelivery(flow, originBugs),
         originBugs: (failures.originBugsFound.get(ticket.id) ?? []).map(({ bug, at }) => ({ id: bug, at: at.getTime() })),
         startedAt: steps.find((step) => isWork(step.status))?.at ?? null,
         abandonedAt: flow.outcome.kind === 'abandoned' ? flow.outcome.at.getTime() : null,
@@ -205,6 +212,7 @@ export function computeMetrics(projects: MetricsInput[], { period: spec, now, ti
     previousAsOf: iso(previousAsOf),
     tiles: {
       throughput: countTile(delivered.length, deliveredBefore.length),
+      soundThroughput: soundThroughputTile(delivered, deliveredBefore, significanceOf(projects), asOf < current.end),
       leadTime: durationTile(leadTimesOf(delivered), leadTimesOf(deliveredBefore)),
       cycleTime: durationTile(cycleTimesOf(delivered), cycleTimesOf(deliveredBefore)),
       failureRate: failureRateTile(delivered, deliveredBefore, coverageOf(projects)),
@@ -282,6 +290,25 @@ function failureRateTile(current: Entry[], previous: Entry[], coverage: MetricsC
     thresholds: { minCoverage: MIN_FAILURE_COVERAGE, minBugs: MIN_FAILURE_BUGS },
     trend: trend(rate(current), rate(previous)),
   };
+}
+
+/**
+ * Débit sain : les Livraisons saines de la fenêtre, parmi celles du Débit. Un Bug d'origine en ôte une, à quelque date qu'il ait été trouvé (comme le Taux d'échec).
+ * Significatif par la règle du Taux d'échec (`significance`) ; provisoire tant que la période court, ses Livraisons n'ayant pas encore eu le temps de revenir.
+ */
+function soundThroughputTile(current: Entry[], previous: Entry[], significance: MetricsSignificance, provisional: boolean): MetricsSoundThroughputTile {
+  const sound = (deliveries: Entry[]) => deliveries.filter(({ ticket }) => ticket.sound).length;
+  return { total: sound(current), deliveries: current.length, ...significance, provisional, trend: trend(sound(current), sound(previous)) };
+}
+
+/**
+ * Ce qui rend significative une mesure tirée des Bugs d'origine (Débit sain, et sa Tendance longue) : la règle du Taux d'échec, ses seuils et ses motifs,
+ * sur la Couverture de tous les bugs des Projets mesurés.
+ */
+export function significanceOf(projects: MetricsInput[]): MetricsSignificance {
+  const coverage = coverageOf(projects);
+  const reasons = insignificance(coverage);
+  return { coverage, significant: reasons.length === 0, reasons, thresholds: { minCoverage: MIN_FAILURE_COVERAGE, minBugs: MIN_FAILURE_BUGS } };
 }
 
 /** La Couverture de tous les bugs des Projets mesurés : une somme, pas une moyenne de ratios. */

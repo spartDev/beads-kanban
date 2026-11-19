@@ -483,6 +483,34 @@ export interface MetricsFailureRateTile {
   trend: MetricsTrend;
 }
 
+/**
+ * Ce qui rend significative une mesure tirée des Bugs d'origine (Débit sain, Tendance longue) : la Couverture de tous les bugs des Projets mesurés, toutes dates
+ * confondues, et les seuils du Taux d'échec. La règle est la sienne, et ses motifs aussi (`MetricsFailureRateTile`).
+ */
+export interface MetricsSignificance {
+  coverage: MetricsCoverage;
+  /** Faux si la Couverture est sous `thresholds.minCoverage` ou s'il y a moins de `thresholds.minBugs` bugs. */
+  significant: boolean;
+  /** Vide quand la mesure est significative. */
+  reasons: MetricsFailureRateReason[];
+  thresholds: { minCoverage: number; minBugs: number };
+}
+
+/**
+ * Débit sain : les Livraisons saines de la période (sans Bug d'origine, qu'aucune Réouverture n'a précédée), à lire à côté du Débit. Un Bug d'origine trouvé
+ * bien après la période rend sa Livraison malsaine après coup, comme il la met en échec dans le Taux d'échec.
+ */
+export interface MetricsSoundThroughputTile extends MetricsSignificance {
+  /** Livraisons saines de la période. */
+  total: number;
+  /** Livraisons de la période (le Débit) : `deliveries - total` sont revenues, rouvertes ou mises en échec. */
+  deliveries: number;
+  /** La période court encore (`asOf` précède `period.end`) : ses Livraisons n'ont pas toutes eu le temps de revenir. */
+  provisional: boolean;
+  /** Tendance du nombre de Livraisons saines. */
+  trend: MetricsTrend;
+}
+
 export interface MetricsWipTile {
   /** Tickets en statut de travail (en cours, rattaché à un agent, bloqué) à `asOf` : maintenant si la période court jusqu'à aujourd'hui. */
   current: number;
@@ -495,6 +523,8 @@ export interface MetricsWipTile {
 export interface MetricsTiles {
   /** Débit : Livraisons de la période. */
   throughput: MetricsCountTile;
+  /** Débit sain : Livraisons saines de la période, parmi celles du Débit. */
+  soundThroughput: MetricsSoundThroughputTile;
   /** Lead Time des Livraisons de la période. */
   leadTime: MetricsDurationTile;
   /** Cycle Time des Livraisons de la période ; les tickets jamais démarrés n'y sont pas. */
@@ -792,6 +822,8 @@ export interface MetricsLongTrendWeek {
   partial: boolean;
   /** Livraisons de la semaine. */
   throughput: number;
+  /** Parmi elles, les Livraisons saines : le Débit sain de la semaine (voir `MetricsLongTrend.soundSignificance`). */
+  soundThroughput: number;
   /** P85 du Lead Time des Livraisons de la semaine ; null sans Livraison. */
   leadTimeP85: number | null;
   /** Au moins `MetricsLongTrend.minDeliveries` Livraisons : en dessous, le centile est montré, mais ne dit pas grand-chose. */
@@ -812,6 +844,8 @@ export interface MetricsLongTrend {
   weeks: MetricsLongTrendWeek[];
   /** Le seuil de `reliable` : 4 Livraisons. */
   minDeliveries: number;
+  /** Si le Débit sain des semaines est significatif : une seule Couverture pour les 12, celle de tous les bugs, comme pour la tuile du Débit sain. */
+  soundSignificance: MetricsSignificance;
 }
 
 export interface MetricsHealth {

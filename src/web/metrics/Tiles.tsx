@@ -1,12 +1,13 @@
-import { ArrowDown, ArrowUp, Info, Minus, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { ArrowDown, ArrowUp, Hourglass, Info, Minus, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { useId, type ReactNode } from 'react';
-import type { MetricsDurationTile, MetricsFailureRateTile, MetricsTiles, MetricsTrend, MetricsWipTile } from '../../shared/api';
+import type { MetricsDurationTile, MetricsFailureRateTile, MetricsSoundThroughputTile, MetricsTiles, MetricsTrend, MetricsWipTile } from '../../shared/api';
 import { cx } from '../lib/cx';
 import { useFormat, useLanguage, useT } from '../i18n';
 import { Tip } from '../ui/Tip';
 import { SectionHeading } from './ChartParts';
 import type { Comparison } from './comparison';
 import { failureRateReason } from './failureReason';
+import { INDICATOR_GRID, INDICATOR_SPANS } from './indicatorGrid';
 import { DurationText, SpokenText } from './SpokenText';
 import { describeTrend, MEASURES, type Measure, type TrendDirection, type TrendTone } from './trend';
 
@@ -16,9 +17,10 @@ const TONE_CLASSES: Record<TrendTone, string> = { good: 'text-(--good)', bad: 't
 const lowerFirst = (sentence: string) => sentence.charAt(0).toLowerCase() + sentence.slice(1);
 
 /**
- * Les six tuiles de la page : Débit, Lead Time, Cycle Time, Taux d'échec, Temps de rétablissement, WIP. Chacune donne
- * sa valeur, la taille de l'échantillon, et sa tendance par rapport à la période précédente. Une tuile qui ne peut rien
- * dire le dit : aucune Livraison, ou Taux d'échec non significatif.
+ * Les sept tuiles de la page : Débit, Débit sain, Lead Time, Cycle Time, Taux d'échec, Temps de rétablissement, WIP. Chacune
+ * donne sa valeur, la taille de l'échantillon, et sa tendance par rapport à la période précédente. Une tuile qui ne peut rien
+ * dire le dit : aucune Livraison, ou Taux d'échec et Débit sain non significatifs. Le Débit sain est toujours à côté du Débit
+ * (`INDICATOR_GRID`).
  */
 export function MetricTiles({ tiles, comparison }: { tiles: MetricsTiles; comparison: Comparison }) {
   const titleId = useId();
@@ -29,8 +31,9 @@ export function MetricTiles({ tiles, comparison }: { tiles: MetricsTiles; compar
   return (
     <section aria-labelledby={titleId} className="flex flex-col gap-3">
       <SectionHeading id={titleId}>{texts.heading}</SectionHeading>
-      <div className="grid grid-cols-2 gap-3 @min-[36rem]:grid-cols-3 @min-[68rem]:grid-cols-6">
-        <ThroughputTile tile={tiles.throughput} comparison={comparison} />
+      <div className={INDICATOR_GRID}>
+        <ThroughputTile tile={tiles.throughput} comparison={comparison} className={INDICATOR_SPANS[0]} />
+        <SoundThroughputTile tile={tiles.soundThroughput} comparison={comparison} className={INDICATOR_SPANS[1]} />
         <DurationTile
           title={texts.leadTime}
           help={help.leadTime}
@@ -38,6 +41,7 @@ export function MetricTiles({ tiles, comparison }: { tiles: MetricsTiles; compar
           sample={texts.deliveries(tiles.leadTime.n, formatCount(tiles.leadTime.n))}
           empty={texts.noDeliveries}
           comparison={comparison}
+          className={INDICATOR_SPANS[2]}
         />
         <DurationTile
           title={texts.cycleTime}
@@ -46,8 +50,9 @@ export function MetricTiles({ tiles, comparison }: { tiles: MetricsTiles; compar
           sample={texts.deliveries(tiles.cycleTime.n, formatCount(tiles.cycleTime.n))}
           empty={texts.noStartedDeliveries}
           comparison={comparison}
+          className={INDICATOR_SPANS[3]}
         />
-        <FailureRateTile tile={tiles.failureRate} comparison={comparison} />
+        <FailureRateTile tile={tiles.failureRate} comparison={comparison} className={INDICATOR_SPANS[4]} />
         <DurationTile
           title={texts.recoveryTime}
           help={help.recoveryTime}
@@ -55,8 +60,9 @@ export function MetricTiles({ tiles, comparison }: { tiles: MetricsTiles; compar
           sample={texts.criticalBugs(tiles.recoveryTime.n, formatCount(tiles.recoveryTime.n))}
           empty={texts.noCriticalBugs}
           comparison={comparison}
+          className={INDICATOR_SPANS[5]}
         />
-        <WipTile tile={tiles.wip} comparison={comparison} />
+        <WipTile tile={tiles.wip} comparison={comparison} className={INDICATOR_SPANS[6]} />
       </div>
       <p className="flex items-start gap-1.5 text-micro leading-4 text-ink-3">
         <Info size={12} aria-hidden="true" className="mt-0.5 shrink-0" />
@@ -178,14 +184,68 @@ export function Trend({ trend, measure, comparison, label, hasValue = true }: { 
   );
 }
 
-function ThroughputTile({ tile, comparison }: { tile: MetricsTiles['throughput']; comparison: Comparison }) {
+function ThroughputTile({ tile, comparison, className }: { tile: MetricsTiles['throughput']; comparison: Comparison; className?: string }) {
   const t = useT();
   const format = useFormat();
   const { language } = useLanguage();
   return (
-    <Tile title={t.metrics.tiles.throughput} help={t.metrics.metricHelp.throughput}>
+    <Tile title={t.metrics.tiles.throughput} help={t.metrics.metricHelp.throughput} className={className}>
       <Value caption={t.metrics.tiles.deliveriesInPeriod}>{format.formatCount(tile.total)}</Value>
       <Trend trend={tile.trend} measure={MEASURES[language].count} comparison={comparison} />
+    </Tile>
+  );
+}
+
+/**
+ * Le Débit sain, à côté du Débit : les Livraisons saines de la période, et leur écart avec le Débit (les Livraisons revenues). Comme le Taux d'échec, il ne
+ * vaut que si la Couverture des bugs est assez haute : sinon la tuile le dit, avec le motif, garde le nombre observé en retrait et n'avance pas de tendance.
+ * Tant que la période court, il est provisoire : ses Livraisons n'ont pas toutes eu le temps de revenir, et la tuile le dit en toutes lettres. Sans aucune
+ * Livraison, il n'y a rien qui puisse revenir : elle ne le dit pas.
+ */
+function SoundThroughputTile({ tile, comparison, className }: { tile: MetricsSoundThroughputTile; comparison: Comparison; className?: string }) {
+  const t = useT();
+  const { formatCount } = useFormat();
+  const { language } = useLanguage();
+  const texts = t.metrics.tiles;
+  const help = t.metrics.metricHelp.soundThroughput;
+  const provisional = tile.provisional && tile.deliveries > 0 ? (
+    <p data-provisional="" className="flex items-start gap-1.5 text-micro leading-4 text-ink-2">
+      <Hourglass size={12} aria-hidden="true" className="mt-0.5 shrink-0 text-ink-3" />
+      {texts.provisional}
+    </p>
+  ) : null;
+
+  if (!tile.significant) {
+    // Le motif est écrit dans la langue de l'interface à partir des codes de l'API, comme celui du Taux d'échec : c'est le même.
+    const reason = failureRateReason(tile, language);
+    return (
+      <Tile title={texts.soundThroughput} help={help} indicative className={className}>
+        <div className="flex flex-col gap-1">
+          <p className="flex items-center gap-1.5 text-base font-bold leading-9 text-ink-2">
+            <TriangleAlert size={15} aria-hidden="true" className="shrink-0 text-ink-3" />
+            {texts.notSignificant}
+          </p>
+          {reason ? <p className="text-micro leading-4 text-ink-2">{reason}</p> : null}
+          <p data-gap="" className="text-micro text-ink-3 tnum">
+            {tile.deliveries === 0 ? texts.noDeliveries : texts.observedSound(formatCount(tile.total), tile.deliveries, formatCount(tile.deliveries))}
+          </p>
+        </div>
+        {provisional}
+      </Tile>
+    );
+  }
+
+  const gap = tile.deliveries - tile.total;
+  return (
+    <Tile title={texts.soundThroughput} help={help} className={className}>
+      <Value caption={texts.soundDeliveriesInPeriod}>{formatCount(tile.total)}</Value>
+      <Trend trend={tile.trend} measure={MEASURES[language].count} comparison={comparison} />
+      <div className="flex flex-col gap-1 border-t border-line pt-2">
+        <p data-gap="" className="text-micro text-ink-3 tnum">
+          {tile.deliveries === 0 ? texts.noDeliveries : gap === 0 ? texts.allSound : texts.belowThroughput(gap, formatCount(gap), formatCount(tile.deliveries))}
+        </p>
+        {provisional}
+      </div>
     </Tile>
   );
 }
@@ -194,14 +254,30 @@ function ThroughputTile({ tile, comparison }: { tile: MetricsTiles['throughput']
  * Lead Time, Cycle Time, Temps de rétablissement : la médiane en grand, le P85 dessous, chacun avec sa tendance. Quand la
  * période précédente n'a rien à comparer, une seule phrase le dit pour les deux.
  */
-function DurationTile({ title, help, tile, sample, empty, comparison }: { title: string; help?: string; tile: MetricsDurationTile; sample: string; empty: string; comparison: Comparison }) {
+function DurationTile({
+  title,
+  help,
+  tile,
+  sample,
+  empty,
+  comparison,
+  className,
+}: {
+  title: string;
+  help?: string;
+  tile: MetricsDurationTile;
+  sample: string;
+  empty: string;
+  comparison: Comparison;
+  className?: string;
+}) {
   const defined = tile.n > 0 && tile.median !== null;
   const nothingBefore = tile.trend.median.previous === null && tile.trend.p85.previous === null;
   const t = useT();
   const texts = t.metrics.tiles;
   const measure = MEASURES[useLanguage().language].duration;
   return (
-    <Tile title={title} help={help} sample={sample}>
+    <Tile title={title} help={help} sample={sample} className={className}>
       <div className="flex flex-col gap-1">
         <Value muted={!defined} caption={defined ? texts.median : empty}>
           <DurationText ms={tile.median} />
@@ -229,7 +305,7 @@ function DurationTile({ title, help, tile, sample, empty, comparison }: { title:
  * et n'avance pas de tendance entre deux nombres sans valeur. Le taux observé reste lisible, en retrait, pour qui
  * veut le recouper.
  */
-function FailureRateTile({ tile, comparison }: { tile: MetricsFailureRateTile; comparison: Comparison }) {
+function FailureRateTile({ tile, comparison, className }: { tile: MetricsFailureRateTile; comparison: Comparison; className?: string }) {
   const t = useT();
   const { formatCount, formatPercent } = useFormat();
   const { language } = useLanguage();
@@ -242,7 +318,7 @@ function FailureRateTile({ tile, comparison }: { tile: MetricsFailureRateTile; c
     // Le motif est écrit dans la langue de l'interface à partir des codes de l'API : celui du serveur (`tile.reason`) est en français.
     const reason = failureRateReason(tile, language);
     return (
-      <Tile title={texts.failureRate} help={t.metrics.metricHelp.failureRate} sample={sample} indicative>
+      <Tile title={texts.failureRate} help={t.metrics.metricHelp.failureRate} sample={sample} indicative className={className}>
         <div className="flex flex-col gap-1">
           <p className="flex items-center gap-1.5 text-base font-bold leading-9 text-ink-2">
             <TriangleAlert size={15} aria-hidden="true" className="shrink-0 text-ink-3" />
@@ -257,7 +333,7 @@ function FailureRateTile({ tile, comparison }: { tile: MetricsFailureRateTile; c
 
   const defined = tile.rate !== null;
   return (
-    <Tile title={texts.failureRate} help={t.metrics.metricHelp.failureRate} sample={sample}>
+    <Tile title={texts.failureRate} help={t.metrics.metricHelp.failureRate} sample={sample} className={className}>
       <Value muted={!defined} caption={defined ? texts.failedOf(failed, deliveries) : texts.noDeliveries}>
         {formatPercent(tile.rate, { precise: true })}
       </Value>
@@ -267,13 +343,13 @@ function FailureRateTile({ tile, comparison }: { tile: MetricsFailureRateTile; c
   );
 }
 
-function WipTile({ tile, comparison }: { tile: MetricsWipTile; comparison: Comparison }) {
+function WipTile({ tile, comparison, className }: { tile: MetricsWipTile; comparison: Comparison; className?: string }) {
   const t = useT();
   const { formatCount, formatDecimal } = useFormat();
   const { language } = useLanguage();
   const texts = t.metrics.tiles;
   return (
-    <Tile title={texts.wip} help={t.metrics.metricHelp.wip}>
+    <Tile title={texts.wip} help={t.metrics.metricHelp.wip} className={className}>
       <Value caption={comparison.running ? texts.wipAt(comparison.asOfTime) : texts.wipAtEnd}>{formatCount(tile.current)}</Value>
       <div className="flex flex-col gap-1 border-t border-line pt-2">
         <p className="flex items-baseline gap-1.5">

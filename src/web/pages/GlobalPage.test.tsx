@@ -46,8 +46,9 @@ describe('la Vue globale', () => {
 
     expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?range=30d&timeZone=Europe%2FParis']);
     expect(screen.getByRole('heading', { level: 1, name: 'Vue globale' })).toBeTruthy();
-    expect(screen.getAllByRole('article')).toHaveLength(11);
+    expect(screen.getAllByRole('article')).toHaveLength(12);
     expect(plain(page().getByRole('article', { name: 'Débit' }).textContent)).toContain('18Livraisons sur la période');
+    expect(plain(page().getByRole('article', { name: 'Débit sain' }).textContent)).toContain('Observé : 14 sur 18 Livraisons');
     await waitFor(() => expect(document.title).toBe('Vue globale · Throughline'));
   });
 
@@ -106,7 +107,7 @@ describe('la Vue globale', () => {
     await loaded();
 
     expect(screen.getByText('Un Projet illisible, absent de ces chiffres')).toBeTruthy();
-    expect(screen.getAllByRole('article')).toHaveLength(11);
+    expect(screen.getAllByRole('article')).toHaveLength(12);
   });
 
   it('garde la liste des Projets suivis, avec leur état et les dossiers ignorés', async () => {
