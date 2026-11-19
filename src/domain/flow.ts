@@ -8,6 +8,11 @@ export type TicketId = string;
 export interface StatusSnapshot {
   status: string;
   at: Date;
+  /**
+   * Les critères d'acceptation du ticket sont-ils renseignés (autre chose que des blancs) dans ce même instantané ? Absent quand l'historique ne le dit pas :
+   * une base dont le schéma n'a pas leur colonne, ou un commit d'avant elle. Seule l'Intention écrite le lit (`writtenIntentOf`) ; il ne date rien.
+   */
+  hasAcceptanceCriteria?: boolean;
 }
 
 export interface DependencyHistory {
@@ -75,6 +80,8 @@ export interface TicketFlow {
   /** Temps en Backlog avant le premier démarrage, en ms ; null si non fermé. */
   dependencyWait: number | null;
   reopenings: number;
+  /** Intention écrite, fermé ou non : voir `writtenIntentOf`. */
+  writtenIntent: boolean | null;
 }
 
 const WORK_STATUSES = new Set(['in_progress', 'hooked', 'blocked']);
@@ -106,6 +113,7 @@ export function analyzeFlow(tickets: TicketHistory[]): Map<TicketId, TicketFlow>
 function analyzeTicket(ticket: TicketHistory, transitionsById: Map<TicketId, Transition[]>): TicketFlow {
   const transitions = transitionsById.get(ticket.id) ?? [];
   const reopenings = transitions.filter((_, i) => transitions[i - 1]?.status === 'closed').length;
+  const writtenIntent = writtenIntentOf(ticket.statusSnapshots);
   const created = transitions[0];
   const last = transitions.at(-1);
   if (!created || last?.status !== 'closed') {
@@ -117,6 +125,7 @@ function analyzeTicket(ticket: TicketHistory, transitionsById: Map<TicketId, Tra
       blockedTime: null,
       dependencyWait: null,
       reopenings,
+      writtenIntent,
     };
   }
   const work = periods(transitions, isWork);
@@ -131,7 +140,20 @@ function analyzeTicket(ticket: TicketHistory, transitionsById: Map<TicketId, Tra
     blockedTime: measure(intersect(blockage, work)),
     dependencyWait: measure(intersect(blockage, backlogBeforeStart)),
     reopenings,
+    writtenIntent,
   };
+}
+
+/**
+ * L'Intention écrite d'un ticket : ses critères d'acceptation étaient-ils renseignés à son premier démarrage ? C'est le premier instantané en Statut de travail
+ * qui le dit, celui de la Transition du premier démarrage (aucun instantané de ce statut ne le précède) : des critères écrits dans le commit même du démarrage
+ * comptent ; écrits, vidés ou réécrits ensuite, en cours de travail ou après un retour à ouvert, ils n'y changent rien.
+ *
+ * null, jamais false, quand on ne peut pas répondre : le ticket n'a jamais été démarré (sans objet), ou l'historique ne dit rien de ses critères à cet instantané
+ * (inconnue : un schéma ou un commit d'avant leur colonne). Un ticket sans historique n'a pas d'instantané : null de même.
+ */
+export function writtenIntentOf(snapshots: readonly StatusSnapshot[]): boolean | null {
+  return snapshots.find((snapshot) => isWork(snapshot.status))?.hasAcceptanceCriteria ?? null;
 }
 
 /**

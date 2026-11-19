@@ -747,6 +747,7 @@ describe('assertReadOnly', () => {
       expect(tablesRead(queries)).toEqual(new Set(['config', 'issues', 'dependencies', 'labels', 'comments']));
       expect(queries.some((sql) => sql.includes('dolt_commit_ancestors'))).toBe(true);
       expect(queries.some((sql) => sql.includes('dolt_history_issues'))).toBe(true);
+      expect(queries.some((sql) => sql.includes('as has_criteria'))).toBe(true);
       expect(queries.some((sql) => sql.includes('`ma_base/c1`.dolt_history_dependencies'))).toBe(true);
       expect(queries.some((sql) => sql.startsWith('show columns from'))).toBe(true);
     });

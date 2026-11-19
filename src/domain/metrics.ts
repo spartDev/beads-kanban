@@ -62,6 +62,11 @@ export interface TrackedTicket {
   originBugs: Array<{ id: string; at: number }>;
   /** Premier passage en statut de travail. */
   startedAt: number | null;
+  /**
+   * Intention écrite : ses critères d'acceptation étaient renseignés à son premier démarrage (`writtenIntentOf`). null s'il n'a jamais été démarré (`startedAt`
+   * null : sans objet) ou si l'historique ne dit pas ses critères à ce moment (inconnue) ; jamais false dans ces deux cas.
+   */
+  writtenIntent: boolean | null;
   /** Date de l'Abandon (dernière clôture) ; null si le ticket n'en est pas un. */
   abandonedAt: number | null;
   /** Pourquoi : un doublon, ou un ticket remplacé. */
@@ -150,6 +155,7 @@ export function analyzeProject(tickets: MetricsTicket[]): ProjectAnalysis {
         failed: (failures.originBugs.get(ticket.id)?.length ?? 0) > 0,
         originBugs: (failures.originBugsFound.get(ticket.id) ?? []).map(({ bug, at }) => ({ id: bug, at: at.getTime() })),
         startedAt: steps.find((step) => isWork(step.status))?.at ?? null,
+        writtenIntent: flow.writtenIntent,
         abandonedAt: flow.outcome.kind === 'abandoned' ? flow.outcome.at.getTime() : null,
         abandonCause: flow.outcome.kind === 'abandoned' ? flow.outcome.cause : null,
         blockedTime: deliveredAt === null ? null : flow.blockedTime,

@@ -1,6 +1,6 @@
 import { ABANDON_LINK_TYPES } from '../../domain/abandon';
 import type { DependencyHistory, StatusSnapshot, TicketHistory } from '../../domain/flow';
-import { type DoltDatabase, parseDoltDate, parseDoltInteger, queryAll, sqlIdent, sqlString } from './client';
+import { type DoltDatabase, DoltQueryError, parseDoltDate, parseDoltInteger, queryAll, type Row, sqlIdent, sqlString } from './client';
 import { ascendingDates } from './commit-dates';
 import { asText, AT_HEAD, TARGET_COLUMNS, toDependency } from './reader';
 import { revisionTablesSql, StoredSqlError, storedSqlInSource } from './stored-sql';
@@ -36,6 +36,9 @@ const LINEAGE = `with recursive lineage (commit_hash, seq) as (
      where a.parent_hash is not null
   )`;
 
+/** La colonne des critères d'acceptation, que lit l'Intention écrite. Un schéma de bd d'avant elle ne l'a pas : voir `readStatusChanges`. */
+const CRITERIA_COLUMN = 'acceptance_criteria';
+
 /**
  * Statuts successifs de chaque ticket : un seul instantané par changement de statut, daté du commit
  * qui l'a enregistré (UTC), tel que `dolt_log` le date ; `readTicketHistories` lui donne la date de ce commit dans la lignée rendue
@@ -46,13 +49,27 @@ const LINEAGE = `with recursive lineage (commit_hash, seq) as (
  * un écart de plus de 1 entre deux apparitions du ticket est un trou, que `lag` enjamberait sans le voir.
  * `seq` croît vers le passé : `order by seq desc` range les commits du plus ancien au plus récent.
  * `commit_hash` est le commit de l'instantané : pour un `restart`, celui où commence la vie du ticket.
+ *
+ * Avec `criteria` (le schéma a la colonne : `readStatusChanges`), `has_criteria` dit si les critères d'acceptation du ticket sont renseignés dans ce même instantané :
+ * 1 s'ils ont autre chose que des blancs (le Panneau de ticket ne montre pas non plus des critères vides ou faits d'espaces), 0 sinon, NULL (absent de la ligne) à un
+ * commit d'avant la colonne, où `dolt_history_issues` n'en a pas. C'est un booléen calculé par Dolt : le texte ne sort jamais de la base. `regexp` est un opérateur, non
+ * un appel : le garde de lecture seule l'admet sans toucher à sa liste de fonctions. Il ne crée aucune Transition : le filtre ne regarde que le statut et la vie du
+ * ticket ; seule l'Intention écrite le lit (`writtenIntentOf`, `flow.ts`).
+ *
+ * Le texte suit les sous-requêtes jusqu'au filtre, et le test ne porte que sur les lignes gardées : Dolt ne lit le texte d'une ligne que quand on le compare. Mesuré sur
+ * une base d'essai de 2 084 commits (450 407 lignes d'historique, 1 106 changements de statut), cette requête coûte ainsi 4 % de plus (2,68 s → 2,77 s, médianes de
+ * onze lectures alternées), contre 12 à 22 % pour le même test fait sur chaque ligne d'historique, dans la sous-requête la plus profonde.
  */
-const STATUS_CHANGES_SQL = `${LINEAGE}
-  select id, status, changed_at, restart, commit_hash from (
-    select id, status, changed_at, commit_hash, seq, previous,
+function statusChangesSql(criteria: boolean): string {
+  const [hasCriteria, carried, read] = criteria
+    ? [`, ${CRITERIA_COLUMN} regexp '[^[:space:]]' as has_criteria`, ` ${CRITERIA_COLUMN},`, ` h.${CRITERIA_COLUMN} as ${CRITERIA_COLUMN},`]
+    : ['', '', ''];
+  return `${LINEAGE}
+  select id, status, changed_at, restart, commit_hash${hasCriteria} from (
+    select id, status, changed_at, commit_hash, seq, previous,${carried}
            case when previous_seq is null or previous_seq - seq > 1 then 1 else 0 end as restart
     from (
-      select h.id as id, h.status as status, l.date as changed_at, h.commit_hash as commit_hash, ln.seq as seq,
+      select h.id as id, h.status as status, l.date as changed_at, h.commit_hash as commit_hash, ln.seq as seq,${read}
              lag(h.status) over (partition by h.id order by ln.seq desc) as previous,
              lag(ln.seq) over (partition by h.id order by ln.seq desc) as previous_seq
       from dolt_history_issues h
@@ -62,6 +79,7 @@ const STATUS_CHANGES_SQL = `${LINEAGE}
   ) s
   where restart = 1 or previous <> status
   order by id, seq desc`;
+}
 
 /** Les commits de la lignée, du plus ancien au plus récent. */
 const COMMITS_SQL = `${LINEAGE}
@@ -90,7 +108,8 @@ export interface ReadHistoryOptions {
 
 /**
  * Historique complet des tickets du Projet, au format attendu par `analyzeFlow` : statuts datés par les
- * commits Dolt, dépendances avec leur date d'ajout et de retrait. Seuls les tickets qui existent au dernier commit sont renvoyés, avec
+ * commits Dolt (chacun avec la présence des critères d'acceptation à ce commit, quand l'historique la connaît), dépendances avec leur date d'ajout et de retrait.
+ * Seuls les tickets qui existent au dernier commit sont renvoyés, avec
  * le type qu'ils y ont (`AT_HEAD`, `reader.ts`) : la liste est celle du tableau, qui lit le même état, et un ticket supprimé ou retypé
  * sans commit y est tel qu'au dernier commit.
  *
@@ -105,7 +124,7 @@ export async function readTicketHistories(db: DoltDatabase, { now = () => new Da
     .then((rows) => rows.map((row): Commit => ({ hash: asText(row.commit_hash), at: parseDoltDate(row.date) })));
   const [tickets, statusChanges, recordedCommits, appearances] = await Promise.all([
     db.query(`select id, issue_type from issues ${AT_HEAD} order by id`),
-    db.query(STATUS_CHANGES_SQL),
+    readStatusChanges(db),
     commitsRequest,
     readDependencyAppearances(db, commitsRequest),
   ]);
@@ -122,7 +141,12 @@ export async function readTicketHistories(db: DoltDatabase, { now = () => new Da
     // Une nouvelle vie du ticket (recréation après un trou) fait oublier la précédente, dépendances comprises.
     if (restart && snapshots.has(id)) recreations.set(id, asText(row.commit_hash));
     const list = restart ? [] : (snapshots.get(id) ?? []);
-    list.push({ status: asText(row.status), at: dates.get(asText(row.commit_hash)) ?? parseDoltDate(row.changed_at) });
+    const criteria = parseDoltInteger(row.has_criteria, 'has_criteria'); // absent : l'historique ne dit rien des critères à ce commit
+    list.push({
+      status: asText(row.status),
+      at: dates.get(asText(row.commit_hash)) ?? parseDoltDate(row.changed_at),
+      ...(criteria === undefined ? {} : { hasAcceptanceCriteria: criteria === 1 }),
+    });
     snapshots.set(id, list);
   }
 
@@ -137,6 +161,26 @@ export async function readTicketHistories(db: DoltDatabase, { now = () => new Da
       dependencies: dependencies.get(id) ?? [],
     };
   });
+}
+
+/**
+ * Les changements de statut (`statusChangesSql`), avec la présence des critères d'acceptation quand le schéma a leur colonne. Ils se lisent d'abord avec elle : sur le
+ * schéma de bd d'aujourd'hui, pas un processus de plus qu'avant, ni une lecture de plus à attendre avant celle des statuts, la plus longue de l'historique.
+ *
+ * Une base d'un bd d'avant la colonne fait échouer cette lecture. Ce sont alors les colonnes de `dolt_history_issues` qui décident, jamais le texte de l'erreur : elles sont
+ * celles du schéma courant, comme pour `dolt_history_dependencies` (`dependencyColumns`). Sans la colonne, l'historique se relit sans les critères, et ses tickets n'ont pas
+ * d'Intention écrite connue plutôt qu'un Projet illisible (deux lectures de plus, sur ces seules bases) ; avec elle, l'erreur est bien celle de la lecture, et elle sort telle
+ * quelle. Ce qui n'est pas un échec de Dolt (un abandon, `ReadAborted`) ou que la vérification du SQL stocké refuse (`StoredSqlError`) sort aussitôt.
+ */
+async function readStatusChanges(db: DoltDatabase): Promise<Row[]> {
+  try {
+    return await db.query(statusChangesSql(true));
+  } catch (err) {
+    if (!(err instanceof DoltQueryError) || err instanceof StoredSqlError) throw err;
+    const shown = await db.query('show columns from dolt_history_issues');
+    if (shown.some((row) => asText(row.Field) === CRITERIA_COLUMN)) throw err;
+    return db.query(statusChangesSql(false));
+  }
 }
 
 /**

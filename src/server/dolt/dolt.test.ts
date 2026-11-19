@@ -69,10 +69,11 @@ describe.skipIf(!hasBinary('dolt'))('lecteur Dolt sur une base dont le schéma a
     const histories = await readTicketHistories(db);
     const byId = new Map(histories.map((h) => [h.id, h]));
 
+    // Les critères d'acceptation de t-1 sont vides à chaque changement de statut : la base a leur colonne, l'Intention écrite le lit.
     expect(byId.get('t-1')?.statusSnapshots).toEqual([
-      { status: 'open', at: at(day(1)) },
-      { status: 'in_progress', at: at(day(2)) },
-      { status: 'closed', at: at(day(3)) },
+      { status: 'open', at: at(day(1)), hasAcceptanceCriteria: false },
+      { status: 'in_progress', at: at(day(2)), hasAcceptanceCriteria: false },
+      { status: 'closed', at: at(day(3)), hasAcceptanceCriteria: false },
     ]);
     expect(byId.get('t-2')?.statusSnapshots.map((s) => s.status)).toEqual(['open', 'in_progress', 'closed']);
     expect(byId.get('t-3')?.type).toBe('epic');

@@ -1467,3 +1467,29 @@ describe('horloge de commit qui recule', () => {
     expect(delivered).toBeGreaterThan(1000);
   });
 });
+
+describe('Intention écrite du ticket mesuré', () => {
+  /** Un ticket dont chaque instantané dit si ses critères d'acceptation étaient renseignés (undefined : l'historique ne le dit pas). */
+  const withCriteria = (id: string, seen: [status: string, iso: string, criteria?: boolean][]): MetricsTicket => ({
+    ...ticket(id, []),
+    statusSnapshots: seen.map(([status, iso, criteria]) => ({ status, at: at(iso), ...(criteria === undefined ? {} : { hasAcceptanceCriteria: criteria }) })),
+  });
+
+  it('la porte, livré ou en cours : oui, non, inconnue ; sans objet (null) pour un ticket jamais démarré', () => {
+    const { tickets } = analyzeProject([
+      withCriteria('avant', [['open', '2026-10-19T08:00', true], ['in_progress', '2026-10-20T08:00', true], ['closed', '2026-10-21T08:00', true]]),
+      withCriteria('apres', [['open', '2026-10-19T08:00', false], ['in_progress', '2026-10-20T08:00', false], ['closed', '2026-10-21T08:00', true]]),
+      withCriteria('en-cours', [['open', '2026-10-19T08:00', false], ['in_progress', '2026-10-20T08:00', true]]),
+      withCriteria('inconnue', [['open', '2026-10-19T08:00'], ['in_progress', '2026-10-20T08:00']]),
+      withCriteria('jamais', [['open', '2026-10-19T08:00', true], ['closed', '2026-10-20T08:00', true]]),
+    ]);
+
+    expect(tickets.map(({ id, startedAt, writtenIntent }) => [id, startedAt !== null, writtenIntent])).toEqual([
+      ['avant', true, true],
+      ['apres', true, false],
+      ['en-cours', true, true],
+      ['inconnue', true, null],
+      ['jamais', false, null],
+    ]);
+  });
+});

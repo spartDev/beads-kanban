@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { analyzeChronologies } from '../../domain/chronology';
 import { analyzeFailures } from '../../domain/failures';
 import { analyzeFlow } from '../../domain/flow';
+import { ReadAborted } from '../abort';
 import { readsOutsideHead, tablesRead } from '../testing/reads-at-head';
 import { type DoltDatabase, DoltQueryError, type Row } from './client';
 import { type Commit, dependencyLifetimes, readTicketHistories } from './history';
@@ -167,6 +168,11 @@ describe('dependencyLifetimes', () => {
   });
 });
 
+/** Colonnes de `dolt_history_issues` selon le schéma de bd, avec les critères d'acceptation. */
+const ISSUE_COLUMNS = ['id', 'title', 'description', 'design', 'acceptance_criteria', 'notes', 'status', 'issue_type', 'commit_hash', 'committer', 'commit_date'];
+/** La réponse à `show columns from dolt_history_issues` ; sans réponse donnée, la base factice rend celle du schéma de bd (`ISSUE_COLUMNS`). */
+const issueColumns = (fields: string[]) => ({ match: /^show columns from dolt_history_issues$/, rows: fields.map((Field) => ({ Field, Type: 'text' })) });
+
 /** Une base factice qui répond selon la requête reçue. */
 function fakeDb(answers: { match: RegExp; rows: Row[] }[]): DoltDatabase & { queries: string[] } {
   const queries: string[] = [];
@@ -175,7 +181,7 @@ function fakeDb(answers: { match: RegExp; rows: Row[] }[]): DoltDatabase & { que
     queries,
     async query(sql) {
       queries.push(sql);
-      const answer = answers.find((a) => a.match.test(sql));
+      const answer = [...answers, issueColumns(ISSUE_COLUMNS)].find((a) => a.match.test(sql));
       if (!answer) throw new Error(`requête inattendue : ${sql}`);
       return answer.rows;
     },
@@ -935,5 +941,122 @@ describe('readTicketHistories : la recréation d’un ticket arrive en chaîne d
 
     await expect(refused).rejects.toBeInstanceOf(DoltQueryError);
     await expect(refused).rejects.toThrow(/Entier Dolt invalide \(restart\)/);
+  });
+});
+
+/**
+ * L'Intention écrite (bdesk-3e9.4) : la présence des critères d'acceptation à chaque changement de statut, un booléen que Dolt calcule (`has_criteria`), jamais leur
+ * texte. Une base d'un bd d'avant leur colonne se lit sans.
+ */
+describe('readTicketHistories : présence des critères d’acceptation', () => {
+  const log = ['c0', 'c1', 'c2'].map((commit_hash, i) => ({ commit_hash, date: `2026-10-0${i + 1} 10:00:00.000` }));
+  const tickets = [{ id: 'p-1', issue_type: 'task' }];
+  const statuses = (criteria: unknown[]): Row[] =>
+    ['open', 'in_progress', 'closed'].map((status, i) => ({
+      id: 'p-1',
+      status,
+      changed_at: `2026-10-0${i + 1} 10:00:00.000`,
+      restart: i === 0 ? 1 : 0,
+      commit_hash: `c${i}`,
+      ...(criteria[i] === undefined ? {} : { has_criteria: criteria[i] }),
+    }));
+  /**
+   * Une base dont `dolt_history_issues` a les colonnes `fields`. Comme Dolt derrière le client vérifié, elle refuse une lecture qui nomme une colonne qu'elle n'a pas ; `failure`
+   * fait échouer de même la lecture des statuts avec les critères, pour une autre raison.
+   */
+  const database = (criteria: unknown[], fields = ISSUE_COLUMNS, failure?: Error) => {
+    const db = fakeDb([
+      { match: /from issues/, rows: tickets },
+      issueColumns(fields),
+      { match: /lag\(/, rows: statuses(criteria) },
+      { match: /select l\.commit_hash/, rows: log },
+      columns(CURRENT_COLUMNS),
+      { match: /^select .* from dolt_history_dependencies$/s, rows: [] },
+    ]);
+    const answer = db.query.bind(db);
+    db.query = async (sql, options) => {
+      if (sql.includes('acceptance_criteria') && (failure || !fields.includes('acceptance_criteria'))) {
+        db.queries.push(sql);
+        throw failure ?? new DoltQueryError("Dolt ne trouve pas la colonne « acceptance_criteria » que l'app lit.", '/projet');
+      }
+      return answer(sql, options);
+    };
+    return db;
+  };
+  const statusQueries = (db: { queries: string[] }) => db.queries.filter((sql) => sql.includes('lag('));
+
+  it('la demande à Dolt en booléen, sur les seules lignes gardées : le texte ne sort pas de la base, le filtre des statuts ne change pas, et rien ne s’ajoute aux lectures', async () => {
+    const db = database([1, 0, 1]);
+
+    await readTicketHistories(db);
+
+    const [sql = ''] = statusQueries(db);
+    // La requête la plus externe, celle dont les lignes sortent, ne rend que le booléen, calculé après le filtre des changements de statut.
+    expect(sql).toMatch(/\n {2}select id, status, changed_at, restart, commit_hash, acceptance_criteria regexp '\[\^\[:space:\]\]' as has_criteria from \(\n/);
+    expect(sql).toMatch(/\n {2}where restart = 1 or previous <> status\n/);
+    // Une seule lecture des statuts, et aucune des colonnes de l'historique des tickets : autant de lectures qu'avant les critères.
+    expect(statusQueries(db)).toHaveLength(1);
+    expect(db.queries).not.toContain('show columns from dolt_history_issues');
+  });
+
+  it('donne à chaque instantané la présence des critères à son commit, en nombre comme en chaîne (derrière un dolt sql-server)', async () => {
+    for (const criteria of [[1, 0, 1], ['1', '0', '1']]) {
+      const [history] = await readTicketHistories(database(criteria));
+
+      expect(history?.statusSnapshots).toEqual([
+        { status: 'open', at: at('2026-10-01T10:00:00'), hasAcceptanceCriteria: true },
+        { status: 'in_progress', at: at('2026-10-02T10:00:00'), hasAcceptanceCriteria: false },
+        { status: 'closed', at: at('2026-10-03T10:00:00'), hasAcceptanceCriteria: true },
+      ]);
+      expect(analyzeFlow(history ? [history] : []).get('p-1')?.writtenIntent).toBe(false); // écrits après le démarrage
+    }
+  });
+
+  it('laisse la présence inconnue quand Dolt la rend NULL (un commit d’avant la colonne) : ni oui, ni non', async () => {
+    const [history] = await readTicketHistories(database([undefined, undefined, 1]));
+
+    expect(history?.statusSnapshots.map((snapshot) => snapshot.hasAcceptanceCriteria)).toEqual([undefined, undefined, true]);
+    expect(history?.statusSnapshots[1]).not.toHaveProperty('hasAcceptanceCriteria');
+    expect(analyzeFlow(history ? [history] : []).get('p-1')?.writtenIntent).toBeNull();
+  });
+
+  it.each(['oui', '', '1.0', true, 2.5])('refuse une présence illisible (%j)', async (criteria) => {
+    await expect(readTicketHistories(database([criteria, 0, 0]))).rejects.toThrow(/Entier Dolt invalide \(has_criteria\)/);
+  });
+
+  it('relit sans les critères une base dont le schéma n’a pas leur colonne (un bd d’avant elle) : mêmes statuts, présence inconnue', async () => {
+    const db = database([], ISSUE_COLUMNS.filter((column) => column !== 'acceptance_criteria'));
+
+    const [history] = await readTicketHistories(db);
+
+    const [refused = '', plain = ''] = statusQueries(db);
+    expect(refused).toContain('as has_criteria');
+    expect(db.queries.indexOf('show columns from dolt_history_issues')).toBeGreaterThan(db.queries.indexOf(refused));
+    expect(db.queries.indexOf(plain)).toBeGreaterThan(db.queries.indexOf('show columns from dolt_history_issues'));
+    expect(plain).not.toContain('acceptance_criteria');
+    expect(history?.statusSnapshots).toEqual([
+      { status: 'open', at: at('2026-10-01T10:00:00') },
+      { status: 'in_progress', at: at('2026-10-02T10:00:00') },
+      { status: 'closed', at: at('2026-10-03T10:00:00') },
+    ]);
+    expect(analyzeFlow(history ? [history] : []).get('p-1')?.writtenIntent).toBeNull();
+  });
+
+  it('rend l’erreur de la lecture quand le schéma a bien la colonne : seules les colonnes décident d’une relecture, jamais le texte de l’erreur', async () => {
+    const db = database([1, 1, 1], ISSUE_COLUMNS, new DoltQueryError("Dolt ne trouve pas la colonne « acceptance_criteria » que l'app lit.", '/projet'));
+
+    await expect(readTicketHistories(db)).rejects.toThrow('Dolt ne trouve pas la colonne « acceptance_criteria »');
+    expect(statusQueries(db)).toHaveLength(1); // aucune relecture sans les critères
+  });
+
+  it.each([
+    ['un abandon', new ReadAborted()],
+    ['un refus de la vérification du SQL stocké', new StoredSqlError(['vue « issues »'], '/projet')],
+  ])('rend aussitôt %s, sans lire les colonnes ni relire', async (_, failure) => {
+    const db = database([1, 1, 1], ISSUE_COLUMNS.filter((column) => column !== 'acceptance_criteria'), failure);
+
+    await expect(readTicketHistories(db)).rejects.toBe(failure);
+    expect(db.queries).not.toContain('show columns from dolt_history_issues');
+    expect(statusQueries(db)).toHaveLength(1);
   });
 });
