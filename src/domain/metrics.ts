@@ -31,7 +31,9 @@ import { buildTimeline, columnAt, isWorking, statusAt, stepsOf, type TicketTimel
  * à l'instant demandé : un seul calcul sur l'union des tickets des Projets, jamais une moyenne de leurs médianes.
  *
  * Les Epics ne sont mesurées nulle part : ce ne sont pas des Livraisons, et elles resteraient ouvertes dans le WIP et
- * le CFD. Une Livraison, un Abandon ou un échec appartient à la période de sa date de Livraison (dernière clôture).
+ * le CFD. Un Renoncement (ADR 0008) n'est pas une Livraison non plus : il ne compte dans aucune mesure des Livraisons (Débit,
+ * Lead Time, Cycle Time, Taux d'échec, Temps de rétablissement), reste une Arrivée et, fermé, se range dans Terminé. Une Livraison,
+ * un Abandon, un Renoncement ou un échec appartient à la période de sa date de Livraison (dernière clôture).
  * Une période en cours n'est comptée que jusqu'à `asOf` (maintenant), comme la précédente jusqu'à `previousAsOf`.
  */
 
@@ -71,6 +73,8 @@ export interface TrackedTicket {
   abandonedAt: number | null;
   /** Pourquoi : un doublon, ou un ticket remplacé. */
   abandonCause: AbandonCause | null;
+  /** Date du Renoncement (dernière clôture, avec le label `declined` au Dernier commit) ; null si le ticket n'en est pas un. */
+  declinedAt: number | null;
   /** Part du Cycle Time passée en Blocage, pour une Livraison. */
   blockedTime: number | null;
   /** Attente de dépendance (Backlog avant le premier démarrage), pour une Livraison. */
@@ -158,6 +162,7 @@ export function analyzeProject(tickets: MetricsTicket[]): ProjectAnalysis {
         writtenIntent: flow.writtenIntent,
         abandonedAt: flow.outcome.kind === 'abandoned' ? flow.outcome.at.getTime() : null,
         abandonCause: flow.outcome.kind === 'abandoned' ? flow.outcome.cause : null,
+        declinedAt: flow.outcome.kind === 'declined' ? flow.outcome.at.getTime() : null,
         blockedTime: deliveredAt === null ? null : flow.blockedTime,
         dependencyWait: deliveredAt === null ? null : flow.dependencyWait,
         timeline: buildTimeline(ticket, steps, stepsById),

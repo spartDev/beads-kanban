@@ -184,7 +184,7 @@ describe('epicChildren : ce qu’une Epic regroupe', () => {
   });
 });
 
-describe('outcomeOf : livré, abandonné ou pas fermé', () => {
+describe('outcomeOf : livré, abandonné, renoncé ou pas fermé', () => {
   it('dit livré un ticket fermé sans lien d’Abandon', () => {
     expect(outcomeOf(ticket('a', { status: 'closed' }))).toBe('delivered');
   });
@@ -201,6 +201,11 @@ describe('outcomeOf : livré, abandonné ou pas fermé', () => {
   it('ne tient pas compte d’un Abandon sur un ticket qui n’est plus fermé : une Réouverture annule la Livraison, et l’Abandon', () => {
     expect(outcomeOf(ticket('a', { status: 'open', abandon: { cause: 'duplicate', of: 'b' } }))).toBe('open');
   });
+
+  it('dit renoncé un ticket fermé qui est un Renoncement (ADR 0008), et ouvert celui qui ne l’est plus', () => {
+    expect(outcomeOf(ticket('a', { status: 'closed', declined: true }))).toBe('declined');
+    expect(outcomeOf(ticket('a', { status: 'open', declined: true }))).toBe('open');
+  });
 });
 
 describe('epicProgress : les Livraisons parmi les Enfants, en nombre', () => {
@@ -213,7 +218,7 @@ describe('epicProgress : les Livraisons parmi les Enfants, en nombre', () => {
       child('e2', { status: 'deferred' }),
     ]);
 
-    expect(progress).toEqual({ children: 5, delivered: 2, abandoned: 0, remaining: 3, total: 5, ratio: 0.4 });
+    expect(progress).toEqual({ children: 5, delivered: 2, abandoned: 0, declined: 0, remaining: 3, total: 5, ratio: 0.4 });
   });
 
   it('ne compte pas un Abandon comme une Livraison, ni comme du travail à livrer : il est dit à part', () => {
@@ -224,7 +229,7 @@ describe('epicProgress : les Livraisons parmi les Enfants, en nombre', () => {
       child('d'),
     ]);
 
-    expect(progress).toEqual({ children: 4, delivered: 1, abandoned: 2, remaining: 1, total: 2, ratio: 0.5 });
+    expect(progress).toEqual({ children: 4, delivered: 1, abandoned: 2, declined: 0, remaining: 1, total: 2, ratio: 0.5 });
   });
 
   it('atteint 100 % quand tout ce qui reste à livrer l’est, des Abandons ne l’en empêchent pas', () => {
@@ -234,8 +239,29 @@ describe('epicProgress : les Livraisons parmi les Enfants, en nombre', () => {
   });
 
   it('n’a pas de rapport sans Enfant à livrer, plutôt qu’un 0 % ou un 100 % de convention', () => {
-    expect(epicProgress([])).toEqual({ children: 0, delivered: 0, abandoned: 0, remaining: 0, total: 0, ratio: null });
+    expect(epicProgress([])).toEqual({ children: 0, delivered: 0, abandoned: 0, declined: 0, remaining: 0, total: 0, ratio: null });
     expect(epicProgress([delivered('a', 2, { abandon: { cause: 'duplicate', of: 'b' } })])).toMatchObject({ abandoned: 1, total: 0, ratio: null });
+  });
+
+  it('ne compte pas un Renoncement comme une Livraison, ni comme du travail à livrer : il est dit à part, comme l’Abandon', () => {
+    const progress = epicProgress([
+      delivered('a', 2),
+      delivered('b', 3, { declined: true }),
+      delivered('c', 4, { abandon: { cause: 'duplicate', of: 'a' } }),
+      child('d'),
+    ]);
+
+    expect(progress).toEqual({ children: 4, delivered: 1, abandoned: 1, declined: 1, remaining: 1, total: 2, ratio: 0.5 });
+  });
+
+  it('atteint 100 % quand le reste est livré, malgré un Enfant en Renoncement', () => {
+    const progress = epicProgress([delivered('a', 2), delivered('b', 3), delivered('c', 4, { declined: true })]);
+
+    expect(progress).toMatchObject({ delivered: 2, declined: 1, remaining: 0, total: 2, ratio: 1 });
+  });
+
+  it('n’a pas de rapport quand il ne reste que des Renoncements : il n’y a plus rien à livrer', () => {
+    expect(epicProgress([delivered('a', 2, { declined: true })])).toMatchObject({ declined: 1, total: 0, ratio: null });
   });
 
   it('compte une Livraison sans date de clôture : l’avancement ne dépend pas de la date', () => {
@@ -418,10 +444,11 @@ describe('forecastEnd : la prévision de fin d’une Epic', () => {
     expect(forecast(s)).toMatchObject({ kind: 'range', deliveries: 4 });
   });
 
-  it('ne compte ni un Abandon, ni une Livraison sans date, ni un Enfant qui n’est plus fermé', () => {
+  it('ne compte ni un Abandon, ni un Renoncement, ni une Livraison sans date, ni un Enfant qui n’est plus fermé', () => {
     const s = scenario({ shipped: 3, left: 5 });
     s.children.push(
       delivered('abandon', 2, { abandon: { cause: 'duplicate', of: 'l0' } }),
+      delivered('renoncement', 2, { declined: true }),
       ticket('sans-date', { parentId: 'e', status: 'closed', closedAt: null }),
       child('rouvert', { closedAt: ago(2) }),
     );
@@ -507,6 +534,9 @@ describe('forecastEnd : la prévision de fin d’une Epic', () => {
     const withAbandon = scenario({ shipped: 8, left: 0 });
     withAbandon.children.push(delivered('abandon', 5, { abandon: { cause: 'superseded', of: 'l0' } }));
     expect(forecast(withAbandon)).toMatchObject({ kind: 'hidden', reason: 'all-delivered' });
+    const withDecline = scenario({ shipped: 8, left: 0 });
+    withDecline.children.push(delivered('renoncement', 5, { declined: true }));
+    expect(forecast(withDecline)).toMatchObject({ kind: 'hidden', reason: 'all-delivered' });
   });
 
   it('est masquée pour une Epic sans Enfant', () => {

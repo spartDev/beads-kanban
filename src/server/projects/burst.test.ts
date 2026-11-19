@@ -27,7 +27,7 @@ beforeEach(() => {
 
 /**
  * Un faux dolt : le préfixe et le HEAD répondent aussitôt, tout le reste dure 0,15 s. Pour le ticket x-N : sa fiche, ses étiquettes
- * et ses commentaires (un groupe), puis les résumés et les dépendances du Projet (un autre groupe).
+ * et ses commentaires (un groupe), puis les résumés, les dépendances et les labels de clôture du Projet (un autre groupe).
  */
 function slowTickets() {
   const body = [
@@ -36,6 +36,7 @@ function slowTickets() {
     `  *issue_prefix*) printf '{}\\n\\n{"rows": [{"value": "x"}]}\\n';;`,
     `  *"hashof('HEAD')"*) printf '{}\\n\\n{"rows": [{"head": "h1"}]}\\n';;`,
     `  *"where id ="*) sleep 0.15; printf '{}\\n\\n{"rows": [{"id": "x-1", "title": "T", "issue_type": "task", "status": "open", "priority": 2, "created_at": "2026-10-01 10:00:00", "updated_at": "2026-10-01 10:00:00"}]}\\n{}\\n\\n{}\\n\\n';;`,
+    `  *"from dependencies"*"where label ="*) sleep 0.15; printf '{}\\n\\n{"rows": [{"id": "x-1", "title": "T", "issue_type": "task", "status": "open", "priority": 2, "created_at": "2026-10-01 10:00:00", "updated_at": "2026-10-01 10:00:00"}]}\\n{}\\n\\n{}\\n\\n';;`,
     `  *) sleep 0.15; printf '{}\\n\\n{"rows": [{"id": "x-1", "title": "T", "issue_type": "task", "status": "open", "priority": 2, "created_at": "2026-10-01 10:00:00", "updated_at": "2026-10-01 10:00:00"}]}\\n{}\\n\\n';;`,
     `esac`,
   ].join('\n');

@@ -125,7 +125,7 @@ describe('English that english.test.tsx does not read', () => {
 
   it('why the forecast is hidden: all delivered', async () => {
     await openEnglish('/p/bdesk/epics?epic=bdesk-e1', [EPIC, closedChild('bdesk-a', 3)]);
-    expect(forecast().textContent).toContain('All Children are Delivered or Dropped: the Epic can be closed.');
+    expect(forecast().textContent).toContain('All Children are Delivered, Dropped or Declined: the Epic can be closed.');
   });
 
   it('why the forecast is hidden: no Children to deliver', async () => {

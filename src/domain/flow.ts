@@ -1,4 +1,4 @@
-import { type AbandonCause, abandonOf } from './abandon';
+import { type AbandonCause, closureOf } from './abandon';
 import { type Interval, intersect, measure } from './intervals';
 
 export type { AbandonCause };
@@ -40,6 +40,11 @@ export interface TicketHistory {
    */
   statusSnapshots: StatusSnapshot[];
   dependencies: DependencyHistory[];
+  /**
+   * Les labels du ticket au Dernier commit, non leur historique : ceux que lit la règle de clôture (`closureOf`), le label du Renoncement.
+   * Le lecteur Dolt ne relève que celui-là, et laisse le champ absent d'un ticket qui ne le porte pas : absent, aucun label.
+   */
+  labels?: readonly string[];
 }
 
 /** Un changement de statut : le ticket prend ce statut à cet instant et le garde jusqu'à la Transition suivante. */
@@ -57,6 +62,8 @@ export type Outcome =
       /** Le ticket dont il est le doublon, ou qui le remplace : la cible du lien d'Abandon que retient `abandonOf`. Pas forcément un ticket du Projet. */
       of: TicketId;
     }
+  /** Renoncement : fermé avec le label `declined` au Dernier commit (ADR 0008). L'utilisateur a décidé de ne pas faire le travail. */
+  | { kind: 'declined'; at: Date }
   /** Fermé sans être une Livraison (une Epic, par exemple). */
   | { kind: 'closed'; at: Date }
   | { kind: 'open' };
@@ -182,13 +189,14 @@ function blockagePeriods(
 }
 
 /**
- * L'issue d'un ticket fermé : une Epic n'est jamais une Livraison, un ticket que ses liens déclarent doublon ou remplacé est un
- * Abandon (`abandonOf`, la règle que le kanban applique aussi), tout autre est une Livraison.
+ * L'issue d'un ticket fermé : une Epic n'est jamais une Livraison ; pour tout autre ticket, la règle de clôture (`closureOf`, celle
+ * que le kanban applique aussi) en fait un Abandon (ses liens le déclarent doublon ou remplacé), un Renoncement (il porte le label
+ * `declined` au Dernier commit) ou une Livraison. Chacun est daté de la dernière clôture.
  */
 function closedOutcome(ticket: TicketHistory, at: Date): Outcome {
   if (ticket.type === 'epic') return { kind: 'closed', at };
-  const abandon = abandonOf(ticket.dependencies);
-  return abandon ? { kind: 'abandoned', at, cause: abandon.cause, of: abandon.of } : { kind: 'delivered', at };
+  const closure = closureOf(ticket.dependencies, ticket.labels ?? []);
+  return closure.kind === 'abandoned' ? { kind: 'abandoned', at, cause: closure.cause, of: closure.of } : { kind: closure.kind, at };
 }
 
 /**

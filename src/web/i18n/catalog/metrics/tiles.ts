@@ -11,7 +11,7 @@ const fr = {
    */
   metricHelp: {
     throughput:
-      'Nombre de Livraisons sur la période : tickets fermés pour travail terminé, hors doublons et remplacés. Il mesure le rythme de livraison (l’équivalent de la Deployment Frequency DORA).',
+      'Nombre de Livraisons sur la période : tickets fermés pour travail terminé, hors doublons, remplacés et Renoncements. Il mesure le rythme de livraison (l’équivalent de la Deployment Frequency DORA).',
     leadTime:
       'Durée écoulée entre la création d’un ticket et sa dernière clôture, attentes comprises. C’est le délai que voit le demandeur : en combien de temps une demande est livrée.',
     cycleTime:
@@ -205,7 +205,7 @@ const fr = {
 const en: typeof fr = {
   metricHelp: {
     throughput:
-      'Number of Deliveries in the period: tickets closed because the work is done, excluding duplicates and superseded ones. It measures the delivery pace (the equivalent of DORA Deployment Frequency).',
+      'Number of Deliveries in the period: tickets closed because the work is done, excluding duplicates, superseded ones and Declines. It measures the delivery pace (the equivalent of DORA Deployment Frequency).',
     leadTime:
       'Elapsed time between a ticket’s creation and its last closure, waits included. It is the delay the requester sees: how long it takes for a request to be delivered.',
     cycleTime:

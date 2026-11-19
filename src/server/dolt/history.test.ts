@@ -173,7 +173,10 @@ const ISSUE_COLUMNS = ['id', 'title', 'description', 'design', 'acceptance_crite
 /** La réponse à `show columns from dolt_history_issues` ; sans réponse donnée, la base factice rend celle du schéma de bd (`ISSUE_COLUMNS`). */
 const issueColumns = (fields: string[]) => ({ match: /^show columns from dolt_history_issues$/, rows: fields.map((Field) => ({ Field, Type: 'text' })) });
 
-/** Une base factice qui répond selon la requête reçue. */
+/** La lecture des labels de la règle de clôture (`CLOSURE_LABELS_SQL`) : une base factice n'en porte aucun, sauf réponse donnée. */
+const LABELS = /^select issue_id, label from labels /;
+
+/** Une base factice qui répond selon la requête reçue ; sans label de clôture, sauf si `answers` en donne (`{ match: LABELS, rows }`) ; et `show columns from dolt_history_issues` rend le schéma de bd (`ISSUE_COLUMNS`), sauf réponse donnée. */
 function fakeDb(answers: { match: RegExp; rows: Row[] }[]): DoltDatabase & { queries: string[] } {
   const queries: string[] = [];
   return {
@@ -181,7 +184,7 @@ function fakeDb(answers: { match: RegExp; rows: Row[] }[]): DoltDatabase & { que
     queries,
     async query(sql) {
       queries.push(sql);
-      const answer = [...answers, issueColumns(ISSUE_COLUMNS)].find((a) => a.match.test(sql));
+      const answer = [...answers, issueColumns(ISSUE_COLUMNS)].find((a) => a.match.test(sql)) ?? (LABELS.test(sql) ? { rows: [] } : undefined);
       if (!answer) throw new Error(`requête inattendue : ${sql}`);
       return answer.rows;
     },
@@ -268,8 +271,35 @@ describe('readTicketHistories', () => {
 
     // Un ticket supprimé, ou dont le type a changé, sans commit : l'historique le dit tel qu'il est au dernier commit, comme le tableau.
     expect(readsOutsideHead(db.queries)).toEqual([]);
-    // La liste des tickets est la seule table de bd que le lecteur lit hors de l'historique : le filet l'a bien vue.
-    expect(tablesRead(db.queries)).toEqual(new Set(['issues']));
+    // La liste des tickets et les labels de clôture sont les seules tables de bd que le lecteur lit hors de l'historique : le filet les a bien vues.
+    expect(tablesRead(db.queries)).toEqual(new Set(['issues', 'labels']));
+  });
+
+  // ADR 0008 : le label du Renoncement se lit au dernier commit, avec la liste des tickets, et rien d'autre que lui.
+  it('donne à chaque ticket les labels de clôture qu’il porte au dernier commit, et aucun champ à celui qui n’en porte pas', async () => {
+    const db = fakeDb([{ match: LABELS, rows: [{ issue_id: 'p-1', label: 'declined' }] }, ...base()]);
+
+    const histories = await readTicketHistories(db);
+
+    expect(histories.map((history) => [history.id, history.labels])).toEqual([
+      ['p-1', ['declined']],
+      ['p-2', undefined],
+    ]);
+    expect(histories[1]).not.toHaveProperty('labels');
+    expect(analyzeFlow(histories).get('p-1')?.outcome).toEqual({ kind: 'declined', at: at('2026-10-03T10:00:00') });
+    expect(db.queries).toContain("select issue_id, label from labels as of 'HEAD' where label = 'declined' order by issue_id");
+  });
+
+  it('lit la liste des tickets et les labels de clôture dans un seul processus, quand la base groupe ses lectures', async () => {
+    const db = fakeDb(base());
+    const groups: string[][] = [];
+    const grouped: DoltDatabase = { ...db, queryAll: async (sqls) => (groups.push([...sqls]), Promise.all(sqls.map((sql) => db.query(sql)))) };
+
+    await readTicketHistories(grouped);
+
+    expect(groups.filter((sqls) => sqls.some((sql) => LABELS.test(sql)))).toEqual([
+      ["select id, issue_type from issues as of 'HEAD' order by id", "select issue_id, label from labels as of 'HEAD' where label = 'declined' order by issue_id"],
+    ]);
   });
 
   it('ne lit que les colonnes utiles de l’historique des dépendances, pas toutes (select *)', async () => {

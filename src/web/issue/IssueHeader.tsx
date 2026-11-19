@@ -1,4 +1,4 @@
-import { ArchiveX, Layers, Lock } from 'lucide-react';
+import { ArchiveX, Ban, Layers, Lock } from 'lucide-react';
 import { Fragment } from 'react';
 import { Link } from 'react-router';
 import { isBlankTitle, ticketTitle } from '../data/helpers';
@@ -7,7 +7,7 @@ import { statusLabel } from '../design/issue-palette';
 import { useLanguage, useT } from '../i18n';
 import { epicName, epicShortName } from '../kanban/epics';
 import { paths } from '../paths';
-import { AbandonBadge, PriorityBadge, TypeBadge, TypeGlyph } from '../ui/IssueBadges';
+import { AbandonBadge, DeclineBadge, PriorityBadge, TypeBadge, TypeGlyph } from '../ui/IssueBadges';
 import { IssueLink } from './IssueLink';
 
 /**
@@ -46,6 +46,7 @@ export function IssueHeader({ issue, projectId }: { issue: IssueDetail; projectI
             {statusLabel(issue.status, language)}
             {/* Fermé sans être une Livraison : la phrase sous la liste dit pourquoi, la pastille n'a pas à le redire aux lecteurs d'écran. */}
             {issue.abandon ? <AbandonBadge abandon={issue.abandon} withReason={false} className="ml-1.5 align-middle" /> : null}
+            {issue.declined ? <DeclineBadge withReason={false} className="ml-1.5 align-middle" /> : null}
           </dd>
         </div>
         {issue.assignee ? (
@@ -94,6 +95,7 @@ export function IssueHeader({ issue, projectId }: { issue: IssueDetail; projectI
         ) : null}
       </dl>
       {issue.abandon ? <Abandoned abandon={issue.abandon} issue={issue} projectId={projectId} /> : null}
+      {issue.declined ? <Declined /> : null}
       <Blocking issue={issue} projectId={projectId} />
       {issue.labels.length > 0 ? (
         <ul aria-label={header.labels} className="flex flex-wrap gap-1.5">
@@ -105,6 +107,20 @@ export function IssueHeader({ issue, projectId }: { issue: IssueDetail; projectI
         </ul>
       ) : null}
     </div>
+  );
+}
+
+/** Un Renoncement (ADR 0008) : l'utilisateur a décidé de ne pas faire le ticket ; fermé, il n'est pas une Livraison. */
+function Declined() {
+  const { header } = useT().kanban;
+  return (
+    <p className="flex items-start gap-1.5 text-ink-2">
+      <Ban size={13} aria-hidden="true" className="mt-1 shrink-0 text-ink-3" />
+      <span className="min-w-0 wrap-anywhere">
+        {header.declined}
+        {header.notDelivered}
+      </span>
+    </p>
   );
 }
 

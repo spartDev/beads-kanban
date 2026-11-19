@@ -424,9 +424,11 @@ describe('API des métriques', () => {
       ].sort(),
     );
     // Santé du flux (bdesk-38k.13) : un ajout au contrat, les clés précédentes sont inchangées.
-    expect(Object.keys(body.health).sort()).toEqual(['abandonment', 'activity', 'efficiency', 'leadTimeBreakdown', 'readyAges', 'reopening', 'rework']);
+    expect(Object.keys(body.health).sort()).toEqual(['abandonment', 'activity', 'declines', 'efficiency', 'leadTimeBreakdown', 'readyAges', 'reopening', 'rework']);
     // Retravail (bdesk-l77.3) : un ajout aussi, la liste des tickets qui reviennent.
     expect(body.health.rework).toEqual({ tickets: [] });
+    // Renoncements (ADR 0008) : un ajout aussi, leur nombre dans la période et sa tendance.
+    expect(body.health.declines).toEqual({ total: 0, trend: { previous: 0, delta: 0, ratio: null } });
     // Tendance longue (bdesk-l77.4) : les 12 semaines qui finissent par la semaine en cours, quelle que soit la période.
     expect(body.longTrend.minDeliveries).toBe(4);
     expect(body.longTrend.weeks.map((week) => week.from)).toHaveLength(12);

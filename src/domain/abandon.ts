@@ -1,8 +1,14 @@
 /**
- * L'Abandon : un ticket fermé que l'un de ses liens déclare doublon d'un autre ticket, ou remplacé par lui. `abandonOf` est la
- * règle : quels liens font un Abandon, pour quelle cause, et lequel prime quand il y en a deux. Les métriques (`analyzeFlow`, qui
- * lit l'historique des liens) et le kanban (`buildIssues`, qui lit l'état présent) l'appliquent chacun à leurs liens : d'où le même
- * Abandon, avec la même cause, dans la chronologie d'un ticket, sur sa carte et dans les métriques.
+ * Ce qu'est un ticket fermé (hors Epic) : une Livraison, un Abandon ou un Renoncement. `closureOf` est la règle, et la seule : les
+ * métriques (`analyzeFlow`, qui lit l'historique des liens) et le kanban (`buildIssues`, qui lit l'état présent) l'appliquent chacun
+ * à ce qu'ils lisent du ticket, d'où la même issue dans la chronologie d'un ticket, sur sa carte, dans l'avancement de son Epic et
+ * dans les métriques.
+ *
+ * L'Abandon : un ticket fermé que l'un de ses liens déclare doublon d'un autre ticket, ou remplacé par lui. `abandonOf` dit quels
+ * liens font un Abandon, pour quelle cause, et lequel prime quand il y en a deux.
+ *
+ * Le Renoncement (ADR 0008) : un ticket fermé qui porte le label `declined` au Dernier commit. L'utilisateur a décidé de ne pas
+ * faire le travail : ce n'est pas une Livraison, et pas un Abandon non plus (personne ne le fera ailleurs).
  */
 
 export type AbandonCause = 'duplicate' | 'superseded';
@@ -73,4 +79,30 @@ export function abandonOf(links: readonly AbandonLink[]): Abandon | undefined {
   candidates.sort((a, b) => a.at - b.at || a.created - b.created || a.of.localeCompare(b.of));
   const first = candidates[0];
   return first ? { cause: first.cause, of: first.of } : undefined;
+}
+
+/**
+ * Le label qui marque un Renoncement, posé à la clôture du ticket (ADR 0008). Il se lit au Dernier commit, pas dans l'historique : posé
+ * plus tard, il fait de la dernière clôture un Renoncement après coup ; retiré, il la rend à la Livraison. Les lecteurs Dolt ne relèvent
+ * que ce label-là (`reader.ts`, `history.ts`).
+ */
+export const DECLINED_LABEL = 'declined';
+
+/** Ce qu'est un ticket fermé (hors Epic) : une Livraison, un Abandon (sa cause et l'autre ticket) ou un Renoncement. */
+export type Closure = { kind: 'delivered' } | ({ kind: 'abandoned' } & Abandon) | { kind: 'declined' };
+
+/**
+ * La règle de clôture : ce qu'est un ticket fermé, d'après ses liens (`links`, comme `abandonOf` les lit) et ses labels au Dernier
+ * commit (`labels`, dans n'importe quel ordre ; seul `DECLINED_LABEL` compte, écrit tel quel). La raison de fermeture n'y est pour rien,
+ * ni dans un sens ni dans l'autre : un « won't fix » sans label reste une Livraison. Le type du ticket (une Epic n'est jamais une
+ * Livraison) et son état (fermé) sont à l'appelant.
+ *
+ * Un lien d'Abandon l'emporte sur le label : il dit que le travail existe ailleurs (doublon, remplacé), ce que le label ne contredit pas,
+ * et l'Abandon garde ainsi sa cause, sa cible et le Taux d'abandon qui le compte. Le label ne fait donc un Renoncement que d'un ticket
+ * qui serait sinon une Livraison.
+ */
+export function closureOf(links: readonly AbandonLink[], labels: readonly string[]): Closure {
+  const abandon = abandonOf(links);
+  if (abandon) return { kind: 'abandoned', ...abandon };
+  return labels.includes(DECLINED_LABEL) ? { kind: 'declined' } : { kind: 'delivered' };
 }
