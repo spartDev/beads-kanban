@@ -4,7 +4,7 @@ export type ThemePreference = 'system' | 'light' | 'dark';
 export type ResolvedTheme = 'light' | 'dark';
 
 /** Même clé que le script de index.html, qui pose le thème avant le premier rendu. */
-export const THEME_STORAGE_KEY = 'beads-desktop:theme';
+export const THEME_STORAGE_KEY = 'throughline:theme';
 
 export const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark'];
 

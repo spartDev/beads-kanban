@@ -1,7 +1,7 @@
 import type { IgnoredFolder, Project as ApiProject } from '../../shared/api';
 
 /**
- * Contrat de l'API du serveur beads-desktop. Défini une seule fois, dans `src/shared/api.ts`
+ * Contrat de l'API du serveur Throughline. Défini une seule fois, dans `src/shared/api.ts`
  * (types seulement, partagés avec `src/server`) : un écart entre le serveur et l'interface
  * fait échouer `pnpm typecheck`. Seul `Project` est celui que l'interface lit, non celui que l'API envoie : voir plus bas.
  */

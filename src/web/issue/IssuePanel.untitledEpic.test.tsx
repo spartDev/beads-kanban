@@ -146,7 +146,7 @@ describe.each(TITLES)('la page d’une Epic dont le titre est %s', (_kind, epicT
   it('nomme l’onglet de l’identifiant, sans espaces ni « · » en tête', async () => {
     await openEpicPage();
 
-    await waitFor(() => expect(document.title).toBe(`${EPIC} · beads-desktop · beads-desktop`));
+    await waitFor(() => expect(document.title).toBe(`${EPIC} · beads-desktop · Throughline`));
   });
 });
 
@@ -195,7 +195,7 @@ describe.each(SEPARATOR_TITLES)('une Epic dont le titre est %s', (_kind, epicTit
     await screen.findByRole('link', { name: 'Ouvrir le ticket' });
 
     expect(screen.getByRole('heading', { level: 1, name: EPIC })).toBeTruthy();
-    await waitFor(() => expect(document.title).toBe(`${EPIC} · beads-desktop · beads-desktop`));
+    await waitFor(() => expect(document.title).toBe(`${EPIC} · beads-desktop · Throughline`));
   });
 
   it('garde son titre dans son propre panneau, en niveau 2, et non « Sans titre »', async () => {
@@ -242,7 +242,7 @@ describe('la page, la liste et le panneau d’une Epic qui a un titre', () => {
     renderApp(`/p/bdesk/epics?epic=${EPIC}`);
 
     expect(await screen.findByRole('heading', { level: 1, name: TITLE })).toBeTruthy();
-    await waitFor(() => expect(document.title).toBe(`${TITLE} · beads-desktop · beads-desktop`));
+    await waitFor(() => expect(document.title).toBe(`${TITLE} · beads-desktop · Throughline`));
   });
 
   it('la liste nomme sa barre d’avancement de son titre', async () => {

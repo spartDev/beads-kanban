@@ -346,7 +346,7 @@ const indexProblem = (table: string, index: string) => `index fonctionnel ${name
  * en cours (§ `NONLOCAL_TABLE`). Dite une fois, sans jargon, avec quoi faire : réessayer, ou laisser une commande bd l'achever.
  */
 const nonlocalProblem = (where = ''): string =>
-  `${named(NONLOCAL_TABLE)} n'est pas vide${where} : bd semble être en train de migrer cette base ; réessayez dans un instant, ou lancez n'importe quelle commande bd, qui achèvera la migration`;
+  `${named(NONLOCAL_TABLE)} n'est pas vide${where} : la base semble en cours de migration par l'outil de tickets ; réessayez dans un instant, ou lancez n'importe quelle commande de cet outil, qui achèvera la migration`;
 
 // Ce que disent les lignes des relevés (`VIEWS_FOUND`, `GENERATED_FOUND`, `FUNCTIONAL_INDEXES_FOUND`, `HEAD_VIEWS_FOUND`), que le diagnostic et le dernier essai d'une lecture lisent de même.
 const viewsFound = (rows: readonly Row[]): string[] => [...new Set(rows.map((row) => viewProblem(text(row.view_name))))];

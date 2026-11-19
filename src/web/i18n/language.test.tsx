@@ -190,7 +190,7 @@ describe('LanguageProvider, sélecteur activé', () => {
 
     // Le thème changé dans l'autre onglet, ou son stockage vidé (clé nulle), ne touche pas à la langue.
     act(() => {
-      window.dispatchEvent(new StorageEvent('storage', { key: 'beads-desktop:theme', newValue: 'dark' }));
+      window.dispatchEvent(new StorageEvent('storage', { key: 'throughline:theme', newValue: 'dark' }));
       window.dispatchEvent(new StorageEvent('storage', { key: null, newValue: null }));
     });
     expect(state()).toBe('en/en');

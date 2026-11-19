@@ -190,7 +190,7 @@ describe('the Epics list, in English', () => {
     await open('/p/bdesk/epics', [issue({ id: 'bdesk-a', title: 'Un ticket' })]);
 
     expect(await screen.findByText('No Epics in this Project')).toBeTruthy();
-    expect(screen.getByText(/An Epic is a ticket of type epic:/)).toBeTruthy();
+    expect(screen.getByText(/An Epic is a ticket of type epic; this Project’s Epics will show up here/)).toBeTruthy();
   });
 
   it('says an Epic without Children to deliver has none, and how many are Dropped', async () => {

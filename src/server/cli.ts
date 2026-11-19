@@ -31,6 +31,6 @@ await startServer({ config, webRoot, projects, port, allowAnyLocalPort: values.d
 if (!values.dev) void projects.list().catch(() => undefined);
 
 const url = `http://${HOST}:${port}`;
-console.log(`beads-desktop → ${url}`);
+console.log(`Throughline → ${url}`);
 console.log(`Racines scannées : ${config.roots.join(', ')}`);
 if (!values.dev && !values['no-open']) await open(url);

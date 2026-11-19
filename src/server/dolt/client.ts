@@ -466,7 +466,7 @@ function firstLines(text: string, count = 3): string {
 
 function defaultRootPath(): string {
   const uid = typeof process.getuid === 'function' ? process.getuid() : 'user';
-  return join(tmpdir(), `beads-desktop-dolt-${uid}`);
+  return join(tmpdir(), `throughline-dolt-${uid}`);
 }
 
 /** Le `config_global.json` de dolt : l'envoi des métriques est désactivé. */
@@ -505,7 +505,7 @@ let fallbackRoot: string | undefined;
  */
 function fallbackRootPath(): string {
   if (fallbackRoot !== undefined && existsSync(fallbackRoot)) return fallbackRoot;
-  const root = mkdtempSync(join(tmpdir(), 'beads-desktop-dolt-repli-'));
+  const root = mkdtempSync(join(tmpdir(), 'throughline-dolt-repli-'));
   try {
     prepareRoot(root);
   } catch (err) {

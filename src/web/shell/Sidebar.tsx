@@ -3,6 +3,7 @@ import { Link, NavLink } from 'react-router';
 import { useProjects } from '../data/hooks';
 import type { Project } from '../data/types';
 import { useT } from '../i18n';
+import { APP_NAME } from '../lib/appName';
 import { cx } from '../lib/cx';
 import { useRetryFocus } from '../lib/useRetryFocus';
 import { keepFocusInZone } from '../lib/zoneFocus';
@@ -48,7 +49,7 @@ export function Sidebar() {
     <aside className="on-side hidden w-60 shrink-0 flex-col gap-4 bg-side px-3 pb-3 pt-4 text-side-ink md:flex">
       <div className="flex h-8 items-center gap-2.5 px-1.5">
         <BrandMark size={26} />
-        <span className="text-[1rem] font-bold tracking-[-0.01em] text-side-ink">beads-desktop</span>
+        <span className="text-[1rem] font-bold tracking-[-0.01em] text-side-ink">{APP_NAME}</span>
       </div>
 
       <button

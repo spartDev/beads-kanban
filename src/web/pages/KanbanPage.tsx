@@ -30,8 +30,7 @@ export function KanbanPage() {
       {issues.data ? (
         issues.data.length === 0 ? (
           <Notice icon={Inbox} title={page.empty.title}>
-            {page.empty.before} <code>bd create</code>
-            {page.empty.after}
+            {page.empty.hint}
           </Notice>
         ) : (
           // `key` : un autre Projet est un autre tableau, qui choisit sa propre colonne d'ouverture sur mobile.

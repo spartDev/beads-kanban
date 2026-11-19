@@ -78,7 +78,7 @@ function recording(projectIds: string[], ticketIds: string[] = []) {
 /** Une interface compilée minimale, comme celle que `pnpm start` sert : c'est elle qui fait tomber l'adresse trop longue dans le repli des fichiers (404). */
 function webRoot(): string {
   const root = scratchDir('bdesk-web-');
-  writeFileSync(join(root, 'index.html'), '<!doctype html><title>beads-desktop</title>');
+  writeFileSync(join(root, 'index.html'), '<!doctype html><title>Throughline</title>');
   return root;
 }
 
@@ -286,7 +286,7 @@ describe('les pages de l’interface à identifiant long (bdesk-38k.88)', () => 
     const issue = await app.inject({ method: 'GET', url: `/p/${enc(projectId)}/t/${enc(ticket(255))}`, headers: { accept: 'text/html' } });
 
     expect([kanban.statusCode, issue.statusCode]).toEqual([200, 200]);
-    expect([kanban.body, issue.body]).toEqual(Array(2).fill('<!doctype html><title>beads-desktop</title>'));
+    expect([kanban.body, issue.body]).toEqual(Array(2).fill('<!doctype html><title>Throughline</title>'));
     expect(received).toEqual([]);
   });
 });

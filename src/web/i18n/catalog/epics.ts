@@ -51,8 +51,7 @@ const fr = {
     epic: 'Epic',
     closed: 'fermée',
     empty: 'Aucune Epic dans ce Projet',
-    /** Suivi de la commande `bd create --type epic`, écrite telle quelle. */
-    emptyHint: 'Une Epic est un ticket de type epic :',
+    emptyHint: 'Une Epic est un ticket de type epic ; celles de ce Projet apparaîtront ici dès leur création.',
     /** `epics`, `children` : des noms comptés (`counted`). */
     summary: (epics: string, children: string) => `${epics} regroupant ${children}`,
     open: 'Epics ouvertes',
@@ -192,7 +191,7 @@ const en: typeof fr = {
     epic: 'Epic',
     closed: 'closed',
     empty: 'No Epics in this Project',
-    emptyHint: 'An Epic is a ticket of type epic:',
+    emptyHint: 'An Epic is a ticket of type epic; this Project’s Epics will show up here as soon as they are created.',
     summary: (epics: string, children: string) => `${epics} grouping ${children}`,
     open: 'Open Epics',
     closedEpics: 'Closed Epics',

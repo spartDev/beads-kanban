@@ -4,7 +4,7 @@
  *
  * Ce qu'il lit, dans l'arbre qui est à l'écran : le texte propre de chaque élément (les nœuds de texte de l'élément, pas ceux de ses enfants, mis bout à bout : React écrit « Les tickets de {nom}, en colonnes. » en
  * trois nœuds, qui ne se lisent qu'ensemble), et les attributs qu'un lecteur d'écran ou une infobulle lit comme du texte (`title`, `aria-label`, `aria-description`, `placeholder`, `alt`). Et le titre de l'onglet,
- * dont les parties se séparent par « · » (« Kanban · Sans titre · beads-desktop »).
+ * dont les parties se séparent par « · » (« Kanban · Sans titre · Throughline »).
  *
  * Il ne regarde pas comment la phrase est écrite : `{x.name}` à côté de texte, un gabarit, une concaténation, un nom passé de composant en composant, tout rend le même texte. Il ne lit pas un nom écrit seul dans
  * son élément au milieu d'une phrase (`<p>Les tickets de <strong>Sans titre</strong>, en colonnes.</p>`, ou dans un lien : `<a>Sans titre</a>`, que rend un `<Link>` : le texte propre de l'élément est le repli seul) : celui-là, c'est le balayage
@@ -36,7 +36,7 @@ export function fallbackInSentences(root: ParentNode, fallback = FALLBACK): stri
   return found;
 }
 
-/** Les parties du titre de l'onglet (« Kanban · Sans titre · beads-desktop ») où le repli est écrit parmi d'autres mots. */
+/** Les parties du titre de l'onglet (« Kanban · Sans titre · Throughline ») où le repli est écrit parmi d'autres mots. */
 export function fallbackInTitle(title: string, fallback = FALLBACK): string[] {
   return title
     .split(' · ')

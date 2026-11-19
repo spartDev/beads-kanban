@@ -87,7 +87,7 @@ interface FileScratch {
 }
 
 /** Où l'état du fichier est gardé : sur `globalThis`, sous une clé de `Symbol.for`, que toutes les instances du module retrouvent. Le fichier suivant d'un worker le remplace. */
-const STATE = Symbol.for('beads-desktop.scratch');
+const STATE = Symbol.for('throughline.scratch');
 
 const holder = () => globalThis as unknown as Record<symbol, FileScratch | undefined>;
 

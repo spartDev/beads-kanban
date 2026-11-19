@@ -31,7 +31,7 @@ let port = 0;
 
 beforeAll(async () => {
   const root = scratchDir('bdesk-vite-');
-  writeFileSync(join(root, 'index.html'), '<!doctype html><html><head><title>beads-desktop</title></head><body><div id="root"></div><script type="module" src="/main.js"></script></body></html>');
+  writeFileSync(join(root, 'index.html'), '<!doctype html><html><head><title>Throughline</title></head><body><div id="root"></div><script type="module" src="/main.js"></script></body></html>');
   writeFileSync(join(root, 'main.js'), 'export const app = 1;\n');
   mkdirSync(join(root, '.cache'));
   vite = await createServer({

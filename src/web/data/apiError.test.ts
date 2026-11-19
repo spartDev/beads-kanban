@@ -180,8 +180,8 @@ describe('errorText', () => {
 
     expect([errorText(bodyless, 'fr'), errorText(bodyless, 'en')]).toEqual(['Erreur HTTP 502', 'HTTP error 502']);
     expect([errorText(unreachable, 'fr'), errorText(unreachable, 'en')]).toEqual([
-      'Le serveur beads-desktop est injoignable',
-      'The beads-desktop server is unreachable',
+      'Le serveur Throughline est injoignable',
+      'The Throughline server is unreachable',
     ]);
   });
 

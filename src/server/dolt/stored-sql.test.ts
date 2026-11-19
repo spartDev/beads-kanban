@@ -1511,7 +1511,7 @@ describe('withStoredSqlCheck', () => {
       ['les lignes du working set', { working: 1 }],
       ['les lignes de HEAD', { head: 1 }],
       ['les deux, comptes en chaînes derrière un serveur', { working: '1', head: '2' }],
-    ])('refuse en nommant la table, en une seule phrase qui dit la migration de bd, que le diagnostic relève dans : %s', async (_label, nonlocal) => {
+    ])('refuse en nommant la table, en une seule phrase qui dit la migration de la base, que le diagnostic relève dans : %s', async (_label, nonlocal) => {
       const { client, calls } = fakeClient((sqls) => {
         if (isRead(sqls)) throw ASSERTION_FAILED();
         return diagnosisOf(sqls, { nonlocal });
@@ -1520,8 +1520,8 @@ describe('withStoredSqlCheck', () => {
       const error = await reading(client);
 
       expect(error).toBeInstanceOf(StoredSqlError);
-      expect((error as Error).message).toContain("« dolt_nonlocal_tables » n'est pas vide : bd semble être en train de migrer cette base");
-      expect((error as Error).message).toMatch(/réessayez dans un instant, ou lancez n'importe quelle commande bd/);
+      expect((error as Error).message).toContain("« dolt_nonlocal_tables » n'est pas vide : la base semble en cours de migration par l'outil de tickets");
+      expect((error as Error).message).toMatch(/réessayez dans un instant, ou lancez n'importe quelle commande de cet outil/);
       expect((error as Error).message).not.toContain('(dans HEAD)'); // jamais répétée pour la même table
       expect((error as StoredSqlError).objects).toHaveLength(1); // une seule raison, quel que soit ce que le diagnostic a relevé
       expect(calls.filter((call) => isRead(call.sqls))).toHaveLength(1); // aucun autre essai : le diagnostic a nommé la table

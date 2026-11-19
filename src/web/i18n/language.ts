@@ -23,7 +23,7 @@ export const LANGUAGE_SWITCH_ENABLED = false;
 export const FALLBACK_LANGUAGE: Language = 'en';
 
 /** Même clé que le script de index.html, qui pose `<html lang>` avant le premier rendu. */
-export const LANGUAGE_STORAGE_KEY = 'beads-desktop:language';
+export const LANGUAGE_STORAGE_KEY = 'throughline:language';
 
 const isLanguage = (value: unknown): value is Language => (LANGUAGES as readonly unknown[]).includes(value);
 

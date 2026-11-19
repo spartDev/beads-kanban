@@ -5,16 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#eef1f4" />
-    <title>beads-desktop</title>
+    <title>Throughline</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <script>
+      // Les préférences enregistrées sous l'ancien nom de l'application passent sous les clés « throughline: », une fois, avant
+      // que la suite ne les lise. Une préférence déjà enregistrée sous la nouvelle clé l'emporte. Les mêmes clés que l'application
+      // (un test les compare).
+      (function () {
+        var names = ['theme', 'language', 'last-project'];
+        for (var i = 0; i < names.length; i++) {
+          try {
+            var legacy = 'beads-desktop:' + names[i];
+            var value = localStorage.getItem(legacy);
+            if (value === null) continue;
+            if (localStorage.getItem('throughline:' + names[i]) === null) localStorage.setItem('throughline:' + names[i], value);
+            localStorage.removeItem(legacy);
+          } catch (e) {}
+        }
+      })();
       // Thème posé avant le premier rendu (pas d'éclair clair en thème sombre), avec la couleur de la barre du
       // navigateur mobile. Même clé, même règle et mêmes couleurs que theme/theme.ts (un test les compare) :
       // préférence mémorisée, sinon le système.
       (function () {
         var preference = null;
         try {
-          preference = localStorage.getItem('beads-desktop:theme');
+          preference = localStorage.getItem('throughline:theme');
         } catch (e) {}
         var dark =
           preference === 'dark' ||
@@ -33,7 +48,7 @@
         if (LANGUAGE_SWITCH_ENABLED) {
           var preference = null;
           try {
-            preference = localStorage.getItem('beads-desktop:language');
+            preference = localStorage.getItem('throughline:language');
           } catch (e) {}
           if (known.indexOf(preference) >= 0) {
             language = preference;

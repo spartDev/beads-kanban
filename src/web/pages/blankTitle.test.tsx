@@ -46,7 +46,7 @@ describe('la page d’un Projet illisible dont le nom est blanc', () => {
     expect(title.textContent).toBe('Sans titre');
     expect(screen.queryAllByRole('heading', { level: 1, name: '' })).toEqual([]);
     // L'onglet dit comme le titre : le nom blanc du dossier n'y est pas écrit tel quel (bdesk-38k.65).
-    await waitFor(() => expect(document.title).toBe('Sans titre · beads-desktop'));
+    await waitFor(() => expect(document.title).toBe('Sans titre · Throughline'));
     expect(within(screen.getByRole('main')).getByText('Ce Projet est illisible')).toBeTruthy();
     expect(within(screen.getByRole('main')).getByText('Base Dolt verrouillée par un autre processus')).toBeTruthy();
   });
@@ -84,8 +84,8 @@ describe('la page d’un Projet illisible dont le nom est de la ponctuation', ()
 });
 
 /**
- * L'onglet du navigateur d'un Projet dont le nom ne se voit pas (bdesk-38k.65). Les pages d'un Projet lisible titrent l'onglet de leur nom (« Kanban · bdesk · beads-desktop ») : un nom blanc y
- * laissait des blancs au milieu du titre (« Kanban ·    · beads-desktop »), et un nom vide un onglet sans lui. Il y est « Sans titre », comme dans le fil d'Ariane et dans la barre latérale.
+ * L'onglet du navigateur d'un Projet dont le nom ne se voit pas (bdesk-38k.65). Les pages d'un Projet lisible titrent l'onglet de leur nom (« Kanban · bdesk · Throughline ») : un nom blanc y
+ * laissait des blancs au milieu du titre (« Kanban ·    · Throughline »), et un nom vide un onglet sans lui. Il y est « Sans titre », comme dans le fil d'Ariane et dans la barre latérale.
  */
 describe('l’onglet d’un Projet lisible dont le nom ne se voit pas', () => {
   const readable = (name: string): Project => ({ ...unreadable(name), status: 'ok', reason: undefined });
@@ -95,17 +95,17 @@ describe('l’onglet d’un Projet lisible dont le nom ne se voit pas', () => {
     ['fait d’espaces', '   '],
     ['fait d’un remplisseur hangul (U+3164)', '\u3164'],
     ['fait d’un blanc braille (U+2800)', '\u2800'],
-  ])('le kanban titre l’onglet « Kanban · Sans titre · beads-desktop » quand le nom est %s', async (_kind, name) => {
+  ])('le kanban titre l’onglet « Kanban · Sans titre · Throughline » quand le nom est %s', async (_kind, name) => {
     stubApi({ projects: { projects: [readable(name)], ignored: [] }, issues: { blanc: [] } });
     renderApp('/p/blanc/kanban');
 
-    await waitFor(() => expect(document.title).toBe('Kanban · Sans titre · beads-desktop'));
+    await waitFor(() => expect(document.title).toBe('Kanban · Sans titre · Throughline'));
   });
 
   it('les Epics aussi', async () => {
     stubApi({ projects: { projects: [readable('   ')], ignored: [] }, issues: { blanc: [] } });
     renderApp('/p/blanc/epics');
 
-    await waitFor(() => expect(document.title).toBe('Epics · Sans titre · beads-desktop'));
+    await waitFor(() => expect(document.title).toBe('Epics · Sans titre · Throughline'));
   });
 });

@@ -21,7 +21,7 @@ export const MIN_POLL_INTERVAL_MS = 500;
 export const MAX_POLL_INTERVAL_MS = 3_600_000;
 
 export function defaultConfigPath(home = homedir()): string {
-  return join(home, '.config', 'beads-desktop', 'config.json');
+  return join(home, '.config', 'throughline', 'config.json');
 }
 
 export function loadConfig({ home = homedir(), configPath = defaultConfigPath(home) } = {}): Config {

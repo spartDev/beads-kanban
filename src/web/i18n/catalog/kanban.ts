@@ -50,7 +50,7 @@ const fr = {
     ready: {
       label: 'Prêt',
       hint: 'Ouvert, hors Blocage',
-      rule: 'Ticket ouvert dont aucune dépendance n’est en suspens (le « ready » de beads).',
+      rule: 'Ticket ouvert dont aucune dépendance n’est en suspens.',
     },
     inProgress: {
       label: 'En cours',
@@ -152,9 +152,7 @@ const fr = {
     description: (project: string) => `Les tickets de ${project}, en colonnes, en lecture seule.`,
     empty: {
       title: 'Aucun ticket dans ce Projet',
-      /** Autour de `bd create`. */
-      before: 'Créez-en un avec',
-      after: ' : il apparaîtra ici dans quelques secondes.',
+      hint: 'Les tickets créés dans ce Projet apparaîtront ici dans quelques secondes.',
     },
     gone: {
       title: 'Ce Projet n’est plus disponible',
@@ -175,7 +173,7 @@ const fr = {
       /** `project` : le Projet dans une phrase (`projectInSentence`). */
       title: (id: string, project: string) => `Aucun ticket « ${id} » dans ${project}`,
       otherProject: 'L’identifiant est peut-être celui d’un autre Projet : la palette (⌘K) peut chercher dans tous les Projets.',
-      notRecorded: 'Le ticket n’est peut-être pas encore enregistré par bd ; dans ce cas, il s’affichera ici dès qu’il le sera.',
+      notRecorded: 'Le ticket n’est peut-être pas encore enregistré ; dans ce cas, il s’affichera ici dès qu’il le sera.',
     },
     /** Le bouton de retour, vers la page d'où l'on vient (`useClosePanel`). */
     back: {
@@ -347,7 +345,7 @@ const en: typeof fr = {
     ready: {
       label: 'Ready',
       hint: 'Open, not Blocked',
-      rule: 'Open ticket with no pending dependency (beads’ “ready”).',
+      rule: 'Open ticket with no pending dependency.',
     },
     inProgress: {
       label: 'In progress',
@@ -430,8 +428,7 @@ const en: typeof fr = {
     description: (project: string) => `The tickets of ${project}, in columns, read-only.`,
     empty: {
       title: 'No tickets in this Project',
-      before: 'Create one with',
-      after: ': it will show up here within a few seconds.',
+      hint: 'Tickets created in this Project will show up here within a few seconds.',
     },
     gone: {
       title: 'This Project is no longer available',
@@ -450,7 +447,7 @@ const en: typeof fr = {
     gone: {
       title: (id: string, project: string) => `No ticket “${id}” in ${project}`,
       otherProject: 'The identifier may belong to another Project: the palette (⌘K) can search every Project.',
-      notRecorded: 'Or bd may not have recorded the ticket yet; if so, it will show up here as soon as it does.',
+      notRecorded: 'Or the ticket may not have been recorded yet; if so, it will show up here as soon as it is.',
     },
     back: {
       kanban: 'Back to the kanban',
