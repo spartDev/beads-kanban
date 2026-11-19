@@ -88,7 +88,7 @@ describe('MetricTiles : les sept tuiles', () => {
     });
 
     it('reste provisoire quand la seule Livraison de la période en cours a été rouverte avant sa clôture : 0 saine sur 1', () => {
-      // La règle tient aux Livraisons, pas aux saines : tant qu'une Livraison de la période peut encore revenir, le Débit sain peut bouger.
+      // La règle tient aux Livraisons, pas aux saines : la mention dit qu'une Livraison de la période peut encore revenir, ce qui est vrai dès qu'il y en a une, saine ou non.
       const reopened = { total: 0, deliveries: 1, provisional: true, trend: trendOf(0, 3) };
       const data = metricsFixture();
       for (const coverage of [ENOUGH_COVERAGE, LOW_COVERAGE]) {

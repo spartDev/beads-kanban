@@ -137,7 +137,7 @@ describe('LongTrendPanel : le Débit sain, quatrième série', () => {
   });
 
   it('dit provisoire la semaine en cours dont la seule Livraison a été rouverte avant sa clôture : 0 saine sur 1', () => {
-    // La règle tient aux Livraisons, pas aux saines : tant qu'une Livraison de la semaine peut encore revenir, son Débit sain peut bouger.
+    // La règle tient aux Livraisons, pas aux saines : la mention dit qu'une Livraison de la semaine peut encore revenir, ce qui est vrai dès qu'il y en a une, saine ou non.
     const trend = longTrendFixture(undefined, ENOUGH_COVERAGE);
     const current = trend.weeks.at(-1)!;
     expect([current.partial, current.throughput]).toEqual([true, 1]);
