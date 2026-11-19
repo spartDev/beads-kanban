@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readsOutsideHead, tableReads } from '../testing/reads-at-head';
 import { type DoltDatabase, DoltQueryError, type QueryOptions, type Row } from './client';
 import {
+  readClosureLabels,
   readComments,
   readDependencies,
   readHead,
@@ -193,7 +194,7 @@ describe('l’état des tickets est celui du dernier commit (bdesk-38k.36)', () 
 
     const sqls = grouped.groups.flat();
     expect(readsOutsideHead(sqls)).toEqual([]);
-    expect(sqls.map((sql) => tableReads(sql).map(({ table }) => table))).toEqual([['issues'], ['dependencies'], ['issues'], ['labels'], ['comments']]);
+    expect(sqls.map((sql) => tableReads(sql).map(({ table }) => table))).toEqual([['issues'], ['dependencies'], ['labels'], ['issues'], ['labels'], ['comments']]);
   });
 });
 
@@ -301,12 +302,13 @@ describe('lectures légères (bdesk-38k.20)', () => {
 });
 
 describe('readIssueBase : ce que le kanban et toutes les fiches du Projet partagent', () => {
-  const answer = (sql: string): Row[] =>
-    sql.includes('from dependencies')
-      ? [{ issue_id: 'xx-2', depends_on_issue_id: 'xx-1', type: 'blocks' }]
-      : [{ id: 'xx-1', title: 'T', issue_type: 'task', status: 'open', priority: 1, created_at: '2026-10-19 16:46:38', updated_at: '2026-10-19 16:46:38' }];
+  const answer = (sql: string): Row[] => {
+    if (sql.includes('from dependencies')) return [{ issue_id: 'xx-2', depends_on_issue_id: 'xx-1', type: 'blocks' }];
+    if (sql.includes('from labels')) return [{ issue_id: 'xx-1', label: 'declined' }];
+    return [{ id: 'xx-1', title: 'T', issue_type: 'task', status: 'open', priority: 1, created_at: '2026-10-19 16:46:38', updated_at: '2026-10-19 16:46:38' }];
+  };
 
-  it('lit les résumés des tickets et les dépendances dans UN processus', async () => {
+  it('lit les résumés des tickets, les dépendances et les labels de clôture dans UN processus', async () => {
     const { db, groups, singles } = groupedDb(answer);
 
     const base = await readIssueBase(db);
@@ -315,15 +317,17 @@ describe('readIssueBase : ce que le kanban et toutes les fiches du Projet partag
     expect(singles).toEqual([]);
     expect(base.summaries.map((s) => s.id)).toEqual(['xx-1']);
     expect(base.dependencies).toEqual([{ from: 'xx-2', to: 'xx-1', type: 'blocks' }]);
+    expect(base.labels).toEqual([{ issueId: 'xx-1', label: 'declined' }]);
   });
 
-  it('envoie les mêmes requêtes que readIssueSummaries et readDependencies', async () => {
+  it('envoie les mêmes requêtes que readIssueSummaries, readDependencies et readClosureLabels', async () => {
     const grouped = groupedDb(answer);
     const single = fakeDb();
 
     await readIssueBase(grouped.db);
     await readIssueSummaries(single);
     await readDependencies(single);
+    await readClosureLabels(single);
 
     expect(grouped.groups[0]).toEqual(single.queries);
   });
@@ -331,8 +335,17 @@ describe('readIssueBase : ce que le kanban et toutes les fiches du Projet partag
   it('se replie sur une lecture par requête avec une base qui ne sait pas grouper', async () => {
     const db = fakeDb([]);
 
-    expect(await readIssueBase(db)).toEqual({ summaries: [], dependencies: [] });
-    expect(db.queries).toHaveLength(2);
+    expect(await readIssueBase(db)).toEqual({ summaries: [], dependencies: [], labels: [] });
+    expect(db.queries).toHaveLength(3);
+  });
+
+  // ADR 0008 : le seul label que lit la règle de clôture, au dernier commit ; une ligne par ticket qui le porte, pas tous les labels du Projet.
+  it('ne lit des labels que celui du Renoncement, au dernier commit', async () => {
+    const db = fakeDb([{ issue_id: 'xx-1', label: 'declined' }, { label: 'declined' }]);
+
+    expect(await readClosureLabels(db)).toEqual([{ issueId: 'xx-1', label: 'declined' }]);
+    expect(db.queries).toEqual(["select issue_id, label from labels as of 'HEAD' where label = 'declined' order by issue_id"]);
+    expect(readsOutsideHead(db.queries)).toEqual([]);
   });
 });
 

@@ -1,3 +1,4 @@
+import { DECLINED_LABEL } from '../../domain/abandon';
 import { type DoltDatabase, DoltQueryError, parseDoltDate, parseDoltInteger, queryAll, type Row, sqlString } from './client';
 
 /** État d'un ticket au dernier commit : ce qu'il faut au kanban. */
@@ -33,6 +34,12 @@ export interface DependencyRecord {
    * Absente quand la ligne ne la donne pas.
    */
   createdAt?: Date;
+}
+
+/** Un label d'un ticket au dernier commit. */
+export interface LabelRecord {
+  issueId: string;
+  label: string;
 }
 
 export interface CommentRecord {
@@ -96,6 +103,14 @@ export const AT_HEAD = "as of 'HEAD'";
 const SUMMARIES_SQL = `select id, title, issue_type, status, priority, assignee, created_at, updated_at, closed_at from issues ${AT_HEAD} order by created_at, id`;
 const DEPENDENCIES_SQL = `select * from dependencies ${AT_HEAD}`;
 
+/**
+ * Les labels que lit la règle de clôture (`closureOf`, ADR 0008) : le seul `declined`, qui fait d'un ticket fermé un Renoncement. Une lecture
+ * légère : une ligne par ticket qui le porte, au dernier commit comme tout le reste (le label ne se lit pas dans l'historique), et jamais un
+ * processus de plus. Le tableau la lit avec les résumés et les dépendances (`readIssueBase`), les métriques et la Chronologie avec la liste des
+ * tickets de l'historique (`readTicketHistories`), chacun dans le groupe de requêtes qu'il envoyait déjà.
+ */
+export const CLOSURE_LABELS_SQL = `select issue_id, label from labels ${AT_HEAD} where label = ${sqlString(DECLINED_LABEL)} order by issue_id`;
+
 const issueSql = (id: string) => `select id, title, description, design, acceptance_criteria, notes, issue_type, status, priority, assignee,
             created_at, updated_at, closed_at, close_reason
      from issues ${AT_HEAD} where id = ${sqlString(id)}`;
@@ -125,19 +140,28 @@ export async function readComments(db: DoltDatabase, issueId: string): Promise<C
   return toComments(await db.query(commentsSql(issueId)));
 }
 
-/** Ce que le kanban et la fiche de n'importe quel ticket du Projet ont en commun : tous les tickets, résumés, et toutes les dépendances. */
-export interface IssueBase {
-  summaries: IssueSummary[];
-  dependencies: DependencyRecord[];
+/** Les labels du Projet au dernier commit que lit la règle de clôture : `declined` (voir `CLOSURE_LABELS_SQL`). */
+export async function readClosureLabels(db: DoltDatabase): Promise<LabelRecord[]> {
+  return toLabelRecords(await db.query(CLOSURE_LABELS_SQL));
 }
 
 /**
- * Les résumés des tickets et les dépendances du Projet, lus dans UN processus `dolt` (et une seule transaction : un seul état de
- * la base) au lieu de deux. Mêmes requêtes que `readIssueSummaries` et `readDependencies`.
+ * Ce que le kanban et la fiche de n'importe quel ticket du Projet ont en commun : tous les tickets, résumés, toutes les dépendances, et les
+ * labels qui décident de ce qu'est un ticket fermé (`CLOSURE_LABELS_SQL`).
+ */
+export interface IssueBase {
+  summaries: IssueSummary[];
+  dependencies: DependencyRecord[];
+  labels: LabelRecord[];
+}
+
+/**
+ * Les résumés des tickets, les dépendances et les labels de clôture du Projet, lus dans UN processus `dolt` (et une seule transaction : un
+ * seul état de la base) au lieu de trois. Mêmes requêtes que `readIssueSummaries`, `readDependencies` et `readClosureLabels`.
  */
 export async function readIssueBase(db: DoltDatabase): Promise<IssueBase> {
-  const [summaries, dependencies] = await queryAll(db, [SUMMARIES_SQL, DEPENDENCIES_SQL]);
-  return { summaries: (summaries ?? []).map(toSummary), dependencies: toDependencies(dependencies ?? []) };
+  const [summaries, dependencies, labels] = await queryAll(db, [SUMMARIES_SQL, DEPENDENCIES_SQL, CLOSURE_LABELS_SQL]);
+  return { summaries: (summaries ?? []).map(toSummary), dependencies: toDependencies(dependencies ?? []), labels: toLabelRecords(labels ?? []) };
 }
 
 /** Ce qui est propre à la fiche d'un ticket : le ticket complet (null s'il n'existe pas), ses étiquettes et ses commentaires. */
@@ -171,6 +195,13 @@ function toRecord(row: Row | undefined): IssueRecord | null {
 const toDependencies = (rows: Row[]): DependencyRecord[] => rows.flatMap((row) => toDependency(row) ?? []);
 
 const toLabels = (rows: Row[]): string[] => rows.map((row) => asText(row.label));
+
+/** Les lignes de `CLOSURE_LABELS_SQL` ; une ligne sans ticket ne dit rien. */
+export const toLabelRecords = (rows: Row[]): LabelRecord[] =>
+  rows.flatMap((row) => {
+    const issueId = asText(row.issue_id);
+    return issueId ? [{ issueId, label: asText(row.label) }] : [];
+  });
 
 const toComments = (rows: Row[]): CommentRecord[] =>
   rows.map((row) => ({

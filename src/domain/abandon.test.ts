@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abandonOf, type AbandonLink } from './abandon';
+import { abandonOf, type AbandonLink, closureOf, DECLINED_LABEL } from './abandon';
 
 const at = (iso: string) => new Date(`${iso}Z`);
 
@@ -142,5 +142,36 @@ describe('abandonOf : le ticket que ses liens déclarent doublon ou remplacé', 
     abandonOf(links);
 
     expect(links.map((l) => l.target)).toEqual(before);
+  });
+});
+
+/**
+ * La règle de clôture (ADR 0008) : ce qu'est un ticket fermé, hors Epic. Un lien d'Abandon en fait un Abandon ; sans lui, le label
+ * `declined` au Dernier commit en fait un Renoncement ; sans l'un ni l'autre, c'est une Livraison. Jamais la raison de fermeture.
+ */
+describe('closureOf : Livraison, Abandon ou Renoncement', () => {
+  it('fait un Renoncement d’un ticket fermé qui porte le label declined', () => {
+    expect(DECLINED_LABEL).toBe('declined');
+    expect(closureOf([], ['declined'])).toEqual({ kind: 'declined' });
+  });
+
+  it('fait une Livraison d’un ticket fermé sans le label, même avec d’autres labels : rien n’est rétroactif', () => {
+    expect(closureOf([], [])).toEqual({ kind: 'delivered' });
+    expect(closureOf([], ['backend', 'wontfix', 'Declined', 'declined-later'])).toEqual({ kind: 'delivered' });
+  });
+
+  it('garde un Abandon tel quel, avec ou sans le label : le lien dit que le travail existe ailleurs, et le Taux d’abandon ne bouge pas', () => {
+    const duplicate = link('duplicates', 'a', '2026-10-05T09:00');
+
+    expect(closureOf([duplicate], [])).toEqual({ kind: 'abandoned', cause: 'duplicate', of: 'a' });
+    expect(closureOf([duplicate], ['declined'])).toEqual({ kind: 'abandoned', cause: 'duplicate', of: 'a' });
+  });
+
+  it('fait un Renoncement d’un ticket dont le lien d’Abandon a été retiré, s’il porte le label', () => {
+    expect(closureOf([link('supersedes', 'b', '2026-10-05T09:00', '2026-10-06T09:00')], ['declined'])).toEqual({ kind: 'declined' });
+  });
+
+  it('ne lit que les liens d’Abandon : un simple lien n’empêche pas le Renoncement', () => {
+    expect(closureOf([link('blocks', 'c', '2026-10-05T09:00'), link('discovered-from', 'd', '2026-10-05T09:00')], ['declined'])).toEqual({ kind: 'declined' });
   });
 });

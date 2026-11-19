@@ -208,6 +208,22 @@ describe('issue du ticket fermé', () => {
 
     expect(chronology?.outcome).toEqual({ kind: 'abandoned', at: iso('2026-10-02T09:00'), cause });
   });
+
+  it('dit le Renoncement d’un ticket fermé qui porte le label declined, avec les durées des métriques', () => {
+    const chronology = chronologyOf([
+      ticket(
+        'non',
+        [
+          ['open', '2026-10-01T09:00'],
+          ['in_progress', '2026-10-02T09:00'],
+          ['closed', '2026-10-03T09:00'],
+        ],
+        { labels: ['declined'] },
+      ),
+    ]);
+
+    expect(chronology).toMatchObject({ outcome: { kind: 'declined', at: iso('2026-10-03T09:00') }, leadTime: 2 * DAY, cycleTime: DAY });
+  });
 });
 
 describe('Blocages', () => {

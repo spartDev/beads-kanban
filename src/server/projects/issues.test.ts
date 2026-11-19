@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DependencyRecord, IssueRecord, IssueSummary } from '../dolt/reader';
+import type { DependencyRecord, IssueRecord, IssueSummary, LabelRecord } from '../dolt/reader';
 import { buildIssueDetail, buildIssues } from './issues';
 
 function summary(id: string, status = 'open', extra: Partial<IssueSummary> = {}): IssueSummary {
@@ -175,6 +175,62 @@ describe('buildIssues : l’Abandon d’un ticket fermé', () => {
 
     expect(detail.abandon).toEqual({ cause: 'duplicate', of: 'p-2' });
     expect(detail.linked['p-2']).toMatchObject({ id: 'p-2', title: 'Le ticket de référence' });
+  });
+});
+
+/** ADR 0008 : un ticket fermé qui porte le label `declined` au Dernier commit est un Renoncement, ni Livraison ni Abandon. */
+describe('buildIssues : le Renoncement d’un ticket fermé', () => {
+  const label = (issueId: string, name = 'declined'): LabelRecord => ({ issueId, label: name });
+
+  it('marque declined un ticket fermé qui porte le label, sans Abandon', () => {
+    const [issue] = buildIssues([summary('p-1', 'closed')], [], [label('p-1')]);
+
+    expect(issue).toMatchObject({ id: 'p-1', declined: true });
+    expect(issue).not.toHaveProperty('abandon');
+  });
+
+  it('n’existe pas pour une Livraison : sans le label, ou avec un autre, le ticket fermé n’a pas de propriété declined', () => {
+    const [plain, other] = buildIssues([summary('p-1', 'closed'), summary('p-2', 'closed')], [], [label('p-2', 'wontfix')]);
+
+    expect(plain).not.toHaveProperty('declined');
+    expect(other).not.toHaveProperty('declined');
+  });
+
+  it('exige que le ticket soit fermé : rouvert, il garde son label mais n’est plus un Renoncement', () => {
+    for (const status of ['open', 'in_progress', 'blocked', 'deferred']) {
+      const [issue] = buildIssues([summary('p-1', status)], [], [label('p-1')]);
+      expect(issue, status).not.toHaveProperty('declined');
+    }
+  });
+
+  it('ne fait jamais d’une Epic un Renoncement', () => {
+    const [issue] = buildIssues([summary('p-1', 'closed', { type: 'epic' })], [], [label('p-1')]);
+
+    expect(issue).not.toHaveProperty('declined');
+  });
+
+  it('laisse l’Abandon l’emporter sur le label : le ticket reste un Abandon, avec sa cause', () => {
+    const [issue] = buildIssues([summary('p-1', 'closed'), summary('p-2')], [dep('p-1', 'p-2', 'duplicates')], [label('p-1')]);
+
+    expect(issue?.abandon).toEqual({ cause: 'duplicate', of: 'p-2' });
+    expect(issue).not.toHaveProperty('declined');
+  });
+
+  it('ne lit le label que sur le ticket qui le porte', () => {
+    const issues = buildIssues([summary('p-1', 'closed'), summary('p-2', 'closed')], [], [label('p-2')]);
+
+    expect(issues.map((issue) => issue.declined ?? false)).toEqual([false, true]);
+  });
+
+  it('lit le même Renoncement dans la fiche que dans la liste', () => {
+    const [issue] = buildIssues([summary('p-1', 'closed')], [], [label('p-1')]);
+    if (!issue) throw new Error('ticket attendu');
+
+    const record = { ...summary('p-1', 'closed'), description: '', design: '', acceptanceCriteria: '', notes: '', closeReason: 'won’t fix' };
+    const detail = buildIssueDetail(issue, record, [], ['declined'], [], new Map([[issue.id, issue]]));
+
+    expect(detail.declined).toBe(true);
+    expect(detail).not.toHaveProperty('abandon');
   });
 });
 
