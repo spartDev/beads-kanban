@@ -28,7 +28,7 @@ describe('navigation', () => {
 
     const nav = await sidebar();
     expect(await within(nav).findByRole('link', { name: /beads-desktop/ })).toBeTruthy();
-    expect(within(nav).getByRole('link', { name: /My-Prompt-Manager/ })).toBeTruthy();
+    expect(within(nav).getByRole('link', { name: /Mon-Pommier-Malin/ })).toBeTruthy();
 
     const kanban = within(nav).getByRole('link', { name: /Kanban/ });
     expect(kanban.getAttribute('aria-current')).toBe('page');
@@ -234,8 +234,8 @@ describe('palette ⌘K', () => {
     await sidebar();
 
     const dialog = await openPalette(user);
-    await user.keyboard('prompt');
-    await user.click(await within(dialog).findByRole('option', { name: /My-Prompt-Manager/ }));
+    await user.keyboard('pommier');
+    await user.click(await within(dialog).findByRole('option', { name: /Mon-Pommier-Malin/ }));
 
     await waitFor(() => expect(pathname(router)).toBe('/p/mpm/metrics'));
   });
@@ -315,10 +315,10 @@ describe('palette ⌘K', () => {
 
     expect(within(dialog).getAllByRole('option').map((o) => o.textContent)).toEqual([
       expect.stringContaining('beads-desktop'),
-      expect.stringContaining('My-Prompt-Manager'),
+      expect.stringContaining('Mon-Pommier-Malin'),
       expect.stringContaining('legacy-api'),
     ]);
-    await user.click(within(dialog).getByRole('option', { name: /My-Prompt-Manager/ }));
+    await user.click(within(dialog).getByRole('option', { name: /Mon-Pommier-Malin/ }));
     await waitFor(() => expect(pathname(router)).toBe('/p/mpm/kanban'));
   });
 });

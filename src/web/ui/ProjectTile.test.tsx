@@ -53,7 +53,7 @@ describe('les initiales de la pastille d’un Projet dont le nom se voit', () =>
   // [nom du dossier, préfixe, initiales, teinte] : relevé sur HEAD (173b090), `projectMonogram(nom)` et `projectHue(préfixe || nom)`.
   const HEAD: [string, string, string, number][] = [
     ['beads-desktop', 'bdesk', 'BD', 11],
-    ['My-Prompt-Manager', 'mpm', 'MP', 330],
+    ['Mon-Pommier-Malin', 'mpm', 'MP', 330],
     ['beads-desktop', '', 'BD', 260],
     ['legacy-api', '', 'LA', 158],
     ['Mon Projet', '', 'MP', 96],

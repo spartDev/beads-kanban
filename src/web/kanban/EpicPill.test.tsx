@@ -31,7 +31,7 @@ describe('la pastille d’Epic lit le titre court de l’Epic', () => {
   it.each([
     ['un intitulé suivi d’un séparateur', 'beads-desktop V1 : suivi des tickets et métriques de flux', 'beads-desktop V1'],
     ['un titre court, sans séparateur', 'Refonte du shell', 'Refonte du shell'],
-    ['un long titre, coupé à la fin d’un mot', 'Drop Cursor support in CLI + auto-migrate existing workspaces', 'Drop Cursor support in…'],
+    ['un long titre, coupé à la fin d’un mot', 'Move legacy reports to PDF + auto-archive existing exports', 'Move legacy reports to…'],
     ['un séparateur qui ouvre le titre : il reste, sans lui le titre dirait autre chose', '– 5 °C ce matin', '– 5 °C ce matin'],
     ['un « : » qui ouvre le titre', ': Refonte du shell', ': Refonte du shell'],
     ['une tête de caractères sans largeur avant « : », lue comme une tête vide', '\u200b\u200b\u200b : Refonte du shell', ': Refonte du shell'],

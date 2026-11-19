@@ -460,14 +460,14 @@ describe('états de la page Métriques', () => {
     api(() =>
       metricsFixture({
         projects: [{ id: 'bdesk', name: 'beads-desktop' }],
-        unreadable: [{ id: 'mpm', name: 'My-Prompt-Manager', reason: 'Base Dolt verrouillée par un autre processus' }],
+        unreadable: [{ id: 'mpm', name: 'Mon-Pommier-Malin', reason: 'Base Dolt verrouillée par un autre processus' }],
       }),
     );
     await loaded();
 
     const notice = screen.getByText('Un Projet illisible, absent de ces chiffres');
     expect(notice).toBeTruthy();
-    expect(plain(notice.closest('[role="status"]')?.textContent)).toContain('My-Prompt-Manager : Base Dolt verrouillée par un autre processus');
+    expect(plain(notice.closest('[role="status"]')?.textContent)).toContain('Mon-Pommier-Malin : Base Dolt verrouillée par un autre processus');
     expect(screen.getAllByRole('article')).toHaveLength(12);
   });
 

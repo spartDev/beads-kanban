@@ -50,7 +50,7 @@ describe('l’accueil : la page « À regarder » de tous les Projets', () => {
     expect(text(screen.getByRole('region', { name: 'Blocage long' }))).toContain('bloqué en cours de travail depuis 4 j');
     expect(text(screen.getByRole('region', { name: 'Prêt qui stagne' }))).toContain('Prêt depuis 20 j');
     expect(text(screen.getByRole('region', { name: 'WIP inhabituel' }))).toContain(
-      'My-Prompt-Manager : 6 tickets en cours, au-delà de 4, le P85 du WIP quotidien des 90 derniers jours',
+      'Mon-Pommier-Malin : 6 tickets en cours, au-delà de 4, le P85 du WIP quotidien des 90 derniers jours',
     );
   });
 

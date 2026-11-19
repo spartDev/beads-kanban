@@ -12,7 +12,7 @@ describe('paths', () => {
     expect(paths.epics('bdesk')).toBe('/p/bdesk/epics');
     expect(paths.epics('bdesk', 'bdesk-38k')).toBe('/p/bdesk/epics?epic=bdesk-38k');
     expect(paths.metrics('bdesk')).toBe('/p/bdesk/metrics');
-    expect(paths.issue('sais', 'beads_sais-udw')).toBe('/p/sais/t/beads_sais-udw');
+    expect(paths.issue('sas', 'rando_sas-q7k')).toBe('/p/sas/t/rando_sas-q7k');
   });
 
   it('échappe les identifiants', () => {

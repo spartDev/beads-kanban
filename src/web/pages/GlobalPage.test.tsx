@@ -62,11 +62,11 @@ describe('la Vue globale', () => {
     }
     const ready = within(page().getByRole('list', { name: 'Prêts, du plus ancien au plus récent' }));
     // Les Prêts de deux Projets dans une même liste : on dit lequel est lequel.
-    expect(ready.getAllByRole('listitem').map((item) => /My-Prompt-Manager|beads-desktop/.exec(plain(item.textContent))?.[0])).toEqual([
-      'My-Prompt-Manager',
-      'My-Prompt-Manager',
+    expect(ready.getAllByRole('listitem').map((item) => /Mon-Pommier-Malin|beads-desktop/.exec(plain(item.textContent))?.[0])).toEqual([
+      'Mon-Pommier-Malin',
+      'Mon-Pommier-Malin',
       'beads-desktop',
-      'My-Prompt-Manager',
+      'Mon-Pommier-Malin',
       'beads-desktop',
     ]);
   });
@@ -77,7 +77,7 @@ describe('la Vue globale', () => {
 
     expect(screen.getByRole('heading', { level: 2, name: 'Découpage par projet' })).toBeTruthy();
     const table = screen.getByRole('table', { name: 'Métriques de la période par projet' });
-    expect(within(table).getAllByRole('rowheader').map((header) => header.textContent)).toEqual(['beads-desktop', 'My-Prompt-Manager', 'Ensemble']);
+    expect(within(table).getAllByRole('rowheader').map((header) => header.textContent)).toEqual(['beads-desktop', 'Mon-Pommier-Malin', 'Ensemble']);
     expect(within(screen.getByRole('group', { name: 'Découper par' })).getByRole('radio', { name: 'Projet' })).toHaveProperty('checked', true);
   });
 
@@ -95,7 +95,7 @@ describe('la Vue globale', () => {
     const { user, router } = await loaded('/overview?range=7d');
 
     const table = screen.getByRole('table', { name: 'Métriques de la période par projet' });
-    const link = within(table).getByRole('link', { name: 'My-Prompt-Manager' });
+    const link = within(table).getByRole('link', { name: 'Mon-Pommier-Malin' });
     expect(link.getAttribute('href')).toBe('/p/mpm/metrics?range=7d');
 
     await user.click(link);
@@ -103,7 +103,7 @@ describe('la Vue globale', () => {
   });
 
   it('signale un Projet illisible de la réponse sans faire échouer la Vue globale', async () => {
-    api(() => metricsFixture({ unreadable: [{ id: 'hcpportal-front-web', name: 'hcpportal-front-web', reason: 'Base Dolt absente de ce poste' }] }));
+    api(() => metricsFixture({ unreadable: [{ id: 'jardin-partage-web', name: 'jardin-partage-web', reason: 'Base Dolt absente de ce poste' }] }));
     await loaded();
 
     expect(screen.getByText('Un Projet illisible, absent de ces chiffres')).toBeTruthy();
@@ -116,7 +116,7 @@ describe('la Vue globale', () => {
 
     expect(await page().findByRole('heading', { level: 2, name: 'Projets suivis' })).toBeTruthy();
     const tracked = within(page().getByRole('region', { name: 'Projets suivis' }));
-    expect(tracked.getByRole('link', { name: /My-Prompt-Manager/ })).toBeTruthy();
+    expect(tracked.getByRole('link', { name: /Mon-Pommier-Malin/ })).toBeTruthy();
     expect(tracked.getByText('Base Dolt verrouillée par un autre processus')).toBeTruthy();
     await user.click(page().getByText('1 dossier ignoré'));
     expect(page().getByText('/dev/notes')).toBeTruthy();
@@ -127,7 +127,7 @@ describe('la Vue globale', () => {
     renderApp('/overview');
 
     expect(await screen.findByText('Impossible de calculer les métriques')).toBeTruthy();
-    expect(await within(page().getByRole('region', { name: 'Projets suivis' })).findByRole('link', { name: /My-Prompt-Manager/ })).toBeTruthy();
+    expect(await within(page().getByRole('region', { name: 'Projets suivis' })).findByRole('link', { name: /Mon-Pommier-Malin/ })).toBeTruthy();
   });
 
   it('reprend la période de l’adresse', async () => {
