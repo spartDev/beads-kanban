@@ -5,7 +5,8 @@
  *
  * Rien ne s'en sert encore pour ranger un ticket : le kanban reçoit ces statuts avec ses tickets (`IssuesResponse.declaredStatuses`), mais
  * `columnFor` (`columns.ts`) et `isWork` (`flow.ts`) ne les connaissent pas. bdesk-pz0.3 les y branchera : un Statut de relais compte comme
- * statut de travail, un autre statut personnalisé de catégorie `wip` comme en cours, les autres restent « En pause ».
+ * statut de travail, qu'il soit déclaré ou non (sa déclaration peut manquer à des tickets qui le portent : voir `CUSTOM_STATUSES_SQL`), un autre
+ * statut personnalisé de catégorie `wip` comme en cours, les autres restent « En pause ».
  */
 import type { CustomStatus, DeclaredStatuses, HandoffStatus, StatusCategory } from '../shared/api';
 
@@ -25,9 +26,10 @@ const isHandoffStatus = (name: string): name is HandoffStatus => (HANDOFF_STATUS
 
 /**
  * Ce que déclare une suite de statuts personnalisés, dans l'ordre où le Projet les écrit. Un Statut de relais l'est par son nom exact,
- * quelle que soit sa catégorie : c'est le nom que l'app reconnaît (ADR 0007), et une autre casse est un autre statut, celui que porteraient
- * alors les tickets. Un statut déclaré deux fois ne compte qu'une, à sa première déclaration ; un statut de base n'est pas un statut
- * personnalisé, et le déclarer ne change rien à ce qu'il est.
+ * quelle que soit sa catégorie : c'est le nom que l'app reconnaît (ADR 0007). La comparaison exacte suit bd, qui n'écrit que des noms en
+ * minuscules (`[a-z][a-z0-9_-]*`) : un `IN_REVIEW`, qu'il refuse, ne peut venir que d'une clé écrite à la main, et n'est pas un Statut de relais.
+ * bd refuse aussi les doublons et les statuts de base ; les tolérer ici est un choix de l'app, pour ne jamais casser sur une clé écrite à la
+ * main : un statut déclaré deux fois ne compte qu'une, à sa première déclaration, et un statut de base n'est pas un statut personnalisé.
  */
 export function declareStatuses(declared: readonly CustomStatus[]): DeclaredStatuses {
   const seen = new Set<string>();

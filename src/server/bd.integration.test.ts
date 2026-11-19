@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { analyzeFlow } from '../domain/flow';
-import type { IssueDetail } from '../shared/api';
+import type { DeclaredStatuses, IssueDetail } from '../shared/api';
 import { createDoltClient } from './dolt/client';
 import { readTicketHistories } from './dolt/history';
 import { readIssueSummaries } from './dolt/reader';
@@ -41,6 +41,9 @@ describe.skipIf(!hasBinary('dolt') || !hasBinary('bd'))('lecteur Dolt sur un wor
     mkdirSync(workspace);
     execFileSync('git', ['init', '-q', '.'], { cwd: workspace });
     await bd('init', '--prefix', 'xx', '--non-interactive', '--skip-hooks', '--skip-agents', '-q');
+    // La déclaration des Statuts de relais de la chaîne d'agents, telle que l'orchestrateur la pose (ADR 0007, bdesk-pz0.2) : les commandes de bd qui
+    // suivent, en auto-commit, l'emportent au dernier commit si `config set` ne l'y a pas déjà mise.
+    await bd('config', 'set', 'status.custom', 'in_review:wip,in_integration:wip,awaiting_human:wip');
 
     const epic = await create('Epic', '-t', 'epic');
     const a = await create('Ticket A é "ü" <b>', '-t', 'feature', '-p', '1', '--parent', epic);
@@ -75,8 +78,9 @@ describe.skipIf(!hasBinary('dolt') || !hasBinary('bd'))('lecteur Dolt sur un wor
   it('sert tickets et détail par l’API', async () => {
     const app = buildServer({ config: { roots: [roots], projects: [], hiddenProjects: [] } });
 
-    const { issues } = (await app.inject({ url: '/api/projects/xx-projet/issues' })).json<{
+    const { issues, declaredStatuses } = (await app.inject({ url: '/api/projects/xx-projet/issues' })).json<{
       issues: { id: string; status: string; parentId: string | null; blockedBy: string[] }[];
+      declaredStatuses: DeclaredStatuses;
     }>();
     const detail = (await app.inject({ url: `/api/projects/xx-projet/issues/${ids['Ticket A é "ü" <b>']}` })).json<{ issue: IssueDetail }>().issue;
 
@@ -99,6 +103,8 @@ describe.skipIf(!hasBinary('dolt') || !hasBinary('bd'))('lecteur Dolt sur un wor
     ].sort((x, y) => x.type.localeCompare(y.type)));
     expect(detail.dependents).toEqual([{ from: ids['Doublon C'], type: 'duplicates' }]);
     expect((await app.inject({ url: '/api/projects/xx-projet/issues/xx-absent' })).statusCode).toBe(404);
+    // Ce que bd écrit vraiment dans `status.custom` (table `config`), lu au dernier commit avec les tickets du kanban.
+    expect(declaredStatuses).toEqual({ handoff: ['in_review', 'in_integration', 'awaiting_human'], others: [] } satisfies DeclaredStatuses);
   });
 
   it('alimente analyzeFlow avec les Transitions, dépendances et clôtures réelles', async () => {

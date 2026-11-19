@@ -26,7 +26,7 @@ describe('declareStatuses', () => {
     ).toEqual({ handoff: ['in_review', 'in_integration', 'awaiting_human'], others: [] });
   });
 
-  it('les reconnaît par leur nom exact : une autre casse est un autre statut, celui que portent alors les tickets', () => {
+  it('les reconnaît par leur nom exact, comme bd, qui n’écrit que des minuscules : une autre casse, écrite à la main, n’en fait pas un', () => {
     expect(declareStatuses([wip('IN_REVIEW'), wip('In_Integration')])).toEqual({
       handoff: [],
       others: [wip('IN_REVIEW'), wip('In_Integration')],
@@ -55,7 +55,7 @@ describe('declareStatuses', () => {
     });
   });
 
-  it('ne compte qu’une fois un statut déclaré deux fois : la première déclaration fixe sa catégorie', () => {
+  it('ne compte qu’une fois un statut déclaré deux fois (bd le refuse ; une clé écrite à la main) : la première déclaration fixe sa catégorie', () => {
     expect(
       declareStatuses([
         { name: 'qa_testing', category: 'wip' },

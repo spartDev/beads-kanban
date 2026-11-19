@@ -133,18 +133,28 @@ const CUSTOM_STATUSES_KEY = 'status.custom';
  * Une base sans table `config` au dernier commit n'arrive jamais jusqu'ici : la vérification du SQL stocké exige le `CREATE TABLE` des cinq
  * tables lues, `config` comprise, dans HEAD (`schemaCreateProblems`, `stored-sql.ts`), et refuse la base avant toute lecture ; la découverte,
  * elle, échoue à lire le préfixe d'une base sans `config` dans le working set. Le Projet est alors illisible, comme avant cette lecture.
+ *
+ * Une limite : bd 1.3.1 ne valide pas les statuts des tickets contre cette clé, mais contre sa table `custom_statuses`, que `bd config set
+ * status.custom` synchronise, et il ne relit la clé que si cette table est vide. Après un `bd config unset status.custom`, la table garde ses
+ * lignes : des tickets peuvent encore porter `in_review` quand cette lecture ne rend plus aucun statut déclaré. On lit pourtant la clé : c'est
+ * l'interface documentée de bd. Lire `custom_statuses` ajouterait une table exigée dans HEAD par la vérification du SQL stocké, et rendrait
+ * illisibles les bases d'un bd qui ne l'a pas. D'où la règle (ADR 0007) : un Statut de relais se reconnaît à son nom, qu'il soit déclaré ou
+ * non, et la déclaration ne compte que pour la catégorie des autres statuts personnalisés (bdesk-pz0.3 l'appliquera).
  */
 export const CUSTOM_STATUSES_SQL = `select \`value\` from config ${AT_HEAD} where \`key\` = ${sqlString(CUSTOM_STATUSES_KEY)}`;
 
 /**
  * Les statuts qu'écrit une valeur de `status.custom`, dans son ordre, doublons compris : des noms séparés par des virgules, chacun suivi ou non
  * de `:catégorie` (`in_review:wip,in_integration:wip,awaiting_human:wip`, vérifié avec bd 1.3.1 ; les versions d'avant les catégories n'écrivaient
- * que des noms). bd refuse d'écrire une valeur mal formée, mais la base vient d'un remote partagé, et une valeur écrite à la main ne rend pas le
- * Projet illisible : rien ici n'échoue.
+ * que des noms). bd 1.3.1 refuse d'écrire une valeur mal formée : des majuscules dans un nom (il n'admet que `[a-z][a-z0-9_-]*`), des blancs
+ * autour d'un nom ou d'une catégorie, un doublon, une catégorie inconnue. Pour toute valeur qu'il accepte, la lecture est la sienne. Tolérer le
+ * reste est un choix de l'app, non une règle de bd : la base vient d'un remote partagé, et une clé écrite à la main ne rend jamais le Projet
+ * illisible. Rien ici n'échoue.
  *
  * - Les blancs autour d'une entrée, d'un nom ou d'une catégorie ne comptent pas. Une entrée vide (valeur vide, virgule en trop) ou sans nom
  *   (`:wip`) ne déclare rien.
- * - Le nom est gardé tel qu'il est écrit, casse comprise : c'est celui que portent les tickets, et que le domaine compare.
+ * - Le nom est gardé tel qu'il est écrit, casse comprise, et le domaine le compare exactement, comme bd : un `IN_REVIEW` écrit à la main n'est
+ *   pas `in_review`.
  * - La catégorie se lit sans tenir compte de la casse (`WIP` est `wip`). Absente, vide (`qa:`), inconnue (`qa:review`) ou en double
  *   (`qa:wip:done` : tout ce qui suit le premier deux-points), elle est inconnue (`null`), et le statut reste déclaré.
  *
