@@ -11,7 +11,7 @@ const fr = {
    */
   metricHelp: {
     throughput:
-      'Nombre de Livraisons sur la période : tickets fermés pour travail terminé, hors doublons et remplacés. Il mesure le rythme de livraison (l’équivalent de la Deployment Frequency DORA).',
+      'Nombre de Livraisons sur la période : tickets fermés pour travail terminé, hors doublons, remplacés et Renoncements. Il mesure le rythme de livraison (l’équivalent de la Deployment Frequency DORA).',
     soundThroughput:
       'Nombre de Livraisons saines sur la période : livrées du premier coup, sans Réouverture avant leur clôture ni Bug d’origine depuis, même trouvé des mois plus tard (une Prise rendue en cours de travail ne compte pas). À lire à côté du Débit : l’écart, ce sont les Livraisons revenues. Provisoire tant que la période court ; non significatif tant que peu de bugs ont leur origine renseignée (Couverture), comme le Taux d’échec.',
     leadTime:
@@ -227,7 +227,7 @@ const fr = {
 const en: typeof fr = {
   metricHelp: {
     throughput:
-      'Number of Deliveries in the period: tickets closed because the work is done, excluding duplicates and superseded ones. It measures the delivery pace (the equivalent of DORA Deployment Frequency).',
+      'Number of Deliveries in the period: tickets closed because the work is done, excluding duplicates, superseded ones and Declines. It measures the delivery pace (the equivalent of DORA Deployment Frequency).',
     soundThroughput:
       'Number of Sound deliveries in the period: delivered first time, with no Reopen before their closure and no Escaped bug since, even one found months later (a Handback during work does not count). Read it next to Throughput: the gap is the Deliveries that came back. Provisional while the period is running; not significant while few bugs have a recorded origin (Coverage), like the Change failure rate.',
     leadTime:

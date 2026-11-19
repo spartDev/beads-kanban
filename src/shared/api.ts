@@ -59,6 +59,13 @@ export interface Issue {
    * d'une Epic.
    */
   abandon?: IssueAbandon;
+  /**
+   * Présent, et vrai, sur un ticket fermé qui est un Renoncement (ADR 0008) : il porte le label `declined` au Dernier commit,
+   * l'utilisateur a décidé de ne pas faire le travail. Fermé sans être une Livraison, il n'est pas un Abandon non plus : un ticket
+   * qui porte un Abandon n'en porte jamais. Même règle que les métriques (`closureOf`, src/domain/abandon.ts), jamais la raison de
+   * fermeture. Absent d'une Livraison, d'un ticket qui n'est pas fermé (rouvert, il garde son label mais n'est plus rien) et d'une Epic.
+   */
+  declined?: true;
 }
 
 /** Pourquoi un ticket fermé est un Abandon : il double un autre ticket (`duplicate`), ou un autre le remplace (`superseded`). */
@@ -156,13 +163,15 @@ export interface IssueResponse {
  * ---------------------------------------------------------------------------------------------------------------- */
 
 /**
- * Comment le ticket s'est terminé. `delivered` (Livraison), `abandoned` (Abandon : doublon ou remplacé) et `closed` (fermé
- * sans être une Livraison : une Epic, ou un ticket que l'historique ne documente pas) portent la date de la dernière clôture.
+ * Comment le ticket s'est terminé. `delivered` (Livraison), `abandoned` (Abandon : doublon ou remplacé), `declined` (Renoncement : fermé
+ * avec le label `declined` au Dernier commit, ADR 0008) et `closed` (fermé sans être une Livraison : une Epic, ou un ticket que
+ * l'historique ne documente pas) portent la date de la dernière clôture.
  */
 export type IssueOutcome =
   | { kind: 'open' }
   | { kind: 'delivered'; at: string }
   | { kind: 'abandoned'; at: string; cause: 'duplicate' | 'superseded' }
+  | { kind: 'declined'; at: string }
   | { kind: 'closed'; at: string };
 
 /** Une Transition : le ticket prend ce statut à cet instant et le garde jusqu'à la suivante. */
@@ -321,9 +330,10 @@ export interface LiveChangeEvent {
  * CONTEXT.md). Les instants sont des chaînes ISO 8601 en UTC ;
  * les jours (`YYYY-MM-DD`) sont ceux du fuseau demandé (`timeZone`, celui du navigateur : le fuseau de l'utilisateur), à défaut
  * du fuseau local du serveur : c'est lui qui découpe les périodes, les buckets et la Carte d'activité, et la réponse le nomme.
- * Une semaine commence le lundi. Une Livraison, un Abandon ou un échec appartient à la
+ * Une semaine commence le lundi. Une Livraison, un Abandon, un Renoncement ou un échec appartient à la
  * période de sa date de Livraison, c'est-à-dire de sa dernière clôture. Les Epics ne sont mesurées nulle part : ce ne
- * sont pas des Livraisons, et elles resteraient ouvertes dans le WIP et le CFD.
+ * sont pas des Livraisons, et elles resteraient ouvertes dans le WIP et le CFD. Un Renoncement (ADR 0008) n'est pas une Livraison :
+ * il ne compte dans aucune mesure des Livraisons, et `health.declines` les compte.
  *
  * Une période qui court jusqu'à aujourd'hui n'est pas finie : tout ce qui s'y compte (Livraisons, Arrivées, buckets, nuage
  * de points, découpages, tendances) l'est de son début à `asOf` (maintenant), fin exclue, et non jusqu'à minuit. Un
@@ -368,7 +378,7 @@ export interface MetricsTrend {
   ratio: number | null;
 }
 
-/** Une valeur comptée (Débit, Arrivées) et sa tendance. */
+/** Une valeur comptée (Débit, Arrivées, Renoncements) et sa tendance. */
 export interface MetricsCountTile {
   total: number;
   trend: MetricsTrend;
@@ -516,7 +526,7 @@ export interface MetricsCycleTimePoint {
 /**
  * Nombre de tickets par colonne du kanban à la fin d'un jour (ou à `asOf` pour le jour en cours).
  * Backlog : ouvert en Blocage ; Prêt : ouvert hors Blocage ; En cours : statut de travail hors Blocage ;
- * Bloqué : statut de travail en Blocage, ou statut bloqué ; Terminé : fermé (Abandons compris, Epics exclues).
+ * Bloqué : statut de travail en Blocage, ou statut bloqué ; Terminé : fermé (Abandons et Renoncements compris, Epics exclues).
  * Les tickets différés, épinglés ou d'un statut inconnu (« En pause ») ne sont dans aucune colonne.
  */
 export interface MetricsCfdPoint {
@@ -600,11 +610,12 @@ export interface MetricsSlices {
  *   efficiency          Efficacité du flux : part du Cycle Time des Livraisons passée hors Blocage
  *   reopening           Taux de Réouverture : part des clôtures suivies d'une Réouverture
  *   abandonment         Taux d'abandon : part des Abandons parmi les tickets fermés
+ *   declines            Renoncements : tickets fermés avec le label `declined` (ADR 0008), ni Livraisons ni Abandons
  *   leadTimeBreakdown   Décomposition du Lead Time : Attente de dépendance, Attente en Prêt, travail, Blocage, autre attente
  *   readyAges           âge des Prêts (en jours calendaires du fuseau), et ceux qui stagnent
  *   activity            Carte d'activité : Transitions par jour de la semaine et heure
  *
- * Comme le Taux d'échec, un résultat appartient à la période de sa date : une Livraison, un Abandon ou une clôture à celle
+ * Comme le Taux d'échec, un résultat appartient à la période de sa date : une Livraison, un Abandon, un Renoncement ou une clôture à celle
  * de son instant ; un Prêt, à l'état du ticket à `asOf`. Une Réouverture est rattachée à la clôture qu'elle suit, donc à la
  * période de cette clôture, même si elle a lieu plus tard (comme un Bug d'origine, trouvé après la Livraison).
  * ---------------------------------------------------------------------------------------------------------------- */
@@ -661,7 +672,10 @@ export interface MetricsRework {
 
 /** Taux d'abandon : la part des Abandons parmi les tickets fermés de la période. */
 export interface MetricsAbandonment {
-  /** Tickets fermés de la période : Livraisons et Abandons, datés de leur dernière clôture. */
+  /**
+   * Tickets fermés de la période : Livraisons, Abandons et Renoncements, datés de leur dernière clôture. Un Renoncement y reste un ticket
+   * fermé : le label `declined` ne change pas le Taux d'abandon.
+   */
   closed: number;
   /** Parmi eux, les Abandons : `duplicates` + `superseded`. */
   abandoned: number;
@@ -791,6 +805,12 @@ export interface MetricsHealth {
   reopening: MetricsReopening;
   rework: MetricsRework;
   abandonment: MetricsAbandonment;
+  /**
+   * Renoncements de la période (ADR 0008) : les tickets fermés qui portent le label `declined` au Dernier commit, datés de leur dernière
+   * clôture, et leur tendance. Ni Livraisons ni Abandons, ils ne comptent ni dans le Débit, ni dans le Lead Time, ni dans le Taux d'échec ;
+   * leur clôture compte dans le Taux de Réouverture.
+   */
+  declines: MetricsCountTile;
   leadTimeBreakdown: MetricsLeadTimeBreakdown;
   readyAges: MetricsReadyAges;
   activity: MetricsActivity;

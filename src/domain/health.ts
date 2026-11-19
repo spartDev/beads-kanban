@@ -1,6 +1,7 @@
 import type {
   MetricsAbandonment,
   MetricsActivity,
+  MetricsCountTile,
   MetricsFlowEfficiency,
   MetricsHealth,
   MetricsLeadTimeBreakdown,
@@ -15,13 +16,13 @@ import { durationStats, type MetricsInput, type MetricsOptions, type TrackedTick
 import { MAX_ZONE_FORMATTERS } from './time-zone';
 
 /**
- * Santé du flux : Efficacité du flux, Taux de Réouverture, Taux d'abandon, décomposition du Lead Time (avec l'Attente de
- * dépendance), âge des Prêts qui stagnent et carte d'activité. Du code pur, comme `computeMetrics` dont il reprend les
+ * Santé du flux : Efficacité du flux, Taux de Réouverture, Taux d'abandon, Renoncements, décomposition du Lead Time (avec
+ * l'Attente de dépendance), âge des Prêts qui stagnent et carte d'activité. Du code pur, comme `computeMetrics` dont il reprend les
  * entrées (les analyses des Projets, la période, l'instant, le fuseau) et les règles de période : la période courante
  * est comptée de son début à `asOf`, la précédente de son début à `previousAsOf`, à durée écoulée égale.
  *
- * Un résultat appartient à la période de sa date, comme une Livraison : un Abandon à sa dernière clôture, une clôture à son
- * instant, une Transition au sien. Un Prêt est celui du ticket à `asOf`. Les Epics ne sont mesurées nulle part.
+ * Un résultat appartient à la période de sa date, comme une Livraison : un Abandon ou un Renoncement à sa dernière clôture, une
+ * clôture à son instant, une Transition au sien. Un Prêt est celui du ticket à `asOf`. Les Epics ne sont mesurées nulle part.
  *
  * Ce module est composé avec `computeMetrics` par le service de métriques (`MetricsResponse.health`), au lieu d'être appelé
  * par lui : il lit `durationStats`, `trend` et les types de `metrics.ts`, qui ne doit donc pas l'importer en retour.
@@ -59,6 +60,7 @@ export function computeHealth(projects: MetricsInput[], { period, now, timeZone 
     reopening: reopeningOf(entries, elapsed, compared),
     rework: reworkIn(entries, elapsed),
     abandonment: abandonmentOf(entries, elapsed, compared),
+    declines: declinesOf(entries, elapsed, compared),
     leadTimeBreakdown: leadTimeBreakdownOf(entries, elapsed),
     readyAges: readyAgesOf(entries, resolved.asOf, resolved.previousAsOf, timeZone),
     activity: activityOf(entries, elapsed, timeZone),
@@ -136,18 +138,22 @@ function reopeningOf(entries: Entry[], elapsed: Window, compared: Window): Metri
 
 /* --- Taux d'abandon ----------------------------------------------------------------------------------------------- */
 
-/** Les tickets fermés de la fenêtre : Livraisons et Abandons, chacun daté de sa dernière clôture. */
+/**
+ * Les tickets fermés de la fenêtre : Livraisons, Abandons et Renoncements, chacun daté de sa dernière clôture. Un Renoncement est un
+ * ticket fermé comme un autre : compté parmi eux, il laisse au Taux d'abandon la valeur qu'il avait quand il était une Livraison.
+ */
 function closedIn(entries: Entry[], window: Window) {
-  let [delivered, duplicates, superseded] = [0, 0, 0];
+  let [delivered, declined, duplicates, superseded] = [0, 0, 0, 0];
   for (const { ticket } of entries) {
     if (within(ticket.deliveredAt, window)) delivered++;
+    else if (within(ticket.declinedAt, window)) declined++;
     else if (within(ticket.abandonedAt, window)) {
       if (ticket.abandonCause === 'superseded') superseded++;
       else duplicates++;
     }
   }
   const abandoned = duplicates + superseded;
-  return { closed: delivered + abandoned, abandoned, duplicates, superseded };
+  return { closed: delivered + declined + abandoned, abandoned, duplicates, superseded };
 }
 
 function abandonmentOf(entries: Entry[], elapsed: Window, compared: Window): MetricsAbandonment {
@@ -155,6 +161,17 @@ function abandonmentOf(entries: Entry[], elapsed: Window, compared: Window): Met
   const before = closedIn(entries, compared);
   const rate = share(current.abandoned, current.closed);
   return { ...current, rate, trend: trend(rate, share(before.abandoned, before.closed)) };
+}
+
+/* --- Renoncements ------------------------------------------------------------------------------------------------- */
+
+/** Les Renoncements de la fenêtre, datés de leur dernière clôture : un ticket rouvert depuis n'en est plus un. */
+const declinedIn = (entries: Entry[], window: Window) => entries.filter(({ ticket }) => within(ticket.declinedAt, window)).length;
+
+/** Le nombre de Renoncements de la période, et sa tendance : ni bonne ni mauvaise, renoncer est une décision. */
+function declinesOf(entries: Entry[], elapsed: Window, compared: Window): MetricsCountTile {
+  const total = declinedIn(entries, elapsed);
+  return { total, trend: trend(total, declinedIn(entries, compared)) };
 }
 
 /* --- Décomposition du Lead Time ----------------------------------------------------------------------------------- */

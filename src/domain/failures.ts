@@ -52,8 +52,9 @@ const ORIGIN_LINK = 'discovered-from';
  * Un ticket de type bug est le Bug d'origine d'une Livraison quand un lien discovered-from actif, posé sur le bug,
  * pointe vers elle et que le bug a été créé à ou après la date de cette Livraison. Ces deux dates sont celles que
  * l'historique enregistre, non bornées (`isDeliveredBy`). Un bug relié à plusieurs
- * Livraisons est le Bug d'origine de chacune. Un lien vers un ticket ouvert ou en Abandon, ou posé par un bug trouvé
- * avant la Livraison, ne met aucune Livraison en échec mais compte comme « relié » : l'origine est renseignée. Sont
+ * Livraisons est le Bug d'origine de chacune. Un lien vers un ticket ouvert, en Abandon ou en Renoncement (rien n'a été livré), ou
+ * posé par un bug trouvé avant la Livraison, ne met aucune Livraison en échec mais compte comme « relié » : l'origine est renseignée.
+ * Un bug en Renoncement (on renonce à le corriger) reste un bug comme un autre : il a constaté le défaut, et n'en double aucun. Sont
  * ignorés, et ne comptent pas comme « reliés » : un lien retiré, un lien vers le bug lui-même, vers une Epic (elle
  * n'est l'origine d'aucun échec) ou vers un ticket hors Projet, et tout ticket qui n'est pas un bug.
  *

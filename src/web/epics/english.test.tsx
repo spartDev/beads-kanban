@@ -66,6 +66,35 @@ describe('the Epic page, in English', () => {
     expect(progress.textContent).toContain('1 Dropped ticket (duplicate or superseded) counts neither as a Delivery nor as a Child to deliver.');
   });
 
+  it('says a Decline apart, with the glossary’s term: neither a Delivery nor a Child to deliver', async () => {
+    await open('/p/bdesk/epics?epic=bdesk-e1', [
+      EPIC,
+      closedChild('bdesk-a', 3),
+      closedChild('bdesk-r', 2, { declined: true }),
+      closedChild('bdesk-c', 2, { abandon: { cause: 'duplicate', of: 'bdesk-a' } }),
+    ]);
+
+    const progress = section('Progress');
+    expect(within(progress).getByText('1 Delivery out of 1 Child')).toBeTruthy();
+    expect(within(progress).getByText('100%')).toBeTruthy();
+    expect(within(progress).getByRole('list', { name: 'Children by column' }).textContent).toContain('including 1 Dropped and 1 Decline');
+    expect(progress.textContent).toContain('1 Decline (a ticket decided against) counts neither as a Delivery nor as a Child to deliver.');
+    const children = section('Children');
+    expect(within(children).getByText(/including 1 Dropped and 1 Decline/)).toBeTruthy();
+    const row = children.querySelector('a[href$="bdesk-r"]') as HTMLElement;
+    expect(within(row).getByText('Decline').getAttribute('title')).toBe('Decline: decided not to do it');
+    expect(within(children.querySelector('a[href$="bdesk-a"]') as HTMLElement).queryByText('Decline')).toBeNull();
+    expect(within(section('Lead Time and forecast')).getByText('Completion forecast').closest('div')?.textContent).toContain(
+      'All Children are Delivered, Dropped or Declined: the Epic can be closed.',
+    );
+  });
+
+  it('says there is nothing left to deliver when only Declines remain', async () => {
+    await open('/p/bdesk/epics?epic=bdesk-e1', [EPIC, closedChild('bdesk-r', 2, { declined: true }), closedChild('bdesk-s', 3, { declined: true })]);
+
+    expect(within(section('Progress')).getByText(/^No Children to deliver/).textContent).toBe('No Children to deliver: 2 Children are Declined.');
+  });
+
   it('names the header, the links and the Children display in English', async () => {
     const { user } = await open('/p/bdesk/epics?epic=bdesk-e1', someChildren);
 
@@ -171,6 +200,14 @@ describe('the counted nouns, in English: singular at 1 only, plural at 0', () =>
     expect(counted.dropped(n, String(n))).toBe(dropped);
   });
 
+  it.each([
+    [0, '0 Declines'],
+    [1, '1 Decline'],
+    [2, '2 Declines'],
+  ])('%i Declines', (n, declined) => {
+    expect(counted.declined(n, String(n))).toBe(declined);
+  });
+
   it('keeps the French rule apart: singular under 2', () => {
     expect(CATALOGS.fr.epics.counted.deliveries(0, '0')).toBe('0 Livraison');
   });
@@ -197,6 +234,17 @@ describe('the Epics list, in English', () => {
     await open('/p/bdesk/epics', [EPIC, closedChild('bdesk-c', 2, { abandon: { cause: 'duplicate', of: 'bdesk-x' } })]);
 
     expect(await screen.findByText('No Children to deliver (1 Dropped)')).toBeTruthy();
+  });
+
+  it('counts the Declines too when an Epic has no Children to deliver', async () => {
+    await open('/p/bdesk/epics', [
+      EPIC,
+      closedChild('bdesk-c', 2, { abandon: { cause: 'duplicate', of: 'bdesk-x' } }),
+      closedChild('bdesk-r', 2, { declined: true }),
+      closedChild('bdesk-s', 3, { declined: true }),
+    ]);
+
+    expect(await screen.findByText('No Children to deliver (1 Dropped and 2 Declines)')).toBeTruthy();
   });
 
   it('says a ticket that is not an Epic is not one', async () => {

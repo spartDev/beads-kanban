@@ -6,7 +6,7 @@ import type { Zone } from './zone';
  * (`LanguageToggle`, entrées de la palette) y a ses textes.
  *
  * Textes partagés que les autres zones lisent ici : `common` (Réessayer, Sans titre…), `sections` (noms des onglets d'un Projet),
- * `signals` (sortes et phrases des Signaux), `badges` (Priorité, Abandon), `projectNames` (le nom d'un Projet sans nom), `loadErrors`.
+ * `signals` (sortes et phrases des Signaux), `badges` (Priorité, Abandon, Renoncement), `projectNames` (le nom d'un Projet sans nom), `loadErrors`.
  */
 const fr = {
   language: {
@@ -142,6 +142,12 @@ const fr = {
     abandonSpoken: (reason: string) => ` : ${reason}`,
     duplicateOf: (id: string) => `doublon de ${id}`,
     supersededBy: (id: string) => `remplacé par ${id}`,
+    /** Pastille d'un Renoncement (ADR 0008) : fermé parce que l'utilisateur a décidé de ne pas le faire. */
+    decline: 'Renoncement',
+    /** Infobulle de la pastille, avec son motif. */
+    declineTitle: 'Renoncement : décidé de ne pas le faire',
+    /** Le motif, dit après la pastille aux lecteurs d'écran. */
+    declineSpoken: ' : décidé de ne pas le faire',
   },
   palette: {
     title: 'Palette de commandes',
@@ -362,6 +368,9 @@ const en: typeof fr = {
     abandonSpoken: (reason: string) => `: ${reason}`,
     duplicateOf: (id: string) => `duplicate of ${id}`,
     supersededBy: (id: string) => `superseded by ${id}`,
+    decline: 'Decline',
+    declineTitle: 'Decline: decided not to do it',
+    declineSpoken: ': decided not to do it',
   },
   palette: {
     title: 'Command palette',

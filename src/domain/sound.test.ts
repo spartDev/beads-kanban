@@ -61,6 +61,12 @@ describe('Débit sain : les Livraisons saines', () => {
     expect(tile).toMatchObject({ total: 1, deliveries: 1 });
   });
 
+  it('ne compte pas un Renoncement : fermé sans être une Livraison, il n’est ni dans le Débit ni dans le Débit sain', () => {
+    const tile = soundOf([worked('t', '2026-10-15T08:00', '2026-10-18T08:00', '2026-10-20T10:00', { labels: ['declined'] })]);
+
+    expect(tile).toMatchObject({ total: 0, deliveries: 0 });
+  });
+
   it('ne compte pas une Livraison qui a un Bug d’origine, même trouvé bien après la période', () => {
     const tickets = [worked('t', '2026-10-15T08:00', '2026-10-18T08:00', '2026-10-20T10:00'), bug('b', '2026-10-23T08:00', 't')];
 

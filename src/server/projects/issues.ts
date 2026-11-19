@@ -1,7 +1,7 @@
-import { abandonOf, type AbandonLink } from '../../domain/abandon';
+import { type AbandonLink, closureOf } from '../../domain/abandon';
 import { epicOf } from '../../domain/epics';
 import type { Issue, IssueDetail, IssueRef } from '../../shared/api';
-import type { CommentRecord, DependencyRecord, IssueRecord, IssueSummary } from '../dolt/reader';
+import type { CommentRecord, DependencyRecord, IssueRecord, IssueSummary, LabelRecord } from '../dolt/reader';
 
 /** Un lien dont la ligne ne dit pas quand il a été posé passe avant tous les autres : ceux-là se départagent par leur cible. */
 const UNDATED = new Date(0);
@@ -11,20 +11,23 @@ const UNDATED = new Date(0);
  * encore fermées ; un ticket fermé n'est plus bloqué. Une cible hors Projet (référence externe) ne peut pas
  * être évaluée : elle n'y figure pas.
  *
- * `abandon` marque un ticket fermé que ses liens déclarent doublon d'un autre ticket ou remplacé par lui, sauf une Epic, qui
- * n'est jamais une Livraison et donc pas non plus un Abandon. C'est la règle du domaine (`abandonOf`), celle des métriques :
- * ici sur les liens d'aujourd'hui, datés de leur pose (`createdAt`), quel que soit l'ordre des lignes. Un lien compte même
- * quand sa cible n'est pas un ticket du Projet.
+ * `abandon` marque un ticket fermé que ses liens déclarent doublon d'un autre ticket ou remplacé par lui, `declined` un ticket fermé qui
+ * porte le label `declined` (un Renoncement, ADR 0008), sauf une Epic, qui n'est jamais une Livraison et donc ni un Abandon ni un
+ * Renoncement. C'est la règle du domaine (`closureOf`), celle des métriques : ici sur les liens d'aujourd'hui, datés de leur pose
+ * (`createdAt`), quel que soit l'ordre des lignes, et sur les labels du dernier commit (`labels` : ceux que lit la règle, voir
+ * `CLOSURE_LABELS_SQL`). Un lien compte même quand sa cible n'est pas un ticket du Projet.
  *
  * L'état présent ne dit rien des commits : le `created_at` de la ligne y fait `addedAt` et départage seul les liens d'un ticket
  * (puis la cible), là où les métriques le lisent après le commit où chaque lien apparaît. Les deux ne divergent que si ces
  * deux ordres diffèrent, dans les cas que `abandonOf` énumère (même seconde, fuseau d'une ancienne version de bd).
  */
-export function buildIssues(summaries: IssueSummary[], dependencies: DependencyRecord[]): Issue[] {
+export function buildIssues(summaries: IssueSummary[], dependencies: DependencyRecord[], labels: readonly LabelRecord[] = []): Issue[] {
   const statusById = new Map(summaries.map((s) => [s.id, s.status]));
   const parents = new Map<string, string>();
   const blockers = new Map<string, string[]>();
   const links = new Map<string, AbandonLink[]>();
+  const labelsById = new Map<string, string[]>();
+  for (const { issueId, label } of labels) labelsById.set(issueId, [...(labelsById.get(issueId) ?? []), label]);
 
   for (const { from, to, type, createdAt } of dependencies) {
     const link = { type, target: to, addedAt: createdAt ?? UNDATED, createdAt };
@@ -43,7 +46,7 @@ export function buildIssues(summaries: IssueSummary[], dependencies: DependencyR
   }
 
   return summaries.map((s) => {
-    const abandon = s.status === 'closed' && s.type !== 'epic' ? abandonOf(links.get(s.id) ?? []) : undefined;
+    const closure = s.status === 'closed' && s.type !== 'epic' ? closureOf(links.get(s.id) ?? [], labelsById.get(s.id) ?? []) : undefined;
     return {
       id: s.id,
       title: s.title,
@@ -56,7 +59,8 @@ export function buildIssues(summaries: IssueSummary[], dependencies: DependencyR
       updatedAt: s.updatedAt.toISOString(),
       closedAt: s.closedAt?.toISOString() ?? null,
       blockedBy: s.status === 'closed' ? [] : (blockers.get(s.id) ?? []).sort(),
-      ...(abandon ? { abandon } : {}),
+      ...(closure?.kind === 'abandoned' ? { abandon: { cause: closure.cause, of: closure.of } } : {}),
+      ...(closure?.kind === 'declined' ? { declined: true as const } : {}),
     };
   });
 }

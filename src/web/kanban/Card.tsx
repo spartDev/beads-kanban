@@ -8,7 +8,7 @@ import { SIGNAL_KINDS, shownSignals, signalSentence } from '../lib/signals';
 import { statusLabel, typeMeta } from '../design/issue-palette';
 import { useFormat, useLanguage, useT } from '../i18n';
 import { parsePath, paths } from '../paths';
-import { AbandonBadge, PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
+import { AbandonBadge, DeclineBadge, PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
 import { openedFromCard } from './boardFocus';
 import type { Lane } from './columns';
 import { epicName, epicShortName } from './epics';
@@ -90,10 +90,11 @@ export function Card({
         </Link>
       </p>
 
-      {issue.status === 'hooked' || epic || issue.abandon || drift || longBlockage ? (
+      {issue.status === 'hooked' || epic || issue.abandon || issue.declined || drift || longBlockage ? (
         // Les pastilles passent à la ligne plutôt que de serrer l'identifiant, qui ne doit jamais se couper en deux.
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           {issue.abandon ? <AbandonBadge abandon={issue.abandon} /> : null}
+          {issue.declined ? <DeclineBadge /> : null}
           {drift ? <SignalBadge signal={drift} label={signalKind('drift')} icon={Timer} /> : null}
           {longBlockage ? <SignalBadge signal={longBlockage} label={signalKind('longBlockage')} icon={Hourglass} /> : null}
           {issue.status === 'hooked' ? <AgentBadge /> : null}

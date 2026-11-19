@@ -223,8 +223,8 @@ export function createProjectService(
     },
 
     issues: async (projectId, { signal } = {}) => {
-      const { summaries, dependencies } = await read(projectId, readIssueBase, { signal });
-      return buildIssues(summaries, dependencies);
+      const { summaries, dependencies, labels } = await read(projectId, readIssueBase, { signal });
+      return buildIssues(summaries, dependencies, labels);
     },
 
     issue: (projectId, issueId, { signal } = {}) =>
@@ -235,8 +235,9 @@ export function createProjectService(
           if (issueId.includes('\0')) throw new IssueNotFoundError(projectId, issueId);
           // Deux processus en parallèle : le ticket avec ses étiquettes et ses commentaires, et ce que tous les tickets du Projet
           // partagent (résumés et dépendances), que les fiches demandées ensemble lisent ensemble (voir `DoltDatabase`).
-          const [{ record, labels, comments }, { summaries, dependencies }] = await Promise.all([readIssueParts(db, issueId), readIssueBase(db)]);
-          const all = buildIssues(summaries, dependencies);
+          const [{ record, labels, comments }, base] = await Promise.all([readIssueParts(db, issueId), readIssueBase(db)]);
+          const { summaries, dependencies } = base;
+          const all = buildIssues(summaries, dependencies, base.labels);
           const issue = record && all.find((i) => i.id === record.id);
           if (!record || !issue) throw new IssueNotFoundError(projectId, issueId);
           return buildIssueDetail(issue, record, dependencies, labels, comments, new Map(all.map((i) => [i.id, i])));

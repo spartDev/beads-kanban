@@ -133,6 +133,75 @@ describe('analyzeFlow', () => {
     });
   });
 
+  // ADR 0008 : un ticket fermé qui porte le label `declined` au Dernier commit est un Renoncement, ni Livraison ni Abandon.
+  describe('Renoncement', () => {
+    const CLOSED: [string, string][] = [
+      ['open', '2026-10-01T09:00'],
+      ['in_progress', '2026-10-02T09:00'],
+      ['closed', '2026-10-03T09:00'],
+    ];
+
+    it('classe en Renoncement un ticket fermé qui porte le label declined, daté de sa dernière clôture, avec ses durées', () => {
+      const flow = analyzeFlow([ticket('t-1', CLOSED, { labels: ['declined'] })]).get('t-1');
+
+      expect(flow?.outcome).toEqual({ kind: 'declined', at: at('2026-10-03T09:00') });
+      expect(flow?.leadTime).toBe(2 * DAY);
+      expect(flow?.cycleTime).toBe(DAY);
+    });
+
+    it('garde en Livraison un ticket fermé sans le label : un « won’t fix » sans label reste une Livraison', () => {
+      expect(analyzeFlow([ticket('t-1', CLOSED)]).get('t-1')?.outcome.kind).toBe('delivered');
+      expect(analyzeFlow([ticket('t-1', CLOSED, { labels: ['wontfix'] })]).get('t-1')?.outcome.kind).toBe('delivered');
+    });
+
+    it('n’est un Renoncement que fermé : rouvert, le ticket porte encore le label mais n’est rien', () => {
+      const flow = analyzeFlow([ticket('t-1', [...CLOSED, ['open', '2026-10-04T09:00']], { labels: ['declined'] })]).get('t-1');
+
+      expect(flow?.outcome).toEqual({ kind: 'open' });
+      expect(flow?.reopenings).toBe(1);
+    });
+
+    it('date de sa dernière clôture le Renoncement d’un ticket rouvert puis refermé', () => {
+      const flow = analyzeFlow([
+        ticket('t-1', [...CLOSED, ['open', '2026-10-04T09:00'], ['closed', '2026-10-06T09:00']], { labels: ['declined'] }),
+      ]).get('t-1');
+
+      expect(flow?.outcome).toEqual({ kind: 'declined', at: at('2026-10-06T09:00') });
+    });
+
+    it('laisse une Epic fermée hors des Livraisons comme des Renoncements', () => {
+      const flow = analyzeFlow([ticket('e-1', CLOSED, { type: 'epic', labels: ['declined'] })]).get('e-1');
+
+      expect(flow?.outcome).toEqual({ kind: 'closed', at: at('2026-10-03T09:00') });
+    });
+
+    it('laisse l’Abandon tel quel quand le ticket porte aussi le label', () => {
+      const flow = analyzeFlow([
+        ticket('t-1', CLOSED, { labels: ['declined'], dependencies: [{ type: 'duplicates', target: 'other', addedAt: at('2026-10-03T09:00') }] }),
+      ]).get('t-1');
+
+      expect(flow?.outcome).toEqual({ kind: 'abandoned', at: at('2026-10-03T09:00'), cause: 'duplicate', of: 'other' });
+    });
+
+    // Fermé depuis À valider (`awaiting_human`, ADR 0007), un Renoncement n'est pas une Livraison : la Décision qui l'y mène ferme
+    // le ticket sans Livraison, c'est un Refus (CONTEXT.md), quand la même clôture sans le label serait un Feu vert.
+    it('fermé depuis À valider, n’est pas une Livraison : la Décision qui le ferme est un Refus, pas un Feu vert', () => {
+      const fromValidation: [string, string][] = [
+        ['open', '2026-10-01T09:00'],
+        ['in_progress', '2026-10-02T09:00'],
+        ['awaiting_human', '2026-10-03T09:00'],
+        ['closed', '2026-10-04T09:00'],
+      ];
+
+      const declined = analyzeFlow([ticket('t-1', fromValidation, { labels: ['declined'] })]).get('t-1');
+      const delivered = analyzeFlow([ticket('t-1', fromValidation)]).get('t-1');
+
+      expect(declined?.transitions.at(-2)?.status).toBe('awaiting_human');
+      expect(declined?.outcome).toEqual({ kind: 'declined', at: at('2026-10-04T09:00') });
+      expect(delivered?.outcome).toEqual({ kind: 'delivered', at: at('2026-10-04T09:00') });
+    });
+  });
+
   describe('Cycle Time', () => {
     it('compte les statuts de travail : en cours, rattaché à un agent, bloqué', () => {
       const flow = analyzeFlow([

@@ -6,6 +6,7 @@ import { COLUMN_META, ticketNoun } from '../kanban/meta';
 import { useFormat, useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { ChildRow } from './ChildRow';
+import { closedUndelivered } from './closedUndelivered';
 
 /** Le titre et le pictogramme d'un groupe : ceux de la colonne du kanban, plus « En pause ». */
 export function useGroupMeta(): (group: EpicGroup) => { label: string; icon: LucideIcon } {
@@ -18,7 +19,7 @@ const idOf = (group: EpicGroup, part: 'title' | 'count') => `epic-group-${group}
 /**
  * Les Enfants rangés par colonne, dans l'ordre du flux, les colonnes vides omises. Chaque colonne est rangée comme sur le
  * tableau : par priorité puis par mise à jour, et Terminé par clôture, la plus récente d'abord. Terminé garde tous les Enfants
- * fermés, sans la fenêtre de jours du tableau (une Epic se lit de bout en bout), et dit combien sont des Abandons.
+ * fermés, sans la fenêtre de jours du tableau (une Epic se lit de bout en bout), et dit combien sont des Abandons ou des Renoncements.
  */
 export function ByColumn({
   groups,
@@ -34,7 +35,8 @@ export function ByColumn({
   progressOf: (epicId: string) => EpicProgress;
 }) {
   const t = useT();
-  const { formatCount } = useFormat();
+  const format = useFormat();
+  const { formatCount } = format;
   const groupMeta = useGroupMeta();
   // Les titres d'une colonne commencent au même endroit : l'identifiant a la largeur du plus long de la page.
   const idChars = [...EPIC_GROUPS.flatMap((group) => groups[group]), ...nestedEpics].reduce((longest, { id }) => Math.max(longest, id.length), 0);
@@ -44,7 +46,7 @@ export function ByColumn({
         const issues = [...groups[group]].sort(group === 'done' ? compareClosed : compareIssues);
         if (issues.length === 0) return null;
         const { label, icon: Icon } = groupMeta(group);
-        const abandons = issues.filter((issue) => issue.abandon).length;
+        const closed = { abandoned: issues.filter((issue) => issue.abandon).length, declined: issues.filter((issue) => issue.declined).length };
         return (
           <section
             key={group}
@@ -60,8 +62,8 @@ export function ByColumn({
                 {formatCount(issues.length)}
                 <span className="sr-only"> {ticketNoun(issues.length)}</span>
               </span>
-              {abandons > 0 ? (
-                <span className="text-xs font-normal text-ink-3">{t.epics.progress.including(t.epics.counted.dropped(abandons, formatCount(abandons)))}</span>
+              {closed.abandoned + closed.declined > 0 ? (
+                <span className="text-xs font-normal text-ink-3">{t.epics.progress.including(closedUndelivered(closed, t, format))}</span>
               ) : null}
             </h3>
             <ul className="flex flex-col">

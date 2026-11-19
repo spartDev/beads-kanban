@@ -552,6 +552,79 @@ describe('Temps de rétablissement', () => {
   });
 });
 
+/**
+ * Un Renoncement (ADR 0008) : un ticket fermé qui porte le label `declined` au Dernier commit. Ni Livraison ni Abandon, il sort de
+ * tout ce qui se mesure sur les Livraisons ; créé, il reste une Arrivée, et fermé, il est dans Terminé.
+ */
+describe('Renoncement', () => {
+  const DECLINED = { labels: ['declined'] };
+
+  it('ne compte ni dans le Débit ni dans ses buckets, mais reste une Arrivée', () => {
+    const report = metricsOf([
+      worked('livre', '2026-10-18T08:00', '2026-10-19T08:00', '2026-10-20T10:00'),
+      worked('renonce', '2026-10-18T09:00', '2026-10-19T08:00', '2026-10-20T11:00', DECLINED),
+    ]);
+
+    expect(report.tiles.throughput.total).toBe(1);
+    expect(report.buckets.reduce((sum, bucket) => sum + bucket.deliveries, 0)).toBe(1);
+    expect(report.tiles.arrivals.total).toBe(2);
+  });
+
+  it('sort du Lead Time, du Cycle Time, du nuage de points et du Temps de rétablissement', () => {
+    const report = metricsOf([
+      worked('livre', '2026-10-18T08:00', '2026-10-19T08:00', '2026-10-20T08:00', { type: 'bug', priority: 0 }),
+      worked('renonce', '2026-10-10T08:00', '2026-10-11T08:00', '2026-10-20T08:00', { type: 'bug', priority: 0, ...DECLINED }),
+    ]);
+
+    expect(report.tiles.leadTime).toMatchObject({ median: 2 * DAY, n: 1 });
+    expect(report.tiles.cycleTime).toMatchObject({ median: DAY, n: 1 });
+    expect(report.tiles.recoveryTime).toMatchObject({ median: 2 * DAY, n: 1 });
+    expect(report.cycleTimeScatter.map((point) => point.id)).toEqual(['livre']);
+  });
+
+  it('sort du Taux d’échec : un bug relié à un Renoncement n’est le Bug d’origine d’aucun échec, mais son origine est renseignée', () => {
+    const report = metricsOf([
+      closed('livre', '2026-10-01T08:00', '2026-10-18T10:00'),
+      closed('renonce', '2026-10-01T08:00', '2026-10-19T10:00', DECLINED),
+      bug('b1', '2026-10-20T08:00', 'renonce'),
+    ]);
+
+    expect(report.tiles.failureRate).toMatchObject({ deliveries: 1, failed: 0, rate: 0, coverage: { bugs: 1, linked: 1 } });
+  });
+
+  it('sort des découpages par type, par priorité et par Projet', () => {
+    const report = metricsOf([closed('renonce', '2026-10-18T08:00', '2026-10-20T10:00', { type: 'feature', ...DECLINED })]);
+
+    expect(report.slices.type.map((slice) => [slice.key, slice.throughput, slice.arrivals])).toEqual([['feature', 0, 1]]);
+    expect(report.slices.project.map((slice) => slice.throughput)).toEqual([0]);
+  });
+
+  it('se range dans Terminé du CFD, comme toute clôture', () => {
+    const report = metricsOf([closed('renonce', '2026-10-18T08:00', '2026-10-20T10:00', DECLINED)]);
+
+    expect(report.cfd.at(-1)).toMatchObject({ done: 1 });
+  });
+
+  it('redevient une Livraison sans le label : celui que l’on retire ne laisse rien derrière lui', () => {
+    const report = metricsOf([closed('renonce', '2026-10-18T08:00', '2026-10-20T10:00')]);
+
+    expect(report.tiles.throughput.total).toBe(1);
+  });
+
+  it('se lit dans l’analyse du Projet : daté de sa dernière clôture, sans Livraison ni Abandon', () => {
+    const [tracked] = analyzeProject([worked('renonce', '2026-10-18T08:00', '2026-10-19T08:00', '2026-10-20T10:00', DECLINED)]).tickets;
+
+    expect(tracked).toMatchObject({
+      deliveredAt: null,
+      abandonedAt: null,
+      declinedAt: at('2026-10-20T10:00').getTime(),
+      leadTime: null,
+      cycleTime: null,
+      failed: false,
+    });
+  });
+});
+
 describe('WIP', () => {
   const tickets = () => [
     ticket('a', [

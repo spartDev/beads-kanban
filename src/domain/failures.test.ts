@@ -143,6 +143,21 @@ describe('analyzeFailures', () => {
       expect(failures.originBugs.get('t')).toBeUndefined();
     });
 
+    it('ignore un Renoncement, comme un Abandon : rien n’a été livré, mais l’origine du bug est renseignée', () => {
+      const failures = analyze([delivered('t', '2026-10-03T09:00', { labels: ['declined'] }), bug('b', '2026-10-04T09:00', 't')]);
+
+      expect(failures.originBugs.get('t')).toBeUndefined();
+      expect(failures.originBugsFound.get('t')).toBeUndefined();
+      expect(failures.bugs.get('b')).toEqual({ linked: true, failedDeliveries: [] });
+      expect(failures.coverage).toMatchObject({ bugs: 1, linked: 1 });
+    });
+
+    it('met en échec la même Livraison sans le label : un « won’t fix » sans label reste une Livraison', () => {
+      const failures = analyze([delivered('t', '2026-10-03T09:00'), bug('b', '2026-10-04T09:00', 't')]);
+
+      expect(failures.originBugs.get('t')).toEqual(['b']);
+    });
+
     it('ignore une Epic sans en attribuer le bug à ses Enfants', () => {
       const epic = delivered('e', '2026-10-05T09:00', { type: 'epic' });
       const child = delivered('c', '2026-10-03T09:00', {
@@ -259,6 +274,22 @@ describe('analyzeFailures', () => {
 
       expect(failures.bugs.get('b')).toEqual({ linked: true, failedDeliveries: ['t'] });
       expect(failures.originBugs.get('t')).toEqual(['b']);
+    });
+  });
+
+  // Un bug que l'on renonce à corriger constate quand même le défaut : contrairement à un bug en Abandon, il n'en double aucun autre.
+  describe('bug en Renoncement', () => {
+    it('reste le Bug d’origine de la Livraison qu’il met en cause, et compte dans la Couverture', () => {
+      const declinedBug = ticket('b', [['open', '2026-10-04T09:00'], ['closed', '2026-10-05T09:00']], {
+        type: 'bug',
+        labels: ['declined'],
+        dependencies: [discoveredFrom('t')],
+      });
+
+      const failures = analyze([delivered('t'), declinedBug]);
+
+      expect(failures.originBugs.get('t')).toEqual(['b']);
+      expect(failures.coverage).toMatchObject({ bugs: 1, linked: 1 });
     });
   });
 
