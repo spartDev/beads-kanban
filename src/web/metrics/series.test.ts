@@ -8,7 +8,7 @@ import { legendOf, projectColor, seriesOf, type SeriesContext } from './series';
  */
 
 const ctx: SeriesContext = {
-  projectName: (id) => ({ bdesk: 'beads-desktop', mpm: 'My-Prompt-Manager' })[id] ?? id,
+  projectName: (id) => ({ bdesk: 'beads-desktop', mpm: 'Mon-Pommier-Malin' })[id] ?? id,
   projectHue: (id) => ({ bdesk: 200, mpm: 40 })[id] ?? 0,
 };
 
@@ -41,7 +41,7 @@ describe('seriesOf', () => {
   it('colore un Projet de la teinte de sa pastille, et le nomme', () => {
     expect(seriesOf('project', ticket({ project: 'mpm' }), ctx)).toEqual({
       key: 'mpm',
-      label: 'My-Prompt-Manager',
+      label: 'Mon-Pommier-Malin',
       color: 'oklch(var(--series-l) var(--series-c) 40)',
     });
     expect(projectColor(200)).toBe('oklch(var(--series-l) var(--series-c) 200)');

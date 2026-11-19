@@ -47,11 +47,11 @@ describe('un rafraîchissement des Projets en échec', () => {
     const fetchMock = stubDefaultApi();
     const app = renderApp('/p/bdesk/kanban');
     const nav = await screen.findByRole('navigation', { name: 'Navigation principale' });
-    await within(nav).findByRole('link', { name: /My-Prompt-Manager/ });
+    await within(nav).findByRole('link', { name: /Mon-Pommier-Malin/ });
 
     await refreshFails(app, fetchMock, queryKeys.projects, '/api/projects');
 
-    expect(within(nav).getByRole('link', { name: /My-Prompt-Manager/ })).toBeTruthy();
+    expect(within(nav).getByRole('link', { name: /Mon-Pommier-Malin/ })).toBeTruthy();
     expect(within(nav).queryByRole('alert')).toBeNull();
     expect(within(nav).queryByText(/Projets indisponibles/)).toBeNull();
   });
@@ -60,11 +60,11 @@ describe('un rafraîchissement des Projets en échec', () => {
     const fetchMock = stubDefaultApi();
     const app = renderApp('/overview');
     const page = within(await screen.findByRole('main'));
-    expect(await page.findByRole('link', { name: /My-Prompt-Manager/ })).toBeTruthy();
+    expect(await page.findByRole('link', { name: /Mon-Pommier-Malin/ })).toBeTruthy();
 
     await refreshFails(app, fetchMock, queryKeys.projects, '/api/projects');
 
-    expect(page.getByRole('link', { name: /My-Prompt-Manager/ })).toBeTruthy();
+    expect(page.getByRole('link', { name: /Mon-Pommier-Malin/ })).toBeTruthy();
     expect(page.queryByText('Impossible de charger les Projets')).toBeNull();
   });
 });

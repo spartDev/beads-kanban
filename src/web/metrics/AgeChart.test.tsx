@@ -10,7 +10,7 @@ import { metricsFixture, plain, shownText, spokenText } from './testing';
 const DAY = 86_400_000;
 
 const ctx: SeriesContext = {
-  projectName: (id) => ({ bdesk: 'beads-desktop', mpm: 'My-Prompt-Manager' })[id] ?? id,
+  projectName: (id) => ({ bdesk: 'beads-desktop', mpm: 'Mon-Pommier-Malin' })[id] ?? id,
   projectHue: () => 120,
 };
 
@@ -106,12 +106,12 @@ describe('AgePanel : l’âge des tickets en cours', () => {
 
   it('nomme le Projet de chaque ticket quand il y en a plusieurs', () => {
     renderPanel({ showProject: true });
-    expect(within(rows()[0]!).getByText('My-Prompt-Manager')).toBeTruthy();
+    expect(within(rows()[0]!).getByText('Mon-Pommier-Malin')).toBeTruthy();
   });
 
   it('ne nomme pas le Projet quand il n’y en a qu’un', () => {
     renderPanel({ showProject: false });
-    expect(within(rows()[0]!).queryByText('My-Prompt-Manager')).toBeNull();
+    expect(within(rows()[0]!).queryByText('Mon-Pommier-Malin')).toBeNull();
   });
 
   it('se passe des repères quand le Cycle Time n’est pas défini', () => {

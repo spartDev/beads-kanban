@@ -8,7 +8,7 @@ import type { SeriesContext } from './series';
 import { healthFixture } from './testing';
 
 const ctx: SeriesContext = {
-  projectName: (id) => ({ bdesk: 'beads-desktop', mpm: 'My-Prompt-Manager' })[id] ?? id,
+  projectName: (id) => ({ bdesk: 'beads-desktop', mpm: 'Mon-Pommier-Malin' })[id] ?? id,
   projectHue: () => 120,
 };
 
@@ -46,7 +46,7 @@ describe('ReworkPanel : les tickets qui reviennent', () => {
     expect(first?.textContent).toContain('2 Réouvertures');
     expect(first?.textContent).toContain('Bug d’origine bdesk-b9');
     expect(second?.textContent).toContain('1 Prise rendue');
-    expect(second?.textContent).toContain('My-Prompt-Manager');
+    expect(second?.textContent).toContain('Mon-Pommier-Malin');
   });
 
   it('tait le Projet quand la page n’en mesure qu’un', () => {

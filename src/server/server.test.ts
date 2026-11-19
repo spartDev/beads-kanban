@@ -29,7 +29,7 @@ describe('serveur', () => {
     writeFileSync(join(webRoot, 'index.html'), '<!doctype html><title>Throughline</title>');
     const app = buildServer({ config, webRoot });
 
-    const res = await app.inject({ method: 'GET', url: '/p/sais/t/beads_sais-udw' });
+    const res = await app.inject({ method: 'GET', url: '/p/sas/t/rando_sas-q7k' });
 
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('<title>Throughline</title>');
@@ -92,9 +92,9 @@ describe('fallback de l’interface (routes de l’app)', () => {
 
   it.each([
     '/',
-    '/p/sais',
-    '/p/sais/kanban',
-    '/p/sais/t/beads_sais-udw',
+    '/p/sas',
+    '/p/sas/kanban',
+    '/p/sas/t/rando_sas-q7k',
     '/p/beads-desktop/t/bdesk-38k.7', // l'identifiant d'un ticket enfant contient un point
     '/p/beads-desktop/t/bdesk-38k.7.2',
     '/p/beads-desktop/epics?epic=bdesk-38k',
@@ -114,12 +114,12 @@ describe('fallback de l’interface (routes de l’app)', () => {
     ['image/png', 404],
     ['text/html;q=0', 404],
   ])('avec Accept « %s », répond %i pour une route de l’app', async (accept, status) => {
-    expect((await get('/p/sais', { accept })).statusCode).toBe(status);
+    expect((await get('/p/sas', { accept })).statusCode).toBe(status);
   });
 
   it('ne renvoie index.html qu’aux requêtes GET et HEAD', async () => {
-    expect((await get('/p/sais', {}, 'HEAD')).statusCode).toBe(200);
-    expect((await get('/p/sais', {}, 'POST')).statusCode).toBe(404);
+    expect((await get('/p/sas', {}, 'HEAD')).statusCode).toBe(200);
+    expect((await get('/p/sas', {}, 'POST')).statusCode).toBe(404);
   });
 
   it.each(['/api', '/api/', '/api?x=1', '/api/nope', '/api/projects/x/nope'])(
@@ -171,7 +171,7 @@ describe('protection contre le DNS rebinding (en-tête Host)', () => {
     expect((await rawGet(port, undefined)).status).toBeGreaterThanOrEqual(400); // Node ou le serveur : jamais 200
   });
 
-  it.each(['/api/projects', '/api/nope', '/', '/p/sais', '/assets/app.js'])('protège toutes les routes, %s compris, et l’interface servie', async (url) => {
+  it.each(['/api/projects', '/api/nope', '/', '/p/sas', '/assets/app.js'])('protège toutes les routes, %s compris, et l’interface servie', async (url) => {
     const res = await inject('evil.example.com', url, webRootWithAssets());
 
     expect(res.statusCode).toBe(403);

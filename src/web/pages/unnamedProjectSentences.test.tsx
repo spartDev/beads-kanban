@@ -117,9 +117,9 @@ describe('l’alerte de la palette quand les tickets d’un Projet sont indispon
   }
 
   it('écrit les noms qui se voient, séparés par une virgule : comme avant', async () => {
-    const alert = await failing([normal, readable({ id: 'mpm', name: 'My-Prompt-Manager', prefix: 'mpm' })]);
+    const alert = await failing([normal, readable({ id: 'mpm', name: 'Mon-Pommier-Malin', prefix: 'mpm' })]);
 
-    expect(alert.textContent).toBe('Tickets indisponibles : beads-desktop, My-Prompt-Manager.');
+    expect(alert.textContent).toBe('Tickets indisponibles : beads-desktop, Mon-Pommier-Malin.');
   });
 
   it('dit « un Projet sans nom » d’un Projet dont le nom ne se voit pas, non « Sans titre » qui se lirait comme son nom', async () => {
@@ -129,9 +129,9 @@ describe('l’alerte de la palette quand les tickets d’un Projet sont indispon
   });
 
   it('compte les Projets sans nom, après les autres', async () => {
-    const alert = await failing([blank('\u3164'), readable({ id: 'mpm', name: 'My-Prompt-Manager', prefix: 'mpm' }), readable({ id: 'autre', name: '\u200b' })]);
+    const alert = await failing([blank('\u3164'), readable({ id: 'mpm', name: 'Mon-Pommier-Malin', prefix: 'mpm' }), readable({ id: 'autre', name: '\u200b' })]);
 
-    expect(alert.textContent).toBe('Tickets indisponibles : « My-Prompt-Manager », 2 Projets sans nom.');
+    expect(alert.textContent).toBe('Tickets indisponibles : « Mon-Pommier-Malin », 2 Projets sans nom.');
   });
 
   // Relecture : avec un dossier qui s'appelle vraiment « Sans titre », l'alerte disait « …, Sans titre, 3 Projets sans titre. », quatre Projets sans titre pour qui la lit. Les noms sont entre guillemets quand la liste

@@ -175,7 +175,7 @@ describe('projectList : des Projets dans une phrase, après deux-points', () => 
   const blank = (id: string) => project(UNTITLED, { id, unnamed: true });
 
   it('sépare les noms par une virgule, dans l’ordre, comme avant', () => {
-    expect(projectList([project('beads-desktop'), project('My-Prompt-Manager')])).toBe('beads-desktop, My-Prompt-Manager');
+    expect(projectList([project('beads-desktop'), project('Mon-Pommier-Malin')])).toBe('beads-desktop, Mon-Pommier-Malin');
     expect(projectList([project('legacy-api')])).toBe('legacy-api');
   });
 
@@ -209,9 +209,9 @@ describe('projectLabel : un Projet dans une liste où chacun a sa ligne', () => 
   const blank = (id: string) => project(UNTITLED, { id, unnamed: true });
 
   it('écrit le nom tel quel tant qu’aucun Projet de la liste n’est sans nom : comme avant', () => {
-    const among = [project('beads-desktop'), project('My-Prompt-Manager')];
+    const among = [project('beads-desktop'), project('Mon-Pommier-Malin')];
 
-    expect(among.map((one) => projectLabel(one, among))).toEqual(['beads-desktop', 'My-Prompt-Manager']);
+    expect(among.map((one) => projectLabel(one, among))).toEqual(['beads-desktop', 'Mon-Pommier-Malin']);
     expect(projectLabel(project('Sans titre'), [project('Sans titre')])).toBe('Sans titre');
   });
 

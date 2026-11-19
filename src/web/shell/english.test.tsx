@@ -108,7 +108,7 @@ describe('the Watch list in English', () => {
     expect(within(ready).getByRole('link', { name: 'Untitled' })).toBeTruthy();
     expect(text(ready)).toContain('Ready for 20 d');
     expect(text(screen.getByRole('region', { name: 'Unusual WIP' }))).toBe(
-      'Unusual WIPMy-Prompt-Manager: 6 tickets in progress, above 4.5, the P85 of daily WIP over the last 90 days',
+      'Unusual WIPMon-Pommier-Malin: 6 tickets in progress, above 4.5, the P85 of daily WIP over the last 90 days',
     );
     await waitFor(() => expect(document.title).toBe('Watch list · Throughline'));
   });
@@ -171,7 +171,7 @@ describe('the command palette in English', () => {
     expect(within(palette).getByPlaceholderText('Switch project')).toBeTruthy();
     const group = await within(palette).findByRole('group', { name: 'Switch project' });
     expect(within(group).getByLabelText('Current project')).toBeTruthy();
-    await user.click(within(group).getByRole('option', { name: /My-Prompt-Manager/ }));
+    await user.click(within(group).getByRole('option', { name: /Mon-Pommier-Malin/ }));
     await waitFor(() => expect(router.state.location.pathname).toBe('/p/mpm/kanban'));
   });
 });

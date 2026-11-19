@@ -149,7 +149,7 @@ describe('useProjects', () => {
     const { result } = renderHook(() => useProjects(), { wrapper });
 
     await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(result.current.data?.projects.map((entry) => entry.name)).toEqual(['beads-desktop', 'My-Prompt-Manager', 'legacy-api']);
+    expect(result.current.data?.projects.map((entry) => entry.name)).toEqual(['beads-desktop', 'Mon-Pommier-Malin', 'legacy-api']);
   });
 });
 

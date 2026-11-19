@@ -374,7 +374,7 @@ describe('Entrée prend la première ligne, sur toutes les pages : une ligne de 
 
   it.each([
     ['une commande de navigation', 'metriques', 'Métriques', '/p/bdesk/metrics'],
-    ['un Projet', 'prompt', 'My-Prompt-Manager', '/p/mpm/kanban'],
+    ['un Projet', 'pommier', 'Mon-Pommier-Malin', '/p/mpm/kanban'],
     ['une Epic', 'V1', 'beads-desktop V1', '/p/bdesk/epics?epic=bdesk-38k'],
     ['un ticket', '38k.6', 'Shell UI façon Linear', '/p/bdesk/t/bdesk-38k.6'],
   ])('la première ligne est %s : sélectionnée dès la frappe, Entrée la prend', async (_kind, typed, title, target) => {
@@ -433,7 +433,7 @@ describe('Entrée prend la première ligne, sur toutes les pages : une ligne de 
     expect(options.map((option) => option.textContent)).toEqual([
       expect.stringContaining('legacy-api'),
       expect.stringContaining('beads-desktop'),
-      expect.stringContaining('My-Prompt-Manager'),
+      expect.stringContaining('Mon-Pommier-Malin'),
     ]);
     await waitFor(() => expect(options.map(selected)).toEqual([false, true, false]));
     await user.keyboard('{Enter}');
@@ -944,7 +944,7 @@ describe('Entrée pressée avant l’arrivée des tickets : elle ouvre le ticket
     const twin = (title: string) => issue({ id: 'dup-1', title });
     const fetchMock = stubApi({
       projects: projectsResponse,
-      issues: { bdesk: [...bdeskIssues, twin('Doublon côté beads-desktop')], mpm: [...mpmIssues, twin('Doublon côté My-Prompt-Manager')] },
+      issues: { bdesk: [...bdeskIssues, twin('Doublon côté beads-desktop')], mpm: [...mpmIssues, twin('Doublon côté Mon-Pommier-Malin')] },
     });
     const release = holdIssueLists(fetchMock);
     const { dialog, user, router } = await openPalette('/');
@@ -1602,7 +1602,7 @@ describe('survol d’une ligne que la liste retire dans le même instant (un raf
     await screen.findByRole('navigation', { name: 'Navigation principale' });
     await user.keyboard('gp');
     const dialog = await screen.findByRole('dialog', { name: 'Palette de commandes' });
-    const row = await within(dialog).findByRole('option', { name: /My-Prompt-Manager/ });
+    const row = await within(dialog).findByRole('option', { name: /Mon-Pommier-Malin/ });
     fakeClock();
 
     act(() => {
@@ -1611,7 +1611,7 @@ describe('survol d’une ligne que la liste retire dans le même instant (un raf
       vi.advanceTimersByTime(0);
     });
 
-    await waitFor(() => expect(within(dialog).queryByRole('option', { name: /My-Prompt-Manager/ })).toBeNull());
+    await waitFor(() => expect(within(dialog).queryByRole('option', { name: /Mon-Pommier-Malin/ })).toBeNull());
     await waitFor(() => expect(selectedRows(dialog)).toEqual([expect.stringContaining('beads-desktop')]));
     await expectActiveDescendantToFollowSelection(dialog, 'le Projet survolé a été retiré');
   });

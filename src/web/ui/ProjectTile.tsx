@@ -18,7 +18,7 @@ export function projectHueKey(project: Pick<Project, 'prefix' | 'name' | 'path' 
   return project.prefix || (project.unnamed ? project.path : project.name);
 }
 
-/** Deux lettres : initiales des deux premiers mots (`My-Prompt-Manager` donne MP), sinon les deux premières lettres. */
+/** Deux lettres : initiales des deux premiers mots (`Mon-Pommier-Malin` donne MP), sinon les deux premières lettres. */
 export function projectMonogram(name: string): string {
   const words = name.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
   const [first = '?', second] = words;

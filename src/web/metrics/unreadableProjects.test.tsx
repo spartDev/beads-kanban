@@ -43,9 +43,9 @@ const textOf = async (title: string) => (await screen.findByRole('status', { nam
 
 describe('l’avis des Projets illisibles, un composant', () => {
   it('des Projets dont le nom se voit : chacun sous son nom, comme avant', async () => {
-    render(<UnreadableProjects projects={withProjectNames([entry('bdesk', 'beads-desktop', 'Base Dolt verrouillée'), entry('mpm', 'My-Prompt-Manager', 'Base Dolt absente')])} />);
+    render(<UnreadableProjects projects={withProjectNames([entry('bdesk', 'beads-desktop', 'Base Dolt verrouillée'), entry('mpm', 'Mon-Pommier-Malin', 'Base Dolt absente')])} />);
 
-    expect(await textOf('2 Projets illisibles, absents de ces chiffres')).toBe('2 Projets illisibles, absents de ces chiffresbeads-desktop : Base Dolt verrouilléeMy-Prompt-Manager : Base Dolt absente');
+    expect(await textOf('2 Projets illisibles, absents de ces chiffres')).toBe('2 Projets illisibles, absents de ces chiffresbeads-desktop : Base Dolt verrouilléeMon-Pommier-Malin : Base Dolt absente');
   });
 
   it('un dossier qui s’appelle vraiment « Sans titre », seul : « Sans titre », comme avant', async () => {
@@ -70,12 +70,12 @@ describe('l’avis des Projets illisibles, un composant', () => {
   it('les noms qui se voient sont entre guillemets dès qu’un Projet est sans nom, et chaque Projet sans nom a sa ligne', async () => {
     render(
       <UnreadableProjects
-        projects={withProjectNames([entry('bdesk', 'beads-desktop', 'Base Dolt verrouillée'), entry('a', BLANK, 'verrou'), entry('mpm', 'My-Prompt-Manager', 'Base Dolt absente'), entry('b', BLANK, 'absente')])}
+        projects={withProjectNames([entry('bdesk', 'beads-desktop', 'Base Dolt verrouillée'), entry('a', BLANK, 'verrou'), entry('mpm', 'Mon-Pommier-Malin', 'Base Dolt absente'), entry('b', BLANK, 'absente')])}
       />,
     );
 
     expect(await textOf('4 Projets illisibles, absents de ces chiffres')).toBe(
-      '4 Projets illisibles, absents de ces chiffres« beads-desktop » : Base Dolt verrouilléeUn Projet sans nom : verrou« My-Prompt-Manager » : Base Dolt absenteUn Projet sans nom : absente',
+      '4 Projets illisibles, absents de ces chiffres« beads-desktop » : Base Dolt verrouilléeUn Projet sans nom : verrou« Mon-Pommier-Malin » : Base Dolt absenteUn Projet sans nom : absente',
     );
   });
 

@@ -10,7 +10,7 @@ import { renderApp, stubApi } from '../test/render';
  * La zone libre que la barre du haut laisse à côté de son bouton de Projet, sur mobile (bdesk-38k.84). La barre est collante : les cibles de la page qui défilent dessous, les résumés « Données du graphique » par exemple
  * (bdesk-38k.82), n'y sont recouvertes que par ses boutons, et `target-size` d'axe (WCAG 2.5.8, « Taille de la cible (minimum) ») veut qu'il en reste une zone libre de 24 px sur 24 : à côté du bouton du Projet, entre lui et
  * la recherche. Or le bouton du Projet prend toute la place que la recherche lui laisse (il rétrécit et tronque son nom) : plus le nom est long, plus il s'étend vers elle, jusqu'à 8 px, l'écart de la barre. À 375 px, un nom de
- * 21 caractères (`my-prompt-manager-app`) n'en laisse déjà que 23 : les sept résumés sont en violation (« partiallyObscured »), 14 positions de défilement chacun. La marge à droite du bouton réserve la zone, en la prenant sur
+ * 21 caractères (`mon-pommier-malin-app`) n'en laisse déjà que 23 : les sept résumés sont en violation (« partiallyObscured »), 14 positions de défilement chacun. La marge à droite du bouton réserve la zone, en la prenant sur
  * le nom ; mais le bouton ne rétrécit pas sous son rembourrage : plus étroite que 11 rem, la barre n'a plus de place pour la marge, qui y pousserait la recherche et le thème hors de la fenêtre.
  *
  * jsdom ne mesure rien. Ce test lit donc ce que les classes de la barre déclarent dans la feuille de style de l'application, compilée par Tailwind (la vraie, `styles.css`), à la largeur de fenêtre et à la taille de police racine
@@ -50,8 +50,8 @@ const ROOTS = [12, 14, 16, 20, 24];
  */
 const ROOM = 176;
 
-/** Le Projet dont le ticket parle : 21 caractères, ce qui suffit, à 375 px, pour que la zone libre à côté de son bouton tombe sous 24 px (23,08 px, mesurés). */
-const NAME = 'my-prompt-manager-app';
+/** Le Projet dont le ticket parle (nom d'emprunt, de même longueur) : 21 caractères, ce qui suffit, à 375 px, pour que la zone libre à côté de son bouton tombe sous 24 px (23,4 px environ, déduits de la largeur du nom mesurée en navigateur). */
+const NAME = 'mon-pommier-malin-app';
 const project: Project = { id: 'bdesk', name: NAME, path: `/dev/${NAME}`, prefix: 'bdesk', mode: 'embedded', status: 'ok' };
 
 /** Les déclarations qui posent la largeur minimale du bouton : `min-width` et son écriture logique, celle de l'axe du texte (à l'horizontale). */
