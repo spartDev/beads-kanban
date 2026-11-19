@@ -154,6 +154,21 @@ describe.skipIf(!hasBinary('dolt'))('métriques sur de vraies bases Dolt', () =>
     expect(body.tiles.wip.average).toBeCloseTo(5 / 11.5, 10);
   });
 
+  it('donne le Débit sain d’un Projet, dans la tuile et dans la Tendance longue : a-1, mis en échec par a-5, n’est pas une Livraison saine', async () => {
+    const { body } = await get(`${PERIOD}&project=alpha`);
+
+    // La période va jusqu'à aujourd'hui (le 12) : elle court encore, le Débit sain est provisoire. Deux bugs seulement : non significatif, comme le Taux d'échec.
+    expect(body.tiles.soundThroughput).toMatchObject({ total: 3, deliveries: 4, provisional: true, significant: false, reasons: ['few-bugs'] });
+    expect(body.tiles.soundThroughput.coverage).toEqual(body.tiles.failureRate.coverage);
+    // a-1, livré le samedi 3, est la seule Livraison de la semaine du 28 septembre ; a-2, a-3 et a-6 sont celles de la semaine du 5 octobre.
+    expect(body.longTrend.weeks.slice(-3).map((week) => [week.from, week.throughput, week.soundThroughput])).toEqual([
+      ['2026-09-28', 1, 0],
+      ['2026-10-05', 3, 3],
+      ['2026-10-12', 0, 0],
+    ]);
+    expect(body.longTrend.soundSignificance).toMatchObject({ significant: false, reasons: ['few-bugs'] });
+  });
+
   it('place chaque Livraison dans le jour de sa dernière clôture, et dessine le CFD de ces jours', async () => {
     const { body } = await get(`${PERIOD}&project=alpha`);
 
@@ -214,6 +229,7 @@ describe.skipIf(!hasBinary('dolt'))('métriques sur de vraies bases Dolt', () =>
       ['beta', 2],
     ]);
     expect(body.tiles.failureRate.coverage).toEqual({ bugs: 2, linked: 1, ratio: 0.5 }); // beta n'a aucun bug
+    expect(body.tiles.soundThroughput).toMatchObject({ total: 5, deliveries: 6, coverage: { bugs: 2, linked: 1, ratio: 0.5 } }); // toutes saines, sauf a-1
   });
 
   it('ne relit que HEAD tant que rien n’est commité, puis relit l’historique du Projet dont HEAD a changé', async () => {

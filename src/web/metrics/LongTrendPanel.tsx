@@ -4,10 +4,11 @@ import { Group } from '@visx/group';
 import { scaleBand, scaleLinear } from '@visx/scale';
 import { useId } from 'react';
 import type { MetricsLongTrend, MetricsLongTrendWeek } from '../../shared/api';
-import { useFormat, useT, type DisplayFormat, type Messages } from '../i18n';
+import { useFormat, useLanguage, useT, type DisplayFormat, type Messages } from '../i18n';
 import { EmptyChart } from './CfdChart';
 import { ChartCard, ChartFrame, DataTable, Legend } from './ChartParts';
 import { AXIS_TEXT } from './axes';
+import { failureRateReason } from './failureReason';
 import { outlineOf } from './palette';
 import { DURATION_STEPS, integerTicks, thinLabels } from './scales';
 import { DurationText } from './SpokenText';
@@ -16,26 +17,39 @@ import { projectColor } from './series';
 const MARGIN = { top: 12, right: 12, bottom: 22, left: 44 };
 const PLOT_HEIGHT = 130;
 const BARS = 'var(--flow-done)';
-/** Deux teintes de la série des Projets, loin du vert du Débit : bleu pour le Lead Time, violet pour la Réouverture. */
+/** Trois teintes de la série des Projets, loin du vert du Débit : bleu pour le Lead Time, violet pour la Réouverture, sarcelle pour le Débit sain. */
 const LEAD_TIME = projectColor(258);
 const REOPENING = projectColor(320);
+const SOUND = projectColor(195);
 
 type LongTrendTexts = Messages['metrics']['longTrend'];
 
 const deliveriesText = (texts: LongTrendTexts, format: DisplayFormat, count: number) => texts.deliveries(count, format.formatCount(count));
+const soundText = (texts: LongTrendTexts, format: DisplayFormat, count: number) => texts.soundDeliveries(count, format.formatCount(count));
 
 /**
- * La carte « Tendance longue » : Débit, Lead Time au P85 et Taux de Réouverture des 12 dernières semaines, l'une sous l'autre sur le même axe des
+ * La carte « Tendance longue » : Débit, Débit sain, Lead Time au P85 et Taux de Réouverture des 12 dernières semaines, l'une sous l'autre sur le même axe des
  * semaines, sans lissage. Une semaine sans Livraison (ou sans clôture) n'a pas de point : la courbe s'interrompt. Un P85 sur moins de 4 Livraisons est
  * tracé en pointillé, et la semaine en cours, comptée jusqu'à maintenant, est hachurée : ni l'un ni l'autre ne se lit comme une semaine ordinaire.
+ *
+ * Le Débit sain est dessiné sous le Débit, à la même échelle : la hauteur de ses barres se compare d'un coup d'œil à celle des Livraisons. Quand la Couverture
+ * est faible, il n'est pas significatif : ses barres pâlissent, et le motif est écrit sous son titre, dans son nom et dans la légende du tableau.
  */
 export function LongTrendPanel({ trend }: { trend: MetricsLongTrend }) {
-  const { weeks, minDeliveries } = trend;
+  const { weeks, minDeliveries, soundSignificance } = trend;
   const empty = weeks.every((week) => week.throughput === 0 && week.closures === 0);
   const t = useT();
-  const { formatCount, formatDuration, formatPercent, spokenDuration } = useFormat();
+  const format = useFormat();
+  const { language } = useLanguage();
+  const { formatCount, formatDuration, formatPercent, spokenDuration } = format;
   const texts = t.metrics.longTrend;
   const unreliable = texts.unreliable(formatCount(minDeliveries));
+  // Le motif du Débit sain non significatif, null quand il l'est (aucun motif) : celui du Taux d'échec, écrit dans la langue de l'interface.
+  const reason = failureRateReason(soundSignificance, language);
+  const soundNote = reason === null ? undefined : texts.notSignificant(reason);
+  const top = Math.max(0, ...weeks.map((week) => week.throughput));
+  const totalOf = (value: (week: MetricsLongTrendWeek) => number) => weeks.reduce((sum, week) => sum + value(week), 0);
+  const weekCount = formatCount(weeks.length);
 
   return (
     <ChartCard
@@ -46,6 +60,7 @@ export function LongTrendPanel({ trend }: { trend: MetricsLongTrend }) {
           label={texts.legend}
           items={[
             { key: 'throughput', label: texts.throughput, color: BARS },
+            { key: 'sound', label: texts.soundThroughput, color: SOUND },
             { key: 'lead-time', label: texts.leadTime, color: LEAD_TIME, round: true },
             { key: 'reopening', label: texts.reopening, color: REOPENING, round: true },
             { key: 'unreliable', label: unreliable, color: LEAD_TIME, round: true, hatched: true },
@@ -53,14 +68,40 @@ export function LongTrendPanel({ trend }: { trend: MetricsLongTrend }) {
           ]}
         />
       }
-      data={<LongTrendTable weeks={weeks} unreliable={unreliable} />}
+      data={<LongTrendTable weeks={weeks} unreliable={unreliable} soundNote={reason ?? undefined} />}
     >
       {empty ? (
         <EmptyChart>{texts.empty}</EmptyChart>
       ) : (
         <div className="flex flex-col gap-2">
           <Plot title={texts.throughput}>
-            {({ width, height }) => <ThroughputPlot weeks={weeks} width={width} height={height} />}
+            {({ width, height }) => (
+              <BarPlot
+                weeks={weeks}
+                value={(week) => week.throughput}
+                top={top}
+                color={BARS}
+                label={texts.throughputLabel(deliveriesText(texts, format, totalOf((week) => week.throughput)), weekCount)}
+                describe={(count) => deliveriesText(texts, format, count)}
+                width={width}
+                height={height}
+              />
+            )}
+          </Plot>
+          <Plot title={texts.soundThroughput} note={soundNote}>
+            {({ width, height }) => (
+              <BarPlot
+                weeks={weeks}
+                value={(week) => week.soundThroughput}
+                top={top}
+                color={SOUND}
+                label={[texts.soundThroughputLabel(soundText(texts, format, totalOf((week) => week.soundThroughput)), weekCount), soundNote].filter(Boolean).join(' ')}
+                describe={(count) => soundText(texts, format, count)}
+                faint={soundNote !== undefined}
+                width={width}
+                height={height}
+              />
+            )}
           </Plot>
           <Plot title={texts.leadTime}>
             {({ width, height }) => (
@@ -100,18 +141,24 @@ export function LongTrendPanel({ trend }: { trend: MetricsLongTrend }) {
   );
 }
 
-function Plot({ title, children }: { title: string; children: (size: { width: number; height: number }) => React.ReactNode }) {
+/** Un tracé et son titre ; `note`, une remarque sous le titre. Les deux sont cachés aux lecteurs d'écran : le nom du dessin les dit. */
+function Plot({ title, note, children }: { title: string; note?: string; children: (size: { width: number; height: number }) => React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
       <p aria-hidden="true" className="text-micro font-medium text-ink-2">
         {title}
       </p>
+      {note ? (
+        <p aria-hidden="true" data-note="" className="text-micro leading-4 text-ink-2">
+          {note}
+        </p>
+      ) : null}
       <ChartFrame height={PLOT_HEIGHT}>{children}</ChartFrame>
     </div>
   );
 }
 
-/** L'axe des semaines, partagé par les trois tracés : une bande par semaine, nommée de son lundi. */
+/** L'axe des semaines, partagé par les quatre tracés : une bande par semaine, nommée de son lundi. */
 function weekScale(weeks: readonly MetricsLongTrendWeek[], innerWidth: number) {
   return scaleBand<number>({ domain: weeks.map((_, index) => index), range: [0, innerWidth], padding: 0.25 });
 }
@@ -131,37 +178,58 @@ function WeekAxis({ weeks, x, top, innerWidth }: { weeks: readonly MetricsLongTr
   );
 }
 
-function ThroughputPlot({ weeks, width, height }: { weeks: readonly MetricsLongTrendWeek[]; width: number; height: number }) {
+/**
+ * Un nombre de Livraisons par semaine, en barres (Débit, Débit sain). `top` est la plus grande valeur que l'axe doit couvrir : le Débit sain prend celle du
+ * Débit, pour que leurs barres se comparent à la même échelle. `faint` : une mesure non significative, dont les barres pâlissent (le contour, lui, garde son
+ * contraste). La semaine en cours est hachurée.
+ */
+function BarPlot({
+  weeks,
+  value,
+  top: max,
+  color,
+  label,
+  describe,
+  faint = false,
+  width,
+  height,
+}: {
+  weeks: readonly MetricsLongTrendWeek[];
+  value: (week: MetricsLongTrendWeek) => number;
+  top: number;
+  color: string;
+  /** Le nom du dessin, pour les lecteurs d'écran. */
+  label: string;
+  /** Le nombre d'une semaine, en mots, pour l'infobulle de sa barre. */
+  describe: (count: number) => string;
+  faint?: boolean;
+  width: number;
+  height: number;
+}) {
   const hatch = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const innerWidth = Math.max(0, width - MARGIN.left - MARGIN.right);
   const innerHeight = Math.max(0, height - MARGIN.top - MARGIN.bottom);
   const x = weekScale(weeks, innerWidth);
-  const yTicks = integerTicks(Math.max(0, ...weeks.map((week) => week.throughput)), 3);
+  const yTicks = integerTicks(max, 3);
   const y = scaleLinear({ domain: [0, yTicks.at(-1) ?? 1], range: [innerHeight, 0] });
-  const total = weeks.reduce((sum, week) => sum + week.throughput, 0);
   const t = useT();
   const format = useFormat();
   const texts = t.metrics.longTrend;
 
   return (
-    <svg
-      width={width}
-      height={height}
-      role="img"
-      aria-label={texts.throughputLabel(deliveriesText(texts, format, total), format.formatCount(weeks.length))}
-      className="block overflow-visible"
-    >
+    <svg width={width} height={height} role="img" aria-label={label} data-faint={faint ? '' : undefined} className="block overflow-visible">
       <defs>
         <pattern id={hatch} width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <rect width="5" height="5" fill={BARS} fillOpacity="0.35" />
-          <line x1="0" y1="0" x2="0" y2="5" stroke={outlineOf(BARS)} strokeWidth="2" />
+          <rect width="5" height="5" fill={color} fillOpacity="0.35" />
+          <line x1="0" y1="0" x2="0" y2="5" stroke={outlineOf(color)} strokeWidth="2" />
         </pattern>
       </defs>
       <Group left={MARGIN.left} top={MARGIN.top}>
         <GridRows scale={y} width={innerWidth} tickValues={yTicks} stroke="var(--line)" />
         {weeks.map((week, index) => {
-          if (week.throughput === 0) return null;
-          const top = y(week.throughput);
+          const count = value(week);
+          if (count === 0) return null;
+          const top = y(count);
           return (
             <rect
               key={week.from}
@@ -172,12 +240,13 @@ function ThroughputPlot({ weeks, width, height }: { weeks: readonly MetricsLongT
               width={x.bandwidth()}
               height={innerHeight - top}
               rx={2}
-              fill={week.partial ? `url(#${hatch})` : BARS}
-              stroke={outlineOf(BARS)}
+              fill={week.partial ? `url(#${hatch})` : color}
+              fillOpacity={faint && !week.partial ? 0.35 : undefined}
+              stroke={outlineOf(color)}
               strokeWidth={1.25}
               strokeDasharray={week.partial ? '3 2' : undefined}
             >
-              <title>{texts.point(weekTitle(texts, format, week), deliveriesText(texts, format, week.throughput))}</title>
+              <title>{texts.point(weekTitle(texts, format, week), describe(count))}</title>
             </rect>
           );
         })}
@@ -321,14 +390,17 @@ function durationTicks(max: number): { top: number; values: number[] } {
 
 const weekTitle = (texts: LongTrendTexts, format: DisplayFormat, week: MetricsLongTrendWeek) => texts.week(format.formatDayRange(week.from, week.to));
 
-/** `unreliable` : « Moins de 4 Livraisons », la remarque d'une semaine dont le P85 n'est pas digne de foi (la même que la légende). */
-function LongTrendTable({ weeks, unreliable }: { weeks: readonly MetricsLongTrendWeek[]; unreliable: string }) {
+/**
+ * `unreliable` : « Moins de 4 Livraisons », la remarque d'une semaine dont le P85 n'est pas digne de foi (la même que la légende). `soundNote` : le motif du
+ * Débit sain non significatif, que la légende du tableau donne à la suite.
+ */
+function LongTrendTable({ weeks, unreliable, soundNote }: { weeks: readonly MetricsLongTrendWeek[]; unreliable: string; soundNote?: string }) {
   const t = useT();
   const { formatCount, formatDayRange, formatPercent } = useFormat();
   const texts = t.metrics.longTrend;
   return (
     <DataTable
-      caption={texts.caption}
+      caption={soundNote === undefined ? texts.caption : texts.captionNotSignificant(texts.caption, soundNote)}
       head={
         <tr>
           <th scope="col" className="px-3 py-1.5 font-medium">
@@ -336,6 +408,9 @@ function LongTrendTable({ weeks, unreliable }: { weeks: readonly MetricsLongTren
           </th>
           <th scope="col" className="px-3 py-1.5 text-right font-medium">
             {texts.deliveriesColumn}
+          </th>
+          <th scope="col" className="px-3 py-1.5 text-right font-medium">
+            {texts.soundColumn}
           </th>
           <th scope="col" className="px-3 py-1.5 text-right font-medium">
             {texts.leadTimeColumn}
@@ -355,6 +430,9 @@ function LongTrendTable({ weeks, unreliable }: { weeks: readonly MetricsLongTren
             {formatDayRange(week.from, week.to)}
           </th>
           <td className="px-3 py-1 text-right font-medium">{formatCount(week.throughput)}</td>
+          <td data-sound="" className="px-3 py-1 text-right">
+            {formatCount(week.soundThroughput)}
+          </td>
           <td className="px-3 py-1 text-right">{week.leadTimeP85 === null ? '—' : <DurationText ms={week.leadTimeP85} />}</td>
           <td className="px-3 py-1 text-right">
             {week.reopeningRate === null ? '—' : texts.reopeningCell(formatPercent(week.reopeningRate), formatCount(week.reopened), formatCount(week.closures))}

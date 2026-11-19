@@ -67,8 +67,8 @@ describe('la page Métriques d’un Projet', () => {
 
     expect(metricsRequests(fetchMock)).toEqual(['/api/metrics?project=bdesk&range=30d&timeZone=Europe%2FParis']);
     expect(screen.getByRole('heading', { level: 1, name: 'Métriques' })).toBeTruthy();
-    // Six indicateurs, puis cinq tuiles de santé du flux.
-    expect(screen.getAllByRole('article')).toHaveLength(11);
+    // Sept indicateurs (le Débit sain à côté du Débit), puis cinq tuiles de santé du flux.
+    expect(screen.getAllByRole('article')).toHaveLength(12);
     for (const chart of ['Tendance longue', 'Flux cumulé', 'Débit', 'Cycle Time', 'Âge des tickets en cours']) {
       expect(screen.getByRole('region', { name: chart })).toBeTruthy();
     }
@@ -87,6 +87,10 @@ describe('la page Métriques d’un Projet', () => {
 
     const debit = page().getByRole('article', { name: 'Débit' });
     expect(plain(debit.textContent)).toContain('18Livraisons sur la période');
+    // Le Débit sain, juste après le Débit : non significatif dans la réponse (Couverture de 19 %), le nombre observé reste lisible.
+    const sound = page().getByRole('article', { name: 'Débit sain' });
+    expect(debit.nextElementSibling).toBe(sound);
+    expect(plain(sound.textContent)).toContain('Observé : 14 sur 18 Livraisons');
     expect(plain(page().getByRole('article', { name: 'Lead Time' }).textContent)).toContain('6,9 jmédiane');
     expect(plain(page().getByRole('article', { name: 'WIP' }).textContent)).toContain('11en cours à 20:00');
   });
@@ -464,7 +468,7 @@ describe('états de la page Métriques', () => {
     const notice = screen.getByText('Un Projet illisible, absent de ces chiffres');
     expect(notice).toBeTruthy();
     expect(plain(notice.closest('[role="status"]')?.textContent)).toContain('My-Prompt-Manager : Base Dolt verrouillée par un autre processus');
-    expect(screen.getAllByRole('article')).toHaveLength(11);
+    expect(screen.getAllByRole('article')).toHaveLength(12);
   });
 
   it('dit qu’aucun Projet n’a pu être mesuré, au lieu de montrer des zéros', async () => {
@@ -543,7 +547,7 @@ describe('états de la page Métriques', () => {
     await act(() => queryClient.refetchQueries({ queryKey: metricsKey({ project: 'bdesk', period: { kind: 'preset', range: '30d' }, timeZone: 'Europe/Paris' }), exact: true }).catch(() => undefined));
     await waitFor(() => expect(screen.getByText(/Actualisation impossible/)).toBeTruthy());
 
-    expect(screen.getAllByRole('article')).toHaveLength(11);
+    expect(screen.getAllByRole('article')).toHaveLength(12);
     expect(screen.queryByText('Impossible de calculer les métriques')).toBeNull();
   });
 
@@ -565,7 +569,7 @@ describe('la page Métriques quand le navigateur ne nomme pas son fuseau (TZ vid
     await loaded();
 
     expect(screen.getByRole('heading', { level: 1, name: 'Métriques' })).toBeTruthy();
-    expect(screen.getAllByRole('article')).toHaveLength(11);
+    expect(screen.getAllByRole('article')).toHaveLength(12);
   });
 
   it('compte « aujourd’hui » en UTC, comme Date : une plage qui finit demain en UTC est refusée avant d’être demandée', async () => {

@@ -12,6 +12,8 @@ const fr = {
   metricHelp: {
     throughput:
       'Nombre de Livraisons sur la période : tickets fermés pour travail terminé, hors doublons et remplacés. Il mesure le rythme de livraison (l’équivalent de la Deployment Frequency DORA).',
+    soundThroughput:
+      'Nombre de Livraisons saines sur la période : livrées du premier coup, sans Réouverture avant leur clôture ni Bug d’origine depuis, même trouvé des mois plus tard (une Prise rendue en cours de travail ne compte pas). À lire à côté du Débit : l’écart, ce sont les Livraisons revenues. Provisoire tant que la période court ; non significatif tant que peu de bugs ont leur origine renseignée (Couverture), comme le Taux d’échec.',
     leadTime:
       'Durée écoulée entre la création d’un ticket et sa dernière clôture, attentes comprises. C’est le délai que voit le demandeur : en combien de temps une demande est livrée.',
     cycleTime:
@@ -43,10 +45,11 @@ const fr = {
     /** La phrase de la tendance pour les lecteurs d'écran, précédée de ce qu'elle mesure ; `sentence` commence par une minuscule. */
     labelled: (label: string, sentence: string) => `${label} : ${sentence}`,
   },
-  /** Les six tuiles des indicateurs (`MetricTiles`). */
+  /** Les sept tuiles des indicateurs (`MetricTiles`). */
   tiles: {
     heading: 'Indicateurs',
     throughput: 'Débit',
+    soundThroughput: 'Débit sain',
     leadTime: 'Lead Time',
     cycleTime: 'Cycle Time',
     failureRate: 'Taux d’échec',
@@ -58,6 +61,13 @@ const fr = {
     noStartedDeliveries: 'Aucune Livraison démarrée sur la période.',
     noCriticalBugs: 'Aucun bug critique (P0 ou P1) livré sur la période.',
     deliveriesInPeriod: 'Livraisons sur la période',
+    soundDeliveriesInPeriod: 'Livraisons saines sur la période',
+    /** L'écart du Débit sain avec le Débit : les Livraisons revenues (`n`, déjà écrit dans `count`), puis le Débit. */
+    belowThroughput: (_n: number, count: string, throughput: string) => `${count} de moins que le Débit (${throughput})`,
+    allSound: 'Autant que le Débit : aucune Livraison n’est revenue.',
+    /** Le Débit sain non significatif, en retrait : les Livraisons saines sur celles du Débit (`n`). */
+    observedSound: (sound: string, n: number, deliveries: string) => `Observé : ${sound} sur ${deliveries} ${n >= 2 ? 'Livraisons' : 'Livraison'}`,
+    provisional: 'Provisoire : des Livraisons peuvent encore revenir.',
     median: 'médiane',
     medianLabel: 'Médiane',
     p85: 'P85',
@@ -167,6 +177,7 @@ const fr = {
       'Les 12 dernières semaines, du lundi au dimanche, quelle que soit la période choisie : le flux s’améliore-t-il ? Chaque semaine est comptée seule, sans lissage.',
     legend: 'Légende de la Tendance longue',
     throughput: 'Débit',
+    soundThroughput: 'Débit sain',
     leadTime: 'Lead Time au P85',
     reopening: 'Taux de Réouverture',
     unreliable: (minimum: string) => `Moins de ${minimum} Livraisons`,
@@ -176,13 +187,20 @@ const fr = {
     reopeningSubject: 'Taux de Réouverture par semaine',
     deliveries: (n: number, count: string) => (n === 0 ? 'aucune Livraison' : `${count} ${n >= 2 ? 'Livraisons' : 'Livraison'}`),
     throughputLabel: (deliveries: string, weeks: string) => `Débit par semaine : ${deliveries} sur ${weeks} semaines.`,
+    soundDeliveries: (n: number, count: string) => (n === 0 ? 'aucune Livraison saine' : `${count} ${n >= 2 ? 'Livraisons saines' : 'Livraison saine'}`),
+    soundThroughputLabel: (deliveries: string, weeks: string) => `Débit sain par semaine : ${deliveries} sur ${weeks} semaines.`,
+    /** Sous le titre du Débit sain, et à la suite de son nom pour les lecteurs d'écran : `reason` est le motif écrit (`failureRateReason`). */
+    notSignificant: (reason: string) => `Non significatif. ${reason}`,
     lineLabel: (subject: string, n: number, measured: string, weeks: string) =>
       `${subject} : ${measured} ${n >= 2 ? 'semaines mesurées' : 'semaine mesurée'} sur ${weeks}.`,
     week: (range: string) => `Semaine du ${range}`,
     point: (week: string, value: string) => `${week} : ${value}`,
-    caption: 'Débit, Lead Time au P85 et Taux de Réouverture de chacune des 12 dernières semaines',
+    caption: 'Débit, Débit sain, Lead Time au P85 et Taux de Réouverture de chacune des 12 dernières semaines',
+    /** La légende du tableau (`caption`), quand le Débit sain n'est pas significatif. */
+    captionNotSignificant: (caption: string, reason: string) => `${caption}. Débit sain non significatif. ${reason}`,
     weekColumn: 'Semaine',
     deliveriesColumn: 'Livraisons',
+    soundColumn: 'Livraisons saines',
     leadTimeColumn: 'Lead Time P85',
     reopeningColumn: 'Réouverture',
     remarkColumn: 'Remarque',
@@ -206,6 +224,8 @@ const en: typeof fr = {
   metricHelp: {
     throughput:
       'Number of Deliveries in the period: tickets closed because the work is done, excluding duplicates and superseded ones. It measures the delivery pace (the equivalent of DORA Deployment Frequency).',
+    soundThroughput:
+      'Number of Sound deliveries in the period: delivered first time, with no Reopen before their closure and no Escaped bug since, even one found months later (a Handback during work does not count). Read it next to Throughput: the gap is the Deliveries that came back. Provisional while the period is running; not significant while few bugs have a recorded origin (Coverage), like the Change failure rate.',
     leadTime:
       'Elapsed time between a ticket’s creation and its last closure, waits included. It is the delay the requester sees: how long it takes for a request to be delivered.',
     cycleTime:
@@ -237,6 +257,7 @@ const en: typeof fr = {
   tiles: {
     heading: 'Key metrics',
     throughput: 'Throughput',
+    soundThroughput: 'Sound throughput',
     leadTime: 'Lead Time',
     cycleTime: 'Cycle Time',
     failureRate: 'Change failure rate',
@@ -248,6 +269,11 @@ const en: typeof fr = {
     noStartedDeliveries: 'No started Deliveries in the period.',
     noCriticalBugs: 'No critical bugs (P0 or P1) delivered in the period.',
     deliveriesInPeriod: 'Deliveries in the period',
+    soundDeliveriesInPeriod: 'Sound deliveries in the period',
+    belowThroughput: (_n, count, throughput) => `${count} fewer than Throughput (${throughput})`,
+    allSound: 'Same as Throughput: no Delivery came back.',
+    observedSound: (sound, n, deliveries) => `Observed: ${sound} of ${deliveries} ${n === 1 ? 'Delivery' : 'Deliveries'}`,
+    provisional: 'Provisional: Deliveries may still come back.',
     median: 'median',
     medianLabel: 'Median',
     p85: 'P85',
@@ -342,6 +368,7 @@ const en: typeof fr = {
       'The last 12 weeks, Monday to Sunday, whatever the chosen period: is the flow improving? Each week is counted on its own, without smoothing.',
     legend: 'Long trend legend',
     throughput: 'Throughput',
+    soundThroughput: 'Sound throughput',
     leadTime: 'Lead Time at P85',
     reopening: 'Reopen rate',
     unreliable: (minimum) => `Fewer than ${minimum} Deliveries`,
@@ -351,12 +378,17 @@ const en: typeof fr = {
     reopeningSubject: 'Reopen rate per week',
     deliveries: (n, count) => (n === 0 ? 'no Deliveries' : `${count} ${n === 1 ? 'Delivery' : 'Deliveries'}`),
     throughputLabel: (deliveries, weeks) => `Throughput per week: ${deliveries} over ${weeks} weeks.`,
+    soundDeliveries: (n, count) => (n === 0 ? 'no Sound deliveries' : `${count} ${n === 1 ? 'Sound delivery' : 'Sound deliveries'}`),
+    soundThroughputLabel: (deliveries, weeks) => `Sound throughput per week: ${deliveries} over ${weeks} weeks.`,
+    notSignificant: (reason) => `Not significant. ${reason}`,
     lineLabel: (subject, n, measured, weeks) => `${subject}: ${measured} ${n === 1 ? 'week' : 'weeks'} measured out of ${weeks}.`,
     week: (range) => `Week of ${range}`,
     point: (week, value) => `${week}: ${value}`,
-    caption: 'Throughput, Lead Time at P85 and Reopen rate for each of the last 12 weeks',
+    caption: 'Throughput, Sound throughput, Lead Time at P85 and Reopen rate for each of the last 12 weeks',
+    captionNotSignificant: (caption, reason) => `${caption}. Sound throughput not significant. ${reason}`,
     weekColumn: 'Week',
     deliveriesColumn: 'Deliveries',
+    soundColumn: 'Sound deliveries',
     leadTimeColumn: 'Lead Time P85',
     reopeningColumn: 'Reopens',
     remarkColumn: 'Note',
