@@ -13,7 +13,7 @@ const stubDefaultApi = () => stubApi({ projects: projectsResponse, issues: { bde
 
 async function mount(languageSwitch?: boolean) {
   stubDefaultApi();
-  const app = renderApp('/', { languageSwitch });
+  const app = renderApp('/overview', { languageSwitch });
   // Le nom de la navigation suit la langue : un navigateur anglais la nomme en anglais.
   await screen.findByRole('navigation', { name: /^(Navigation principale|Main navigation)$/ });
   return app;

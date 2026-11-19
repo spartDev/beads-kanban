@@ -12,6 +12,27 @@ import { ProjectTile } from '../ui/ProjectTile';
 import { ErrorNotice, Notice, Skeleton } from '../ui/states';
 import { Page, SectionTitle } from './Page';
 
+/** L'avis « Aucun Projet trouvé », et comment en faire suivre : sur la Vue globale, à la place de la liste, et sur l'accueil, à la place de toute la page. */
+export function NoProjects() {
+  const text = useT().shell.overview;
+  return (
+    <Notice icon={FolderSearch} title={text.none}>
+      <p>
+        {text.scanBefore}
+        <code>~/Developer</code>
+        {text.scanAfter}
+      </p>
+      <p className="mt-1.5">
+        {text.configBefore}
+        <code>roots</code>
+        {text.configBetween}
+        <code>~/.config/throughline/config.json</code>
+        {text.configAfter}
+      </p>
+    </Notice>
+  );
+}
+
 export function GlobalPage() {
   const t = useT();
   const format = useFormat();
@@ -32,20 +53,7 @@ export function GlobalPage() {
         {/* Un rafraîchissement raté garde la liste affichée : l'erreur n'a la parole que faute de données. */}
         {projects.data ? (
           projects.data.projects.length === 0 ? (
-            <Notice icon={FolderSearch} title={text.none}>
-              <p>
-                {text.scanBefore}
-                <code>~/Developer</code>
-                {text.scanAfter}
-              </p>
-              <p className="mt-1.5">
-                {text.configBefore}
-                <code>roots</code>
-                {text.configBetween}
-                <code>~/.config/throughline/config.json</code>
-                {text.configAfter}
-              </p>
-            </Notice>
+            <NoProjects />
           ) : (
             <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line bg-panel">
               {projects.data.projects.map((project) => (

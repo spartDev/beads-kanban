@@ -38,7 +38,7 @@ const emptyCharts = () =>
 describe('la Vue globale d’un flux vide', () => {
   it('nomme « Aucun ticket Prêt. » du titre de son graphique, « Prêts qui stagnent »', async () => {
     api();
-    renderApp('/');
+    renderApp('/overview');
     await screen.findByRole('heading', { level: 2, name: 'Indicateurs' });
 
     const status = screen.getByRole('status', { name: 'Prêts qui stagnent' });

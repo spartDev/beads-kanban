@@ -1,5 +1,5 @@
 import { Eye, Keyboard, LayoutGrid, RefreshCw, Search, TriangleAlert } from 'lucide-react';
-import { Link, NavLink } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { useProjects } from '../data/hooks';
 import type { Project } from '../data/types';
 import { useT } from '../i18n';
@@ -13,7 +13,7 @@ import { ShortcutKeys } from '../ui/Kbd';
 import { ProjectTile } from '../ui/ProjectTile';
 import { Skeleton } from '../ui/states';
 import { Tip } from '../ui/Tip';
-import { SECTIONS, useRouteInfo } from './navigation';
+import { allProjectsPage, HOME_SHORTCUT, OVERVIEW_SHORTCUT, SECTIONS, useRouteInfo } from './navigation';
 import { usePalette, useShortcutsHelp } from './OverlayProvider';
 import { LanguageToggle } from './LanguageToggle';
 import { ThemeToggle } from './ThemeToggle';
@@ -44,6 +44,8 @@ export function Sidebar() {
   const { openPalette } = usePalette();
   const help = useShortcutsHelp();
   const t = useT();
+  // La page de tous les Projets affichée, lue comme le reste du shell la lit : `/overview/` (barre finale) est la Vue globale, ce que `NavLink end` ne voit pas.
+  const page = allProjectsPage(useLocation().pathname);
 
   return (
     <aside className="on-side hidden w-60 shrink-0 flex-col gap-4 bg-side px-3 pb-3 pt-4 text-side-ink md:flex">
@@ -64,15 +66,17 @@ export function Sidebar() {
 
       <nav aria-label={t.shell.layout.primaryNavigation} className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
         <div className="flex flex-col gap-1">
-          <NavLink to={paths.global()} end className={rowClass}>
-            <LayoutGrid size={17} strokeWidth={1.9} aria-hidden="true" className={rowIconClass} />
-            {t.shell.overview.title}
-            <RowHint keys="g v" />
-          </NavLink>
-          <NavLink to={paths.signals()} end className={rowClass}>
+          {/* L'accueil, « À regarder » tous Projets confondus, puis la Vue globale : les pages de tous les Projets, avant ceux-ci. */}
+          <Link to={paths.home()} aria-current={page === 'home' ? 'page' : undefined} className={rowClass}>
             <Eye size={17} strokeWidth={1.9} aria-hidden="true" className={rowIconClass} />
             {t.shell.sections.signals}
-          </NavLink>
+            <RowHint keys={HOME_SHORTCUT} />
+          </Link>
+          <Link to={paths.global()} aria-current={page === 'overview' ? 'page' : undefined} className={rowClass}>
+            <LayoutGrid size={17} strokeWidth={1.9} aria-hidden="true" className={rowIconClass} />
+            {t.shell.overview.title}
+            <RowHint keys={OVERVIEW_SHORTCUT} />
+          </Link>
         </div>
         <ProjectList />
       </nav>

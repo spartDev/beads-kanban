@@ -118,6 +118,11 @@ describe('errorText', () => {
     ],
     'query-not-text': [{ code: 'query-not-text', params: { parameter: 'timeZone' } }, '« timeZone » doit être un texte.', '“timeZone” must be a string.'],
     'query-repeated': [{ code: 'query-repeated', params: { parameter: 'range' } }, "« range » ne peut être donné qu'une fois.", '“range” can only be given once.'],
+    'query-invalid-instant': [
+      { code: 'query-invalid-instant', params: { parameter: 'since', received: 'hier' } },
+      '« since » doit être un instant ISO 8601, avec sa date, son heure et son fuseau : reçu « hier ».',
+      '“since” must be an ISO 8601 instant, with its date, time and time zone: got “hier”.',
+    ],
     'period-inverted': [
       { code: 'period-inverted', params: { from: 'F', to: 'T' } },
       'La plage commence après sa fin : « from » (F) doit être avant « to » (T).',

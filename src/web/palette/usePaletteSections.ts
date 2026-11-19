@@ -1,5 +1,5 @@
 import { useQueries, type UseQueryResult } from '@tanstack/react-query';
-import { Keyboard, Languages, LayoutGrid, type LucideIcon } from 'lucide-react';
+import { Eye, Keyboard, Languages, LayoutGrid, type LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { isBlankTitle, isEpic, isReadable, ticketTitle } from '../data/helpers';
 import { issuesQuery, useProjects } from '../data/hooks';
@@ -8,7 +8,7 @@ import { typeMeta } from '../design/issue-palette';
 import { useLanguage, type Language } from '../i18n';
 import { languageOptions } from '../i18n/options';
 import { paths, sectionPath } from '../paths';
-import { SECTIONS, useRouteInfo, useTabsProject } from '../shell/navigation';
+import { HOME_SHORTCUT, OVERVIEW_SHORTCUT, SECTIONS, useRouteInfo, useTabsProject } from '../shell/navigation';
 import { useShortcutsHelp, type PaletteMode } from '../shell/OverlayProvider';
 import { themeOptions } from '../theme/options';
 import { useTheme } from '../theme/ThemeProvider';
@@ -167,11 +167,20 @@ function usePaletteCommands(go: (to: string) => void, close: () => void) {
   return useMemo<{ navigation: CommandEntry[]; actions: CommandEntry[] }>(() => {
     const navigation: CommandEntry[] = [
       {
+        value: 'nav:home',
+        label: t.shell.sections.signals,
+        hint: t.shell.palette.allProjects,
+        keywords: t.shell.palette.homeKeywords,
+        icon: Eye,
+        shortcut: HOME_SHORTCUT,
+        run: () => go(paths.home()),
+      },
+      {
         value: 'nav:global',
         label: t.shell.overview.title,
         keywords: t.shell.palette.overviewKeywords,
         icon: LayoutGrid,
-        shortcut: 'g v',
+        shortcut: OVERVIEW_SHORTCUT,
         run: () => go(paths.global()),
       },
       ...(tabsProject

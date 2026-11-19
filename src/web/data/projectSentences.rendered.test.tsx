@@ -82,11 +82,11 @@ const STATES: [string, string, () => Promise<unknown>][] = [
   ['le panneau d’un ticket', '/p/blanc/t/bdesk-38k.6', () => screen.findByRole('heading', { name: /Shell UI façon Linear/ })],
   ['l’avis d’un ticket absent', '/p/blanc/t/nope-1', () => screen.findByRole('status', { name: /^Aucun ticket/ })],
   ['les métriques du Projet', '/p/blanc/metrics', () => screen.findByRole('heading', { level: 2, name: 'Indicateurs' })],
-  ['la Vue globale', '/', () => screen.findByRole('table', { name: 'Métriques de la période par projet' })],
+  ['la Vue globale', '/overview', () => screen.findByRole('table', { name: 'Métriques de la période par projet' })],
   ['la porte d’un Projet illisible', '/p/vide/kanban', () => screen.findByText('Ce Projet est illisible')],
   // La description de la page passe par le catalogue (`signalsPage.projectDescription`) : « Ce qui mérite d’être regardé maintenant dans ce Projet ».
   ['la page « À regarder » d’un Projet', '/p/blanc/signals', () => screen.findByRole('status', { name: 'Rien à regarder' })],
-  ['la page « À regarder » de la Vue globale', '/signals', () => screen.findByRole('status', { name: 'Rien à regarder' })],
+  ['l’accueil, « À regarder » tous Projets confondus', '/', () => screen.findByRole('status', { name: 'Rien à regarder' })],
 ];
 
 /** Les états d'un Projet qui n'a aucun ticket : les avis qu'on lui écrit quand il n'a rien à montrer (relecture finale : l'un d'eux, `Aucun ticket dans ce Projet`, n'était monté par aucun essai). */
@@ -133,7 +133,7 @@ describe('l’application, avec des Projets dont le dossier n’a pas de nom', (
   it('l’alerte de la palette, quand les tickets de ces Projets sont indisponibles : « Sans titre » n’y est pas', async () => {
     const lock = () => new Error('database is locked');
     serve({ blanc: lock(), ghost: lock(), bdesk: lock() });
-    const { user } = renderApp('/');
+    const { user } = renderApp('/overview');
     await screen.findByRole('navigation', { name: 'Navigation principale' });
 
     await user.keyboard('{Control>}k{/Control}');

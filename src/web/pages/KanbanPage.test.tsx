@@ -1189,7 +1189,7 @@ describe('les raccourcis du kanban', () => {
     keys.stop();
 
     expect(keys.prevented).toEqual([false]);
-    await waitFor(() => expect(router.state.location.pathname).toBe('/'));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/overview'));
   });
 
   it('« Entrée » sur une carte sélectionnée ouvre le ticket par son lien, sans que le kanban détourne la touche', async () => {
@@ -1535,7 +1535,7 @@ describe('les états de la page', () => {
     renderApp('/p/bdesk/kanban');
 
     expect(await screen.findByText('Ce Projet n’est plus disponible')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Voir les Projets suivis' }).getAttribute('href')).toBe('/');
+    expect(screen.getByRole('link', { name: 'Voir les Projets suivis' }).getAttribute('href')).toBe('/overview');
   });
 
   it('signale une panne serveur (500) et laisse réessayer', async () => {

@@ -4,6 +4,7 @@ import { LiveUpdates } from '../live/LiveUpdates';
 import { CommandPalette } from '../palette/CommandPalette';
 import { ShortcutsProvider } from '../shortcuts/ShortcutsProvider';
 import { TooltipProvider } from '../ui/Tip';
+import { GlobalTabs } from './GlobalTabs';
 import { OverlayProvider } from './OverlayProvider';
 import { ShortcutsHelp } from './ShortcutsHelp';
 import { Sidebar } from './Sidebar';
@@ -25,7 +26,8 @@ export function AppShell() {
 
 /**
  * Desktop : barre latérale marine à gauche ; le contenu défile sur le fond de l'app, et chaque page y pose ses cartes.
- * Mobile (< 768 px) : bandeau en haut, contenu pleine largeur, barre d'onglets en bas.
+ * Mobile (< 768 px) : bandeau en haut, contenu pleine largeur, barre d'onglets en bas ; sur les pages de tous les Projets, les liens de l'une à l'autre en tête
+ * du contenu (`GlobalTabs`).
  * La page ne défile jamais horizontalement : un contenu large (le kanban) gère son propre défilement.
  */
 function Layout() {
@@ -56,6 +58,7 @@ function Layout() {
         >
           <TopBar />
           <LiveUpdates />
+          <GlobalTabs />
           <div className="flex min-w-0 flex-1 flex-col">
             <Outlet />
           </div>

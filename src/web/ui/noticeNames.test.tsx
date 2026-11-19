@@ -40,7 +40,7 @@ const STATUS_NOTICES: readonly Scenario[] = [
     'la Vue globale sans Projet',
     () => {
       stubApi({ projects: { projects: [], ignored: [] } });
-      return '/';
+      return '/overview';
     },
     'Aucun Projet trouvé',
   ],

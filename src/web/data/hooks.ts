@@ -11,6 +11,7 @@ import type {
   NamedProjectsResponse,
   ProjectsResponse,
   SignalsResponse,
+  SinceLastVisitResponse,
 } from './types';
 
 export const queryKeys = {
@@ -29,6 +30,8 @@ export const queryKeys = {
     projectId === undefined
       ? (['signals', timeZone] as const)
       : (['projects', projectId, 'issues', { signals: true, timeZone }] as const),
+  /** « Depuis votre dernière visite », par Dernière visite (`null` : les dernières 24 heures). Tous Projets confondus : pas relu en direct, comme les métriques. */
+  sinceLastVisit: (since: string | null) => ['since-last-visit', since] as const,
 };
 
 /**
@@ -88,6 +91,21 @@ export function signalsQuery(projectId: string | undefined, timeZone: string) {
     queryFn: ({ signal }) => apiGet<SignalsResponse>(`/api/signals?${params.toString()}`, signal),
     staleTime: 15_000,
   });
+}
+
+/** Ce qui s'est passé dans tous les Projets depuis la Dernière visite `since` ; sans elle (`null`), le serveur remonte 24 heures. */
+export function sinceLastVisitQuery(since: string | null) {
+  const query = since === null ? '' : `?${new URLSearchParams([['since', since]]).toString()}`;
+  return queryOptions({
+    queryKey: queryKeys.sinceLastVisit(since),
+    queryFn: ({ signal }) => apiGet<SinceLastVisitResponse>(`/api/since-last-visit${query}`, signal),
+    staleTime: 15_000,
+  });
+}
+
+/** « Depuis votre dernière visite », de la Dernière visite `since` (24 heures sans elle) à l'instant des données. */
+export function useSinceLastVisit(since: string | null) {
+  return useQuery(sinceLastVisitQuery(since));
 }
 
 /**

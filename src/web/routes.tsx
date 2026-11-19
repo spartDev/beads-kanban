@@ -1,4 +1,4 @@
-import { Navigate, useParams, type RouteObject } from 'react-router';
+import { Navigate, useLocation, useParams, type RouteObject } from 'react-router';
 import { HistoryTrail } from './issue/HistoryTrail';
 import { IssuePanel } from './issue/IssuePanel';
 import { EpicsPage } from './pages/EpicsPage';
@@ -9,8 +9,24 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { ProjectSignalsPage, GlobalSignalsPage } from './pages/SignalsPage';
 import { ProjectGate } from './pages/ProjectGate';
 import { RouteError } from './pages/RouteError';
-import { paths } from './paths';
+import { METRICS_PARAMS, paths } from './paths';
 import { AppShell } from './shell/AppShell';
+
+/** L'ancienne adresse de « À regarder » tous Projets confondus, devenue l'accueil. */
+function RedirectToHome() {
+  return <Navigate to={paths.home()} replace />;
+}
+
+/**
+ * L'accueil. La Vue globale y était avant d'avoir sa propre adresse : un ancien lien vers elle (`/?range=90d&by=type`, ses paramètres de période et de
+ * découpage) y mène encore, paramètres compris.
+ */
+function Home() {
+  const { search, hash } = useLocation();
+  const params = new URLSearchParams(search);
+  if (Object.values(METRICS_PARAMS).some((name) => params.has(name))) return <Navigate to={{ pathname: paths.global(), search, hash }} replace />;
+  return <GlobalSignalsPage />;
+}
 
 function RedirectToKanban() {
   const { projectId = '' } = useParams();
@@ -34,8 +50,9 @@ export const routes: RouteObject[] = [
       {
         errorElement: <RouteError />,
         children: [
-          { index: true, element: <GlobalPage /> },
-          { path: 'signals', element: <GlobalSignalsPage /> },
+          { index: true, element: <Home /> },
+          { path: 'overview', element: <GlobalPage /> },
+          { path: 'signals', element: <RedirectToHome /> },
           {
             path: 'p/:projectId',
             element: <ProjectGate />,

@@ -2,7 +2,7 @@ import type { PeriodSpec } from '../../domain/calendar';
 import { canonicalTimeZone } from '../../domain/time-zone';
 import type { MetricsRangePreset } from '../../shared/api';
 import type { ApiErrorDetail } from '../../shared/errors';
-import type { MetricsQuery, SignalsQuery } from './service';
+import type { MetricsQuery, SignalsQuery, SinceLastVisitQuery } from './service';
 
 /** La requête n'a pas la forme attendue : l'API répond 400 avec ce message, et son code pour l'interface (`detail`). */
 export class InvalidMetricsQueryError extends Error {
@@ -85,6 +85,52 @@ export function parseSignalsQuery(query: Record<string, unknown>): SignalsQuery 
   if (requestedZone === '') throw EMPTY_TIME_ZONE();
   const timeZone = canonicalTimeZone(requestedZone);
   return { projects: [...new Set(projects)], ...(timeZone === undefined ? {} : { timeZone }) };
+}
+
+const SINCE_LAST_VISIT_PARAMETERS = ['since'];
+
+/**
+ * Lit les paramètres de `GET /api/since-last-visit` : `since`, la Dernière visite, un instant ISO 8601 complet (date, heure, fuseau : `Z` ou un décalage),
+ * celui que l'interface a reçu dans `asOf`. Absent, le service remonte 24 heures. Un instant sans fuseau dépendrait de celui du serveur, un jour qui
+ * n'existe pas (le 30 février) glisserait en silence au mois suivant : refusés (400), comme un texte vide, répété ou un paramètre inconnu.
+ */
+export function parseSinceLastVisitQuery(query: Record<string, unknown>): SinceLastVisitQuery {
+  for (const name of Object.keys(query)) {
+    if (!SINCE_LAST_VISIT_PARAMETERS.includes(name)) throw unknownParameter(name, SINCE_LAST_VISIT_PARAMETERS);
+  }
+  const since = single(query, 'since');
+  if (since === undefined) return {};
+  const instant = instantOf(since);
+  if (instant === undefined) {
+    throw new InvalidMetricsQueryError(`« since » doit être un instant ISO 8601, avec sa date, son heure et son fuseau : reçu « ${since} ».`, {
+      code: 'query-invalid-instant',
+      params: { parameter: 'since', received: since },
+    });
+  }
+  return { since: instant };
+}
+
+const INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(?:Z|([+-])(\d{2}):(\d{2}))$/;
+
+/** L'instant (ms epoch) qu'un texte ISO 8601 complet désigne ; `undefined` s'il n'en est pas un, ou si sa date ou son heure n'existent pas. */
+function instantOf(text: string): number | undefined {
+  const match = INSTANT.exec(text);
+  if (!match) return undefined;
+  const [year, month, day, hours, minutes, seconds] = match.slice(1, 7).map(Number) as [number, number, number, number, number, number];
+  const millis = Number((match[7] ?? '').padEnd(3, '0').slice(0, 3));
+  const wall = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds, millis));
+  // `Date.UTC` reporte ce qui déborde (le 30 février devient le 2 mars, 24:00 le lendemain) : on refuse ce qui ne revient pas à l'identique.
+  const exists =
+    wall.getUTCFullYear() === year &&
+    wall.getUTCMonth() === month - 1 &&
+    wall.getUTCDate() === day &&
+    wall.getUTCHours() === hours &&
+    wall.getUTCMinutes() === minutes &&
+    wall.getUTCSeconds() === seconds;
+  const [sign, offsetHours, offsetMinutes] = [match[8], Number(match[9] ?? 0), Number(match[10] ?? 0)];
+  if (!exists || offsetHours > 23 || offsetMinutes > 59) return undefined;
+  const offset = (sign === '-' ? -1 : 1) * (offsetHours * 60 + offsetMinutes) * 60_000;
+  return wall.getTime() - offset;
 }
 
 function periodOf(range: string | undefined, from: string | undefined, to: string | undefined): PeriodSpec {
