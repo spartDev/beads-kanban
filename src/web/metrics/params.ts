@@ -2,6 +2,7 @@ import { MIN_CUSTOM_DAY } from '../../domain/calendar';
 import type { MetricsRangePreset } from '../../shared/api';
 import { CATALOGS } from '../i18n/catalog';
 import type { Language } from '../i18n/language';
+import { METRICS_PARAMS } from '../paths';
 import { FORMATS } from './format';
 import { addDays } from './scales';
 
@@ -36,13 +37,7 @@ export const MAX_CUSTOM_DAYS = 366;
  */
 export { MIN_CUSTOM_DAY };
 
-const RANGE = 'range';
-const FROM = 'from';
-const TO = 'to';
-const BY = 'by';
-
-/** Les paramètres de l'adresse que la page Métriques lit : un lien vers l'accueil (`/`) qui en porte un est un ancien lien de la Vue globale (`routes.tsx`). */
-export const METRICS_PARAMS: readonly string[] = [RANGE, FROM, TO, BY];
+const { range: RANGE, from: FROM, to: TO, by: BY } = METRICS_PARAMS;
 
 const DAY_MS = 86_400_000;
 export const PRESET_DAYS: Record<MetricsRangePreset, number> = { '7d': 7, '30d': 30, '90d': 90 };

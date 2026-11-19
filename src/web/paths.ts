@@ -3,6 +3,13 @@
 const enc = encodeURIComponent;
 
 export const PROJECT_SECTIONS = ['kanban', 'signals', 'epics', 'metrics'] as const;
+
+/**
+ * Les paramètres de l'adresse des pages Métriques et de la Vue globale : la période (`range`, ou `from` et `to`) et le découpage (`by`). La page les lit
+ * (`metrics/params.ts`) ; le routeur, qui ne charge pas la page Métriques, y reconnaît un ancien lien de la Vue globale vers l'accueil (`routes.tsx`). Ils sont
+ * ici, dans un module sans dépendance, pour que ni l'un ni l'autre ne tire le module de l'autre.
+ */
+export const METRICS_PARAMS = { range: 'range', from: 'from', to: 'to', by: 'by' } as const;
 export type ProjectSection = (typeof PROJECT_SECTIONS)[number];
 
 export const paths = {

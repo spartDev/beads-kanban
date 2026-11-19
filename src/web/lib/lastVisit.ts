@@ -9,7 +9,7 @@ import { readStorage, writeStorage } from './storage';
 export const LAST_VISIT_KEY = 'throughline:last-visit';
 
 /**
- * La visite notée pendant cette session, gardée par le module : elle survit au démontage de l'accueil (on va sur une autre page, on revient), même quand le
+ * La visite notée par cet onglet, gardée par le module : elle survit au démontage de l'accueil (on va sur une autre page, on revient), même quand le
  * stockage refuse l'écriture (navigation privée, stockage bloqué, quota). Un rechargement de la page la perd ; le stockage, quand il marche, la garde.
  */
 let noted: string | null = null;
@@ -19,12 +19,8 @@ export function forgetNotedVisit(): void {
   noted = null;
 }
 
-/**
- * La Dernière visite, en ISO 8601 : celle notée pendant la session, sinon celle du stockage ; `null` sans elle : jamais notée, stockage indisponible (lecture
- * protégée, `readStorage`) ou valeur qui n'est pas un instant (on remonte alors 24 heures, comme sans visite).
- */
-export function readLastVisit(): string | null {
-  if (noted !== null) return noted;
+/** La Dernière visite du stockage, en ISO 8601 ; `null` sans elle, quand le stockage ne lit pas (`readStorage`) ou quand la valeur n'est pas un instant. */
+function storedVisit(): string | null {
   const stored = readStorage(LAST_VISIT_KEY);
   if (stored === null) return null;
   const instant = Date.parse(stored);
@@ -32,8 +28,20 @@ export function readLastVisit(): string | null {
 }
 
 /**
- * La Dernière visite de ce navigateur, lue au montage, et le geste qui la déplace. Un stockage indisponible n'empêche rien : la visite notée vaut pour la
- * session (`noted`), et l'écriture, protégée, n'est simplement pas gardée.
+ * La Dernière visite, en ISO 8601 : la plus récente de celle que cet onglet a notée et de celle du stockage. Elle est propre au navigateur, pas à l'onglet
+ * (CONTEXT.md) : une visite notée plus tard dans un autre onglet, que le stockage porte, l'emporte sur celle d'ici. La visite d'ici vaut seule quand le
+ * stockage ne lit pas ou garde une valeur plus ancienne (une écriture refusée). `null` sans aucune des deux : on remonte alors 24 heures.
+ */
+export function readLastVisit(): string | null {
+  const stored = storedVisit();
+  if (noted === null) return stored;
+  if (stored === null) return noted;
+  return Date.parse(stored) > Date.parse(noted) ? stored : noted;
+}
+
+/**
+ * La Dernière visite de ce navigateur, lue au montage (`readLastVisit`), et le geste qui la déplace. Un stockage indisponible n'empêche rien : la visite notée
+ * vaut pour la session (`noted`), et l'écriture, protégée, n'est simplement pas gardée.
  */
 export function useLastVisit(): { lastVisit: string | null; markSeen: (asOf: string) => void } {
   const [lastVisit, setLastVisit] = useState(readLastVisit);

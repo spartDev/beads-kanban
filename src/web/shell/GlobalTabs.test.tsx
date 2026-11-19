@@ -80,15 +80,20 @@ describe('les liens entre l’accueil et la Vue globale', () => {
   });
 });
 
-describe('/overview/ (barre oblique finale) : le shell y reconnaît la Vue globale', () => {
-  it('la barre latérale, la barre d’onglets et le bandeau du haut', async () => {
+describe('la Vue globale écrite autrement : le routeur l’affiche, le shell la reconnaît', () => {
+  it.each([
+    ['avec une barre oblique finale', '/overview/'],
+    ['avec une majuscule', '/Overview'],
+    ['en capitales, avec une barre oblique finale', '/OVERVIEW/'],
+  ])('%s (%s) : la barre latérale, la barre d’onglets, le bandeau du haut et les liens du mobile', async (_kind, path) => {
     stub();
-    renderApp('/overview/');
+    renderApp(path);
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Vue globale' })).toBeTruthy();
     const sidebar = within(await screen.findByRole('navigation', { name: 'Navigation principale' }));
     expect(current(sidebar.getByRole('link', { name: /^Vue globale/ }))).toBe('page');
     expect(current(within(screen.getByRole('navigation', { name: 'Onglets' })).getByRole('link', { name: 'Accueil' }))).toBe('true');
     expect(within(screen.getByRole('navigation', { name: "Fil d'Ariane" })).getByText('Vue globale')).toBeTruthy();
+    expect(current(within(screen.getByRole('navigation', { name: 'Pages de tous les Projets' })).getByRole('link', { name: 'Vue globale' }))).toBe('page');
   });
 });

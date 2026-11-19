@@ -1,6 +1,5 @@
 import { Navigate, useLocation, useParams, type RouteObject } from 'react-router';
 import { HistoryTrail } from './issue/HistoryTrail';
-import { METRICS_PARAMS } from './metrics/params';
 import { IssuePanel } from './issue/IssuePanel';
 import { EpicsPage } from './pages/EpicsPage';
 import { GlobalPage } from './pages/GlobalPage';
@@ -10,7 +9,7 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { ProjectSignalsPage, GlobalSignalsPage } from './pages/SignalsPage';
 import { ProjectGate } from './pages/ProjectGate';
 import { RouteError } from './pages/RouteError';
-import { paths } from './paths';
+import { METRICS_PARAMS, paths } from './paths';
 import { AppShell } from './shell/AppShell';
 
 /** L'ancienne adresse de « À regarder » tous Projets confondus, devenue l'accueil. */
@@ -25,7 +24,7 @@ function RedirectToHome() {
 function Home() {
   const { search, hash } = useLocation();
   const params = new URLSearchParams(search);
-  if (METRICS_PARAMS.some((name) => params.has(name))) return <Navigate to={{ pathname: paths.global(), search, hash }} replace />;
+  if (Object.values(METRICS_PARAMS).some((name) => params.has(name))) return <Navigate to={{ pathname: paths.global(), search, hash }} replace />;
   return <GlobalSignalsPage />;
 }
 

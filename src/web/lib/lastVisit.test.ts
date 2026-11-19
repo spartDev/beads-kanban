@@ -72,4 +72,15 @@ describe('useLastVisit', () => {
 
     expect(renderHook(() => useLastVisit()).result.current.lastVisit).toBe('2026-11-02T19:00:00.000Z');
   });
+
+  it('est propre au navigateur, pas à l’onglet : une visite plus récente qu’un autre onglet a notée dans le stockage l’emporte au montage suivant', () => {
+    const first = renderHook(() => useLastVisit());
+    act(() => first.result.current.markSeen('2026-11-02T19:00:00.000Z'));
+    first.unmount();
+    // L'autre onglet clique « Tout vu » dix minutes plus tard : le stockage, partagé, porte sa visite.
+    window.localStorage.setItem(LAST_VISIT_KEY, '2026-11-02T19:10:00.000Z');
+
+    expect(renderHook(() => useLastVisit()).result.current.lastVisit).toBe('2026-11-02T19:10:00.000Z');
+    expect(readLastVisit()).toBe('2026-11-02T19:10:00.000Z');
+  });
 });

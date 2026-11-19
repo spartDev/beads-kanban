@@ -396,6 +396,27 @@ describe('« Depuis votre dernière visite », une Dernière visite que la fenê
   });
 });
 
+describe('« Depuis votre dernière visite », une visite notée dans un autre onglet', () => {
+  it('l’emporte au retour sur l’accueil quand elle est plus récente : la Dernière visite est celle du navigateur', async () => {
+    const LATER = '2026-11-02T19:10:00.000Z';
+    const fetchMock = serve();
+    const { user, router } = renderApp('/');
+    const region = await section();
+    await within(region).findByRole('button', { name: /^Réouvertures/ });
+    await user.click(within(region).getByRole('button', { name: 'Tout vu' }));
+    await waitFor(() => expect(asked(fetchMock)).toEqual([null, AS_OF]));
+
+    // Un autre onglet du même navigateur clique « Tout vu » dix minutes plus tard : le stockage, partagé, porte sa visite.
+    window.localStorage.setItem(LAST_VISIT_KEY, LATER);
+    await act(async () => void router.navigate('/overview'));
+    await screen.findByRole('heading', { level: 1, name: 'Vue globale' });
+    await act(async () => void router.navigate('/'));
+
+    await within(await section()).findByRole('button', { name: /^Réouvertures/ });
+    expect(asked(fetchMock).at(-1)).toBe(LATER);
+  });
+});
+
 describe('« Depuis votre dernière visite », stockage indisponible, d’une page à l’autre', () => {
   it('la visite notée tient quand on quitte l’accueil et qu’on y revient', async () => {
     vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => {
