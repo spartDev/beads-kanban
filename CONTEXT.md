@@ -73,7 +73,7 @@ _English_: Child
 _Avoid_: sous-tâche
 
 **Enfant à livrer**:
-Un Enfant d'une Epic qu'il reste à livrer, ou qui l'a été : tous ses Enfants, sauf ses Epics imbriquées (elles regroupent des Enfants sans être livrées) et ses Abandons et ses Renoncements (fermés sans être livrés, ils n'ont plus rien à livrer).
+Un Enfant d'une Epic qu'il reste à livrer, ou qui l'a été : tous ses Enfants, sauf ses Epics imbriquées (elles regroupent des Enfants sans être livrées), ses Abandons et ses Renoncements (fermés sans être livrés, ils n'ont plus rien à livrer).
 _English_: Child to deliver
 
 **Avancement**:
@@ -386,7 +386,7 @@ Les tickets À valider, du plus ancien au plus récent, chacun avec son attente 
 _English_: Decision queue
 
 **Renoncement**:
-Un ticket fermé que l'utilisateur a décidé de ne pas faire, marqué à sa clôture par le label `declined`. Ce n'est ni une Livraison ni un Abandon. Rien n'est rétroactif : un « won't fix » sans ce label reste une Livraison, et la cause ne se devine jamais au texte de la raison de clôture. Un ticket qui porte aussi un lien « doublon de » ou « remplacé par » est un Abandon, pas un Renoncement. Un bug en Renoncement reste un Bug d'origine : il constate un défaut qu'on décide de ne pas corriger, alors qu'un bug en Abandon décrit le défaut d'un autre bug.
+Un ticket fermé que l'utilisateur a décidé de ne pas faire, marqué à sa clôture par le label `declined`. Ce n'est ni une Livraison ni un Abandon. Rien n'est rétroactif : un « won't fix » sans ce label reste une Livraison, et la cause ne se devine jamais au texte de la raison de clôture. Un ticket qui porte aussi un lien « doublon de » ou « remplacé par » est un Abandon, pas un Renoncement. Un Bug d'origine le reste s'il devient un Renoncement : il constate un défaut qu'on décide de ne pas corriger, alors qu'un bug en Abandon décrit le même défaut qu'un autre bug.
 _English_: Decline
 _Avoid_: won't fix, rejet
 
