@@ -3,10 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SinceLastVisitGroup, SinceLastVisitResponse } from '../data/types';
 import { LAST_VISIT_KEY } from '../lib/lastVisit';
 import { withAsyncTimeout } from '../test/asyncTimeout';
-import { projectsResponse } from '../test/fixtures';
+import { projectsResponse as sharedProjects } from '../test/fixtures';
 import { setBrowserLanguages } from '../test/languages';
 import { httpFailure, renderApp, stubApi } from '../test/render';
 import { withTimeZone } from '../test/timeZone';
+
+// Nom inventé : le dépôt est public, aucun vrai nom de Projet dans les fixtures.
+const projectsResponse = {
+  ...sharedProjects,
+  projects: sharedProjects.projects.map((project) => (project.id === 'mpm' ? { ...project, name: 'Carnet-de-recettes', path: '/dev/Carnet-de-recettes' } : project)),
+};
 
 /**
  * « Depuis votre dernière visite », en tête de l'accueil (bdesk-3e9.2). Les genres et leurs tickets viennent du serveur (`/api/since-last-visit`, calculés
@@ -52,7 +58,7 @@ const response = (since: string | null, groups: SinceLastVisitGroup[] = GROUPS):
   asOf: AS_OF,
   projects: [
     { id: 'bdesk', name: 'beads-desktop' },
-    { id: 'mpm', name: 'My-Prompt-Manager' },
+    { id: 'mpm', name: 'Carnet-de-recettes' },
   ],
   unreadable: [],
   groups,
@@ -267,7 +273,7 @@ describe('les tickets d’un genre', () => {
     await user.click(await within(region).findByRole('button', { name: 'Bugs d’origine : 1 ticket' }));
 
     expect(text(within(region).getByRole('link', { name: 'La recherche oublie la saisie' }).closest('li')!)).toBe(
-      'La recherche oublie la saisiempm-b1My-Prompt-Manager · il y a 7 h · Livraisons en échec : mpm-7, mpm-9',
+      'La recherche oublie la saisiempm-b1Carnet-de-recettes · il y a 7 h · Livraisons en échec : mpm-7, mpm-9',
     );
   });
 });
@@ -305,7 +311,7 @@ describe('« Depuis votre dernière visite » avec un Projet illisible', () => {
   const locked = (since: string | null): SinceLastVisitResponse => ({
     ...response(since),
     projects: [{ id: 'bdesk', name: 'beads-desktop' }],
-    unreadable: [{ id: 'mpm', name: 'My-Prompt-Manager', reason: 'database is locked' }],
+    unreadable: [{ id: 'mpm', name: 'Carnet-de-recettes', reason: 'database is locked' }],
   });
 
   it('le dit dans la section, avec sa raison : ses événements ne sont pas dans les comptes', async () => {
@@ -315,7 +321,7 @@ describe('« Depuis votre dernière visite » avec un Projet illisible', () => {
     await within(region).findByRole('button', { name: /^Réouvertures/ });
 
     const notice = within(region).getByRole('status', { name: 'Un Projet illisible, absent de ces chiffres' });
-    expect(text(notice)).toContain('My-Prompt-Manager : database is locked');
+    expect(text(notice)).toContain('Carnet-de-recettes : database is locked');
   });
 
   it('« Tout vu » reste utilisable, mais dit à côté du bouton et dans l’annonce ce qu’il laisse de côté', async () => {
@@ -324,7 +330,7 @@ describe('« Depuis votre dernière visite » avec un Projet illisible', () => {
     const region = await section();
     await within(region).findByRole('button', { name: /^Réouvertures/ });
 
-    const skipped = '« Tout vu » laissera de côté ce qui s’est passé depuis le 1 nov. 2026, 20:00 dans ce Projet illisible : My-Prompt-Manager.';
+    const skipped = '« Tout vu » laissera de côté ce qui s’est passé depuis le 1 nov. 2026, 20:00 dans ce Projet illisible : Carnet-de-recettes.';
     expect(within(region).getByText(skipped)).toBeTruthy();
     const seeAll = within(region).getByRole('button', { name: 'Tout vu' });
     expect(seeAll.getAttribute('aria-disabled')).toBeNull();
@@ -336,7 +342,7 @@ describe('« Depuis votre dernière visite » avec un Projet illisible', () => {
     expect(window.localStorage.getItem(LAST_VISIT_KEY)).toBe(AS_OF);
     await waitFor(() => expect(asked(fetchMock)).toEqual([null, AS_OF]));
     expect(text(within(region).getByRole('status', { name: 'Dernière visite' }))).toBe(
-      'Visite notée : tout est vu jusqu’au 2 nov. 2026, 20:00. Ce qui s’est passé depuis le 1 nov. 2026, 20:00 dans ce Projet illisible ne sera pas montré : My-Prompt-Manager.',
+      'Visite notée : tout est vu jusqu’au 2 nov. 2026, 20:00. Ce qui s’est passé depuis le 1 nov. 2026, 20:00 dans ce Projet illisible ne sera pas montré : Carnet-de-recettes.',
     );
   });
 
@@ -348,7 +354,7 @@ describe('« Depuis votre dernière visite » avec un Projet illisible', () => {
     await within(region).findByRole('button', { name: /^Reopens/ });
 
     expect(within(region).getByRole('status', { name: 'One unreadable Project, left out of these figures' })).toBeTruthy();
-    expect(text(region)).toContain('“Mark all seen” will leave out what happened since Nov 1, 2026, 20:00 in this unreadable project: My-Prompt-Manager.');
+    expect(text(region)).toContain('“Mark all seen” will leave out what happened since Nov 1, 2026, 20:00 in this unreadable project: Carnet-de-recettes.');
   });
 
   it('sans Projet illisible, rien n’est dit de plus', async () => {
