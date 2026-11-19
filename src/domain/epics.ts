@@ -9,7 +9,7 @@ import { type Column, COLUMNS, columnFor } from './columns';
  */
 
 /** Ce que le domaine lit d'un ticket du Projet pour mesurer une Epic. */
-export type EpicTicket = Pick<Issue, 'id' | 'type' | 'status' | 'parentId' | 'blockedBy' | 'closedAt' | 'createdAt' | 'abandon'>;
+export type EpicTicket = Pick<Issue, 'id' | 'type' | 'status' | 'parentId' | 'blockedBy' | 'closedAt' | 'createdAt' | 'abandon' | 'declined'>;
 
 /** Les Enfants d'un ticket, directs ou indirects (un Enfant d'Enfant, une Epic imbriquée) ; à l'abri des boucles. */
 export function descendantIds(rootId: string, issues: readonly Pick<Issue, 'id' | 'parentId'>[]): Set<string> {
@@ -58,9 +58,9 @@ export function epicOf<T extends Pick<Issue, 'id' | 'type' | 'parentId'>>(
 
 export interface EpicChildren<T> {
   /**
-   * Les Enfants de l'Epic hors Epics imbriquées, Abandons compris : ses descendants qui ne sont pas eux-mêmes des Epics, directs
-   * ou indirects, dans l'ordre des tickets reçus. Ce sont les cartes du kanban que filtre cette Epic. Les Enfants à livrer
-   * (CONTEXT.md) sont ce qu'il en reste sans les Abandons (`epicProgress`).
+   * Les Enfants de l'Epic hors Epics imbriquées, Abandons et Renoncements compris : ses descendants qui ne sont pas eux-mêmes des
+   * Epics, directs ou indirects, dans l'ordre des tickets reçus. Ce sont les cartes du kanban que filtre cette Epic. Les Enfants à
+   * livrer (CONTEXT.md) sont ce qu'il en reste sans les Abandons ni les Renoncements (`epicProgress`).
    */
   children: T[];
   /** Les Epics imbriquées : elles regroupent des Enfants (déjà dans `children`) sans être une Livraison. */
@@ -73,47 +73,51 @@ export function epicChildren<T extends EpicTicket>(epicId: string, issues: reado
   return { children: inside.filter((issue) => issue.type !== 'epic'), epics: inside.filter((issue) => issue.type === 'epic') };
 }
 
-export type ChildOutcome = 'open' | 'delivered' | 'abandoned';
+export type ChildOutcome = 'open' | 'delivered' | 'abandoned' | 'declined';
 
 /**
- * Où en est un Enfant : pas fermé, Livraison (fermé pour cause de travail terminé) ou Abandon (doublon, remplacé). Un
- * Abandon ne se lit que sur un ticket fermé : rouvert, il n'est ni l'un ni l'autre.
+ * Où en est un Enfant : pas fermé, Livraison (fermé pour cause de travail terminé), Abandon (doublon, remplacé) ou Renoncement
+ * (fermé avec le label `declined`). Le serveur les distingue par la règle de clôture des métriques (`closureOf`) ; un Abandon ou un
+ * Renoncement ne se lit que sur un ticket fermé : rouvert, il n'est plus rien de tel.
  */
-export function outcomeOf(issue: Pick<EpicTicket, 'status' | 'abandon'>): ChildOutcome {
+export function outcomeOf(issue: Pick<EpicTicket, 'status' | 'abandon' | 'declined'>): ChildOutcome {
   if (issue.status !== 'closed') return 'open';
-  return issue.abandon ? 'abandoned' : 'delivered';
+  return issue.abandon ? 'abandoned' : issue.declined ? 'declined' : 'delivered';
 }
 
 export interface EpicProgress {
-  /** Tous les Enfants hors Epics imbriquées, Abandons compris (`epicChildren`). */
+  /** Tous les Enfants hors Epics imbriquées, Abandons et Renoncements compris (`epicChildren`). */
   children: number;
   /** Les Livraisons parmi eux. */
   delivered: number;
   /** Les Abandons : fermés sans être livrés, ils ne sont pas non plus du travail qui reste. */
   abandoned: number;
+  /** Les Renoncements : fermés sans être livrés, par décision ; pas plus du travail qui reste qu'un Abandon. */
+  declined: number;
   /** Ce qui reste à livrer : les Enfants pas fermés, en pause compris. */
   remaining: number;
-  /** Ce que l'avancement mesure : les Livraisons et ce qui reste, sans les Abandons. */
+  /** Ce que l'avancement mesure : les Livraisons et ce qui reste, sans les Abandons ni les Renoncements. */
   total: number;
   /** `delivered / total`, de 0 à 1 ; nul sans Enfant à livrer. */
   ratio: number | null;
 }
 
 /**
- * L'avancement d'une Epic : le nombre de Livraisons parmi ses Enfants. Un Abandon n'est pas une Livraison, et n'est pas non
- * plus du travail à venir : il sort du compte plutôt que de fermer la porte au 100 % (une Epic dont il ne reste rien à
+ * L'avancement d'une Epic : le nombre de Livraisons parmi ses Enfants. Un Abandon ou un Renoncement n'est pas une Livraison, et
+ * n'est pas non plus du travail à venir : il sort du compte plutôt que de fermer la porte au 100 % (une Epic dont il ne reste rien à
  * livrer est finie), et la page le dit à part. `children` vient d'`epicChildren`.
  */
-export function epicProgress(children: readonly Pick<EpicTicket, 'status' | 'abandon'>[]): EpicProgress {
-  let [delivered, abandoned, remaining] = [0, 0, 0];
+export function epicProgress(children: readonly Pick<EpicTicket, 'status' | 'abandon' | 'declined'>[]): EpicProgress {
+  let [delivered, abandoned, declined, remaining] = [0, 0, 0, 0];
   for (const child of children) {
     const outcome = outcomeOf(child);
     if (outcome === 'delivered') delivered++;
     else if (outcome === 'abandoned') abandoned++;
+    else if (outcome === 'declined') declined++;
     else remaining++;
   }
   const total = delivered + remaining;
-  return { children: children.length, delivered, abandoned, remaining, total, ratio: total === 0 ? null : delivered / total };
+  return { children: children.length, delivered, abandoned, declined, remaining, total, ratio: total === 0 ? null : delivered / total };
 }
 
 /** Les colonnes du kanban, plus « En pause » : ce qu'aucune colonne n'accueille. */
@@ -121,7 +125,7 @@ export type EpicGroup = Column | 'paused';
 
 /**
  * Les Enfants rangés par colonne, selon la règle du kanban et du CFD (`columnFor` : le statut et le Blocage, ce dernier
- * lu dans `blockedBy`). Terminé les garde tous, sans la fenêtre de jours du tableau, Abandons compris. Chaque colonne y est,
+ * lu dans `blockedBy`). Terminé les garde tous, sans la fenêtre de jours du tableau, Abandons et Renoncements compris. Chaque colonne y est,
  * vide ou non ; l'ordre des Enfants est celui reçu.
  */
 export function groupByColumn<T extends Pick<EpicTicket, 'status' | 'blockedBy'>>(children: readonly T[]): Record<EpicGroup, T[]> {
@@ -204,9 +208,9 @@ export function youngEpicAge(epicCreatedAt: string, now: number): number | null 
 export type ForecastHiddenReason =
   /** L'Epic est fermée : il n'y a plus de fin à prévoir. */
   | 'epic-closed'
-  /** Aucun Enfant à livrer (pas d'Enfant, ou seulement des Abandons). */
+  /** Aucun Enfant à livrer (pas d'Enfant, ou seulement des Abandons et des Renoncements). */
   | 'no-children'
-  /** Tout est livré ou abandonné : l'Epic peut être fermée. */
+  /** Tout est livré, abandonné ou en Renoncement : l'Epic peut être fermée. */
   | 'all-delivered'
   /** Pas assez de Livraisons récentes pour en tirer un rythme. */
   | 'low-throughput';
@@ -247,7 +251,7 @@ export type Forecast =
  * fermée, sans Enfant à livrer, ou dont tout est livré.
  *
  * Une Livraison compte quand elle est datée (sa dernière clôture) de la fenêtre ou plus tard : une date à venir (horloges qui
- * divergent) vient d'avoir lieu, comme dans Terminé. Les Abandons et les Enfants rouverts ne sont pas des Livraisons.
+ * divergent) vient d'avoir lieu, comme dans Terminé. Les Abandons, les Renoncements et les Enfants rouverts ne sont pas des Livraisons.
  * `children` vient d'`epicChildren`.
  */
 export function forecastEnd(epic: Pick<Issue, 'status' | 'createdAt'>, children: readonly EpicTicket[], now: number): Forecast {

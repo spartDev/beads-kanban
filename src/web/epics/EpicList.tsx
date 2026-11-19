@@ -9,6 +9,7 @@ import { epicChoices, epicName, indexById } from '../kanban/epics';
 import { paths } from '../paths';
 import { TypeGlyph } from '../ui/IssueBadges';
 import { Notice } from '../ui/states';
+import { closedUndelivered } from './closedUndelivered';
 import { progressSentence } from './ProgressSection';
 import { ProgressBar } from './ProgressBar';
 
@@ -16,7 +17,7 @@ import { ProgressBar } from './ProgressBar';
 function EpicItem({ projectId, epic, progress }: { projectId: string; epic: Issue; progress: EpicProgress }) {
   const t = useT();
   const format = useFormat();
-  const { list, progress: words, counted } = t.epics;
+  const { list, progress: words } = t.epics;
   return (
     <Link
       to={paths.epics(projectId, epic.id)}
@@ -34,7 +35,7 @@ function EpicItem({ projectId, epic, progress }: { projectId: string; epic: Issu
         <span className="text-xs text-ink-3">
           {progress.children === 0
             ? words.noChildren
-            : list.nothingToDeliver(counted.dropped(progress.abandoned, format.formatCount(progress.abandoned)))}
+            : list.nothingToDeliver(closedUndelivered(progress, t, format))}
         </span>
       ) : (
         <span className="flex items-center gap-3">

@@ -2,7 +2,7 @@ import { ABANDON_LINK_TYPES } from '../../domain/abandon';
 import type { DependencyHistory, StatusSnapshot, TicketHistory } from '../../domain/flow';
 import { type DoltDatabase, parseDoltDate, parseDoltInteger, queryAll, sqlIdent, sqlString } from './client';
 import { ascendingDates } from './commit-dates';
-import { asText, AT_HEAD, TARGET_COLUMNS, toDependency } from './reader';
+import { asText, AT_HEAD, CLOSURE_LABELS_SQL, TARGET_COLUMNS, toDependency, toLabelRecords } from './reader';
 import { revisionTablesSql, StoredSqlError, storedSqlInSource } from './stored-sql';
 
 /** Un commit de l'historique Dolt, tel que listé par `dolt_log`. */
@@ -92,7 +92,8 @@ export interface ReadHistoryOptions {
  * Historique complet des tickets du Projet, au format attendu par `analyzeFlow` : statuts datés par les
  * commits Dolt, dépendances avec leur date d'ajout et de retrait. Seuls les tickets qui existent au dernier commit sont renvoyés, avec
  * le type qu'ils y ont (`AT_HEAD`, `reader.ts`) : la liste est celle du tableau, qui lit le même état, et un ticket supprimé ou retypé
- * sans commit y est tel qu'au dernier commit.
+ * sans commit y est tel qu'au dernier commit. Avec eux, dans le même processus, les labels de la règle de clôture au dernier commit
+ * (`CLOSURE_LABELS_SQL` : le label du Renoncement, ADR 0008), les mêmes que lit le tableau ; un ticket qui n'en porte aucun n'a pas de `labels`.
  *
  * Les dates des commits sont celles de `dolt_log`, rendues croissantes le long de la lignée (`ascendingDates`, ADR 0001) : l'horloge
  * d'une machine peut reculer ou avancer, et un commit vient quand même après les précédents. Les statuts de tous les tickets et les
@@ -103,8 +104,8 @@ export async function readTicketHistories(db: DoltDatabase, { now = () => new Da
   const commitsRequest = db
     .query(COMMITS_SQL)
     .then((rows) => rows.map((row): Commit => ({ hash: asText(row.commit_hash), at: parseDoltDate(row.date) })));
-  const [tickets, statusChanges, recordedCommits, appearances] = await Promise.all([
-    db.query(`select id, issue_type from issues ${AT_HEAD} order by id`),
+  const [[tickets = [], closureLabels = []], statusChanges, recordedCommits, appearances] = await Promise.all([
+    queryAll(db, [`select id, issue_type from issues ${AT_HEAD} order by id`, CLOSURE_LABELS_SQL]),
     db.query(STATUS_CHANGES_SQL),
     commitsRequest,
     readDependencyAppearances(db, commitsRequest),
@@ -127,14 +128,18 @@ export async function readTicketHistories(db: DoltDatabase, { now = () => new Da
   }
 
   const dependencies = dependencyLifetimes(appearances, commits, recreations);
+  const labels = new Map<string, string[]>();
+  for (const { issueId, label } of toLabelRecords(closureLabels)) labels.set(issueId, [...(labels.get(issueId) ?? []), label]);
 
   return tickets.map((row) => {
     const id = asText(row.id);
+    const own = labels.get(id);
     return {
       id,
       type: asText(row.issue_type),
       statusSnapshots: snapshots.get(id) ?? [],
       dependencies: dependencies.get(id) ?? [],
+      ...(own ? { labels: own } : {}),
     };
   });
 }

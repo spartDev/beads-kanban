@@ -281,7 +281,7 @@ describe('lectures regroupées et abandonnables (bdesk-38k.20)', () => {
     expect(detail).toMatchObject({ id: 'x-1', labels: [], comments: [] });
     expect(seen.processes).toBe(2);
     expect(seen.singles).toEqual([]);
-    expect(seen.groups.map((group) => group.length).sort()).toEqual([2, 3]);
+    expect(seen.groups.map((group) => group.length).sort()).toEqual([3, 3]);
   });
 
   it('nomme l’Epic de la fiche sans un processus de plus : elle se tire des tickets que la fiche lit déjà (bdesk-38k.29)', async () => {
@@ -312,7 +312,7 @@ describe('lectures regroupées et abandonnables (bdesk-38k.20)', () => {
     // Les mêmes deux processus que pour une fiche sans Epic, et les mêmes requêtes, mot pour mot : l'Epic ne coûte aucune lecture.
     expect(withEpic.seen.processes).toBe(2);
     expect(withEpic.seen.singles).toEqual([]);
-    expect(withEpic.seen.groups.map((group) => group.length).sort()).toEqual([2, 3]);
+    expect(withEpic.seen.groups.map((group) => group.length).sort()).toEqual([3, 3]);
     expect(withEpic.seen.groups).toEqual(withoutEpic.seen.groups);
   });
 

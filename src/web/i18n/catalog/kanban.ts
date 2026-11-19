@@ -208,6 +208,8 @@ const fr = {
     untitled: '(sans titre)',
     outsideProject: '(hors du Projet)',
     notDelivered: '. Fermé sans être une Livraison.',
+    /** La phrase d'un Renoncement (ADR 0008), suivie de `notDelivered`. */
+    declined: 'Renoncement : l’utilisateur a décidé de ne pas le faire',
     blockedStatusOnly: 'Statut bloqué, sans dépendance en suspens',
     blockedWaitingOn: 'Bloqué : attend',
   },
@@ -270,6 +272,7 @@ const fr = {
       open: 'Pas encore fermé',
       delivered: (at: string) => `Livraison le ${at}`,
       abandoned: (duplicate: boolean, at: string) => `Abandon (${duplicate ? 'doublon' : 'remplacé'}) le ${at}`,
+      declined: (at: string) => `Renoncement le ${at}`,
       closed: (at: string) => `Fermé le ${at}`,
       /** `count` : le nombre de Réouvertures, déjà écrit ; « 1 » suffit à choisir la forme. */
       reopened: (count: string) => ` · Rouvert ${count} fois`,
@@ -478,6 +481,7 @@ const en: typeof fr = {
     untitled: '(untitled)',
     outsideProject: '(outside the Project)',
     notDelivered: '. Closed without being a Delivery.',
+    declined: 'Decline: the user decided not to do it',
     blockedStatusOnly: 'Blocked status, with no pending dependency',
     blockedWaitingOn: 'Blocked: waiting on',
   },
@@ -534,6 +538,7 @@ const en: typeof fr = {
       open: 'Not closed yet',
       delivered: (at: string) => `Delivery on ${at}`,
       abandoned: (duplicate: boolean, at: string) => `Dropped (${duplicate ? 'duplicate' : 'superseded'}) on ${at}`,
+      declined: (at: string) => `Decline on ${at}`,
       closed: (at: string) => `Closed on ${at}`,
       reopened: (count: string) => (count === '1' ? ' · Reopened once' : ` · Reopened ${count} times`),
     },

@@ -1,5 +1,6 @@
 import {
   ArchiveX,
+  Ban,
   BookOpen,
   Bug,
   CircleDot,
@@ -158,6 +159,36 @@ export function AbandonBadge({
       <ArchiveX size={11} aria-hidden="true" />
       {t.shell.badges.abandon}
       {withReason ? <span className="sr-only">{t.shell.badges.abandonSpoken(reason)}</span> : null}
+    </span>
+  );
+}
+
+/**
+ * Pastille « Renoncement » (ADR 0008) : le ticket est fermé parce que l'utilisateur a décidé de ne pas le faire (label `declined`).
+ * Rangé dans Terminé, il n'est ni une Livraison ni un Abandon : la pastille le dit là où l'Abandon a la sienne, sur la carte, dans le
+ * détail et parmi les Enfants d'une Epic. Même allure que celle de l'Abandon (gris, contour en pointillés : pas une alerte), un autre
+ * pictogramme et un autre mot pour ne pas les confondre.
+ */
+export function DeclineBadge({
+  className,
+  withReason = true,
+}: {
+  className?: string;
+  /** Dire le motif aux lecteurs d'écran (par défaut) ; faux quand une phrase voisine le dit déjà. */
+  withReason?: boolean;
+}) {
+  const { badges } = useT().shell;
+  return (
+    <span
+      title={badges.declineTitle}
+      className={cx(
+        'inline-flex shrink-0 items-center gap-1 rounded-full border border-dashed border-line-strong bg-well px-1.5 text-micro font-medium text-ink-2',
+        className,
+      )}
+    >
+      <Ban size={11} aria-hidden="true" />
+      {badges.decline}
+      {withReason ? <span className="sr-only">{badges.declineSpoken}</span> : null}
     </span>
   );
 }

@@ -186,8 +186,8 @@ const sumOf = (cells: number[][]) => cells.flat().reduce((total, count) => total
 
 /**
  * La santé du flux de la Vue globale sur 7 jours : 15 Livraisons démarrées (31 j de Cycle Time dont 2,5 j de Blocage), 21
- * clôtures dont 2 suivies d'une Réouverture (deux tickets en Retravail), 20 tickets fermés dont 2 Abandons, 6 Livraisons qui ont attendu une
- * dépendance, 5 Prêts dont 3 stagnent, 100 Transitions.
+ * clôtures dont 2 suivies d'une Réouverture (deux tickets en Retravail), 20 tickets fermés dont 2 Abandons et 1 Renoncement, 6 Livraisons qui
+ * ont attendu une dépendance, 5 Prêts dont 3 stagnent, 100 Transitions.
  */
 export function healthFixture(overrides: Partial<MetricsHealth> = {}): MetricsHealth {
   const cells = activityCells();
@@ -202,6 +202,7 @@ export function healthFixture(overrides: Partial<MetricsHealth> = {}): MetricsHe
       ],
     },
     abandonment: { closed: 20, abandoned: 2, duplicates: 1, superseded: 1, rate: 0.1, trend: trendOf(0.1, 0.05) },
+    declines: { total: 1, trend: trendOf(1, 0) },
     leadTimeBreakdown: {
       deliveries: 18,
       total: 120 * DAY,
@@ -226,6 +227,7 @@ export function emptyHealthFixture(overrides: Partial<MetricsHealth> = {}): Metr
     reopening: { closures: 0, reopened: 0, rate: null, trend: noTrend },
     rework: { tickets: [] },
     abandonment: { closed: 0, abandoned: 0, duplicates: 0, superseded: 0, rate: null, trend: noTrend },
+    declines: { total: 0, trend: trendOf(0, 0) },
     leadTimeBreakdown: { deliveries: 0, total: 0, dependencyWait: 0, readyWait: 0, work: 0, blocked: 0, otherWait: 0, waited: 0, waits: { median: null, p85: null, n: 0 } },
     readyAges: { stagnantAfter: 14 * DAY, tickets: [], stagnant: 0, trend: trendOf(0, 0) },
     activity: { cells: Array.from({ length: 7 }, () => new Array<number>(24).fill(0)), total: 0 },
