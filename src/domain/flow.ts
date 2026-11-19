@@ -152,7 +152,7 @@ function analyzeTicket(ticket: TicketHistory, transitionsById: Map<TicketId, Tra
  * null, jamais false, quand on ne peut pas répondre : le ticket n'a jamais été démarré (sans objet), ou l'historique ne dit rien de ses critères à cet instantané
  * (inconnue : un schéma ou un commit d'avant leur colonne). Un ticket sans historique n'a pas d'instantané : null de même.
  *
- * Limite : l'historique suit la lignée du premier parent, qui ne voit qu'un instantané par commit. Un démarrage fait sur une branche fusionnée en `--no-ff`, ou dans un
+ * Limite : l'historique suit la lignée du premier parent, qui ne voit qu'un instantané par commit. Un démarrage fait sur une branche fusionnée par un commit de fusion (branches qui ont divergé, ou `--no-ff`), ou dans un
  * commit de lot, n'y apparaît qu'avec l'état de la fusion ou du lot : des critères écrits juste après le démarrage, avant ce commit, y donnent true.
  */
 export function writtenIntentOf(snapshots: readonly StatusSnapshot[]): boolean | null {

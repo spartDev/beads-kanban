@@ -733,6 +733,15 @@ describe('Intention écrite (writtenIntentOf)', () => {
 
   it('suit l’ordre des instantanés, pas leurs dates : une horloge qui recule ne change pas le premier démarrage', () => {
     expect(intentOf([['open', '2026-10-05T09:00', false], ['in_progress', '2026-10-02T09:00', true]])).toBe(true);
+    // Deux démarrages, le second daté avant le premier : c'est le premier dans l'ordre qui compte, pas le plus ancien daté.
+    expect(
+      intentOf([
+        ['open', '2026-10-01T09:00', false],
+        ['in_progress', '2026-10-05T09:00', false],
+        ['open', '2026-10-06T09:00', true],
+        ['in_progress', '2026-10-02T09:00', true],
+      ]),
+    ).toBe(false);
   });
 
   it.each(['in_progress', 'hooked', 'blocked'])('prend tout Statut de travail pour un démarrage (%s), et la création elle-même si le ticket naît au travail', (status) => {
