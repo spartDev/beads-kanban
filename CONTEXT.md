@@ -82,12 +82,12 @@ _English_: Progress
 _Avoid_: progression
 
 **Livraison**:
-Un ticket (hors epic) fermé pour cause de travail terminé — ni doublon, ni remplacé. Un ticket compte pour une seule Livraison, datée de sa dernière clôture ; une Réouverture annule rétroactivement la Livraison précédente.
+Un ticket (hors epic) fermé pour cause de travail terminé — ni doublon, ni remplacé, ni Renoncement. Un ticket compte pour une seule Livraison, datée de sa dernière clôture ; une Réouverture annule rétroactivement la Livraison précédente.
 _English_: Delivery
 _Avoid_: ticket fermé, done
 
 **Abandon**:
-Un ticket fermé parce qu'il est le doublon d'un autre ou qu'un autre ticket l'a remplacé. Il se reconnaît à un lien « doublon de » ou « remplacé par » posé sur lui-même, vers l'autre ticket, jamais au texte de sa raison de fermeture. S'il porte les deux, sa cause est celle du lien posé le premier. Un « won't fix » n'est pas un Abandon.
+Un ticket fermé parce qu'il est le doublon d'un autre ou qu'un autre ticket l'a remplacé. Il se reconnaît à un lien « doublon de » ou « remplacé par » posé sur lui-même, vers l'autre ticket, jamais au texte de sa raison de fermeture. S'il porte les deux, sa cause est celle du lien posé le premier. Un « won't fix » n'est pas un Abandon : c'est une Livraison, sauf s'il est marqué comme Renoncement.
 _English_: Dropped
 _Avoid_: annulé, rejeté
 
@@ -240,12 +240,12 @@ Un WIP d'un Projet au-dessus du 85ᵉ centile de son WIP quotidien des 90 dernie
 _English_: Unusual WIP
 
 **Signal**:
-Une situation en cours qui mérite d'être regardée maintenant : Dérive, Prêt qui stagne, Blocage long, WIP inhabituel, Validation qui attend ou Boucle de Retours. Un Signal existe tant que sa condition est vraie dans le Dernier commit ; on ne peut pas l'écarter. Le Retravail n'en est pas un : c'est un constat après coup.
+Une situation en cours qui mérite d'être regardée maintenant : Dérive, Prêt qui stagne, Blocage long, WIP inhabituel, Validation qui attend, Boucle de Retours ou Porte humaine saturée. Un Signal existe tant que sa condition est vraie dans le Dernier commit ; on ne peut pas l'écarter. Le Retravail n'en est pas un : c'est un constat après coup.
 _English_: Signal
 _Avoid_: alerte, notification
 
 **Prise rendue**:
-Une Transition d'un Statut de travail vers ouvert, sans clôture entre les deux.
+Une Transition d'un Statut de travail autre que À valider vers ouvert, sans clôture entre les deux. Remettre à ouvert un ticket À valider est un Report, pas une Prise rendue.
 _English_: Handback
 _Avoid_: abandon de prise (se confond avec l'Abandon), régression
 
@@ -255,11 +255,11 @@ _English_: Rework
 _Avoid_: rework, régression
 
 **Tendance longue**:
-Débit, Lead Time au 85ᵉ centile et Taux de Réouverture semaine par semaine sur les 12 dernières semaines du Fuseau de l'utilisateur, sans lissage. Une semaine de moins de 4 Livraisons ne suffit pas à un centile digne de foi.
+Débit, Débit sain, Lead Time au 85ᵉ centile et Taux de Réouverture semaine par semaine sur les 12 dernières semaines du Fuseau de l'utilisateur, sans lissage. Une semaine de moins de 4 Livraisons ne suffit pas à un centile digne de foi.
 _English_: Long trend
 
 **Rapport de rétrospective**:
-Un résumé en markdown, à copier, de la période que montre la page Métriques : Débit, Lead Time, Taux de Réouverture et Taux d'échec avec leur évolution par rapport à la période précédente, la Tendance longue, le Retravail de la période et les Signaux en cours. Les Signaux disent le moment du rapport, pas la période.
+Un résumé en markdown, à copier, de la période que montre la page Métriques : Débit, Débit sain, Lead Time, Taux de Réouverture et Taux d'échec avec leur évolution par rapport à la période précédente, la Tendance longue, le Retravail de la période et les Signaux en cours ; avec les Statuts de relais, les Décisions tenues et leur répartition par sens, la part des Livraisons prouvées, le Coût d'attention et la liste des Livraisons sans Feu vert. Les Signaux disent le moment du rapport, pas la période.
 _English_: Retrospective report
 _Avoid_: export, bilan
 
@@ -312,6 +312,89 @@ Un ticket non fermé qui a subi au moins 3 Retours.
 _English_: Send-back loop
 _Avoid_: ping-pong
 
+**Décision**:
+Une Transition qui fait sortir un ticket de À valider : la main repasse de l'utilisateur à la chaîne. Son sens se lit au statut d'arrivée : Feu vert, Relance, Refus ou Report. Un ticket qui n'est jamais passé À valider ne porte aucune Décision.
+_English_: Decision
+_Avoid_: validation, approbation (ce n'est qu'un de ses sens)
+
+**Feu vert**:
+Une Décision qui fait avancer le ticket : vers une clôture qui est une Livraison, ou vers En intégration.
+_English_: Green light
+_Avoid_: approbation, merge
+
+**Relance**:
+Une Décision qui remet le ticket dans la chaîne : vers en cours, rattaché à un agent, un statut compté comme en cours, ou En relecture. Vers les trois premiers, c'est aussi un Retour, d'origine validation ; vers En relecture, ce n'en est pas un.
+_English_: Rerun
+_Avoid_: renvoi, rejet (se confondent avec le Retour)
+
+**Refus**:
+Une Décision qui ferme le ticket sans Livraison.
+_English_: Rejection
+_Avoid_: abandon (l'Abandon est une cause de clôture, le Refus une Décision)
+
+**Report**:
+Une Décision qui sort le ticket de la chaîne sans le fermer : vers ouvert, différé, bloqué, ou tout autre statut non fermé que ceux du Feu vert et de la Relance.
+_English_: Postponement
+_Avoid_: mise en attente
+
+**Livraison sans Feu vert**:
+Une Livraison passée par au moins un Statut de relais depuis sa dernière Réouverture (ou sa création), sans avoir reçu de Feu vert entre-temps. Le travail que l'utilisateur fait lui-même, sans passer par la chaîne, n'en produit jamais.
+_English_: Delivery without green light
+
+**Livraison saine**:
+Une Livraison sans Bug d'origine, qu'aucune Réouverture n'a précédée : livrée du premier coup, et rien n'en est revenu. Sans limite de temps : un Bug d'origine trouvé des mois plus tard la rend malsaine après coup, comme il compte dans le Taux d'échec. Une Prise rendue ne compte pas : elle précède la Livraison, et la chaîne l'a arrêtée.
+_English_: Sound delivery
+_Avoid_: livraison réussie, bonne livraison
+
+**Débit sain**:
+Le nombre de Livraisons saines sur une période, à lire à côté du Débit. Provisoire pour une période récente, dont les Livraisons n'ont pas encore eu le temps de revenir ; non significatif tant que la Couverture est faible, comme le Taux d'échec.
+_English_: Sound throughput
+
+**Capacité de décision**:
+Le nombre de tickets que l'utilisateur accepte d'avoir À valider en même temps, tous Projets confondus. Il la fixe lui-même (5 par défaut) : elle ne se tire pas de l'historique, car une pile habituelle n'est pas pour autant acceptable.
+_English_: Decision capacity
+
+**Porte humaine saturée**:
+Plus de tickets À valider, tous Projets confondus, que la Capacité de décision (autant ne suffit pas). C'est un Signal de l'utilisateur, pas d'un Projet : la porte, c'est lui.
+_English_: Saturated human gate
+
+**Intention écrite**:
+Un ticket dont les critères d'acceptation n'étaient pas vides à son premier démarrage. Des critères écrits ensuite, en cours de travail, n'en font pas une.
+_English_: Written intent
+_Avoid_: spec, ticket bien rédigé
+
+**Dernière visite**:
+Le moment où l'utilisateur a indiqué avoir vu tout ce qui s'est passé. Elle ne bouge que sur ce geste, jamais à l'ouverture ni au rechargement de l'application, et reste propre à un navigateur ; sans geste, on remonte 24 heures.
+_English_: Last visit
+
+**Décision tenue**:
+Un Feu vert ou un Refus que rien n'a démenti. Un Feu vert est démenti quand la Livraison qui le suit reçoit un Bug d'origine ou est rouverte ; un Refus, quand le ticket est rouvert. Un Feu vert suivi d'un Retour d'intégration n'est pas démenti : la chaîne a fait son travail. Une Relance ou un Report ne sont jamais ni tenus ni démentis. Provisoire pour une période récente. C'est tout ce que l'historique peut dire d'une Décision : pas qu'elle était bonne, seulement que rien ne l'a contredite.
+_English_: Held decision
+_Avoid_: bonne décision
+
+**Livraison prouvée**:
+Une Livraison passée par la chaîne (au moins un Statut de relais depuis sa dernière Réouverture ou sa création), qui est une Intention écrite et a connu sur ce même intervalle au moins un Tour de relecture, au moins un passage En intégration et un Feu vert. Aucune exception selon le type.
+_English_: Evidenced delivery
+_Avoid_: livraison validée, livraison conforme
+
+**Coût d'attention**:
+Le nombre moyen de Décisions qu'ont demandées les Livraisons passées par la chaîne sur une période. Chaque Relance l'augmente : c'est une fois de plus où l'utilisateur a dû juger.
+_English_: Attention cost
+
+**File de décisions**:
+Les tickets À valider, du plus ancien au plus récent, chacun avec son attente et ses preuves (Intention écrite, Tours de relecture, Retours par origine, passage En intégration), comptés contre la Capacité de décision. Une Validation qui attend s'y marque sur sa ligne.
+_English_: Decision queue
+
+**Renoncement**:
+Un ticket fermé que l'utilisateur a décidé de ne pas faire, marqué à sa clôture par le label `declined`. Ce n'est ni une Livraison ni un Abandon. Rien n'est rétroactif : un « won't fix » sans ce label reste une Livraison, et la cause ne se devine jamais au texte de la raison de clôture.
+_English_: Decline
+_Avoid_: won't fix, rejet
+
+**Outcome visé**:
+Le résultat qu'une Epic doit produire, au-delà de ses Livraisons : « réduire le temps de chargement de la page d'accueil de 3 s à 1 s ». Il s'écrit avant qu'elle démarre, dans la clé `outcome` de ses métadonnées. Ses critères d'acceptation disent quand son travail est fini, son Outcome visé ce que ce travail doit changer. Throughline le montre sans dire s'il est atteint : cela se mesure hors de l'historique des Projets.
+_English_: Target outcome
+_Avoid_: objectif, output, critères d'acceptation
+
 ## Relationships
 
 - Un **Projet** contient zéro ou plusieurs tickets
@@ -324,7 +407,15 @@ _Avoid_: ping-pong
 - Le kanban, le **Panneau de ticket**, les métriques et la **Chronologie** d'un **Projet** lisent le même **Dernier commit**
 - Un **Blocage** se découpe en **phases** : seule celle en cours de travail compte dans le **Cycle Time** ; celle d'avant le premier démarrage est l'**Attente de dépendance**
 - Une **Dérive** compare le **Cycle Time** en cours d'un ticket à son **Cycle Time de référence**
-- Les **Signaux** sont la **Dérive**, le **Prêt qui stagne**, le **Blocage long**, le **WIP inhabituel**, la **Validation qui attend** et la **Boucle de Retours** ; le **Retravail** n'en est pas un
+- Les **Signaux** sont la **Dérive**, le **Prêt qui stagne**, le **Blocage long**, le **WIP inhabituel**, la **Validation qui attend**, la **Boucle de Retours** et la **Porte humaine saturée** ; le **Retravail** n'en est pas un
+- Une **Décision** fait sortir un ticket de À valider ; ses sens sont le **Feu vert**, la **Relance**, le **Refus** et le **Report**. Une **Relance** vers le développement est aussi un **Retour**, d'origine validation
+- Le **Débit sain** compte les **Livraisons saines** parmi les **Livraisons** du **Débit**
+- Une **Décision tenue** est un **Feu vert** ou un **Refus** que ni **Bug d'origine** ni **Réouverture** n'a démenti
+- Une **Livraison prouvée** réunit une **Intention écrite**, un **Tour de relecture**, un passage En intégration et un **Feu vert**
+- Un **Renoncement** n'est ni une **Livraison** ni un **Abandon** ; fermé depuis À valider, c'est un **Refus**
+- Un **Report** depuis À valider n'est pas une **Prise rendue**, donc pas du **Retravail**
+- Une **Epic** peut porter un **Outcome visé** ; ses **Livraisons** et son **Avancement** ne disent pas s'il est atteint
+- La **Porte humaine saturée** compare les tickets À valider de tous les **Projets** à la **Capacité de décision**
 - Les **Statuts de relais** sont des **Statuts de travail** : leur temps compte dans le **Cycle Time**, et un ticket n'est que dans un statut à la fois
 - Un **Retour** n'est pas du **Retravail** : il revient au développement avant la **Livraison**, pas après
 - La **Décomposition du Cycle Time** détaille les parts travail et **Blocage** de la **Décomposition du Lead Time**
