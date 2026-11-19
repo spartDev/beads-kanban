@@ -88,8 +88,9 @@ export interface IssuesResponse {
   /**
    * Les statuts personnalisés que le Projet déclare, lus au Dernier commit, dans le même état que les tickets : les Statuts de relais
    * et les autres (ADR 0007). Ce qu'ils font des tickets est la règle du domaine : la colonne (`columnFor`) et les colonnes de relais qui
-   * existent pour le Projet (`visibleHandoffStatuses`). Le tableau ne s'en sert pas encore : il montre les Statuts de relais en En cours tant
-   * qu'il n'a pas leurs colonnes (bdesk-pz0.4).
+   * existent pour le Projet (`visibleHandoffStatuses`). Le tableau, la page Epic et les Signaux d'un ticket s'en servent (`useDeclaredStatuses`) :
+   * un statut que le Projet déclare de catégorie `wip` y est en En cours, comme au CFD. PROVISOIRE (bdesk-pz0.4) : ils montrent les Statuts de relais
+   * en En cours tant qu'ils n'ont pas leurs colonnes.
    */
   declaredStatuses: DeclaredStatuses;
 }
@@ -218,7 +219,8 @@ export interface IssueTransition {
 
 /**
  * Où en est le ticket pendant une partie d'un Blocage, ce qui décide si elle compte dans le temps bloqué des métriques :
- *   `work`            en statut de travail (en cours, rattaché à un agent, bloqué) : la part du Cycle Time passée en Blocage,
+ *   `work`            en statut de travail (en cours, rattaché à un agent, bloqué, un Statut de relais, ou un autre statut que le Projet déclare
+ *                     comme travail) : la part du Cycle Time passée en Blocage,
  *                     celle que `IssueChronology.blockedTime` totalise ;
  *   `dependencyWait`  ticket ouvert, jamais démarré : l'Attente de dépendance, hors du Cycle Time ;
  *   `otherWait`       tout autre statut non fermé (revenu à ouvert après un démarrage, différé…) : hors du Cycle Time aussi.
@@ -543,7 +545,10 @@ export interface MetricsSoundThroughputTile extends MetricsSignificance {
 }
 
 export interface MetricsWipTile {
-  /** Tickets en statut de travail (en cours, rattaché à un agent, bloqué) à `asOf` : maintenant si la période court jusqu'à aujourd'hui. */
+  /**
+   * Tickets en statut de travail (en cours, rattaché à un agent, bloqué, un Statut de relais, ou un autre statut que le Projet déclare comme travail) à
+   * `asOf` : maintenant si la période court jusqu'à aujourd'hui.
+   */
   current: number;
   /** Moyenne du WIP de `period.start` à `asOf`, pondérée par le temps. */
   average: number;

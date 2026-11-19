@@ -8,7 +8,7 @@
  * ticket est en Blocage : l'historique des dépendances pour le CFD, `blockedBy` pour le tableau.
  */
 import type { DeclaredStatuses, HandoffStatus } from '../shared/api';
-import { HANDOFF_STATUSES, isDeclaredWip, NO_DECLARED_STATUSES } from './statuses';
+import { HANDOFF_STATUSES, isDeclaredWip } from './statuses';
 
 /**
  * Les colonnes de tout Projet, dans l'ordre du flux (« En pause » n'en est pas une : c'est ce qui n'est dans aucune). Celles des Statuts de
@@ -61,7 +61,7 @@ export function columnsOf(handoff: readonly HandoffStatus[]): Column[] {
  *   wip par le Projet
  *   deferred, pinned, autre      En pause, en Blocage ou non (un statut inconnu de beads n'est pas perdu pour autant)
  *
- * Les Statuts de relais se reconnaissent à leur nom, déclarés ou non (ADR 0007) : `declared` (défaut : aucune déclaration) ne sert qu'aux autres
+ * Les Statuts de relais se reconnaissent à leur nom, déclarés ou non (ADR 0007) : `declared` (obligatoire, voir `isWork`) ne sert qu'aux autres
  * statuts personnalisés, dont seule la catégorie `wip` donne une colonne. Un ticket est donc dans En cours, une colonne de relais ou Bloqué
  * exactement quand il est dans un statut de travail (`isWork`, `flow.ts`) : ce que comptent le Cycle Time et le WIP.
  *
@@ -69,7 +69,7 @@ export function columnsOf(handoff: readonly HandoffStatus[]): Column[] {
  * CONTEXT.md). Le statut bloqué se lit dans `status` : que l'appelant le compte ou non dans `blocked` ne change rien.
  * `status` est indéfini avant la création du ticket.
  */
-export function columnFor(status: string | undefined, blocked: boolean, declared: DeclaredStatuses = NO_DECLARED_STATUSES): Column | null {
+export function columnFor(status: string | undefined, blocked: boolean, declared: DeclaredStatuses): Column | null {
   switch (status) {
     case 'closed':
       return 'done';

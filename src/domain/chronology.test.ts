@@ -3,6 +3,7 @@ import { analyzeChronologies, chronologyFromDates } from './chronology';
 import { analyzeFlow, isWork, type DependencyHistory, type TicketHistory } from './flow';
 import { intersect, measure, type Interval } from './intervals';
 import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing/random-histories';
+import { NO_DECLARED_STATUSES } from './statuses';
 
 const at = (iso: string) => new Date(`${iso}Z`);
 const iso = (value: string) => at(value).toISOString();
@@ -19,7 +20,7 @@ function ticket(id: string, statuses: [string, string][], extra: Partial<TicketH
   };
 }
 
-const chronologyOf = (tickets: TicketHistory[], id = tickets[0]?.id ?? '') => analyzeChronologies(tickets).of(id);
+const chronologyOf = (tickets: TicketHistory[], id = tickets[0]?.id ?? '') => analyzeChronologies(tickets, NO_DECLARED_STATUSES).of(id);
 
 const blocks = (target: string, added: string, removed?: string): DependencyHistory => ({
   type: 'blocks',
@@ -167,7 +168,7 @@ describe('Transitions', () => {
   });
 
   it('ne connaît pas un ticket absent de l’historique, ni un ticket sans aucun statut', () => {
-    const chronologies = analyzeChronologies([ticket('vide', [])]);
+    const chronologies = analyzeChronologies([ticket('vide', [])], NO_DECLARED_STATUSES);
 
     expect(chronologies.of('vide')).toBeUndefined();
     expect(chronologies.of('inconnu')).toBeUndefined();
@@ -627,7 +628,7 @@ describe('Blocages', () => {
       for (let round = 0; round < 400; round++) {
         const tickets = [history('a', ['b', 'c']), history('b', ['a', 'c']), history('c', ['a', 'b'])];
         const flows = analyzeFlow(tickets);
-        const chronologies = analyzeChronologies(tickets);
+        const chronologies = analyzeChronologies(tickets, NO_DECLARED_STATUSES);
         for (const { id } of tickets) {
           const flow = flows.get(id);
           const chronology = chronologies.of(id);
@@ -690,7 +691,7 @@ describe('Blocages', () => {
       for (let round = 0; round < 400; round++) {
         const tickets = randomHistories(random, { tickets: 4, clockBack: 25, sharedClock });
         const flows = analyzeFlow(tickets);
-        const chronologies = analyzeChronologies(tickets);
+        const chronologies = analyzeChronologies(tickets, NO_DECLARED_STATUSES);
         for (const history of tickets) {
           const flow = flows.get(history.id);
           const chronology = chronologies.of(history.id);
@@ -753,7 +754,7 @@ describe('Blocages', () => {
 
     const working: Interval[] = (chronology?.transitions ?? []).flatMap((t, i, all): Interval[] => {
       const next = all[i + 1];
-      return isWork(t.status) && next ? [[Date.parse(t.at), Date.parse(next.at)]] : [];
+      return isWork(t.status, NO_DECLARED_STATUSES) && next ? [[Date.parse(t.at), Date.parse(next.at)]] : [];
     });
     const blocked: Interval[] = (chronology?.blockages ?? []).map((b) => [
       Date.parse(b.from),

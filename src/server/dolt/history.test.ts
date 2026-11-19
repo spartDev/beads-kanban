@@ -7,6 +7,7 @@ import { readsOutsideHead, tablesRead } from '../testing/reads-at-head';
 import { type DoltDatabase, DoltQueryError, type Row } from './client';
 import { type Commit, dependencyLifetimes, readTicketHistories } from './history';
 import { StoredSqlError } from './stored-sql';
+import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 
 const at = (iso: string) => new Date(`${iso}Z`);
 const commits: Commit[] = ['c0', 'c1', 'c2', 'c3', 'c4', 'c5'].map((hash, i) => ({ hash, at: at(`2026-10-0${i + 1}T10:00:00`) }));
@@ -763,7 +764,7 @@ describe('readTicketHistories : l’horloge d’un commit recule ou avance (bdes
 
     expect(histories.find((h) => h.id === 't')?.dependencies).toEqual([{ type: 'blocks', target: 'b', addedAt: sinceDay('2026-10-01T14:00') }]);
     expect(analyzeFlow(histories).get('t')).toMatchObject({ dependencyWait: 0, blockedTime: 6 * HOUR });
-    const phases = analyzeChronologies(histories).of('t')?.blockages.flatMap((blockage) => blockage.phases.map((phase) => phase.kind));
+    const phases = analyzeChronologies(histories, NO_DECLARED_STATUSES).of('t')?.blockages.flatMap((blockage) => blockage.phases.map((phase) => phase.kind));
     expect(phases).toEqual(['work']);
   });
 
@@ -1145,6 +1146,12 @@ describe('readTicketHistories : les statuts que déclare le Projet, avec l’his
     expect(readsOutsideHead(db.queries)).toEqual([]);
     // Ce que le domaine en fait : le temps du statut déclaré wip compte dans le Cycle Time.
     expect(analyzeFlow(histories, histories.declaredStatuses).get('p-1')?.cycleTime).toBe(24 * 3_600_000);
+  });
+
+  it('rend la déclaration de l’ADR 0007, les trois Statuts de relais seuls, sans autre statut', async () => {
+    const histories = await readTicketHistories(fakeDb(answers([{ value: 'in_review:wip,in_integration:wip,awaiting_human:wip' }])));
+
+    expect(histories.declaredStatuses).toEqual({ handoff: ['in_review', 'in_integration', 'awaiting_human'], others: [] });
   });
 
   it('n’en rend aucun, sans champ, quand le Projet ne déclare rien : un tableau de tickets comme avant', async () => {

@@ -1082,6 +1082,15 @@ describe('service de métriques : les statuts que déclare le Projet (bdesk-pz0.
     expect(response.cfd.at(-1)).toMatchObject({ inProgress: 1, inReview: 1 });
   });
 
+  it('garde au CFD les colonnes des Statuts de relais déclarés, même vides : la déclaration de l’ADR 0007, sans autre statut', async () => {
+    const declaredStatuses = { handoff: ['in_review' as const, 'in_integration' as const, 'awaiting_human' as const], others: [] };
+    const { service } = fakeProjects({ a: { histories: Object.assign([working('a-2', 'in_review')], { declaredStatuses }), issues } });
+
+    const response = await createMetricsService(service, options).compute({ projects: [], ...week });
+
+    expect(response.cfd.at(-1)).toEqual({ date: '2026-10-23', backlog: 0, ready: 0, inProgress: 0, inReview: 1, inIntegration: 0, awaitingHuman: 0, blocked: 0, done: 0 });
+  });
+
   it('compte sans déclaration les Statuts de relais, et laisse « En pause » un autre statut personnalisé', async () => {
     const { service } = fakeProjects({ a: { histories: tickets(), issues } });
 

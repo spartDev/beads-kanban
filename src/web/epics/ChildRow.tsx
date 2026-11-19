@@ -2,7 +2,7 @@ import { Link } from 'react-router';
 import { baseColumnOf, columnFor } from '../../domain/columns';
 import type { EpicProgress } from '../../domain/epics';
 import { ticketTitle } from '../data/helpers';
-import type { Issue } from '../data/types';
+import type { DeclaredStatuses, Issue } from '../data/types';
 import { typeMeta } from '../design/issue-palette';
 import { useFormat, useT, type DisplayFormat, type Messages } from '../i18n';
 import { COLUMN_META } from '../kanban/meta';
@@ -14,9 +14,12 @@ const NAMED_BLOCKERS = 2;
 
 type Words = Messages['epics']['children'];
 
-/** La colonne d'un ticket écrite pour une ligne, ou « En pause ». Un Statut de relais s'y écrit En cours, comme au tableau (`baseColumnOf`, provisoire). */
-function columnLabel(issue: Pick<Issue, 'status' | 'blockedBy'>, words: Words): string {
-  const column = columnFor(issue.status, issue.blockedBy.length > 0);
+/**
+ * La colonne d'un ticket écrite pour une ligne, ou « En pause », avec les statuts que le Projet déclare : un statut qu'il déclare `wip` s'y écrit En
+ * cours, comme au tableau et au CFD. PROVISOIRE (bdesk-pz0.4) : un Statut de relais s'y écrit En cours, comme au tableau (`baseColumnOf`).
+ */
+function columnLabel(issue: Pick<Issue, 'status' | 'blockedBy'>, words: Words, declared: DeclaredStatuses): string {
+  const column = columnFor(issue.status, issue.blockedBy.length > 0, declared);
   return column === null ? words.paused : COLUMN_META[baseColumnOf(column)].label;
 }
 
@@ -32,7 +35,7 @@ function holdingBack(issue: Issue, words: Words, { formatCount }: Pick<DisplayFo
 /**
  * Un Enfant, en une ligne qui est un seul lien : son panneau (`/p/<projet>/t/<id>`), d'où « Retour » ramène à la page Epic.
  * Une Epic imbriquée, elle, mène à sa propre page, et dit son avancement (`nested`). `showColumn` : la colonne du ticket est
- * écrite sur la ligne, là où l'arborescence ne les groupe pas. `idChars` : la largeur de l'identifiant, en caractères (celle du
+ * écrite sur la ligne, là où l'arborescence ne les groupe pas ; elle exige alors `declared`, les statuts que le Projet déclare. `idChars` : la largeur de l'identifiant, en caractères (celle du
  * plus long de la liste) : les titres d'une colonne commencent alors au même endroit ; dès que l'écran est étroit, la ligne passe
  * à la ligne et cette largeur n'y change rien. Elle est plafonnée à la largeur de la ligne (`min(…ch, 100%)`) : un identifiant de 152 caractères
  * ferait 152ch, que la largeur minimale impose avant toute largeur maximale, et la page défilerait d'un côté. Un identifiant plus long que la
@@ -42,22 +45,17 @@ function holdingBack(issue: Issue, words: Words, { formatCount }: Pick<DisplayFo
  * À droite, ce qui varie d'une ligne à l'autre (ce qui retient le ticket, l'assigné) vient d'abord, et ce qui a une largeur
  * fixe (colonne, priorité, âge de clôture) en dernier : ces cases s'alignent d'une ligne à l'autre sur les écrans larges.
  */
-export function ChildRow({
-  issue,
-  projectId,
-  now,
-  showColumn = false,
-  idChars,
-  nested,
-}: {
-  issue: Issue;
-  projectId: string;
-  now: number;
-  showColumn?: boolean;
-  idChars?: number;
-  /** L'avancement de l'Epic imbriquée que la ligne représente. */
-  nested?: EpicProgress;
-}) {
+export function ChildRow(
+  props: {
+    issue: Issue;
+    projectId: string;
+    now: number;
+    idChars?: number;
+    /** L'avancement de l'Epic imbriquée que la ligne représente. */
+    nested?: EpicProgress;
+  } & ({ showColumn: true; declared: DeclaredStatuses } | { showColumn?: false; declared?: never }),
+) {
+  const { issue, projectId, now, idChars, nested } = props;
   const t = useT();
   const format = useFormat();
   const words = t.epics.children;
@@ -90,14 +88,14 @@ export function ChildRow({
         ) : null}
         {reason ? <span className="wrap-anywhere">{reason}</span> : null}
         {issue.assignee ? <span className="wrap-anywhere">{issue.assignee}</span> : null}
-        {showColumn && !isEpic ? <span className="sm:w-14">{columnLabel(issue, words)}</span> : null}
+        {props.showColumn && !isEpic ? <span className="sm:w-14">{columnLabel(issue, words, props.declared)}</span> : null}
         {isEpic ? null : <PriorityBadge priority={issue.priority} className="text-xs sm:w-8" />}
         {closedAge && issue.closedAt ? (
           <time dateTime={issue.closedAt} title={format.formatDateTime(issue.closedAt)} className="sm:w-[4.5rem] sm:text-right">
             <span className="sr-only">{`${words.closed} `}</span>
             {closedAge}
           </time>
-        ) : showColumn ? (
+        ) : props.showColumn ? (
           // Une ligne qui n'est pas fermée garde la place de l'âge : la priorité reste alignée avec celle des lignes fermées.
           <span aria-hidden="true" className="max-sm:hidden sm:w-[4.5rem]" />
         ) : null}

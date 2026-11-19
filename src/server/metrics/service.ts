@@ -4,6 +4,7 @@ import { longTrendOf } from '../../domain/longTrend';
 import { analyzeProject, computeMetrics, type MetricsInput, type ProjectAnalysis } from '../../domain/metrics';
 import { type Signal, signalsOf } from '../../domain/signals';
 import { lastVisitWindow, type SinceGroup, sinceLastVisit } from '../../domain/sinceLastVisit';
+import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 import type {
   ApiSignal,
   MetricsResponse,
@@ -143,7 +144,8 @@ export function createMetricsService(
         const issue = current.get(row.id);
         return issue ? [{ ...row, title: issue.title, priority: issue.priority }] : [];
       }),
-      rows.declaredStatuses, // lus avec l'historique, dans le même état : les tickets du tableau (`issues`) ne donnent que titres et priorités
+      // Lus avec l'historique, dans le même état : les tickets du tableau (`issues`) ne donnent que titres et priorités. Absents : le Projet n'en déclare aucun.
+      rows.declaredStatuses ?? NO_DECLARED_STATUSES,
     );
   }
 

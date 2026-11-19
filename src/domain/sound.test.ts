@@ -5,6 +5,7 @@ import { analyzeFlow, recordedTransitions } from './flow';
 import { longTrendOf } from './longTrend';
 import { analyzeProject, computeMetrics, MIN_FAILURE_BUGS, MIN_FAILURE_COVERAGE, type MetricsInput, type MetricsTicket } from './metrics';
 import { randomHistories, seededRandom } from './testing/random-histories';
+import { NO_DECLARED_STATUSES } from './statuses';
 
 /**
  * Le Débit sain : les Livraisons saines d'une période, sans Bug d'origine et qu'aucune Réouverture n'a précédée (voir CONTEXT.md), à lire à côté du Débit.
@@ -47,7 +48,7 @@ const worked = (id: string, created: string, started: string, closedAt: string, 
 const bug = (id: string, created: string, ...origins: string[]) =>
   ticket(id, [['open', created]], { type: 'bug', dependencies: origins.map((target) => ({ type: 'discovered-from', target, addedAt: at(created) })) });
 
-const project = (id: string, tickets: MetricsTicket[]): MetricsInput => ({ id, name: `Nom de ${id}`, analysis: analyzeProject(tickets) });
+const project = (id: string, tickets: MetricsTicket[]): MetricsInput => ({ id, name: `Nom de ${id}`, analysis: analyzeProject(tickets, NO_DECLARED_STATUSES) });
 
 const reportOf = (projects: MetricsInput[], period: PeriodSpec = PAST) => computeMetrics(projects, { period, now: NOW, timeZone: PARIS });
 
@@ -183,7 +184,7 @@ describe('Livraison saine : Livraison, sans Bug d’origine, sans Réouverture',
   }
 
   /** Chaque ticket mesuré, saine ou non selon `analyzeProject` ; les Epics n'y sont pas. */
-  const soundOfEach = (tickets: MetricsTicket[]) => new Map(analyzeProject(tickets).tickets.map((t) => [t.id, t.sound]));
+  const soundOfEach = (tickets: MetricsTicket[]) => new Map(analyzeProject(tickets, NO_DECLARED_STATUSES).tickets.map((t) => [t.id, t.sound]));
 
   it('tient sur un lot varié : Abandon qui transmet ses liens, bug relié à une Epic, Prise rendue, bug trouvé en cours de travail', () => {
     const tickets: MetricsTicket[] = [

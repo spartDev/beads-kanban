@@ -1,7 +1,7 @@
 import { CircleAlert, RefreshCw } from 'lucide-react';
 import { Fragment, useId, type MouseEvent } from 'react';
 import { ApiError, describeError } from '../data/client';
-import { useChronology, useTicketSignals } from '../data/hooks';
+import { useChronology, useDeclaredStatuses, useTicketSignals } from '../data/hooks';
 import type { IssueBlockage, IssueBlockagePhase, IssueBlockagePhaseKind, IssueChronology, IssueTransition } from '../data/types';
 import { statusLabel } from '../design/issue-palette';
 import { cx } from '../lib/cx';
@@ -116,11 +116,12 @@ function Unavailable({ error, onRetry }: { error: unknown; onRetry: (event: Mous
 const signalKind = (kind: 'drift' | 'longBlockage'): string => SIGNAL_KINDS.find((entry) => entry.kind === kind)?.label ?? kind;
 
 /**
- * Les Signaux du ticket (Dérive, Blocage long) : les mêmes que sur sa carte, tirés des Signaux du Projet (une requête que le tableau a souvent déjà faite).
- * Rien tant qu'ils manquent ou qu'ils sont illisibles : la Chronologie se suffit sans eux.
+ * Les Signaux du ticket (Dérive, Blocage long) : les mêmes que sur sa carte, tirés des Signaux du Projet (une requête que le tableau a souvent déjà faite),
+ * avec les statuts que le Projet déclare (ceux du tableau, sous le panneau). Rien tant qu'ils manquent ou qu'ils sont illisibles : la Chronologie se
+ * suffit sans eux.
  */
 function SignalNotes({ projectId, issueId, status }: { projectId: string; issueId: string; status: string | undefined }) {
-  const { drift, longBlockage } = shownSignals(status ?? '', useTicketSignals(projectId).data?.get(issueId));
+  const { drift, longBlockage } = shownSignals(status ?? '', useTicketSignals(projectId).data?.get(issueId), useDeclaredStatuses(projectId));
   const { chronology: texts } = useT().kanban;
   return (
     <>

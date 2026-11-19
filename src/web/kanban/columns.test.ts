@@ -22,6 +22,7 @@ import {
   placeClosed,
   type ColumnId,
 } from './columns';
+import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 
 withTimeZone('Europe/Paris');
 
@@ -211,7 +212,7 @@ describe('le tableau et le CFD rangent un ticket dans la même colonne', () => {
       blocked ? [{ type: 'blocks', target: 'b', addedAt: day(1) }] : [],
     );
     const steps = new Map([target, ticket].map((t) => [t.id, stepsOf(t.statusSnapshots)] as const));
-    return columnAt(buildTimeline(ticket, steps.get('a') ?? [], steps), day(3).getTime());
+    return columnAt(buildTimeline(ticket, steps.get('a') ?? [], steps, NO_DECLARED_STATUSES), day(3).getTime());
   }
 
   // Tous les statuts de beads, un statut personnalisé et le statut vide (NULL en base).

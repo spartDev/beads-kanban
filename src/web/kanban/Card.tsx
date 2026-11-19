@@ -3,7 +3,7 @@ import { Fragment, type ReactNode, useId } from 'react';
 import { Link, useLocation } from 'react-router';
 import { ticketTitle } from '../data/helpers';
 import type { TicketSignals } from '../data/hooks';
-import type { ApiSignal, Issue } from '../data/types';
+import type { ApiSignal, DeclaredStatuses, Issue } from '../data/types';
 import { SIGNAL_KINDS, shownSignals, signalSentence } from '../lib/signals';
 import { statusLabel, typeMeta } from '../design/issue-palette';
 import { useFormat, useLanguage, useT } from '../i18n';
@@ -36,6 +36,7 @@ export function Card({
   epic,
   now,
   signals,
+  declared,
 }: {
   issue: Issue;
   /** La colonne de la carte, ou `paused` dans le tiroir. */
@@ -46,6 +47,8 @@ export function Card({
   now: number;
   /** Les Signaux du ticket : sa Dérive, son Blocage long. */
   signals?: TicketSignals | undefined;
+  /** Les statuts que le Projet déclare : un ticket dans un statut qu'il déclare `wip` est en travail, et montre ses Signaux (`shownSignals`). */
+  declared: DeclaredStatuses;
 }) {
   const { language } = useLanguage();
   const t = useT();
@@ -57,7 +60,7 @@ export function Card({
   const { pathname, search } = useLocation();
   const panelOpen = parsePath(pathname).section === 'issue';
   const idId = useId();
-  const { drift, longBlockage } = shownSignals(issue.status, signals);
+  const { drift, longBlockage } = shownSignals(issue.status, signals, declared);
 
   return (
     <li

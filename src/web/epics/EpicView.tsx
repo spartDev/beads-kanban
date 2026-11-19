@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { epicChildren, epicProgress, epicTree, groupByColumn } from '../../domain/epics';
-import type { Issue, Project } from '../data/types';
+import type { DeclaredStatuses, Issue, Project } from '../data/types';
 import { statusLabel } from '../design/issue-palette';
 import { useT } from '../i18n';
 import { epicName } from '../kanban/epics';
@@ -36,9 +36,11 @@ const LINK = '-my-0.5 min-h-[24px] py-0.5 font-medium text-accent hover:underlin
  * le kanban a déjà : rien de plus à lire, et les mises à jour en direct la tiennent à jour comme lui.
  *
  * Les Enfants sont les mêmes que ceux du filtre Epic du kanban (`epicChildren`), rangés par la même règle de colonne
- * (`columnFor`). L'affichage choisi vit dans l'adresse (`?view=tree`), pour qu'un lien le partage.
+ * (`columnFor`), avec les statuts que le Projet déclare (`declared`, rendus avec ses tickets) : un statut qu'il déclare `wip` est en En cours.
+ * PROVISOIRE (bdesk-pz0.4) : les trois Statuts de relais y sont en En cours (`groupByColumn`, `ChildRow`). L'affichage choisi vit dans l'adresse
+ * (`?view=tree`), pour qu'un lien le partage.
  */
-export function EpicView({ project, epic, issues }: { project: Project; epic: Issue; issues: readonly Issue[] }) {
+export function EpicView({ project, epic, issues, declared }: { project: Project; epic: Issue; issues: readonly Issue[]; declared: DeclaredStatuses }) {
   const now = useNow();
   const words = useT().epics.epic;
   const [params, setParams] = useSearchParams();
@@ -56,7 +58,7 @@ export function EpicView({ project, epic, issues }: { project: Project; epic: Is
 
   const { children, epics: nestedEpics } = useMemo(() => epicChildren(epic.id, issues), [epic.id, issues]);
   const progress = useMemo(() => epicProgress(children), [children]);
-  const groups = useMemo(() => groupByColumn(children), [children]);
+  const groups = useMemo(() => groupByColumn(children, declared), [children, declared]);
   const tree = useMemo(() => epicTree(epic.id, issues), [epic.id, issues]);
   const progressOf = useCallback((epicId: string) => epicProgress(epicChildren(epicId, issues).children), [issues]);
 
@@ -117,7 +119,7 @@ export function EpicView({ project, epic, issues }: { project: Project; epic: Is
             <ViewSwitch value={view} onChange={setView} />
           </div>
           {view === 'tree' ? (
-            <Tree nodes={tree} projectId={project.id} now={now} progressOf={progressOf} />
+            <Tree nodes={tree} projectId={project.id} now={now} progressOf={progressOf} declared={declared} />
           ) : (
             <ByColumn groups={groups} nestedEpics={nestedEpics} projectId={project.id} now={now} progressOf={progressOf} />
           )}

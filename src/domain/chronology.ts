@@ -9,7 +9,6 @@ import type {
 } from '../shared/api';
 import { analyzeFlow, isWork, type Outcome, type TicketHistory, type TicketId } from './flow';
 import { type Interval, intersect, union } from './intervals';
-import { NO_DECLARED_STATUSES } from './statuses';
 import { type Step, stepsOf } from './timeline';
 
 /**
@@ -28,10 +27,10 @@ export interface ProjectChronologies {
 /**
  * Analyse l'historique complet d'un Projet. Il faut tous les tickets, pas un seul : le Blocage d'un ticket dépend de
  * l'état, à chaque instant, des tickets dont il dépend. Le travail lourd (`analyzeFlow`) est fait une fois ; la
- * chronologie d'un ticket se construit à la demande. `declared` : les statuts personnalisés que le Projet déclare (défaut : aucun), qui disent
- * lesquels de ses autres statuts sont de travail, comme pour les métriques.
+ * chronologie d'un ticket se construit à la demande. `declared` (obligatoire, voir `isWork`) : les statuts personnalisés que le Projet déclare,
+ * qui disent lesquels de ses autres statuts sont de travail, comme pour les métriques.
  */
-export function analyzeChronologies(tickets: TicketHistory[], declared: DeclaredStatuses = NO_DECLARED_STATUSES): ProjectChronologies {
+export function analyzeChronologies(tickets: TicketHistory[], declared: DeclaredStatuses): ProjectChronologies {
   const flows = analyzeFlow(tickets, declared);
   const stepsById = new Map([...flows].map(([id, flow]) => [id, stepsOf(flow.transitions)]));
   const byId = new Map(tickets.map((ticket) => [ticket.id, ticket]));

@@ -1,6 +1,7 @@
 import { type BaseColumn, baseColumnOf, COLUMNS, columnFor } from '../../domain/columns';
 import { descendantIds } from '../../domain/epics';
-import type { Issue } from '../data/types';
+import { NO_DECLARED_STATUSES } from '../../domain/statuses';
+import type { DeclaredStatuses, Issue } from '../data/types';
 import { startOfLocalDay } from '../lib/localDay';
 
 /**
@@ -8,12 +9,13 @@ import { startOfLocalDay } from '../lib/localDay';
  *
  *   Backlog   ticket ouvert, en Blocage
  *   Prêt      ticket ouvert, hors Blocage
- *   En cours  statut de travail (en cours, rattaché à un agent), hors Blocage ; pour l'instant aussi les Statuts de relais (voir `columnOf`)
+ *   En cours  statut de travail (en cours, rattaché à un agent, un statut que le Projet déclare de catégorie `wip`), hors Blocage ;
+ *             pour l'instant aussi les Statuts de relais (provisoire, voir `columnOf`)
  *   Bloqué    statut de travail en Blocage, ou statut bloqué
  *   Terminé   ticket fermé ces `doneDays` derniers jours, aujourd'hui compris (14 par défaut) : des jours calendaires
  *             du fuseau du navigateur, comme les périodes de la page Métriques (`resolvePeriod`) et CONTEXT.md. Avec 14
  *             jours, le lundi 26 octobre, Terminé commence le mardi 13 à minuit.
- *   En pause  tiroir : statut différé ou épinglé (et tout statut inconnu, comme dans le CFD)
+ *   En pause  tiroir : statut différé ou épinglé, et tout autre statut que le Projet ne déclare pas de catégorie `wip`, comme dans le CFD
  *
  * Le Blocage se déduit des dépendances (`blockedBy`, les cibles `blocks` non fermées), pas du statut : voir CONTEXT.md.
  *
@@ -43,6 +45,11 @@ export interface PlacementOptions {
   now: number;
   /** Les `doneDays` derniers jours calendaires, aujourd'hui compris, que Terminé couvre ; `Infinity` pour tous. */
   doneDays?: number;
+  /**
+   * Les statuts que le Projet déclare, rendus avec ses tickets (`useDeclaredStatuses`) : un statut qu'il déclare de catégorie `wip` va en En cours,
+   * comme au CFD. Facultatif ici (défaut : aucun), le tableau (`Board`) l'exige.
+   */
+  declared?: DeclaredStatuses;
 }
 
 /**
@@ -58,12 +65,15 @@ export const isBlocked = (issue: Pick<Issue, 'status' | 'blockedBy'>): boolean =
  *
  * Un ticket fermé est dans Terminé s'il l'a été ces `doneDays` derniers jours, aujourd'hui compris (`closedWithin`).
  *
+ * Un statut que le Projet déclare de catégorie `wip` (`declared`) est en En cours, ou Bloqué en Blocage, comme au CFD.
+ *
  * PROVISOIRE (bdesk-pz0.4) : le tableau n'a pas encore les colonnes des Statuts de relais, que le CFD a déjà ; un ticket En relecture, En
  * intégration ou À valider y reste en En cours (`baseColumnOf`), comme avant, plutôt que perdu. En Blocage, il est dans Bloqué, comme au CFD.
  */
-export function columnOf(issue: IssueFacts, { now, doneDays = DEFAULT_DONE_DAYS }: PlacementOptions): Lane | null {
-  const column = columnFor(issue.status, isBlocked(issue));
-  // Hors des colonnes pour le CFD : deferred, pinned, ou un statut personnalisé de beads. Ici, le tiroir plutôt que perdu.
+export function columnOf(issue: IssueFacts, { now, doneDays = DEFAULT_DONE_DAYS, declared = NO_DECLARED_STATUSES }: PlacementOptions): Lane | null {
+  const column = columnFor(issue.status, isBlocked(issue), declared);
+  // Hors des colonnes pour le CFD : deferred, pinned, un statut personnalisé que le Projet ne déclare pas de catégorie `wip`, ou inconnu. Ici, le
+  // tiroir plutôt que perdu.
   if (column === null) return 'paused';
   // Le CFD cumule tous les tickets fermés ; le tableau ne garde dans Terminé que ceux de la fenêtre.
   if (column === 'done') return closedWithin(issue.closedAt, now, doneDays) ? 'done' : null;

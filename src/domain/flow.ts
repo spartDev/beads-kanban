@@ -98,17 +98,20 @@ const WORK_STATUSES: ReadonlySet<string> = new Set(['in_progress', 'hooked', 'bl
 
 /**
  * Statut de travail (CONTEXT.md) : en cours, rattaché à un agent, bloqué, un Statut de relais (déclaré ou non), ou un autre statut que le Projet
- * déclare de catégorie `wip` (`declared`, défaut : aucune déclaration). Ce que le Cycle Time, le WIP, la Dérive, le Blocage long, la Prise rendue
- * et l'Efficacité du flux comptent.
+ * déclare de catégorie `wip` (`declared`). Ce que le Cycle Time, le WIP, la Dérive, le Blocage long, la Prise rendue et l'Efficacité du flux
+ * comptent.
+ *
+ * `declared` est obligatoire, ici comme dans tout ce qui range un statut (`columnFor`, `isHandback`, `buildTimeline`, `analyzeProject`,
+ * `analyzeChronologies`…) : un appel qui l'oublie ne compile pas. Un Projet qui ne déclare rien passe `NO_DECLARED_STATUSES`.
  */
-export const isWork = (status: string, declared: DeclaredStatuses = NO_DECLARED_STATUSES): boolean =>
+export const isWork = (status: string, declared: DeclaredStatuses): boolean =>
   WORK_STATUSES.has(status) || isDeclaredWip(status, declared);
 
 /**
  * Prise rendue (CONTEXT.md) : une Transition d'un statut de travail autre que À valider vers ouvert. Deux Transitions se suivent sans clôture
  * entre elles. Remettre à ouvert un ticket À valider est un Report, pas une Prise rendue.
  */
-export const isHandback = (from: string, to: string, declared: DeclaredStatuses = NO_DECLARED_STATUSES): boolean =>
+export const isHandback = (from: string, to: string, declared: DeclaredStatuses): boolean =>
   to === 'open' && from !== 'awaiting_human' && isWork(from, declared);
 
 /**
@@ -128,7 +131,9 @@ export const isHandback = (from: string, to: string, declared: DeclaredStatuses 
  * Ces dates ne se contredisent pas sur ce que le lecteur Dolt rend : il met d'accord les dates des commits de la lignée sur son ordre
  * (`ascendingDates`) avant de donner les historiques au domaine. Cette limite est celle d'un historique qui vient d'ailleurs.
  *
- * `declared` : les statuts personnalisés que le Projet déclare (défaut : aucun), qui disent lesquels de ses autres statuts sont de travail (`isWork`).
+ * `declared` : les statuts personnalisés que le Projet déclare, qui disent lesquels de ses autres statuts sont de travail (`isWork`). Seule fonction du
+ * domaine où il a une valeur par défaut (aucune déclaration) : ses tests, nombreux, mesurent des historiques sans déclaration. Ses deux appelants,
+ * `analyzeProject` et `analyzeChronologies`, l'exigent et le lui passent.
  */
 export function analyzeFlow(tickets: TicketHistory[], declared: DeclaredStatuses = NO_DECLARED_STATUSES): Map<TicketId, TicketFlow> {
   const transitionsById = new Map(tickets.map((t) => [t.id, toTransitions(t.statusSnapshots)]));
@@ -181,9 +186,9 @@ function analyzeTicket(ticket: TicketHistory, transitionsById: Map<TicketId, Tra
  * Limite : l'historique suit la lignée du premier parent, qui ne voit qu'un instantané par commit. Un démarrage fait sur une branche fusionnée par un commit de fusion (branches qui ont divergé, ou `--no-ff`), ou dans un
  * commit de lot, n'y apparaît qu'avec l'état de la fusion ou du lot : des critères écrits juste après le démarrage, avant ce commit, y donnent true.
  *
- * `declared` : les statuts personnalisés que le Projet déclare (défaut : aucun), comme pour `analyzeFlow`.
+ * `declared` : les statuts personnalisés que le Projet déclare, comme pour `isWork`.
  */
-export function writtenIntentOf(snapshots: readonly StatusSnapshot[], declared: DeclaredStatuses = NO_DECLARED_STATUSES): boolean | null {
+export function writtenIntentOf(snapshots: readonly StatusSnapshot[], declared: DeclaredStatuses): boolean | null {
   return snapshots.find((snapshot) => isWork(snapshot.status, declared))?.hasAcceptanceCriteria ?? null;
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeProject, type MetricsTicket } from './metrics';
 import { signalsOf } from './signals';
+import { NO_DECLARED_STATUSES } from './statuses';
 
 /** Vendredi 23 octobre 2026, 18:00Z (20:00 à Paris). */
 const NOW = new Date('2026-10-23T18:00:00Z').getTime();
@@ -25,7 +26,7 @@ const ago = (days: number) => NOW - days * DAY;
 
 /** Les Signaux d'un seul Projet, « p », à NOW. */
 const signalsAt = (tickets: MetricsTicket[], now = NOW) =>
-  signalsOf([{ id: 'p', name: 'Projet P', analysis: analyzeProject(tickets) }], { now, timeZone: PARIS });
+  signalsOf([{ id: 'p', name: 'Projet P', analysis: analyzeProject(tickets, NO_DECLARED_STATUSES) }], { now, timeZone: PARIS });
 
 describe('signalsOf : Blocage long', () => {
   it('un ticket en travail et en Blocage depuis plus de 3 jours est un Blocage long, daté du début de cette phase', () => {
@@ -167,8 +168,8 @@ describe('signalsOf : ordre', () => {
         ['blocked', ago(days)],
       ]);
     const ready = (id: string, days: number) => ticket(id, [['open', ago(days)]]);
-    const p = { id: 'p', name: 'P', analysis: analyzeProject([...tenDeliveries(), working('w1', 10), working('w2', 20), ready('r1', 15)]) };
-    const q = { id: 'q', name: 'Q', analysis: analyzeProject([ready('r2', 30), blocked('b1', 4), blocked('b2', 6)]) };
+    const p = { id: 'p', name: 'P', analysis: analyzeProject([...tenDeliveries(), working('w1', 10), working('w2', 20), ready('r1', 15)], NO_DECLARED_STATUSES) };
+    const q = { id: 'q', name: 'Q', analysis: analyzeProject([ready('r2', 30), blocked('b1', 4), blocked('b2', 6)], NO_DECLARED_STATUSES) };
 
     const order = signalsOf([p, q], { now: NOW, timeZone: PARIS }).flatMap((signal) => ('ticket' in signal ? [signal.ticket.id] : []));
 

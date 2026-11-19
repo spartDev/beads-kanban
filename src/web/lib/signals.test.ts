@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TicketSignals } from '../data/hooks';
 import { shownSignals } from './signals';
+import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 
 /** Les Signaux d'un ticket que montrent sa carte et son Panneau : une Dérive et un Blocage long, tels que le serveur les a calculés. */
 const SIGNALS: TicketSignals = {
@@ -11,15 +12,15 @@ const SIGNALS: TicketSignals = {
 describe('shownSignals : les Signaux d’un ticket que l’écran montre', () => {
   it('montre ceux d’un ticket en statut de travail, Statuts de relais compris (bdesk-pz0.3)', () => {
     for (const status of ['in_progress', 'hooked', 'blocked', 'in_review', 'in_integration', 'awaiting_human']) {
-      expect(shownSignals(status, SIGNALS), status).toBe(SIGNALS);
+      expect(shownSignals(status, SIGNALS, NO_DECLARED_STATUSES), status).toBe(SIGNALS);
     }
   });
 
   it('les tait pour un ticket qui n’est plus en statut de travail : la réponse des Signaux peut être en retard sur celle des tickets', () => {
-    for (const status of ['open', 'deferred', 'pinned', 'closed', 'review', '']) expect(shownSignals(status, SIGNALS), status).toEqual({});
+    for (const status of ['open', 'deferred', 'pinned', 'closed', 'review', '']) expect(shownSignals(status, SIGNALS, NO_DECLARED_STATUSES), status).toEqual({});
   });
 
   it('ne montre rien tant que les Signaux manquent', () => {
-    expect(shownSignals('in_review', undefined)).toEqual({});
+    expect(shownSignals('in_review', undefined, NO_DECLARED_STATUSES)).toEqual({});
   });
 });

@@ -17,7 +17,7 @@ const fr = {
     leadTime:
       'Durée écoulée entre la création d’un ticket et sa dernière clôture, attentes comprises. C’est le délai que voit le demandeur : en combien de temps une demande est livrée.',
     cycleTime:
-      'Temps cumulé passé en travail (en cours, rattaché à un agent, bloqué), du premier démarrage à la clôture. Il mesure la durée du travail lui-même : l’écart avec le Lead Time montre combien les tickets attendent avant d’être pris.',
+      'Temps cumulé passé en travail (en cours, rattaché à un agent, bloqué, En relecture, En intégration, À valider, ou un autre statut que le Projet déclare comme travail), du premier démarrage à la clôture. Il mesure la durée du travail lui-même : l’écart avec le Lead Time montre combien les tickets attendent avant d’être pris.',
     failureRate:
       'Part des Livraisons dont découle au moins un bug, relié par un lien « découvert à partir de ». Il mesure la qualité de ce qui est livré (l’équivalent du Change Failure Rate DORA). Non significatif tant que peu de bugs ont leur origine renseignée (Couverture).',
     recoveryTime:
@@ -233,7 +233,7 @@ const en: typeof fr = {
     leadTime:
       'Elapsed time between a ticket’s creation and its last closure, waits included. It is the delay the requester sees: how long it takes for a request to be delivered.',
     cycleTime:
-      'Cumulative time spent in work (in progress, assigned to an agent, blocked), from the first start to closure. It measures how long the work itself takes: the gap with Lead Time shows how long tickets wait before being picked up.',
+      'Cumulative time spent in work (in progress, assigned to an agent, blocked, In review, In integration, Awaiting validation, or another status the Project declares as work), from the first start to closure. It measures how long the work itself takes: the gap with Lead Time shows how long tickets wait before being picked up.',
     failureRate:
       'Share of Deliveries that led to at least one bug, linked by a “discovered from” link. It measures the quality of what is delivered (the equivalent of DORA Change Failure Rate). Not significant while few bugs have a recorded origin (Coverage).',
     recoveryTime:

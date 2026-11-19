@@ -11,16 +11,27 @@ import { signalsOf } from './signals';
 import { lastVisitWindow, sinceLastVisit } from './sinceLastVisit';
 import { randomLineage, seededRandom } from './testing/random-histories';
 import { columnAt } from './timeline';
+import { NO_DECLARED_STATUSES } from './statuses';
 
 /**
  * Non-régression des Statuts de relais (bdesk-pz0.3) : sur des historiques où aucun ticket n'a jamais porté de Statut de relais ni de statut
  * personnalisé, tout ce que l'app calcule est resté ce qu'il était avant que les Statuts de relais deviennent des statuts de travail. Les empreintes
- * ci-dessous ont été relevées sur le code d'avant (commit 7b9aade, cinq colonnes et trois statuts de travail), sur le même lot : un écart dit quelle
- * partie a changé.
+ * ci-dessous ont été relevées sur le code d'avant (commit 7b9aade, cinq colonnes et trois statuts de travail), sur le même lot.
  *
  * Le lot : trois Projets tirés au hasard (graines fixes, une seule horloge par Projet comme dans Dolt, qui recule de temps en temps), de quarante tickets
  * chacun, avec tous les statuts de base (ouvert, en cours, rattaché à un agent, bloqué, différé, fermé : Réouvertures et Prises rendues comprises), des
  * dépendances qui bloquent et des bugs reliés à leur origine. Il est mesuré à un instant où un quart des tickets est encore ouvert.
+ *
+ * Les limites de ce garde-fou :
+ * - une empreinte dit QUELLE partie a changé, pas QUOI : un écart se cherche en comparant la partie, champ par champ, avec le code d'avant ;
+ * - n'entrent dans les empreintes que les champs qui existaient au code d'avant (`FIELDS`) : un champ qu'un ticket suivant ajoute aux rapports (bdesk-pz0.5,
+ *   bdesk-pz0.6) n'y change rien, mais un champ ajouté qui reprendrait le nom d'un champ d'avant, ou un champ d'avant qui change de sens, les changerait.
+ *   Le jour où un ticket suivant change, comme il le doit, une valeur que ces empreintes couvrent, il faut retirer ce fichier, et non relever ses
+ *   empreintes à nouveau : relevées sur le nouveau code, elles ne compareraient plus rien au code d'avant ;
+ * - le filtre cacherait un champ nouveau qui ne devrait pas apparaître ici, comme une colonne de relais dans le CFD d'un Projet sans relais : le
+ *   premier test vérifie à part que le CFD n'a que ses cinq colonnes ;
+ * - le lot n'a ni statut épinglé (`pinned`), ni statut inconnu, ni statut personnalisé, ni critères d'acceptation (aucune Intention écrite connue) :
+ *   ces cas ne sont couverts que par les tests unitaires (`columns.test.ts`, `flow.test.ts`, `handoff-statuses.test.ts`).
  */
 
 const PROJECTS = [
@@ -38,11 +49,35 @@ const allSnapshots = [...histories.values()].flat().flatMap((ticket) => ticket.s
 const NOW = Math.max(...allSnapshots.map((snapshot) => snapshot.at.getTime())) + 36 * HOUR;
 
 const metricsTickets = (tickets: TicketHistory[]) => tickets.map((ticket, index) => ({ ...ticket, title: `Titre de ${ticket.id}`, priority: index % 5 }));
-const inputs: MetricsInput[] = PROJECTS.map(({ id }) => ({ id, name: `Projet ${id}`, analysis: analyzeProject(metricsTickets(histories.get(id) ?? [])) }));
+const inputs: MetricsInput[] = PROJECTS.map(({ id }) => ({ id, name: `Projet ${id}`, analysis: analyzeProject(metricsTickets(histories.get(id) ?? []), NO_DECLARED_STATUSES) }));
 
+/** Les noms des champs des parties empreintées au code d'avant (commit 7b9aade) : les seuls que `digest` garde. */
+const FIELDS: ReadonlySet<string> = new Set(
+  [
+    'abandoned', 'abandonment', 'activity', 'age', 'arrivals', 'asOf', 'at', 'average', 'backlog', 'blockages', 'blocked', 'blockedBy',
+    'blockedDeliveries', 'blockedTime', 'board', 'bucket', 'buckets', 'bugs', 'cells', 'cfd', 'closed', 'closures', 'column', 'coverage', 'current',
+    'cycleTime', 'cycleTimeScatter', 'date', 'days', 'declines', 'deliveredAt', 'deliveries', 'delta', 'dependencyWait', 'done', 'duplicates',
+    'duration', 'efficiency', 'end', 'epic', 'failed', 'failedDeliveries', 'failureRate', 'from', 'id', 'inProgress', 'key', 'kind', 'label',
+    'lastAt', 'leadTime', 'leadTimeBreakdown', 'leadTimeP85', 'linked', 'median', 'minBugs', 'minCoverage', 'minDeliveries', 'n', 'originBugs',
+    'otherWait', 'outcome', 'p85', 'partial', 'paused', 'period', 'phases', 'previous', 'previousAsOf', 'previousPeriod', 'priority', 'project',
+    'provisional', 'range', 'rate', 'ratio', 'ready', 'readyAges', 'readyWait', 'reason', 'reasons', 'recoveryTime', 'reference', 'reliable',
+    'reopened', 'reopening', 'reopeningRate', 'reopenings', 'returns', 'rework', 'rule', 'scope', 'segments', 'significant', 'since', 'slices',
+    'soundSignificance', 'soundThroughput', 'source', 'stagnant', 'stagnantAfter', 'start', 'startedAt', 'status', 'statusBlocked', 'steps',
+    'superseded', 'thresholds', 'throughput', 'ticket', 'tickets', 'tiles', 'title', 'to', 'total', 'transitions', 'trend', 'type', 'waited',
+    'waits', 'weeks', 'wip', 'work', 'writtenIntent',
+  ],
+);
+
+/** L'empreinte d'une partie, sur ses seuls champs d'avant (`FIELDS`). */
 const digest = (value: unknown): string =>
   createHash('sha256')
-    .update(JSON.stringify(value, (_key, inner: unknown) => (inner instanceof Map ? [...inner] : inner)))
+    .update(
+      JSON.stringify(value, (_key, inner: unknown) => {
+        if (inner instanceof Map) return [...inner];
+        if (inner === null || typeof inner !== 'object' || Array.isArray(inner)) return inner;
+        return Object.fromEntries(Object.entries(inner).filter(([field]) => FIELDS.has(field)));
+      }),
+    )
     .digest('hex')
     .slice(0, 16);
 
@@ -60,6 +95,8 @@ describe('sans Statut de relais ni statut personnalisé, tout reste comme avant 
     expect(health.rework.tickets.some((ticket) => ticket.returns > 0)).toBe(true);
     expect(health.rework.tickets.some((ticket) => ticket.reopenings > 0)).toBe(true);
     expect(new Set(signals.map((signal) => signal.kind))).toEqual(new Set(['drift', 'longBlockage', 'stagnantReady']));
+    // Ce que le filtre des empreintes ne verrait pas : le CFD d'un lot sans relais n'a que ses cinq colonnes.
+    for (const point of report.cfd) expect(Object.keys(point)).toEqual(['date', 'backlog', 'ready', 'inProgress', 'blocked', 'done']);
   });
 
   it('Lead Time, Cycle Time, temps bloqué et Attente de dépendance de chaque ticket', () => {
@@ -73,8 +110,8 @@ describe('sans Statut de relais ni statut personnalisé, tout reste comme avant 
   it('le kanban et la page Epic : la colonne de chaque ticket à l’instant de la mesure', () => {
     const board = inputs.map(({ analysis }) => analysis.tickets.map(({ id, timeline }) => [id, columnAt(timeline, NOW)]));
     const statuses = ['open', 'in_progress', 'hooked', 'blocked', 'deferred', 'pinned', 'closed', 'review', ''];
-    const rule = statuses.map((status) => [status, columnFor(status, false), columnFor(status, true)]);
-    const epic = groupByColumn(statuses.flatMap((status) => [{ status, blockedBy: [] }, { status, blockedBy: ['x'] }]));
+    const rule = statuses.map((status) => [status, columnFor(status, false, NO_DECLARED_STATUSES), columnFor(status, true, NO_DECLARED_STATUSES)]);
+    const epic = groupByColumn(statuses.flatMap((status) => [{ status, blockedBy: [] }, { status, blockedBy: ['x'] }]), NO_DECLARED_STATUSES);
     expect(digest({ board, rule, epic })).toBe(GOLDEN.board);
   });
 
@@ -95,7 +132,7 @@ describe('sans Statut de relais ni statut personnalisé, tout reste comme avant 
   it('la Chronologie de chaque ticket', () => {
     const chronologies = PROJECTS.map(({ id }) => {
       const tickets = histories.get(id) ?? [];
-      const analysis = analyzeChronologies(tickets);
+      const analysis = analyzeChronologies(tickets, NO_DECLARED_STATUSES);
       return tickets.map((ticket) => [ticket.id, analysis.of(ticket.id)]);
     });
     expect(digest(chronologies)).toBe(GOLDEN.chronologies);

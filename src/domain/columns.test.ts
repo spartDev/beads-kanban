@@ -2,7 +2,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { DeclaredStatuses, MetricsCfdPoint } from '../shared/api';
 import { baseColumnOf, type Column, COLUMNS, columnFor, columnsOf, HANDOFF_COLUMN, HANDOFF_COLUMNS } from './columns';
 import { isWork } from './flow';
-import { HANDOFF_STATUSES } from './statuses';
+import { HANDOFF_STATUSES, NO_DECLARED_STATUSES } from './statuses';
 
 describe('les colonnes', () => {
   it('sont celles du contrat du CFD, dans l’ordre du flux : une seule définition pour le tableau et le graphique', () => {
@@ -34,11 +34,11 @@ describe('columnFor : la colonne d’un ticket selon son statut et son Blocage',
 
   describe.each(TABLE)('statut « %s »', (status, free, blocked) => {
     it(`hors Blocage : ${free}`, () => {
-      expect(columnFor(status, false)).toBe(free);
+      expect(columnFor(status, false, NO_DECLARED_STATUSES)).toBe(free);
     });
 
     it(`en Blocage : ${blocked}`, () => {
-      expect(columnFor(status, true)).toBe(blocked);
+      expect(columnFor(status, true, NO_DECLARED_STATUSES)).toBe(blocked);
     });
   });
 
@@ -51,25 +51,25 @@ describe('columnFor : la colonne d’un ticket selon son statut et son Blocage',
 
   it('lit le statut bloqué dans le statut, sans exiger que l’appelant l’ajoute au Blocage', () => {
     // Le CFD compte le statut bloqué dans le Blocage, le tableau ne passe que les dépendances (`blockedBy`) : même colonne.
-    expect(columnFor('blocked', false)).toBe('blocked');
-    expect(columnFor('blocked', true)).toBe('blocked');
+    expect(columnFor('blocked', false, NO_DECLARED_STATUSES)).toBe('blocked');
+    expect(columnFor('blocked', true, NO_DECLARED_STATUSES)).toBe('blocked');
   });
 
   it('range un ticket qui n’existe pas encore (statut indéfini) hors des colonnes', () => {
-    expect(columnFor(undefined, false)).toBeNull();
-    expect(columnFor(undefined, true)).toBeNull();
+    expect(columnFor(undefined, false, NO_DECLARED_STATUSES)).toBeNull();
+    expect(columnFor(undefined, true, NO_DECLARED_STATUSES)).toBeNull();
   });
 
   it('ne laisse le Blocage compter ni pour Terminé ni pour « En pause »', () => {
     for (const status of ['closed', 'deferred', 'pinned', 'review']) {
-      expect(columnFor(status, true), status).toBe(columnFor(status, false));
+      expect(columnFor(status, true, NO_DECLARED_STATUSES), status).toBe(columnFor(status, false, NO_DECLARED_STATUSES));
     }
   });
 
   it('range en En cours ou Bloqué exactement les statuts de travail : ceux du Cycle Time et du WIP', () => {
     for (const [status] of TABLE) {
-      const column = columnFor(status, false);
-      expect(column === 'inProgress' || column === 'blocked', status).toBe(isWork(status));
+      const column = columnFor(status, false, NO_DECLARED_STATUSES);
+      expect(column === 'inProgress' || column === 'blocked', status).toBe(isWork(status, NO_DECLARED_STATUSES));
     }
   });
 });
@@ -127,7 +127,7 @@ describe('columnFor avec les Statuts de relais et les statuts que le Projet déc
     for (const status of HANDOFF_STATUSES) {
       for (const blocked of [false, true]) {
         const expected = blocked ? 'blocked' : HANDOFF_COLUMN[status];
-        expect(columnFor(status, blocked), status).toBe(expected);
+        expect(columnFor(status, blocked, NO_DECLARED_STATUSES), status).toBe(expected);
         expect(columnFor(status, blocked, DECLARED), status).toBe(expected);
         expect(columnFor(status, blocked, declaredHandoff), status).toBe(expected);
       }
@@ -135,8 +135,8 @@ describe('columnFor avec les Statuts de relais et les statuts que le Projet déc
   });
 
   it('ne range un statut déclaré wip en En cours qu’avec la déclaration : sans elle, il reste « En pause » comme avant', () => {
-    expect(columnFor('qa_testing', false)).toBeNull();
-    expect(columnFor('qa_testing', true)).toBeNull();
+    expect(columnFor('qa_testing', false, NO_DECLARED_STATUSES)).toBeNull();
+    expect(columnFor('qa_testing', true, NO_DECLARED_STATUSES)).toBeNull();
   });
 
   it('ne laisse pas une déclaration changer la colonne d’un statut de base, même écrite à la main', () => {

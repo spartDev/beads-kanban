@@ -1,7 +1,7 @@
 import { FolderSearch, SearchX } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router';
 import { ticketTitle } from '../data/helpers';
-import { useIssues } from '../data/hooks';
+import { useDeclaredStatuses, useIssues } from '../data/hooks';
 import { projectInSentence } from '../data/projectNames';
 import type { Issue, Project } from '../data/types';
 import { typeMeta } from '../design/issue-palette';
@@ -55,6 +55,7 @@ function EpicsOverview({ project }: { project: Project }) {
 
 function EpicDetail({ project, epicId }: { project: Project; epicId: string }) {
   const issues = useIssues(project.id);
+  const declared = useDeclaredStatuses(project.id); // la même réponse que les tickets
   const retry = useRetryFocus(issues);
   const words = useT().epics.page;
 
@@ -62,7 +63,7 @@ function EpicDetail({ project, epicId }: { project: Project; epicId: string }) {
     const epic = issues.data.find((issue) => issue.id === epicId);
     if (!epic) return <NoSuchEpic project={project} epicId={epicId} />;
     if (epic.type !== 'epic') return <NotAnEpic project={project} ticket={epic} />;
-    return <EpicView project={project} epic={epic} issues={issues.data} />;
+    return <EpicView project={project} epic={epic} issues={issues.data} declared={declared} />;
   }
   if (issues.isError) {
     return (

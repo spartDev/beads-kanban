@@ -6,6 +6,7 @@ import { computeHealth } from './health';
 import { analyzeProject, computeMetrics, type MetricsInput, type MetricsTicket } from './metrics';
 import { signalsOf } from './signals';
 import { columnAt } from './timeline';
+import { NO_DECLARED_STATUSES } from './statuses';
 
 /**
  * Les Statuts de relais (En relecture, En intégration, À valider) sont des statuts de travail (bdesk-pz0.3, ADR 0007) : leur temps compte dans le Cycle
@@ -43,7 +44,7 @@ const blockedBy = (target: string, from: number, to?: number): DependencyHistory
 /** Un ticket ouvert depuis 9 jours (Prêt, pas encore un Prêt qui stagne), jamais démarré, qui en bloque d'autres. */
 const blocker = (id = 'x') => ticket(id, [['open', ago(9)]]);
 
-const project = (tickets: MetricsTicket[], declared?: DeclaredStatuses, id = 'p'): MetricsInput => ({
+const project = (tickets: MetricsTicket[], declared: DeclaredStatuses = NO_DECLARED_STATUSES, id = 'p'): MetricsInput => ({
   id,
   name: `Projet ${id}`,
   analysis: analyzeProject(tickets, declared),
@@ -223,7 +224,7 @@ describe('Blocage long', () => {
 
   it('s’arrête quand le ticket revient à ouvert depuis un Statut de relais : il n’est plus en travail', () => {
     const back = ticket('b', [['open', ago(10)], ['in_review', ago(8)], ['open', ago(1)]], { dependencies: [blockedBy('x', ago(5))] });
-    const analysis = analyzeProject([blocker(), back]);
+    const analysis = analyzeProject([blocker(), back], NO_DECLARED_STATUSES);
 
     expect(signalsAt([{ id: 'p', name: 'Projet p', analysis }])).toEqual([]);
     const timeline = analysis.tickets.find(({ id }) => id === 'b')?.timeline;
@@ -273,7 +274,7 @@ describe('Chronologie', () => {
     };
     const target = { id: 'x', type: 'task', statusSnapshots: [{ status: 'open', at: t(0) }], dependencies: [] };
 
-    const chronology = analyzeChronologies([history, target]).of('c');
+    const chronology = analyzeChronologies([history, target], NO_DECLARED_STATUSES).of('c');
 
     expect(chronology).toMatchObject({ cycleTime: 5 * HOUR, blockedTime: 4 * HOUR, leadTime: 8 * HOUR });
     expect(chronology?.blockages).toEqual([
@@ -304,6 +305,71 @@ describe('Chronologie', () => {
     };
 
     expect(analyzeChronologies([history], { handoff: [], others: [{ name: 'qa_testing', category: 'wip' }] }).of('q')?.cycleTime).toBe(3 * HOUR);
-    expect(analyzeChronologies([history]).of('q')?.cycleTime).toBeNull();
+    expect(analyzeChronologies([history], NO_DECLARED_STATUSES).of('q')?.cycleTime).toBeNull();
+  });
+});
+
+/**
+ * La déclaration, à chaque endroit où elle entre : un statut que le Projet déclare `wip` y compte comme en cours. Chaque test échoue dès que
+ * `declared` manque à l'endroit qu'il nomme (le compilateur l'attrape déjà là où le paramètre est obligatoire, sauf pour `analyzeFlow`).
+ */
+describe('un statut déclaré wip, de bout en bout (bdesk-pz0.3)', () => {
+  const QA: DeclaredStatuses = { handoff: [], others: [{ name: 'qa_testing', category: 'wip' }] };
+  const BASE = Date.parse('2026-10-01T09:00:00Z');
+  const t = (hours: number) => new Date(BASE + hours * HOUR);
+
+  it('analyzeProject → analyzeFlow : le Cycle Time d’une Livraison passée par ce statut le compte, et son Lead Time ne change pas', () => {
+    const delivered = ticket('q', [['open', ago(3)], ['qa_testing', ago(2)], ['closed', ago(1)]]);
+    const analysis = analyzeProject([delivered], QA);
+
+    expect(analysis.tickets[0]).toMatchObject({ cycleTime: DAY, leadTime: 2 * DAY });
+    expect(metricsOf([{ id: 'p', name: 'Projet p', analysis }]).tiles.cycleTime).toMatchObject({ median: DAY, n: 1 });
+    expect(analyzeProject([delivered], NO_DECLARED_STATUSES).tickets[0]).toMatchObject({ cycleTime: null, leadTime: 2 * DAY });
+  });
+
+  it('analyzeProject, premier démarrage : un ticket démarré dans ce statut est dans le WIP et dans la liste des âges, depuis ce démarrage', () => {
+    const started = ticket('q', [['open', ago(3)], ['qa_testing', ago(2)]]);
+    const analysis = analyzeProject([started], QA);
+    const report = metricsOf([{ id: 'p', name: 'Projet p', analysis }]);
+
+    expect(analysis.tickets[0]?.startedAt).toBe(ago(2));
+    expect(report.tiles.wip.current).toBe(1);
+    expect(report.inProgress).toMatchObject([{ id: 'q', status: 'qa_testing', startedAt: new Date(ago(2)).toISOString(), age: 2 * DAY }]);
+  });
+
+  it('analyzeFlow → writtenIntentOf : l’Intention écrite se lit au premier démarrage dans ce statut', () => {
+    const history = {
+      id: 'q',
+      type: 'task',
+      statusSnapshots: [
+        { status: 'open', at: t(0), hasAcceptanceCriteria: false },
+        { status: 'qa_testing', at: t(1), hasAcceptanceCriteria: true },
+        { status: 'in_progress', at: t(2), hasAcceptanceCriteria: false },
+      ],
+      dependencies: [],
+    };
+
+    expect(analyzeProject([{ ...history, title: 'Q', priority: 2 }], QA).tickets[0]?.writtenIntent).toBe(true);
+    // Sans la déclaration, le premier démarrage est le passage en cours, sans critères.
+    expect(analyzeProject([{ ...history, title: 'Q', priority: 2 }], NO_DECLARED_STATUSES).tickets[0]?.writtenIntent).toBe(false);
+  });
+
+  it('analyzeChronologies → phases du Blocage : le Blocage pendant ce statut est du travail bloqué, égal au temps bloqué', () => {
+    const blockerHistory = { id: 'x', type: 'task', statusSnapshots: [{ status: 'open', at: t(0) }], dependencies: [] };
+    const history = {
+      id: 'q',
+      type: 'task',
+      statusSnapshots: [
+        { status: 'open', at: t(0) },
+        { status: 'qa_testing', at: t(1) },
+        { status: 'closed', at: t(5) },
+      ],
+      dependencies: [{ type: 'blocks', target: 'x', addedAt: t(2), removedAt: t(4) }],
+    };
+
+    const chronology = analyzeChronologies([history, blockerHistory], QA).of('q');
+
+    expect(chronology).toMatchObject({ cycleTime: 4 * HOUR, blockedTime: 2 * HOUR });
+    expect(chronology?.blockages.map(({ phases }) => phases)).toEqual([[{ kind: 'work', from: t(2).toISOString(), to: t(4).toISOString() }]]);
   });
 });

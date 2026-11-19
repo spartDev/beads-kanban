@@ -10,6 +10,7 @@ import { renderApp, stubApi } from '../test/render';
 import { withTimeZone } from '../test/timeZone';
 import { ProgressSection } from './ProgressSection';
 import { TimeSection } from './TimeSection';
+import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 
 /**
  * Les décomptes de mille et plus, écrits par les formateurs de la langue (bdesk-ewr.4) : « 1 000 » (espace insécable) en français,
@@ -67,7 +68,7 @@ describe('l’avancement et la prévision d’une Epic : 4 Livraisons récentes,
   function renderSections(switchEnabled: boolean) {
     return render(
       <LanguageProvider switchEnabled={switchEnabled}>
-        <ProgressSection progress={epicProgress(children)} groups={groupByColumn(children)} />
+        <ProgressSection progress={epicProgress(children)} groups={groupByColumn(children, NO_DECLARED_STATUSES)} />
         <TimeSection epic={EPIC} kids={children} now={Date.parse(NOW)} />
       </LanguageProvider>,
     );

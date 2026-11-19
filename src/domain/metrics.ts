@@ -25,7 +25,7 @@ import { type Column, COLUMNS, columnsOf, HANDOFF_COLUMNS } from './columns';
 import { analyzeFailures } from './failures';
 import { type AbandonCause, analyzeFlow, isWork, type TicketHistory } from './flow';
 import { isSoundDelivery } from './sound';
-import { HANDOFF_STATUSES, NO_DECLARED_STATUSES, visibleHandoffStatuses } from './statuses';
+import { HANDOFF_STATUSES, visibleHandoffStatuses } from './statuses';
 import { buildTimeline, columnAt, isWorking, statusAt, stepsOf, type TicketTimeline } from './timeline';
 
 /**
@@ -150,10 +150,11 @@ export function durationStats(values: readonly number[]): MetricsDurationStats {
 }
 
 /**
- * Analyse les tickets d'un Projet : Transitions, Livraisons, Bugs d'origine, Blocage dans le temps. `declared` : les statuts personnalisés que le
- * Projet déclare (défaut : aucun), lus dans le même état que son historique ; les Statuts de relais sont des statuts de travail sans eux.
+ * Analyse les tickets d'un Projet : Transitions, Livraisons, Bugs d'origine, Blocage dans le temps. `declared` (obligatoire, voir `isWork`) : les
+ * statuts personnalisés que le Projet déclare, lus dans le même état que son historique (`NO_DECLARED_STATUSES` s'il n'en déclare aucun) ; les
+ * Statuts de relais sont des statuts de travail sans eux.
  */
-export function analyzeProject(tickets: MetricsTicket[], declared: DeclaredStatuses = NO_DECLARED_STATUSES): ProjectAnalysis {
+export function analyzeProject(tickets: MetricsTicket[], declared: DeclaredStatuses): ProjectAnalysis {
   const flows = analyzeFlow(tickets, declared);
   const failures = analyzeFailures(tickets, flows);
   const stepsById = new Map([...flows].map(([id, flow]) => [id, stepsOf(flow.transitions)]));

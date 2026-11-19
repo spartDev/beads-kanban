@@ -12,6 +12,7 @@ import { httpFailure, renderApp, stubApi } from '../test/render';
 import { withTimeZone } from '../test/timeZone';
 import { ByColumn } from './ByColumn';
 import { TimeSection } from './TimeSection';
+import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 
 /**
  * Les pages des Epics en anglais, suite (bdesk-ewr.4) : les décomptes de mille et plus que grouping.test.tsx ne rend pas (le compte d'un
@@ -76,7 +77,7 @@ describe('counts of 1,000 and more that grouping.test.tsx does not render', () =
       <LanguageProvider switchEnabled={switchEnabled}>
         <MemoryRouter>
           {/* Les groupes : les seuls Enfants prêts (les mille lignes de Terminé ne sont pas lues) ; l'Epic imbriquée et la prévision gardent tout. */}
-          <ByColumn groups={groupByColumn(opened(1000))} nestedEpics={[nested]} projectId="bdesk" now={Date.parse(NOW)} progressOf={() => epicProgress(children)} />
+          <ByColumn groups={groupByColumn(opened(1000), NO_DECLARED_STATUSES)} nestedEpics={[nested]} projectId="bdesk" now={Date.parse(NOW)} progressOf={() => epicProgress(children)} />
           <TimeSection epic={EPIC} kids={children} now={Date.parse(NOW)} />
         </MemoryRouter>
       </LanguageProvider>,

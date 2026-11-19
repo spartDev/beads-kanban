@@ -10,6 +10,7 @@ import { createDatabase, hasBinary, isolatedDoltEnv, type Scratch } from '../tes
 import { readsOutsideHead, tablesRead } from '../testing/reads-at-head';
 import { scratchDir } from '../testing/scratch';
 import { createProjectService, IssueNotFoundError, type ProjectService } from './service';
+import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 
 /**
  * Le tableau et la fiche lisent l'état du dernier commit, comme l'historique d'où viennent les métriques et la Chronologie
@@ -117,7 +118,7 @@ type Columns = Omit<MetricsCfdPoint, 'date'>;
 function boardCounts(issues: Issue[]): Columns {
   const counts: Columns = { backlog: 0, ready: 0, inProgress: 0, blocked: 0, done: 0 };
   for (const issue of issues) {
-    const column = issue.type === 'epic' ? null : columnFor(issue.status, issue.blockedBy.length > 0);
+    const column = issue.type === 'epic' ? null : columnFor(issue.status, issue.blockedBy.length > 0, NO_DECLARED_STATUSES);
     if (column) counts[column] = (counts[column] ?? 0) + 1;
   }
   return counts;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PeriodSpec } from './calendar';
 import { computeHealth } from './health';
 import { analyzeProject, type MetricsTicket } from './metrics';
+import { NO_DECLARED_STATUSES } from './statuses';
 
 /**
  * Le Retravail : les tickets qui, sur la période, ont subi une Réouverture, une Prise rendue, ou dont une Livraison a reçu un Bug d'origine créé sur la
@@ -29,7 +30,7 @@ function ticket(id: string, statuses: [string, string][], extra: Partial<Metrics
 }
 
 const reworkOf = (tickets: MetricsTicket[], period: PeriodSpec = PAST) =>
-  computeHealth([{ id: 'p', name: 'Projet P', analysis: analyzeProject(tickets) }], { period, now: NOW, timeZone: PARIS }).rework;
+  computeHealth([{ id: 'p', name: 'Projet P', analysis: analyzeProject(tickets, NO_DECLARED_STATUSES) }], { period, now: NOW, timeZone: PARIS }).rework;
 
 describe('Retravail', () => {
   it('liste un ticket rouvert pendant la période, avec son nombre de Réouvertures et la date du dernier événement', () => {

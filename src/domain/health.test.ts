@@ -5,6 +5,7 @@ import type { DependencyHistory } from './flow';
 import { computeHealth, STAGNANT_READY_AFTER } from './health';
 import { analyzeProject, type MetricsTicket } from './metrics';
 import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing/random-histories';
+import { NO_DECLARED_STATUSES } from './statuses';
 
 /**
  * La santé du flux : Efficacité du flux, Taux de Réouverture, Taux d'abandon, décomposition du Lead Time (avec l'Attente
@@ -82,13 +83,13 @@ interface Options {
 
 /** La santé d'un Projet, sur la période passée par défaut. */
 function healthOf(tickets: MetricsTicket[], { period = PAST, now = NOW, timeZone = PARIS }: Options = {}): MetricsHealth {
-  return computeHealth([{ id: 'p', name: 'Projet P', analysis: analyzeProject(tickets) }], { period, now, timeZone });
+  return computeHealth([{ id: 'p', name: 'Projet P', analysis: analyzeProject(tickets, NO_DECLARED_STATUSES) }], { period, now, timeZone });
 }
 
 /** La santé de plusieurs Projets, dans l'ordre donné. */
 function healthOfProjects(projects: Record<string, MetricsTicket[]>, { period = PAST, now = NOW, timeZone = PARIS }: Options = {}): MetricsHealth {
   return computeHealth(
-    Object.entries(projects).map(([id, tickets]) => ({ id, name: `Nom de ${id}`, analysis: analyzeProject(tickets) })),
+    Object.entries(projects).map(([id, tickets]) => ({ id, name: `Nom de ${id}`, analysis: analyzeProject(tickets, NO_DECLARED_STATUSES) })),
     { period, now, timeZone },
   );
 }
@@ -805,7 +806,7 @@ describe('Décomposition du Lead Time, avec l’Attente de dépendance', () => {
     let ready = 0;
     for (let round = 0; round < 300; round++) {
       const histories = randomHistories(random, { tickets: 5, clockBack: 25, sharedClock });
-      const { tickets } = analyzeProject(histories.map((history) => ({ ...history, title: history.id, priority: 2 })));
+      const { tickets } = analyzeProject(histories.map((history) => ({ ...history, title: history.id, priority: 2 })), NO_DECLARED_STATUSES);
       for (const tracked of tickets) {
         if (tracked.deliveredAt === null) continue;
         delivered++;

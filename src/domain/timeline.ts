@@ -2,7 +2,6 @@ import type { DeclaredStatuses } from '../shared/api';
 import { type Column, columnFor } from './columns';
 import { isWork, type TicketHistory, type TicketId, type Transition } from './flow';
 import { type Interval, intersect, union } from './intervals';
-import { NO_DECLARED_STATUSES } from './statuses';
 
 /**
  * La vie d'un ticket, jour après jour : dans quelle colonne du kanban il était, et quand il était en statut de travail.
@@ -55,13 +54,13 @@ export function stepsOf(transitions: Transition[]): Step[] {
  * statut bloqué, ou dépendance `blocks` active vers une cible non fermée. À chaque instant, la colonne est celle que
  * `columnFor` donne au statut et au Blocage d'alors : la règle du tableau. Le CFD gagne ainsi les colonnes des Statuts de relais sans autre règle,
  * et un ticket qui passe d'un statut de travail à un autre en Blocage reste dans le même segment, Bloqué (le Blocage long ne recommence pas).
- * `declared` : les statuts personnalisés que le Projet déclare (défaut : aucun), pour les colonnes et le travail de ses autres statuts.
+ * `declared` (obligatoire, voir `isWork`) : les statuts personnalisés que le Projet déclare, pour les colonnes et le travail de ses autres statuts.
  */
 export function buildTimeline(
   ticket: TicketHistory,
   steps: Step[],
   stepsById: Map<TicketId, Step[]>,
-  declared: DeclaredStatuses = NO_DECLARED_STATUSES,
+  declared: DeclaredStatuses,
 ): TicketTimeline {
   const first = steps[0];
   if (!first) return { steps, segments: [], work: [], blockages: [] };

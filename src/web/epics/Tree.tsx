@@ -1,5 +1,5 @@
 import type { EpicProgress, TreeNode } from '../../domain/epics';
-import type { Issue } from '../data/types';
+import type { DeclaredStatuses, Issue } from '../data/types';
 import { useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { ChildRow } from './ChildRow';
@@ -11,19 +11,21 @@ const MAX_INDENT = 5;
  * Les Enfants d'une Epic en arbre, à tous les niveaux : chaque ticket sous son parent, avec sa colonne écrite sur sa ligne
  * (rien ne les groupe ici). Une liste dans une liste, donc lue comme telle par les lecteurs d'écran : « liste de 3 éléments »,
  * puis la sous-liste de chacun. Les niveaux se voient à un filet et un retrait ; le DOM garde la structure même quand le retrait
- * cesse de croître.
+ * cesse de croître. `declared` : les statuts que le Projet déclare, pour écrire la colonne de chaque ligne comme le tableau la range.
  */
 export function Tree({
   nodes,
   projectId,
   now,
   progressOf,
+  declared,
   depth = 0,
 }: {
   nodes: TreeNode<Issue>[];
   projectId: string;
   now: number;
   progressOf: (epicId: string) => EpicProgress;
+  declared: DeclaredStatuses;
   depth?: number;
 }) {
   const treeList = useT().epics.children.treeList;
@@ -36,9 +38,10 @@ export function Tree({
             projectId={projectId}
             now={now}
             showColumn
+            declared={declared}
             nested={ticket.type === 'epic' ? progressOf(ticket.id) : undefined}
           />
-          {children.length > 0 ? <Tree nodes={children} projectId={projectId} now={now} progressOf={progressOf} depth={depth + 1} /> : null}
+          {children.length > 0 ? <Tree nodes={children} projectId={projectId} now={now} progressOf={progressOf} declared={declared} depth={depth + 1} /> : null}
         </li>
       ))}
     </ul>

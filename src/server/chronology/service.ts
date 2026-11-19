@@ -1,4 +1,5 @@
 import { analyzeChronologies, chronologyFromDates, type ProjectChronologies } from '../../domain/chronology';
+import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 import type { IssueChronology } from '../../shared/api';
 import { ReadAborted } from '../abort';
 import { ANALYSIS_GRACE_MS, Flight } from '../flight';
@@ -53,7 +54,7 @@ export function createChronologyService(projects: ProjectService, { graceMs = AN
     const entry = {
       head,
       analysis: new Flight(
-        (flightSignal) => projects.histories(projectId, { signal: flightSignal }).then((history) => analyzeChronologies(history, history.declaredStatuses)),
+        (flightSignal) => projects.histories(projectId, { signal: flightSignal }).then((history) => analyzeChronologies(history, history.declaredStatuses ?? NO_DECLARED_STATUSES)),
         { graceMs },
       ),
     };

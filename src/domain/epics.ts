@@ -1,4 +1,4 @@
-import type { Issue } from '../shared/api';
+import type { DeclaredStatuses, Issue } from '../shared/api';
 import { type BaseColumn, baseColumnOf, COLUMNS, columnFor } from './columns';
 
 /**
@@ -126,13 +126,16 @@ export type EpicGroup = BaseColumn | 'paused';
 /**
  * Les Enfants rangés par colonne, selon la règle du kanban et du CFD (`columnFor` : le statut et le Blocage, ce dernier
  * lu dans `blockedBy`). Terminé les garde tous, sans la fenêtre de jours du tableau, Abandons et Renoncements compris. Chaque colonne y est,
- * vide ou non ; l'ordre des Enfants est celui reçu. Un Enfant d'un Statut de relais est rangé, pour l'instant, en En cours (`baseColumnOf`) :
- * la page Epic n'a pas encore les colonnes de relais.
+ * vide ou non ; l'ordre des Enfants est celui reçu. `declared` (obligatoire, voir `isWork`) : les statuts que le Projet déclare, rendus avec ses
+ * tickets ; un statut qu'il déclare de catégorie `wip` va en En cours, comme au CFD.
+ *
+ * PROVISOIRE (bdesk-pz0.4) : un Enfant d'un Statut de relais est rangé en En cours (`baseColumnOf`), et en Bloqué en Blocage : la page Epic n'a pas
+ * encore les colonnes de relais.
  */
-export function groupByColumn<T extends Pick<EpicTicket, 'status' | 'blockedBy'>>(children: readonly T[]): Record<EpicGroup, T[]> {
+export function groupByColumn<T extends Pick<EpicTicket, 'status' | 'blockedBy'>>(children: readonly T[], declared: DeclaredStatuses): Record<EpicGroup, T[]> {
   const groups: Record<EpicGroup, T[]> = { backlog: [], ready: [], inProgress: [], blocked: [], done: [], paused: [] };
   for (const child of children) {
-    const column = columnFor(child.status, child.blockedBy.length > 0);
+    const column = columnFor(child.status, child.blockedBy.length > 0, declared);
     groups[column === null ? 'paused' : baseColumnOf(column)].push(child);
   }
   return groups;
