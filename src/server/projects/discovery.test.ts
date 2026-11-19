@@ -53,12 +53,12 @@ const config = (overrides: Partial<Config> = {}): Config => ({ roots: [root], pr
 describe('discoverProjects', () => {
   it('liste les Projets Dolt embedded avec leur préfixe lu dans la base', async () => {
     doltWorkspace('aviron-club-360', {
-      metadata: { dolt_mode: 'embedded', dolt_database: 'ac360' },
-      database: ['embeddeddolt', 'ac360'],
+      metadata: { dolt_mode: 'embedded', dolt_database: 'av360' },
+      database: ['embeddeddolt', 'av360'],
     });
-    const db = folder('aviron-club-360', '.beads', 'embeddeddolt', 'ac360');
+    const db = folder('aviron-club-360', '.beads', 'embeddeddolt', 'av360');
 
-    const { projects, ignored } = await discoverProjects(config(), { dolt: fakeDolt({ [db]: 'ac360' }) });
+    const { projects, ignored } = await discoverProjects(config(), { dolt: fakeDolt({ [db]: 'av360' }) });
 
     expect(ignored).toEqual([]);
     expect(projects).toEqual([
@@ -66,7 +66,7 @@ describe('discoverProjects', () => {
         id: 'aviron-club-360',
         name: 'aviron-club-360',
         path: folder('aviron-club-360'),
-        prefix: 'ac360',
+        prefix: 'av360',
         mode: 'embedded',
         status: 'ok',
         databasePath: db,

@@ -56,7 +56,7 @@ describe('rapport de rétrospective', () => {
     const text = build();
     expect(text).toContain('## Retravail (2 tickets)');
     expect(text).toContain('- `bdesk-r1` Palette ⌘K (beads-desktop) : 2 Réouvertures, Bug d’origine `bdesk-b9`');
-    expect(text).toContain('- `mpm-r2` Import des prompts (Mon-Pommier-Malin) : 1 Prise rendue');
+    expect(text).toContain('- `mpm-r2` Import des récoltes (Mon-Pommier-Malin) : 1 Prise rendue');
   });
 
   it('dit quand rien n’est revenu sur la période', () => {
@@ -90,7 +90,7 @@ describe('rapport de rétrospective', () => {
       ],
     };
     const text = build(metrics);
-    expect(text).toContain('- `mpm-r2` Import des prompts (Un Projet sans nom) : 1 Prise rendue');
+    expect(text).toContain('- `mpm-r2` Import des récoltes (Un Projet sans nom) : 1 Prise rendue');
     expect(text).toContain('- `bdesk-r1` Palette ⌘K (« beads-desktop ») :');
     expect(text).toContain('- Un Projet sans nom : 9 tickets en cours');
   });
@@ -137,7 +137,7 @@ describe('en anglais', () => {
     expect(text).toContain('\\* Fewer than 4 Deliveries in the week');
     expect(text).toContain('## Rework (2 tickets)');
     expect(text).toContain('- `bdesk-r1` Palette ⌘K (beads-desktop): 2 Reopens, Escaped bug `bdesk-b9`');
-    expect(text).toContain('- `mpm-r2` Import des prompts (Mon-Pommier-Malin): 1 Handback');
+    expect(text).toContain('- `mpm-r2` Import des récoltes (Mon-Pommier-Malin): 1 Handback');
     expect(text).toContain('## Current Signals (3 Signals, as of Nov 2 at 20:00)');
     // L'échappement markdown ne dépend pas de la langue.
     expect(text).toContain('- `bdesk-d1` Refonte \\| kanban (beads-desktop): ');

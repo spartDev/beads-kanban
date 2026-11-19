@@ -179,11 +179,11 @@ describe('API des Projets', () => {
     expect(res.json()).toMatchObject({ statusCode: 404, error: 'Not Found', message: expect.stringContaining('bdesk-zzz') });
   });
 
-  it.each(['/api/projects/hcp/issues', '/api/projects/hcp/issues/b-1'])(
+  it.each(['/api/projects/jardin/issues', '/api/projects/jardin/issues/b-1'])(
     'renvoie 503 avec la raison quand le Projet est illisible : %s',
     async (url) => {
       const unreadable = async () => {
-        throw new ProjectUnreadableError('hcp', 'Base Dolt absente de ce poste');
+        throw new ProjectUnreadableError('jardin', 'Base Dolt absente de ce poste');
       };
 
       const res = await get(serviceWith({ issues: unreadable, issue: unreadable }), url);
@@ -641,7 +641,7 @@ describe('API des métriques', () => {
   });
 
   it('liste un Projet illisible dans la réponse, sans faire échouer le reste', async () => {
-    const unreadable: Project = { ...project, id: 'hcp', name: 'hcp', status: 'unreadable', reason: 'Base Dolt absente de ce poste' };
+    const unreadable: Project = { ...project, id: 'jardin', name: 'jardin', status: 'unreadable', reason: 'Base Dolt absente de ce poste' };
     const projects = serviceWith({ list: async () => ({ projects: [project, unreadable], ignored: [] }) });
 
     const res = await getMetrics('?range=7d', projects);
@@ -649,7 +649,7 @@ describe('API des métriques', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json<MetricsResponse>()).toMatchObject({
       projects: [{ id: 'beads-desktop' }],
-      unreadable: [{ id: 'hcp', name: 'hcp', reason: 'Base Dolt absente de ce poste' }],
+      unreadable: [{ id: 'jardin', name: 'jardin', reason: 'Base Dolt absente de ce poste' }],
     });
   });
 
@@ -1197,12 +1197,12 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
   });
 
   it.each([
-    ['la liste des tickets', '/api/projects/hcp/issues', '/api/projects/:projectId/issues'],
-    ['la fiche d’un ticket', '/api/projects/hcp/issues/b-1', '/api/projects/:projectId/issues/:issueId'],
-    ['la chronologie d’un ticket', '/api/projects/hcp/issues/b-1/chronology', '/api/projects/:projectId/issues/:issueId/chronology'],
+    ['la liste des tickets', '/api/projects/jardin/issues', '/api/projects/:projectId/issues'],
+    ['la fiche d’un ticket', '/api/projects/jardin/issues/b-1', '/api/projects/:projectId/issues/:issueId'],
+    ['la chronologie d’un ticket', '/api/projects/jardin/issues/b-1/chronology', '/api/projects/:projectId/issues/:issueId/chronology'],
   ])('%s : un Projet illisible (503) laisse une ligne `warn` avec sa raison, sans pile', async (_name, url, route) => {
     const unreadable = async (): Promise<never> => {
-      throw new ProjectUnreadableError('hcp', 'database is locked by another dolt process');
+      throw new ProjectUnreadableError('jardin', 'database is locked by another dolt process');
     };
     const { app, lines } = serve({ issues: unreadable, issue: unreadable, histories: unreadable });
 
@@ -1211,7 +1211,7 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
     expect(res.statusCode).toBe(503);
     const [line, ...others] = lines();
     expect(others).toEqual([]);
-    expect(line).toMatchObject({ level: WARN, method: 'GET', route, msg: 'Projet illisible : hcp (database is locked by another dolt process)' });
+    expect(line).toMatchObject({ level: WARN, method: 'GET', route, msg: 'Projet illisible : jardin (database is locked by another dolt process)' });
     expect(line).not.toHaveProperty('err'); // une panne de lecture, pas un bogue : la pile partirait du service et n'apprendrait rien
   });
 
@@ -1286,7 +1286,7 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
     it('un Projet illisible (503) : la ligne `warn` est bornée aussi, quelle que soit la longueur de la raison', async () => {
       const { app, lines, text } = serve({
         list: async () => {
-          throw new ProjectUnreadableError('hcp', `début-${'r'.repeat(HUGE)}`);
+          throw new ProjectUnreadableError('jardin', `début-${'r'.repeat(HUGE)}`);
         },
       });
 
@@ -1297,7 +1297,7 @@ describe('API : journal des erreurs (bdesk-38k.49)', () => {
       const [line, ...others] = lines();
       expect(others).toEqual([]);
       expect(line).toMatchObject({ level: WARN, method: 'GET', route: '/api/projects' });
-      expect(line?.msg.startsWith('Projet illisible : hcp (début-rrr')).toBe(true);
+      expect(line?.msg.startsWith('Projet illisible : jardin (début-rrr')).toBe(true);
     });
 
     it('un message plus court que le plafond est écrit en entier', async () => {

@@ -75,7 +75,7 @@ describe('abandonOf : le ticket que ses liens déclarent doublon ou remplacé', 
     describe('liens apparus au même instant (un seul commit les réunit)', () => {
       // Un commit de lot de bd (auto-commit `batch`), un import ou un historique aplati réunit des liens écrits à des moments
       // différents : l'historique ne dit plus dans quel ordre ils l'ont été. Seul le `created_at` de leur ligne le dit. Les instants
-      // sont ceux d'un vrai lot (sentiers-alpins-sud) : le commit du 28 avril à 08:31:51 UTC réunit des liens écrits à 10:10:30,
+      // sont ceux d'un vrai lot (sentiers-alpins-sud, nom d'emprunt) : le commit du 28 avril à 08:31:51 UTC réunit des liens écrits à 10:10:30,
       // 10:10:31 et 10:10:32, heure locale.
       const COMMIT = '2026-04-28T08:31:51';
       const [first, second] = [

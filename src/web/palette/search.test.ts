@@ -10,7 +10,7 @@ const issues: Issue[] = [
   issue({ id: 'bdesk-38k.61', title: 'Raccourcis du kanban', type: 'feature' }),
   issue({ id: 'bdesk-38k.7', title: 'Kanban par Projet (lecture seule)', type: 'feature' }),
   issue({ id: 'bdesk-b7q', title: 'Le graphique du Débit se décale après minuit', type: 'bug' }),
-  issue({ id: 'beads_sais-udw', title: 'Écran « détail » : réouverture et œuvre associée', type: 'task' }),
+  issue({ id: 'rando_sas-q7k', title: 'Écran « détail » : réouverture et œuvre associée', type: 'task' }),
 ];
 
 const ids = (query: string, limit?: number) => rank(issues, query, describeIssue, limit).items.map((i) => i.id);
@@ -31,7 +31,7 @@ describe('rank', () => {
   it('retrouve un ticket par son id complet ou par sa partie après le préfixe', () => {
     expect(ids('bdesk-38k.6')[0]).toBe('bdesk-38k.6');
     expect(ids('38k.6')[0]).toBe('bdesk-38k.6');
-    expect(ids('udw')).toEqual(['beads_sais-udw']);
+    expect(ids('q7k')).toEqual(['rando_sas-q7k']);
   });
 
   it('classe l’id exact avant l’id qui commence pareil', () => {
@@ -39,10 +39,10 @@ describe('rank', () => {
   });
 
   it('ignore accents et casse, des deux côtés', () => {
-    expect(ids('ECRAN')).toEqual(['beads_sais-udw']);
+    expect(ids('ECRAN')).toEqual(['rando_sas-q7k']);
     expect(ids('themes')).toEqual(['bdesk-38k.6']);
-    expect(ids('detail')).toEqual(['beads_sais-udw']);
-    expect(ids('oeuvre')).toEqual(['beads_sais-udw']);
+    expect(ids('detail')).toEqual(['rando_sas-q7k']);
+    expect(ids('oeuvre')).toEqual(['rando_sas-q7k']);
   });
 
   it('exige tous les mots, dans n’importe quel ordre', () => {

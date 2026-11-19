@@ -199,7 +199,7 @@ export function healthFixture(overrides: Partial<MetricsHealth> = {}): MetricsHe
     rework: {
       tickets: [
         { id: 'bdesk-r1', title: 'Palette ⌘K', type: 'feature', priority: 1, project: 'bdesk', reopenings: 2, returns: 0, originBugs: ['bdesk-b9'], lastAt: '2026-10-22T14:00:00.000Z' },
-        { id: 'mpm-r2', title: 'Import des prompts', type: 'task', priority: 2, project: 'mpm', reopenings: 0, returns: 1, originBugs: [], lastAt: '2026-10-21T09:00:00.000Z' },
+        { id: 'mpm-r2', title: 'Import des récoltes', type: 'task', priority: 2, project: 'mpm', reopenings: 0, returns: 1, originBugs: [], lastAt: '2026-10-21T09:00:00.000Z' },
       ],
     },
     abandonment: { closed: 20, abandoned: 2, duplicates: 1, superseded: 1, rate: 0.1, trend: trendOf(0.1, 0.05) },

@@ -12,7 +12,7 @@ describe('shortTitle : le titre court d’une Epic', () => {
     ['beads-desktop V1 : suivi des tickets et métriques de flux', 'beads-desktop V1'],
     ['Distribution : publication npm et installation via npx', 'Distribution'],
     ['Keyboard navigation pass: Visible Focus States', 'Keyboard navigation pass'],
-    ['New color palette: semantic light/dark tokens', 'New color palette'],
+    ['New export wizard: columns, filters and presets', 'New export wizard'],
     ['Page Epic – avancement, Enfants et prévision', 'Page Epic'],
     ['Refonte du shell — thèmes et navigation', 'Refonte du shell'],
     ['Pipeline - release et changelog', 'Pipeline'],
@@ -28,8 +28,8 @@ describe('shortTitle : le titre court d’une Epic', () => {
   });
 
   it('coupe un long titre sans séparateur à la fin d’un mot, avec une ellipse', () => {
-    const short = shortTitle('Drop Cursor support in CLI + auto-migrate existing workspaces');
-    expect(short).toBe('Drop Cursor support in…');
+    const short = shortTitle('Move legacy reports to PDF + auto-archive existing exports');
+    expect(short).toBe('Move legacy reports to…');
     expect(short.length).toBeLessThanOrEqual(24);
   });
 
@@ -713,7 +713,7 @@ describe('epicName et epicShortName : le nom d’une Epic', () => {
   });
 
   it('n’abrège jamais l’identifiant : coupé, il ne nommerait plus rien', () => {
-    const long = 'sentiers-alpins-sud-cross-project-h3w';
+    const long = 'sentiers-alpins-sud-cross-project-m4t';
     expect(long.length).toBeGreaterThan(24);
     expect(epicShortName(epic('', long))).toBe(long);
     expect(epicName(epic('   ', long))).toBe(long);

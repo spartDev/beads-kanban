@@ -56,7 +56,7 @@ const SCENARIOS: Scenario[] = [
     statuses: CLOSED,
     links: [{ type: 'duplicates', target: 'livre', placed: '2026-10-05T09:01' }, { type: 'supersedes', target: 'doublon', placed: '2026-10-05T09:01' }],
   },
-  // Les deux liens apparaissent au même commit (sentiers-alpins-sud : dix liens dans un commit de lot), et seul le created_at de
+  // Les deux liens apparaissent au même commit (sentiers-alpins-sud, nom d'emprunt : dix liens dans un commit de lot), et seul le created_at de
   // leur ligne dit lequel est le premier. La plus petite cible (« doublon » avant « livre ») dirait l'inverse.
   {
     id: 'meme-commit-remplace-puis-doublon',

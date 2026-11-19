@@ -117,7 +117,7 @@ describe('analyzeFlow', () => {
       expect(closedWithLinks([duplicate, superseded])).toMatchObject({ kind: 'abandoned', cause: 'superseded', of: 'b' });
     });
 
-    // Un commit de lot de bd (auto-commit `batch`) réunit des liens écrits à des moments différents : dans sentiers-alpins-sud, dix
+    // Un commit de lot de bd (auto-commit `batch`) réunit des liens écrits à des moments différents : dans sentiers-alpins-sud (nom d'emprunt), dix
     // liens écrits le 28 avril entre 10:10:30 et 10:10:32 (heure locale) sont dans le seul commit de 08:31:51 UTC, 21 minutes plus tard.
     // Seul le created_at de leur ligne dit alors dans quel ordre ils ont été posés. Le kanban lit ce created_at ; les métriques
     // doivent lire le même.
@@ -364,8 +364,8 @@ describe('analyzeFlow', () => {
     });
   });
 
-  describe('Réouverture (scénario sais-42)', () => {
-    const sais42: [string, string][] = [
+  describe('Réouverture (scénario sas-42)', () => {
+    const sas42: [string, string][] = [
       ['open', '2026-10-01T09:00'],
       ['in_progress', '2026-10-02T09:00'],
       ['closed', '2026-10-03T09:00'],
@@ -375,7 +375,7 @@ describe('analyzeFlow', () => {
     ];
 
     it('ne compte qu’une Livraison, datée de la dernière clôture', () => {
-      const flow = analyzeFlow([ticket('sais-42', sais42)]).get('sais-42');
+      const flow = analyzeFlow([ticket('sas-42', sas42)]).get('sas-42');
 
       expect(flow?.outcome).toEqual({ kind: 'delivered', at: at('2026-10-12T09:00') });
       expect(flow?.leadTime).toBe(11 * DAY);
@@ -383,13 +383,13 @@ describe('analyzeFlow', () => {
     });
 
     it('cumule dans le Cycle Time les seules périodes de travail', () => {
-      const flow = analyzeFlow([ticket('sais-42', sais42)]).get('sais-42');
+      const flow = analyzeFlow([ticket('sas-42', sas42)]).get('sas-42');
 
       expect(flow?.cycleTime).toBe(2 * DAY);
     });
 
     it('annule la Livraison tant que le ticket rouvert n’est pas refermé', () => {
-      const flow = analyzeFlow([ticket('sais-42', sais42.slice(0, 4))]).get('sais-42');
+      const flow = analyzeFlow([ticket('sas-42', sas42.slice(0, 4))]).get('sas-42');
 
       expect(flow?.outcome).toEqual({ kind: 'open' });
       expect(flow?.reopenings).toBe(1);

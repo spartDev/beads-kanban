@@ -85,7 +85,7 @@ describe('toDependency', () => {
 
 describe('lecture de l’état courant', () => {
   it('lit le préfixe dans la table config, ou null', async () => {
-    expect(await readIssuePrefix(fakeDb([{ value: 'ac360' }]))).toBe('ac360');
+    expect(await readIssuePrefix(fakeDb([{ value: 'av360' }]))).toBe('av360');
     expect(await readIssuePrefix(fakeDb([]))).toBeNull();
   });
 
