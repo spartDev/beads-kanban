@@ -50,7 +50,7 @@ const ROOTS = [12, 14, 16, 20, 24];
  */
 const ROOM = 176;
 
-/** Le Projet dont le ticket parle : 21 caractères, ce qui suffit, à 375 px, pour que la zone libre à côté de son bouton tombe sous 24 px (23,4 px environ, déduits de la largeur du nom mesurée en navigateur). */
+/** Le Projet dont le ticket parle (nom d'emprunt, de même longueur) : 21 caractères, ce qui suffit, à 375 px, pour que la zone libre à côté de son bouton tombe sous 24 px (23,4 px environ, déduits de la largeur du nom mesurée en navigateur). */
 const NAME = 'mon-pommier-malin-app';
 const project: Project = { id: 'bdesk', name: NAME, path: `/dev/${NAME}`, prefix: 'bdesk', mode: 'embedded', status: 'ok' };
 
