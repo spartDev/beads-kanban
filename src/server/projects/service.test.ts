@@ -326,7 +326,7 @@ describe('lectures regroupées et abandonnables (bdesk-38k.20)', () => {
   });
 
   // bdesk-pz0.2 : les statuts que le Projet déclare viennent avec ses tickets, dans le groupe que le kanban lisait déjà : pas un processus de plus, et le même
-  // état de la base pour un ticket `in_review` et la déclaration qui en fait un Statut de relais.
+  // état de la base pour un ticket `in_review` et la déclaration du Projet.
   it('lit le kanban en un seul processus : les tickets et les statuts que le Projet déclare, du même groupe que la liste', async () => {
     const declaring = (sql: string): Row[] => (sql.includes(CUSTOM_STATUSES_SQL) ? [{ value: 'in_review:wip,in_integration:wip,awaiting_human:wip,qa_testing:wip' }] : answer(sql));
     const { dolt, seen } = groupingDolt(declaring);

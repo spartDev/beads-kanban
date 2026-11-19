@@ -126,7 +126,7 @@ const CUSTOM_STATUSES_KEY = 'status.custom';
 
 /**
  * Les statuts personnalisés que le Projet déclare, au dernier commit comme les tickets dont ils décident de la lecture des statuts (ADR 0001,
- * ADR 0007) : un ticket `in_review` et la déclaration qui en fait un Statut de relais se lisent dans le même état. Le préfixe, dans la même
+ * ADR 0007) : un ticket `in_review` et la déclaration du Projet se lisent dans le même état. Le préfixe, dans la même
  * table, se lit dans le working set (`ISSUE_PREFIX_SQL`) : lui n'identifie que le Projet. Une ligne au plus (`key` est la clé primaire), aucune
  * quand le Projet ne déclare rien. Le tableau la lit avec ses tickets (`readIssueBase`), dans le processus qu'il lançait déjà.
  *
@@ -139,7 +139,7 @@ const CUSTOM_STATUSES_KEY = 'status.custom';
  * lignes : des tickets peuvent encore porter `in_review` quand cette lecture ne rend plus aucun statut déclaré. On lit pourtant la clé : c'est
  * l'interface documentée de bd. Lire `custom_statuses` ajouterait une table exigée dans HEAD par la vérification du SQL stocké, et rendrait
  * illisibles les bases d'un bd qui ne l'a pas. D'où la règle (ADR 0007) : un Statut de relais se reconnaît à son nom, qu'il soit déclaré ou
- * non, et la déclaration ne compte que pour la catégorie des autres statuts personnalisés (bdesk-pz0.3 l'appliquera).
+ * non. La déclaration donne la catégorie des autres statuts personnalisés et fait apparaître une colonne de relais encore vide (bdesk-pz0.3).
  */
 export const CUSTOM_STATUSES_SQL = `select \`value\` from config ${AT_HEAD} where \`key\` = ${sqlString(CUSTOM_STATUSES_KEY)}`;
 
@@ -147,7 +147,7 @@ export const CUSTOM_STATUSES_SQL = `select \`value\` from config ${AT_HEAD} wher
  * Les statuts qu'écrit une valeur de `status.custom`, dans son ordre, doublons compris : des noms séparés par des virgules, chacun suivi ou non
  * de `:catégorie` (`in_review:wip,in_integration:wip,awaiting_human:wip`, vérifié avec bd 1.3.1 ; les versions d'avant les catégories n'écrivaient
  * que des noms). bd 1.3.1 refuse d'écrire une valeur mal formée : des majuscules dans un nom (il n'admet que `[a-z][a-z0-9_-]*`), des blancs
- * autour d'un nom ou d'une catégorie, un doublon, une catégorie inconnue. Pour toute valeur qu'il accepte, la lecture est la sienne. Tolérer le
+ * de part et d'autre du deux-points (il admet ceux qui entourent une entrée), un doublon, une catégorie inconnue. Pour toute valeur qu'il accepte, la lecture est la sienne. Tolérer le
  * reste est un choix de l'app, non une règle de bd : la base vient d'un remote partagé, et une clé écrite à la main ne rend jamais le Projet
  * illisible. Rien ici n'échoue.
  *

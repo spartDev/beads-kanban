@@ -41,8 +41,8 @@ describe.skipIf(!hasBinary('dolt') || !hasBinary('bd'))('lecteur Dolt sur un wor
     mkdirSync(workspace);
     execFileSync('git', ['init', '-q', '.'], { cwd: workspace });
     await bd('init', '--prefix', 'xx', '--non-interactive', '--skip-hooks', '--skip-agents', '-q');
-    // La déclaration des Statuts de relais de la chaîne d'agents, telle que l'orchestrateur la pose (ADR 0007, bdesk-pz0.2) : les commandes de bd qui
-    // suivent, en auto-commit, l'emportent au dernier commit si `config set` ne l'y a pas déjà mise.
+    // La déclaration des Statuts de relais de la chaîne d'agents, telle que l'orchestrateur la pose (ADR 0007, bdesk-pz0.2) : `config set` fait son
+    // propre commit (« bd: set (auto-commit) ») : la valeur se lit aussitôt au dernier commit.
     await bd('config', 'set', 'status.custom', 'in_review:wip,in_integration:wip,awaiting_human:wip');
 
     const epic = await create('Epic', '-t', 'epic');
