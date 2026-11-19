@@ -124,4 +124,21 @@ describe('la page Epic', () => {
     expect(row('Relu par un agent')?.textContent).toContain('En cours');
     expect(row('Gelé pour l’instant')?.textContent).toContain('En pause');
   });
+
+  it('passe la déclaration aux niveaux suivants de l’arborescence : un petit-enfant d’un statut déclaré wip est En cours', async () => {
+    const nested: Issue[] = [
+      EPIC,
+      issue({ id: 'bdesk-1', title: 'Enfant en cours', status: 'in_progress', parentId: 'bdesk-e1' }),
+      issue({ id: 'bdesk-1.1', title: 'Petit-enfant en recette', status: 'qa_testing', parentId: 'bdesk-1' }),
+      issue({ id: 'bdesk-1.1.1', title: 'Arrière-petit-enfant en recette', status: 'qa_testing', parentId: 'bdesk-1.1' }),
+    ];
+    stubApi({ projects: projectsResponse, issues: { bdesk: nested }, declared: { bdesk: DECLARED } });
+    renderApp('/p/bdesk/epics?epic=bdesk-e1&view=tree');
+
+    const tree = await screen.findByRole('list', { name: 'Arborescence' });
+    const row = (title: string) => within(tree).getAllByRole('link').find((link) => link.textContent?.includes(title));
+
+    expect(row('Petit-enfant en recette')?.textContent).toContain('En cours');
+    expect(row('Arrière-petit-enfant en recette')?.textContent).toContain('En cours');
+  });
 });

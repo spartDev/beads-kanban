@@ -1154,6 +1154,13 @@ describe('readTicketHistories : les statuts que déclare le Projet, avec l’his
     expect(histories.declaredStatuses).toEqual({ handoff: ['in_review', 'in_integration', 'awaiting_human'], others: [] });
   });
 
+  it('rend la déclaration d’un Projet qui ne déclare qu’un autre statut, sans aucun Statut de relais', async () => {
+    const histories = await readTicketHistories(fakeDb(answers([{ value: 'qa_testing:wip' }])));
+
+    expect(histories.declaredStatuses).toEqual({ handoff: [], others: [{ name: 'qa_testing', category: 'wip' }] });
+    expect(analyzeFlow(histories, histories.declaredStatuses).get('p-1')?.cycleTime).toBe(24 * 3_600_000);
+  });
+
   it('n’en rend aucun, sans champ, quand le Projet ne déclare rien : un tableau de tickets comme avant', async () => {
     for (const declared of [[], [{ value: '' }], [{}]]) {
       const histories = await readTicketHistories(fakeDb(answers(declared)));

@@ -68,7 +68,7 @@ export const isBlocked = (issue: Pick<Issue, 'status' | 'blockedBy'>): boolean =
  * Un statut que le Projet déclare de catégorie `wip` (`declared`) est en En cours, ou Bloqué en Blocage, comme au CFD.
  *
  * PROVISOIRE (bdesk-pz0.4) : le tableau n'a pas encore les colonnes des Statuts de relais, que le CFD a déjà ; un ticket En relecture, En
- * intégration ou À valider y reste en En cours (`baseColumnOf`), comme avant, plutôt que perdu. En Blocage, il est dans Bloqué, comme au CFD.
+ * intégration ou À valider y est montré en En cours (`baseColumnOf`), faute de colonne à lui, plutôt que perdu (avant ce repli, il était « En pause »). En Blocage, il est dans Bloqué, comme au CFD.
  */
 export function columnOf(issue: IssueFacts, { now, doneDays = DEFAULT_DONE_DAYS, declared = NO_DECLARED_STATUSES }: PlacementOptions): Lane | null {
   const column = columnFor(issue.status, isBlocked(issue), declared);

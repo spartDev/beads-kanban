@@ -94,8 +94,8 @@ export function columnFor(status: string | undefined, blocked: boolean, declared
 
 /**
  * PROVISOIRE (bdesk-pz0.4 donnera leurs colonnes aux Statuts de relais) : la colonne où le montre un écran qui n'a encore que les colonnes de tout
- * Projet, le tableau et la page Epic. Un ticket d'une colonne de relais y reste en En cours, comme avant que les Statuts de relais aient leurs
- * colonnes : aucun ne disparaît. Toute autre colonne est la sienne.
+ * Projet, le tableau et la page Epic. Un ticket d'une colonne de relais y est montré en En cours, faute de colonne à lui (avant ce repli, il était
+ * « En pause ») : aucun ne disparaît. Toute autre colonne est la sienne.
  */
 export function baseColumnOf(column: Column): BaseColumn {
   return isHandoffColumn(column) ? 'inProgress' : column;

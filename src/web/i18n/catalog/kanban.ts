@@ -55,12 +55,12 @@ const fr = {
     inProgress: {
       label: 'En cours',
       hint: 'En cours, hors Blocage',
-      rule: 'Ticket en cours ou rattaché à un agent, sans dépendance en suspens.',
+      rule: 'Ticket en cours, rattaché à un agent ou dans un autre statut de travail, sans dépendance en suspens.',
     },
     blocked: {
       label: 'Bloqué',
       hint: 'Blocage ou statut bloqué',
-      rule: 'Ticket au statut bloqué, ou en cours (ou rattaché à un agent) mais en Blocage : il dépend d’un ticket qui n’est pas fermé.',
+      rule: 'Ticket au statut bloqué, ou dans un statut de travail (en cours, rattaché à un agent…) mais en Blocage : il dépend d’un ticket qui n’est pas fermé.',
     },
     done: {
       label: 'Terminé',
@@ -353,12 +353,12 @@ const en: typeof fr = {
     inProgress: {
       label: 'In progress',
       hint: 'In progress, not Blocked',
-      rule: 'Ticket in progress or hooked to an agent, with no pending dependency.',
+      rule: 'Ticket in progress, hooked to an agent or in another work status, with no pending dependency.',
     },
     blocked: {
       label: 'Blocked',
       hint: 'Blockage or blocked status',
-      rule: 'Ticket with the blocked status, or in progress (or hooked to an agent) but Blocked: it depends on a ticket that isn’t closed.',
+      rule: 'Ticket with the blocked status, or in a work status (in progress, hooked to an agent…) but Blocked: it depends on a ticket that isn’t closed.',
     },
     done: {
       label: 'Done',

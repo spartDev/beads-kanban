@@ -48,7 +48,7 @@ const utcMidnight = (day: string): number => {
 
 /**
  * PROVISOIRE (bdesk-pz0.4 donnera leurs bandes aux colonnes des Statuts de relais) : le point tel que la pile le dessine, les tickets En relecture,
- * En intégration et À valider comptés dans En cours, où le CFD les rangeait avant d'avoir leurs colonnes. Aucun ne disparaît de la pile, du total
+ * En intégration et À valider comptés dans En cours, faute de bande à eux (avant, le CFD les laissait hors de ses colonnes, « En pause »). Aucun ne disparaît de la pile, du total
  * ni du tableau des valeurs.
  */
 export function withHandoffInProgress({ inReview = 0, inIntegration = 0, awaitingHuman = 0, ...point }: MetricsCfdPoint): MetricsCfdPoint {
