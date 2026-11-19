@@ -136,6 +136,18 @@ describe('LongTrendPanel : le Débit sain, quatrième série', () => {
     expect(rows.slice(0, -1).some((row) => row.textContent?.includes('provisoire'))).toBe(false);
   });
 
+  it('dit provisoire la semaine en cours dont la seule Livraison a été rouverte avant sa clôture : 0 saine sur 1', () => {
+    // La règle tient aux Livraisons, pas aux saines : tant qu'une Livraison de la semaine peut encore revenir, son Débit sain peut bouger.
+    const trend = longTrendFixture(undefined, ENOUGH_COVERAGE);
+    const current = trend.weeks.at(-1)!;
+    expect([current.partial, current.throughput]).toEqual([true, 1]);
+    render(<LongTrendPanel trend={{ ...trend, weeks: [...trend.weeks.slice(0, -1), { ...current, soundThroughput: 0, reopened: 1, reopeningRate: 1 }] }} />);
+
+    const rows = within(screen.getByRole('region', { name: 'Données : Tendance longue' })).getAllByRole('row').slice(1);
+    expect(rows.at(-1)?.querySelector('[data-sound]')?.textContent).toBe('0');
+    expect(plain(rows.at(-1)?.querySelector('td:last-child')?.textContent)).toBe('En cours, Débit sain provisoire, Moins de 4 Livraisons');
+  });
+
   it('ne dit pas provisoire une semaine en cours sans Livraison : rien ne peut en revenir', () => {
     render(<LongTrendPanel trend={longTrendFixture([5, 6, 4, 0, 3, 7, 5, 8, 6, 4, 5, 0], ENOUGH_COVERAGE)} />);
 
@@ -164,5 +176,9 @@ describe('LongTrendPanel : le Débit sain, quatrième série', () => {
       'Sound throughput per week: 44 Sound deliveries over 12 weeks. Not significant. Coverage too low: 19% of bugs have a recorded origin (minimum 50%).',
     );
     expect(screen.getByRole('columnheader', { name: 'Sound deliveries' })).toBeTruthy();
+    const titles = marks(plot(/^Sound throughput per week/), '[data-bar] title').map((title) => plain(title.textContent));
+    expect(titles.at(-1)).toBe('Week of Nov 2 – Nov 8, 2026: 1 Sound delivery, provisional: Deliveries may still come back');
+    const rows = within(screen.getByRole('region', { name: 'Data: Long trend' })).getAllByRole('row').slice(1);
+    expect(plain(rows.at(-1)?.querySelector('td:last-child')?.textContent)).toBe('In progress, Sound throughput provisional, Fewer than 4 Deliveries');
   });
 });

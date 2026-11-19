@@ -6,7 +6,7 @@ import { LanguageProvider } from '../i18n';
 import { LANGUAGE_STORAGE_KEY } from '../i18n/language';
 import { TooltipProvider } from '../ui/Tip';
 import { describeComparison } from './comparison';
-import { emptyMetricsFixture, ENOUGH_COVERAGE, metricsFixture, plain, shownText, spokenText, trendOf } from './testing';
+import { emptyMetricsFixture, ENOUGH_COVERAGE, LOW_COVERAGE, metricsFixture, plain, shownText, spokenText, trendOf } from './testing';
 import { MetricTiles } from './Tiles';
 
 /**
@@ -85,6 +85,18 @@ describe('MetricTiles : les sept tuiles', () => {
       renderTiles(significant());
 
       expect(plain(tile('Débit sain').querySelector('[data-provisional]')?.textContent)).toBe('Provisoire : des Livraisons peuvent encore revenir.');
+    });
+
+    it('reste provisoire quand la seule Livraison de la période en cours a été rouverte avant sa clôture : 0 saine sur 1', () => {
+      // La règle tient aux Livraisons, pas aux saines : tant qu'une Livraison de la période peut encore revenir, le Débit sain peut bouger.
+      const reopened = { total: 0, deliveries: 1, provisional: true, trend: trendOf(0, 3) };
+      const data = metricsFixture();
+      for (const coverage of [ENOUGH_COVERAGE, LOW_COVERAGE]) {
+        const { unmount } = renderTiles(metricsFixture({ tiles: { ...data.tiles, soundThroughput: { ...data.tiles.soundThroughput, ...coverage, ...reopened } } }));
+        expect(tile('Débit sain').hasAttribute('data-indicative')).toBe(coverage === LOW_COVERAGE);
+        expect(plain(tile('Débit sain').querySelector('[data-provisional]')?.textContent)).toBe('Provisoire : des Livraisons peuvent encore revenir.');
+        unmount();
+      }
     });
 
     it('ne se dit plus provisoire sur une période finie', () => {

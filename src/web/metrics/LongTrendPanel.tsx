@@ -439,7 +439,7 @@ function LongTrendTable({ weeks, unreliable, soundNote }: { weeks: readonly Metr
           <td className="px-3 py-1 text-right">
             {week.reopeningRate === null ? '—' : texts.reopeningCell(formatPercent(week.reopeningRate), formatCount(week.reopened), formatCount(week.closures))}
           </td>
-          <td className="px-3 py-1 text-ink-2">
+          <td className="whitespace-nowrap px-3 py-1 text-ink-2">
             {[week.partial ? texts.inProgress : '', week.partial && week.throughput > 0 ? texts.soundProvisional : '', week.throughput > 0 && !week.reliable ? unreliable : '']
               .filter(Boolean)
               .join(texts.remarkSeparator)}
