@@ -921,7 +921,7 @@ export interface MetricsReviewFailureRate {
 
 /**
  * Les mesures de relecture de la période (bdesk-pz0.5, ADR 0007) : celles des Livraisons de la période, datées de leur dernière clôture comme le Débit.
- * Elles se lisent dans les Transitions, Tours de relecture (vers En relecture) et Retours (d'un Statut de relais vers en cours, rattaché à un agent ou un
+ * Elles se lisent dans les Transitions, Tours de relecture (Transitions vers En relecture, ou création dans ce statut) et Retours (d'un Statut de relais vers en cours, rattaché à un agent ou un
  * autre statut que le Projet déclare de catégorie `wip`), d'avant la dernière clôture : ceux d'avant une Réouverture comptent. Rien n'est rétroactif :
  * avant que les Statuts de relais soient posés, aucune Livraison n'est relue, et la Couverture de relecture dit quand ces mesures deviennent représentatives.
  */
@@ -971,7 +971,7 @@ export interface MetricsCycleTimeBreakdown {
   review: number;
   /** Intégration : le temps En intégration hors Blocage. */
   integration: number;
-  /** Attente humaine : le temps À valider hors Blocage. */
+  /** Attente humaine : le temps À valider hors Blocage (un temps À valider en Blocage compte en Blocage). */
   humanWait: number;
   /** Blocage dans le Cycle Time (statut bloqué, ou dépendance non fermée pendant le travail), Statuts de relais compris. */
   blocked: number;

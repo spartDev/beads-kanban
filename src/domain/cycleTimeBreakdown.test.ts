@@ -4,7 +4,7 @@ import { computeCycleTimeBreakdown, type CycleTimeParts, cycleTimePartsOf } from
 import type { DependencyHistory } from './flow';
 import { computeHealth } from './health';
 import { analyzeProject, computeMetrics, type MetricsInput, type MetricsOptions, type MetricsTicket } from './metrics';
-import { NO_DECLARED_STATUSES } from './statuses';
+import { isHandoffStatus, NO_DECLARED_STATUSES } from './statuses';
 import { CLOCKS, randomHistories, randomLineage, seededRandom } from './testing/random-histories';
 
 /**
@@ -58,10 +58,14 @@ const project = (tickets: MetricsTicket[], declared: DeclaredStatuses = NO_DECLA
 /** Les parts du ticket `id`, avec son Cycle Time et son temps bloqué tels que les métriques les mesurent. */
 function partsOf(tickets: MetricsTicket[], id: string, declared: DeclaredStatuses = NO_DECLARED_STATUSES) {
   const tracked = analyzeProject(tickets, declared).tickets.find((candidate) => candidate.id === id);
-  if (!tracked) throw new Error(`${id} introuvable`);
-  const parts = cycleTimePartsOf(tracked.timeline, declared);
+  if (tracked?.deliveredAt == null) throw new Error(`${id} n’est pas une Livraison`);
+  const parts = cycleTimePartsOf(tracked.timeline, declared, tracked.deliveredAt);
   return { parts, cycleTime: tracked.cycleTime, blockedTime: tracked.blockedTime, sum: sumOf(parts) };
 }
+
+/** Le temps brut d'une suite de statuts datés dans les Statuts de relais, Blocage compris. */
+const handoffTimeOf = (steps: readonly { status: string; at: number }[]) =>
+  steps.reduce((total, step, index) => total + (isHandoffStatus(step.status) ? (steps[index + 1]?.at ?? step.at) - step.at : 0), 0);
 
 const sumOf = (parts: CycleTimeParts) => parts.review + parts.integration + parts.humanWait + parts.blocked + parts.development + parts.correction;
 
@@ -203,6 +207,19 @@ describe('les six parts du Cycle Time d’une Livraison', () => {
     const target = story('cible', [['closed', 30]]);
     const tickets = [target, story('t', [['in_progress', 3], ['in_review', 4], ['closed', 5]], { dependencies: [blocks('cible', 0, 3), blocks('cible', 5)] })];
     expect(partsOf(tickets, 't').parts).toEqual({ ...NONE, development: HOUR, review: HOUR });
+  });
+
+  it('un ticket encore ouvert : ses parts s’arrêtent à `end`, finies, et s’additionnent à son temps de travail jusque-là', () => {
+    const target = story('cible', [['closed', 40]]);
+    const open = story('t', [['in_progress', 0], ['in_review', 2], ['in_progress', 3], ['awaiting_human', 5]], { dependencies: [blocks('cible', 6)] });
+    const tracked = analyzeProject([target, open], NO_DECLARED_STATUSES).tickets.find((candidate) => candidate.id === 't');
+    if (!tracked) throw new Error('t introuvable');
+    // À l'heure 8 : 2 h de Développement, 1 h de Relecture, 2 h de Correction, 1 h À valider, puis 2 h À valider en Blocage (la dépendance court encore).
+    const parts = cycleTimePartsOf(tracked.timeline, NO_DECLARED_STATUSES, h(8));
+    expect(parts).toEqual({ development: 2 * HOUR, review: HOUR, correction: 2 * HOUR, humanWait: HOUR, blocked: 2 * HOUR, integration: 0 });
+    expect(sumOf(parts)).toBe(8 * HOUR);
+    // Avant la Relecture : le Retour qui vient ensuite ne coupe encore rien.
+    expect(cycleTimePartsOf(tracked.timeline, NO_DECLARED_STATUSES, h(1))).toEqual({ ...NONE, development: HOUR });
   });
 
   it('une Livraison jamais démarrée n’a aucune part', () => {
@@ -349,23 +366,23 @@ describe('propriétés, sur des historiques tirés au hasard', () => {
 
   it.each(CLOCKS)('les six parts s’additionnent au Cycle Time de chaque Livraison, et leur somme sur la période à travail + Blocage de la Décomposition du Lead Time (%s)', (_, sharedClock) => {
     const random = seededRandom(20_261_116);
-    const counts = { delivered: 0, handoffBlocked: 0, review: 0, correction: 0, humanWait: 0, periods: 0 };
+    const counts = { delivered: 0, handoffBlocked: 0, reopened: 0, review: 0, correction: 0, humanWait: 0, periods: 0 };
     for (let round = 0; round < 200; round++) {
       const histories = randomHistories(random, { tickets: 6, clockBack: 15, sharedClock, statuses: STATUSES });
       const input = project(histories.map((history) => ({ ...history, title: history.id, priority: 2 })), DECLARED);
       for (const tracked of input.analysis.tickets) {
         if (tracked.deliveredAt === null) continue;
         counts.delivered++;
-        const parts = cycleTimePartsOf(tracked.timeline, DECLARED);
+        const parts = cycleTimePartsOf(tracked.timeline, DECLARED, tracked.deliveredAt);
         expect(sumOf(parts), `${round}/${tracked.id} : six parts = Cycle Time`).toBe(tracked.cycleTime ?? 0);
         expect(parts.blocked, `${round}/${tracked.id} : Blocage = temps bloqué`).toBe(tracked.blockedTime ?? 0);
         for (const value of Object.values(parts)) expect(value).toBeGreaterThanOrEqual(0);
         if (parts.correction > 0) counts.correction++;
         if (parts.review > 0) counts.review++;
         if (parts.humanWait > 0) counts.humanWait++;
-        const handoff = parts.review + parts.integration + parts.humanWait;
-        const inHandoff = tracked.timeline.steps.some((step) => ['in_review', 'in_integration', 'awaiting_human'].includes(step.status));
-        if (inHandoff && parts.blocked > 0 && handoff > 0) counts.handoffBlocked++;
+        // Un relais pendant un Blocage : le temps brut dans les Statuts de relais dépasse leurs trois parts, qui l'ont cédé au Blocage.
+        if (handoffTimeOf(tracked.timeline.steps) > parts.review + parts.integration + parts.humanWait) counts.handoffBlocked++;
+        if (tracked.timeline.steps.slice(0, -1).some((step) => step.status === 'closed')) counts.reopened++;
       }
       for (const period of PERIODS) {
         const at = { period, now: new Date(Date.UTC(2026, 11, 1)), timeZone: round % 2 === 0 ? PARIS : 'America/New_York' };
@@ -384,6 +401,7 @@ describe('propriétés, sur des historiques tirés au hasard', () => {
     expect(counts.review).toBeGreaterThan(100);
     expect(counts.humanWait).toBeGreaterThan(100);
     expect(counts.handoffBlocked).toBeGreaterThan(20);
+    expect(counts.reopened).toBeGreaterThan(50);
     expect(counts.periods).toBeGreaterThan(300);
   });
 

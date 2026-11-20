@@ -604,7 +604,8 @@ describe('service de métriques : santé du flux', () => {
 
   it('décompose le Cycle Time de la Vue globale et d’un Projet, avec la période et le fuseau des autres métriques (bdesk-pz0.6)', async () => {
     const world = healthWorld();
-    // c-1 : 2 h de Développement, 1 h de Relecture, Retour, 3 h de Correction, 6 h À valider ; livré le 21.
+    // c-1 : 2 h de Développement, 1 h de Relecture, Retour, 3 h de Correction, 6 h À valider ; livré le 20 à 20:00Z.
+    // c-2 : relu, renvoyé et validé, mais livré le 10 : hors des 7 jours (dans les 30).
     world.c = {
       histories: [
         history('c-1', [
@@ -615,8 +616,16 @@ describe('service de métriques : santé du flux', () => {
           ['awaiting_human', '2026-10-20T14:00'],
           ['closed', '2026-10-20T20:00'],
         ]),
+        history('c-2', [
+          ['open', '2026-10-08T06:00'],
+          ['in_progress', '2026-10-08T08:00'],
+          ['in_review', '2026-10-08T10:00'],
+          ['in_progress', '2026-10-08T11:00'],
+          ['awaiting_human', '2026-10-09T08:00'],
+          ['closed', '2026-10-10T08:00'],
+        ]),
       ],
-      issues: [issueOf('c-1')],
+      issues: [issueOf('c-1'), issueOf('c-2')],
     };
     const metrics = createMetricsService(fakeProjects(world).service, options);
     const HOUR = DAY / 24;
@@ -629,6 +638,9 @@ describe('service de métriques : santé du flux', () => {
 
     const own = await metrics.compute({ projects: ['c'], ...week });
     expect(own.cycleTimeBreakdown).toMatchObject({ deliveries: 1, development: 2 * HOUR, total: 12 * HOUR, humanWaits: { share: 0.5 } });
+    // Sur 30 jours, c-2 entre : la période est bien celle de la requête.
+    const month = await metrics.compute({ projects: ['c'], period: { range: '30d' } });
+    expect(month.cycleTimeBreakdown).toMatchObject({ deliveries: 2, humanWaits: { waited: 2 } });
   });
 
   it('ne mesure que les Projets demandés', async () => {

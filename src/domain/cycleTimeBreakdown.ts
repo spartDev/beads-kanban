@@ -12,7 +12,7 @@ import type { Step, TicketTimeline } from './timeline';
  * Décomposition du Cycle Time et Attente humaine (bdesk-pz0.6, ADR 0007). Le Cycle Time d'une Livraison, réparti en six parts qui s'additionnent
  * (CONTEXT.md) : Relecture, Intégration et Attente humaine (le temps passé dans chaque Statut de relais), Blocage, et le reste du travail, coupé au
  * premier Retour en Développement (avant) et Correction (après). Un temps à la fois de relais et de Blocage compte en Blocage, comme pour l'Efficacité
- * du flux. Tout se lit dans la chronologie déjà analysée (`TicketTimeline` : Transitions et Blocage), sans autre source.
+ * du flux : l'Attente humaine est le temps À valider hors Blocage (CONTEXT.md), et c'est elle dont on donne médiane, P85 et part. Tout se lit dans la chronologie déjà analysée (`TicketTimeline` : Transitions et Blocage), sans autre source.
  *
  * Du code pur, comme `computeReview` : composé avec `computeMetrics` par le service de métriques (`MetricsResponse.cycleTimeBreakdown`), il lit les types
  * de `metrics.ts`, qui ne l'importe pas en retour. Une Livraison appartient à la période de sa dernière clôture, comme dans le Débit : ni un Abandon ni un
@@ -32,7 +32,9 @@ export interface CycleTimeParts {
 const END = Number.POSITIVE_INFINITY;
 
 /**
- * Les six parts du Cycle Time d'une Livraison, d'après sa chronologie (`TrackedTicket.timeline`), qui finit à sa dernière clôture. Chaque période d'un
+ * Les six parts du temps de travail d'un ticket jusqu'à `end` (exclu), d'après sa chronologie (`TrackedTicket.timeline`) : pour une Livraison, `end` est sa
+ * dernière clôture (`TrackedTicket.deliveredAt`) et les parts sont celles de son Cycle Time ; pour un ticket encore ouvert, `end` est l'instant de la
+ * mesure, et rien ne court au-delà (sans borne, sa dernière période serait infinie). Obligatoire pour cela : un appel qui l'oublie ne compile pas. Chaque période d'un
  * statut de travail court d'une Transition à la suivante (`TicketTimeline.work`) : celles d'un Statut de relais vont, hors Blocage, à sa part ; celles des
  * autres statuts de travail, hors Blocage, au Développement avant le premier Retour (`firstSendBackAt`, la règle des Retours de `reviewOf`) et à la
  * Correction à partir de lui ; tout le Blocage du travail va au Blocage, celui du statut bloqué compris. Les parts sont des mesures exactes, en ms entières,
@@ -41,17 +43,19 @@ const END = Number.POSITIVE_INFINITY;
  *
  * `declared` : les statuts personnalisés que le Projet déclare, qui disent lesquels de ses autres statuts sont de travail, et vers lesquels un Retour mène.
  */
-export function cycleTimePartsOf(timeline: TicketTimeline, declared: DeclaredStatuses): CycleTimeParts {
-  const { steps, work, blockages } = timeline;
+export function cycleTimePartsOf(timeline: TicketTimeline, declared: DeclaredStatuses, end: number): CycleTimeParts {
+  const { steps, blockages } = timeline;
+  /** Les périodes du statut, bornées à `end`. */
+  const periodsOf = (matches: (status: string) => boolean) => intersect(statusPeriods(steps, matches), [[Number.NEGATIVE_INFINITY, end]]);
   /** Le temps des périodes hors Blocage. */
   const unblocked = (periods: Interval[]) => measure(periods) - measure(intersect(periods, blockages));
   const cut = firstSendBackAt(steps, declared) ?? END;
-  const development = periodsOf(steps, (status) => isWork(status, declared) && !isHandoffStatus(status));
+  const development = periodsOf((status) => isWork(status, declared) && !isHandoffStatus(status));
   return {
-    review: unblocked(periodsOf(steps, (status) => status === 'in_review')),
-    integration: unblocked(periodsOf(steps, (status) => status === 'in_integration')),
-    humanWait: unblocked(periodsOf(steps, (status) => status === 'awaiting_human')),
-    blocked: measure(intersect(work, blockages)),
+    review: unblocked(periodsOf((status) => status === 'in_review')),
+    integration: unblocked(periodsOf((status) => status === 'in_integration')),
+    humanWait: unblocked(periodsOf((status) => status === 'awaiting_human')),
+    blocked: measure(intersect(periodsOf((status) => isWork(status, declared)), blockages)),
     development: unblocked(intersect(development, [[Number.NEGATIVE_INFINITY, cut]])),
     correction: unblocked(intersect(development, [[cut, END]])),
   };
@@ -68,7 +72,7 @@ export function computeCycleTimeBreakdown(projects: MetricsInput[], { period, no
     for (const ticket of analysis.tickets) {
       if (ticket.deliveredAt === null || ticket.deliveredAt < start || ticket.deliveredAt >= end) continue;
       deliveries++;
-      const own = cycleTimePartsOf(ticket.timeline, analysis.declaredStatuses);
+      const own = cycleTimePartsOf(ticket.timeline, analysis.declaredStatuses, ticket.deliveredAt);
       for (const part of Object.keys(parts) as (keyof CycleTimeParts)[]) parts[part] += own[part];
       if (own.humanWait > 0) waits.push(own.humanWait);
     }
@@ -88,7 +92,7 @@ export function computeCycleTimeBreakdown(projects: MetricsInput[], { period, no
   };
 }
 
-/** Périodes dont le statut satisfait `matches`, d'une Transition à la suivante ; la dernière court jusqu'à l'infini (celle d'une Livraison est fermée). */
-function periodsOf(steps: readonly Step[], matches: (status: string) => boolean): Interval[] {
+/** Périodes dont le statut satisfait `matches`, d'une Transition à la suivante ; la dernière court jusqu'à l'infini. */
+function statusPeriods(steps: readonly Step[], matches: (status: string) => boolean): Interval[] {
   return steps.flatMap((step, i): Interval[] => (matches(step.status) ? [[step.at, steps[i + 1]?.at ?? END]] : []));
 }
