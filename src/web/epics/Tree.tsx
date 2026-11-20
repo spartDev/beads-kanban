@@ -1,6 +1,7 @@
 import type { EpicProgress, TreeNode } from '../../domain/epics';
 import type { DeclaredStatuses, Issue } from '../data/types';
 import { useT } from '../i18n';
+import type { ColumnId } from '../kanban/columns';
 import { cx } from '../lib/cx';
 import { ChildRow } from './ChildRow';
 
@@ -11,7 +12,8 @@ const MAX_INDENT = 5;
  * Les Enfants d'une Epic en arbre, à tous les niveaux : chaque ticket sous son parent, avec sa colonne écrite sur sa ligne
  * (rien ne les groupe ici). Une liste dans une liste, donc lue comme telle par les lecteurs d'écran : « liste de 3 éléments »,
  * puis la sous-liste de chacun. Les niveaux se voient à un filet et un retrait ; le DOM garde la structure même quand le retrait
- * cesse de croître. `declared` : les statuts que le Projet déclare, pour écrire la colonne de chaque ligne comme le tableau la range.
+ * cesse de croître. `declared` : les statuts que le Projet déclare, pour écrire la colonne de chaque ligne comme le tableau la range ;
+ * `columns` : les colonnes du tableau du Projet, qui donnent la largeur de cette colonne sur chaque ligne (`childColumnWidth`).
  */
 export function Tree({
   nodes,
@@ -19,6 +21,7 @@ export function Tree({
   now,
   progressOf,
   declared,
+  columns,
   depth = 0,
 }: {
   nodes: TreeNode<Issue>[];
@@ -26,6 +29,7 @@ export function Tree({
   now: number;
   progressOf: (epicId: string) => EpicProgress;
   declared: DeclaredStatuses;
+  columns: readonly ColumnId[];
   depth?: number;
 }) {
   const treeList = useT().epics.children.treeList;
@@ -39,9 +43,10 @@ export function Tree({
             now={now}
             showColumn
             declared={declared}
+            columns={columns}
             nested={ticket.type === 'epic' ? progressOf(ticket.id) : undefined}
           />
-          {children.length > 0 ? <Tree nodes={children} projectId={projectId} now={now} progressOf={progressOf} declared={declared} depth={depth + 1} /> : null}
+          {children.length > 0 ? <Tree nodes={children} projectId={projectId} now={now} progressOf={progressOf} declared={declared} columns={columns} depth={depth + 1} /> : null}
         </li>
       ))}
     </ul>

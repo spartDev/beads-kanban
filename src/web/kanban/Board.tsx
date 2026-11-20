@@ -4,6 +4,7 @@ import { epicOf } from '../../domain/epics';
 import { useTicketSignals } from '../data/hooks';
 import type { DeclaredStatuses, Issue, Project } from '../data/types';
 import { useFormat, useLanguage, useT } from '../i18n';
+import { cx } from '../lib/cx';
 import { Button } from '../ui/Button';
 import { Notice } from '../ui/states';
 import { useNow } from '../lib/useNow';
@@ -12,29 +13,33 @@ import { Card } from './Card';
 import { useCardFlash } from './cardFlash';
 import { Column } from './Column';
 import { ColumnSelector } from './ColumnSelector';
-import { buildBoard, COLUMN_IDS, defaultColumn, doneSince, onlyPaused, type Lane } from './columns';
+import { buildBoard, defaultColumn, doneSince, onlyPaused, type Lane } from './columns';
 import { EpicFilter } from './EpicFilter';
 import { epicChoices, indexById } from './epics';
+import { boardLayout } from './layout';
 import { countLabel, onlyPausedNotice } from './meta';
 import { PausedDrawer } from './PausedDrawer';
 import { useBoardParams } from './useBoardParams';
 import { useBoardShortcuts, type Lanes } from './useBoardShortcuts';
 
 /**
- * Le kanban d'un Projet : cinq colonnes (Backlog, Prêt, En cours, Bloqué, Terminé) et le tiroir « En pause ».
+ * Le kanban d'un Projet : ses colonnes (Backlog, Prêt, En cours, Bloqué, Terminé, et celles de ses Statuts de relais, En relecture, En intégration et
+ * À valider, entre En cours et Bloqué : `boardColumns`) et le tiroir « En pause ».
  *
- * - Le panneau est assez large (60 rem) : les cinq colonnes côte à côte, à largeurs égales. Sinon, une colonne à la
- *   fois, avec un sélecteur : la page ne défile jamais horizontalement. La largeur se mesure sur le panneau, pas sur
- *   l'écran : la barre latérale en prend une partie.
+ * - Le panneau est assez large (12 rem par colonne à cinq, 60 rem ; 7,7 rem de six à huit, 61,6 rem pour huit, à 18 px le rem : voir `layout.ts`) :
+ *   toutes les colonnes côte à côte, à largeurs égales. Sinon, une colonne à la fois, avec un sélecteur : la page ne défile jamais horizontalement.
+ *   La largeur se mesure sur le panneau, pas sur l'écran : la barre latérale en prend une partie.
  * - Le filtre Epic, la durée de Terminé et la colonne affichée vivent dans l'adresse (`params.ts`). Terminé couvre les
  *   N derniers jours calendaires, aujourd'hui compris (`columns.ts`).
  * - Sans `?col=`, la colonne affichée sur mobile est choisie à l'ouverture et gardée : un rafraîchissement des données
- *   qui la vide ne fait pas sauter le tableau d'une colonne à l'autre. Seul un choix de l'utilisateur la change.
+ *   qui la vide ne fait pas sauter le tableau d'une colonne à l'autre. Seul un choix de l'utilisateur la change, ou la disparition de sa colonne
+ *   (une colonne de relais dont plus aucun ticket ne porte le statut, que le Projet ne déclare pas) : elle est alors remplacée une fois, par la
+ *   colonne qu'on choisirait à l'ouverture, et ce remplaçant est gardé à son tour.
  * - Quand tous les tickets du tableau sont en pause, aucune colonne n'a de carte : un état vide le dit et renvoie au
  *   tiroir « En pause », qu'il ouvre.
  * - Lecture seule : rien ne se déplace, une carte ouvre son ticket. Mais un commit peut la changer de colonne : elle garde alors le focus (voir `boardFocus`).
- * - `declared` : les statuts que le Projet déclare, rendus avec ses tickets. Un statut qu'il déclare de catégorie `wip` est en En cours, et sa carte
- *   montre ses Signaux, comme le CFD et la page « À regarder » le comptent. PROVISOIRE (bdesk-pz0.4) : les trois Statuts de relais sont en En cours.
+ * - `declared` : les statuts que le Projet déclare, rendus avec ses tickets. Un Statut de relais qu'il déclare a sa colonne, même vide ; un autre statut
+ *   qu'il déclare de catégorie `wip` est en En cours, et sa carte montre ses Signaux, comme le CFD et la page « À regarder » le comptent.
  */
 export function Board({ project, issues, declared }: { project: Project; issues: readonly Issue[]; declared: DeclaredStatuses }) {
   const params = useBoardParams();
@@ -59,17 +64,24 @@ export function Board({ project, issues, declared }: { project: Project; issues:
   );
   // Minuit du premier jour de Terminé, pour écrire la règle en toutes lettres.
   const since = doneSince(now, params.doneDays);
-  // Choisie une fois, au premier rendu avec des données : le composant est remonté pour un autre Projet (voir la page).
-  const [opening] = useState(() => defaultColumn(board));
-  const column = params.column ?? opening;
+  const layout = boardLayout(board.columnIds.length);
+  // Choisie une fois, au premier rendu avec des données : le composant est remonté pour un autre Projet (voir la page). Une colonne que le Projet n'a
+  // pas (`?col=` d'une colonne de relais absente, ou disparue depuis l'ouverture) n'est jamais celle qu'on affiche. Si la colonne d'ouverture
+  // disparaît, elle est remplacée une seule fois, au rendu, et le remplaçant est gardé : un rafraîchissement suivant ne la fait pas sauter ailleurs.
+  const [opening, setOpening] = useState(() => defaultColumn(board));
+  if (!board.columnIds.includes(opening)) setOpening(defaultColumn(board));
+  const column = params.column !== null && board.columnIds.includes(params.column) ? params.column : opening;
 
   const lanes = useMemo<Lanes>(() => {
     const ids = (cards: Issue[]) => cards.map((issue) => issue.id);
-    const { backlog, ready, inProgress, blocked, done } = board.columns;
+    const { backlog, ready, inProgress, inReview, inIntegration, awaitingHuman, blocked, done } = board.columns;
     return {
       backlog: ids(backlog),
       ready: ids(ready),
       inProgress: ids(inProgress),
+      inReview: ids(inReview),
+      inIntegration: ids(inIntegration),
+      awaitingHuman: ids(awaitingHuman),
       blocked: ids(blocked),
       done: ids(done),
       paused: ids(board.paused),
@@ -87,17 +99,30 @@ export function Board({ project, issues, declared }: { project: Project; issues:
     pausedToggle.current?.focus();
   };
 
-  // Le filtre dit déjà de quelle Epic sont les cartes : la pastille n'y répéterait que l'Epic choisie.
+  // Le filtre dit déjà de quelle Epic sont les cartes : la pastille n'y répéterait que l'Epic choisie. Une carte d'une colonne se resserre dans une
+  // colonne étroite (`layout.card`) ; celles du tiroir « En pause » ont toute la largeur.
   const renderCard = (issue: Issue, lane: Lane) => {
     const own = epicOf(issue, byId);
     const pill = epic !== undefined && own?.id === epic.id ? null : own;
     return (
-      <Card key={issue.id} issue={issue} lane={lane} projectId={project.id} epic={pill} now={now} signals={signals?.get(issue.id)} declared={declared} />
+      <Card
+        key={issue.id}
+        issue={issue}
+        lane={lane}
+        projectId={project.id}
+        epic={pill}
+        now={now}
+        signals={signals?.get(issue.id)}
+        declared={declared}
+        layout={lane === 'paused' ? undefined : layout.card}
+      />
     );
   };
 
+  // Le conteneur du tableau, nommé : dans un tableau de six à huit colonnes, le bloc qui suit l'en-tête de chaque colonne en est un aussi
+  // (`layout.body`), et la liste qu'il contient vise le tableau par son nom (`layout.ts`). Une classe sans nom vise le conteneur le plus proche.
   return (
-    <div ref={rootRef} className="@container flex min-w-0 flex-col gap-4">
+    <div ref={rootRef} className="@container/board flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         {hasEpics ? (
           <EpicFilter open={choices.open} closed={choices.closed} value={epic?.id ?? ''} onChange={params.setEpic} />
@@ -126,15 +151,17 @@ export function Board({ project, issues, declared }: { project: Project; issues:
 
       {onlyPaused(board) ? <OnlyPausedNotice count={board.paused.length} opened={pausedOpen} onOpen={showPaused} /> : null}
 
-      <ColumnSelector board={board} current={column} onSelect={params.setColumn} />
+      <ColumnSelector board={board} current={column} layout={layout} onSelect={params.setColumn} />
 
-      <div className="flex min-w-0 flex-col gap-2 @min-[60rem]:grid @min-[60rem]:grid-cols-5">
-        {COLUMN_IDS.map((id) => (
+      <div className={cx('flex min-w-0 flex-col gap-2', layout.grid)}>
+        {board.columnIds.map((id) => (
           <Column
             key={id}
             id={id}
             count={board.columns[id].length}
             shown={id === column}
+            layout={layout}
+            columns={board.columnIds}
             doneDays={params.doneDays}
             since={since}
             closedEarlier={board.closedEarlier}

@@ -4,6 +4,7 @@ import { epicChildren, epicProgress, epicTree, groupByColumn } from '../../domai
 import type { DeclaredStatuses, Issue, Project } from '../data/types';
 import { statusLabel } from '../design/issue-palette';
 import { useT } from '../i18n';
+import { boardColumns } from '../kanban/columns';
 import { epicName } from '../kanban/epics';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useNow } from '../lib/useNow';
@@ -36,9 +37,9 @@ const LINK = '-my-0.5 min-h-[24px] py-0.5 font-medium text-accent hover:underlin
  * le kanban a déjà : rien de plus à lire, et les mises à jour en direct la tiennent à jour comme lui.
  *
  * Les Enfants sont les mêmes que ceux du filtre Epic du kanban (`epicChildren`), rangés par la même règle de colonne
- * (`columnFor`), avec les statuts que le Projet déclare (`declared`, rendus avec ses tickets) : un statut qu'il déclare `wip` est en En cours.
- * PROVISOIRE (bdesk-pz0.4) : les trois Statuts de relais y sont en En cours (`groupByColumn`, `ChildRow`). L'affichage choisi vit dans l'adresse
- * (`?view=tree`), pour qu'un lien le partage.
+ * (`columnFor`), avec les statuts que le Projet déclare (`declared`, rendus avec ses tickets) : un statut qu'il déclare `wip` est en En cours, un
+ * Statut de relais dans sa colonne, par colonne comme en arbre (`groupByColumn`, `ChildRow`). Une colonne sans Enfant n'y est pas : celles des
+ * Statuts de relais n'apparaissent que si un Enfant y est. L'affichage choisi vit dans l'adresse (`?view=tree`), pour qu'un lien le partage.
  */
 export function EpicView({ project, epic, issues, declared }: { project: Project; epic: Issue; issues: readonly Issue[]; declared: DeclaredStatuses }) {
   const now = useNow();
@@ -60,6 +61,8 @@ export function EpicView({ project, epic, issues, declared }: { project: Project
   const progress = useMemo(() => epicProgress(children), [children]);
   const groups = useMemo(() => groupByColumn(children, declared), [children, declared]);
   const tree = useMemo(() => epicTree(epic.id, issues), [epic.id, issues]);
+  // Les colonnes du Projet, comme au tableau (déclarées ou portées) : la case de la colonne de chaque ligne de l'arbre a la largeur de leurs noms.
+  const columns = useMemo(() => boardColumns(issues, declared), [issues, declared]);
   const progressOf = useCallback((epicId: string) => epicProgress(epicChildren(epicId, issues).children), [issues]);
 
   // Chaque changement remplace l'entrée de l'historique : « Retour » quitte la page, il ne rejoue pas les bascules.
@@ -119,7 +122,7 @@ export function EpicView({ project, epic, issues, declared }: { project: Project
             <ViewSwitch value={view} onChange={setView} />
           </div>
           {view === 'tree' ? (
-            <Tree nodes={tree} projectId={project.id} now={now} progressOf={progressOf} declared={declared} />
+            <Tree nodes={tree} projectId={project.id} now={now} progressOf={progressOf} declared={declared} columns={columns} />
           ) : (
             <ByColumn groups={groups} nestedEpics={nestedEpics} projectId={project.id} now={now} progressOf={progressOf} />
           )}

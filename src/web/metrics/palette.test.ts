@@ -12,7 +12,9 @@ import { OUTLINE_FILL_SHARE, outlineOf } from './palette';
  * - le texte d'une tendance (--good, --danger) atteint 4,5:1 sur les fonds des tuiles (WCAG 1.4.3) ;
  * - chaque forme pleine d'un graphique (bande du CFD, barre, point, pastille de légende) est cernée d'un trait mêlé à
  *   l'encre du thème, et ce contour atteint 3:1 sur le panneau (WCAG 1.4.11) ;
- * - les cinq colonnes du CFD se distinguent de leurs voisines ;
+ * - les colonnes du CFD se distinguent de toutes celles qu'elles peuvent toucher : une bande vide entre deux autres les met en contact (Terminé et
+ *   les relais quand En cours est vide, À valider et Backlog quand Bloqué et Prêt le sont…), et celles des Statuts de relais n'y sont que pour un
+ *   Projet qui les a : toute paire de bandes doit se distinguer ;
  * - le segment d'accent du trait qui dit « calcul en cours » au-dessus des chiffres gardés (bdesk-38k.80), qui remplace leur atténuation, atteint lui aussi 3:1 sur le panneau (le reste du trait : busyBar.test.ts).
  */
 
@@ -115,7 +117,7 @@ describe.each(THEMES)('thème $name', ({ tokens, numbers }) => {
 
   it(`le contour de chaque colonne du CFD atteint ${GRAPHIC_MIN}:1 sur le panneau`, () => {
     const failures: string[] = [];
-    for (const name of ['flow-backlog', 'flow-ready', 'flow-progress', 'flow-blocked', 'flow-done']) {
+    for (const name of ['flow-backlog', 'flow-ready', 'flow-progress', 'flow-review', 'flow-integration', 'flow-awaiting', 'flow-blocked', 'flow-done']) {
       const ratio = contrastRatio(toSrgb(outline(token(tokens, name), ink)), panel);
       if (ratio < GRAPHIC_MIN) failures.push(`--${name} : ${ratio.toFixed(2)}:1`);
     }
@@ -166,6 +168,20 @@ describe.each(THEMES)('thème $name', ({ tokens, numbers }) => {
       const [lower, upper] = [order[i - 1] as string, order[i] as string];
       const gap = distance(token(tokens, lower), token(tokens, upper));
       if (gap < 0.08) failures.push(`--${lower} / --${upper} : ${gap.toFixed(3)}`);
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it('distingue chaque bande de toutes les autres : une bande vide entre deux autres les met en contact', () => {
+    // De bas en haut de la pile. Les bandes entre deux autres peuvent être vides, et celles des relais absentes : toute paire peut se toucher.
+    const stack = ['flow-done', 'flow-progress', 'flow-review', 'flow-integration', 'flow-awaiting', 'flow-blocked', 'flow-ready', 'flow-backlog'];
+    const failures: string[] = [];
+    for (let i = 0; i < stack.length; i++) {
+      for (let j = i + 1; j < stack.length; j++) {
+        const [lower, upper] = [stack[i] as string, stack[j] as string];
+        const gap = distance(token(tokens, lower), token(tokens, upper));
+        if (gap < 0.08) failures.push(`--${lower} / --${upper} : ${gap.toFixed(3)}`);
+      }
     }
     expect(failures).toEqual([]);
   });

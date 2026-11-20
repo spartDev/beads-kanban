@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { DeclaredStatuses, MetricsCfdPoint } from '../shared/api';
-import { baseColumnOf, type Column, COLUMNS, columnFor, columnsOf, HANDOFF_COLUMN, HANDOFF_COLUMNS } from './columns';
+import { ALL_COLUMNS, type Column, COLUMNS, columnFor, columnsOf, HANDOFF_COLUMN, HANDOFF_COLUMNS } from './columns';
 import { isWork } from './flow';
 import { HANDOFF_STATUSES, NO_DECLARED_STATUSES } from './statuses';
 
@@ -176,9 +176,13 @@ describe('columnsOf : les colonnes d’un Projet', () => {
   });
 });
 
-describe('baseColumnOf : le repli provisoire des écrans sans colonnes de relais (bdesk-pz0.4)', () => {
-  it('montre un ticket d’une colonne de relais en En cours, et tout autre dans sa colonne', () => {
-    for (const column of HANDOFF_COLUMNS) expect(baseColumnOf(column)).toBe('inProgress');
-    for (const column of COLUMNS) expect(baseColumnOf(column)).toBe(column);
+describe('ALL_COLUMNS : toutes les colonnes qu’un Projet peut avoir', () => {
+  it('sont celles d’un Projet qui a les trois Statuts de relais, dans l’ordre du flux : En cours, les relais, Bloqué', () => {
+    expect([...ALL_COLUMNS]).toEqual(columnsOf(HANDOFF_STATUSES));
+    expect([...ALL_COLUMNS]).toEqual(['backlog', 'ready', 'inProgress', 'inReview', 'inIntegration', 'awaitingHuman', 'blocked', 'done']);
+  });
+
+  it('comptent chaque colonne une fois, celles de tout Projet comme celles des relais', () => {
+    expect([...ALL_COLUMNS].sort()).toEqual([...COLUMNS, ...HANDOFF_COLUMNS].sort());
   });
 });

@@ -401,7 +401,7 @@ describe('la veille du tableau ne vit que tant que le tableau est monté', () =>
     const disconnect = vi.spyOn(MutationObserver.prototype, 'disconnect');
     try {
       const { unmount } = await openBoard();
-      const board = document.querySelector('[data-card-id]')!.closest('.\\@container')!;
+      const board = document.querySelector('[data-card-id]')!.closest('.\\@container\\/board')!;
       observe.mock.calls.forEach(([target], call) => {
         if (target === board) observed.push(observe.mock.contexts[call] as MutationObserver);
       });

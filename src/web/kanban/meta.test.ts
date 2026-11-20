@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { columnsOf } from '../../domain/columns';
 import { withTimeZone } from '../test/timeZone';
 import { COLUMN_IDS } from './columns';
 import {
@@ -19,9 +20,46 @@ import {
 withTimeZone('Europe/Paris');
 
 describe('les colonnes affichées', () => {
-  it('portent les noms du ticket, dans l’ordre du flux', () => {
-    expect(COLUMNS.map((column) => column.label)).toEqual(['Backlog', 'Prêt', 'En cours', 'Bloqué', 'Terminé']);
+  it('portent les noms du ticket, dans l’ordre du flux, celles des Statuts de relais entre En cours et Bloqué', () => {
+    expect(COLUMNS.map((column) => column.label)).toEqual(['Backlog', 'Prêt', 'En cours', 'En relecture', 'En intégration', 'À valider', 'Bloqué', 'Terminé']);
     expect(COLUMNS.map((column) => column.id)).toEqual([...COLUMN_IDS]);
+  });
+
+  it('ont chacune leur pictogramme : la forme les distingue sans compter sur la couleur', () => {
+    expect(new Set(COLUMNS.map((column) => column.icon)).size).toBe(COLUMNS.length);
+  });
+
+  it('écrivent la règle des colonnes de relais avec les mots du glossaire, hors Blocage', () => {
+    expect(COLUMN_META.inReview.rule(14)).toBe('Ticket qu’un agent relecteur examine, sans dépendance en suspens.');
+    expect(COLUMN_META.inIntegration.rule(14)).toBe(
+      'Ticket dont la demande de fusion est ouverte, le temps de ses vérifications automatiques et de sa revue externe, sans dépendance en suspens.',
+    );
+    expect(COLUMN_META.awaitingHuman.rule(14)).toBe('Ticket qui vous attend : un test à la main, une décision ou votre feu vert pour fusionner, sans dépendance en suspens.');
+    for (const id of ['inReview', 'inIntegration', 'awaitingHuman'] as const) expect(COLUMN_META[id].hint(14), id).toMatch(/, hors Blocage$/);
+  });
+
+  it('précisent les statuts d’En cours et de Bloqué : un autre statut que le Projet déclare comme travail, et les Statuts de relais en Blocage', () => {
+    expect(COLUMN_META.inProgress.rule(14)).toBe(
+      'Ticket en cours, rattaché à un agent ou dans un autre statut que le Projet déclare comme travail, sans dépendance en suspens.',
+    );
+    expect(COLUMN_META.blocked.rule(14)).toBe(
+      'Ticket au statut bloqué, ou dans un statut de travail mais en Blocage (il dépend d’un ticket qui n’est pas fermé) : en cours, rattaché à un agent, en relecture, en intégration, à valider ou un autre statut que le Projet déclare comme travail.',
+    );
+  });
+
+  it('ne citent dans la règle de Bloqué que les Statuts de relais dont le tableau a la colonne, en français et en anglais', () => {
+    expect(COLUMN_META.blocked.rule(14, undefined, columnsOf([]))).toBe(
+      'Ticket au statut bloqué, ou dans un statut de travail mais en Blocage (il dépend d’un ticket qui n’est pas fermé) : en cours, rattaché à un agent ou un autre statut que le Projet déclare comme travail.',
+    );
+    expect(COLUMN_META.blocked.rule(14, undefined, columnsOf(['awaiting_human']))).toBe(
+      'Ticket au statut bloqué, ou dans un statut de travail mais en Blocage (il dépend d’un ticket qui n’est pas fermé) : en cours, rattaché à un agent, à valider ou un autre statut que le Projet déclare comme travail.',
+    );
+    expect(columnMeta('en').blocked.rule(14, undefined, columnsOf([]))).toBe(
+      'Ticket with the blocked status, or in a work status but Blocked (it depends on a ticket that isn’t closed): in progress, hooked to an agent or another status the Project declares as work.',
+    );
+    expect(columnMeta('en').blocked.rule(14, undefined, columnsOf(['in_review', 'in_integration']))).toBe(
+      'Ticket with the blocked status, or in a work status but Blocked (it depends on a ticket that isn’t closed): in progress, hooked to an agent, in review, in integration or another status the Project declares as work.',
+    );
   });
 
   it('disent en une ligne ce qui y range un ticket, et la règle entière en infobulle', () => {
@@ -133,7 +171,29 @@ describe('onlyPausedNotice : l’état vide d’un tableau dont tous les tickets
 
 describe('en anglais', () => {
   it('nomme les colonnes avec les termes anglais de CONTEXT.md, chaque indice sur une ligne', () => {
-    expect(columnsIn('en').map((column) => column.label)).toEqual(['Backlog', 'Ready', 'In progress', 'Blocked', 'Done']);
+    expect(columnsIn('en').map((column) => column.label)).toEqual([
+      'Backlog',
+      'Ready',
+      'In progress',
+      'In review',
+      'In integration',
+      'Awaiting validation',
+      'Blocked',
+      'Done',
+    ]);
+    expect(columnMeta('en').inReview.rule(14)).toBe('Ticket that an agent reviewer is examining, with no pending dependency.');
+    expect(columnMeta('en').inIntegration.rule(14)).toBe(
+      'Ticket whose merge request is open, during its automated checks and external review, with no pending dependency.',
+    );
+    expect(columnMeta('en').awaitingHuman.rule(14)).toBe(
+      'Ticket waiting for you: a manual test, a decision or your go-ahead to merge, with no pending dependency.',
+    );
+    expect(columnMeta('en').inProgress.rule(14)).toBe(
+      'Ticket in progress, hooked to an agent or in another status the Project declares as work, with no pending dependency.',
+    );
+    expect(columnMeta('en').blocked.rule(14)).toBe(
+      'Ticket with the blocked status, or in a work status but Blocked (it depends on a ticket that isn’t closed): in progress, hooked to an agent, in review, in integration, awaiting validation or another status the Project declares as work.',
+    );
     for (const { id, hint } of columnsIn('en')) {
       expect(hint(365).length, `${id} : un indice tient sur une ligne de colonne`).toBeLessThanOrEqual(30);
     }

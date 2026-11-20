@@ -10,8 +10,10 @@ import { useFormat, useLanguage, useT } from '../i18n';
 import { parsePath, paths } from '../paths';
 import { AbandonBadge, DeclineBadge, PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
 import { openedFromCard } from './boardFocus';
-import type { Lane } from './columns';
+import { cx } from '../lib/cx';
+import { showsStatus, type Lane } from './columns';
 import { epicName, epicShortName } from './epics';
+import type { CardLayout } from './layout';
 
 /** Combien d'identifiants bloquants la carte nomme avant de compter le reste. */
 const NAMED_BLOCKERS = 2;
@@ -37,6 +39,7 @@ export function Card({
   now,
   signals,
   declared,
+  layout,
 }: {
   issue: Issue;
   /** La colonne de la carte, ou `paused` dans le tiroir. */
@@ -47,8 +50,13 @@ export function Card({
   now: number;
   /** Les Signaux du ticket : sa Dérive, son Blocage long. */
   signals?: TicketSignals | undefined;
-  /** Les statuts que le Projet déclare : un ticket dans un statut qu'il déclare `wip` est en travail, et montre ses Signaux (`shownSignals`). */
+  /**
+   * Les statuts que le Projet déclare : un ticket dans un statut qu'il déclare `wip` est en travail, et montre ses Signaux (`shownSignals`) ; sa carte écrit
+   * ce statut, que sa colonne ne dit pas (`showsStatus`).
+   */
   declared: DeclaredStatuses;
+  /** La carte selon la disposition du tableau : allégée dans une colonne étroite (`BoardLayout.card`) ; rien pour le tiroir « En pause ». */
+  layout?: CardLayout | undefined;
 }) {
   const { language } = useLanguage();
   const t = useT();
@@ -67,7 +75,10 @@ export function Card({
       data-card-id={issue.id}
       data-card-project={projectId}
       data-column={lane}
-      className="relative flex scroll-mb-20 scroll-mt-28 flex-col gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-2 shadow-panel transition-colors hover:border-line-strong has-[a[data-card-link]:focus-visible]:border-accent has-[a[data-card-link]:focus-visible]:ring-2 has-[a[data-card-link]:focus-visible]:ring-accent"
+      className={cx(
+        'relative flex scroll-mb-20 scroll-mt-28 flex-col gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-2 shadow-panel transition-colors hover:border-line-strong has-[a[data-card-link]:focus-visible]:border-accent has-[a[data-card-link]:focus-visible]:ring-2 has-[a[data-card-link]:focus-visible]:ring-accent',
+        layout?.item,
+      )}
     >
       <div className="flex min-w-0 items-start gap-1.5">
         <span className="mt-0.5 shrink-0">
@@ -77,10 +88,10 @@ export function Card({
         <span id={idId} className="min-w-0 flex-1 wrap-anywhere font-mono text-xs leading-5 text-ink-3">
           {issue.id}
         </span>
-        <PriorityBadge priority={issue.priority} className="shrink-0 text-xs leading-5" />
+        <PriorityBadge priority={issue.priority} className="shrink-0 text-xs leading-5" glyphClassName={layout?.priorityGlyph} />
       </div>
 
-      <p className="wrap-anywhere text-ui text-ink">
+      <p className={cx('wrap-anywhere text-ui text-ink', layout?.title)}>
         <Link
           to={{ pathname: paths.issue(projectId, issue.id), search }}
           replace={panelOpen}
@@ -94,8 +105,9 @@ export function Card({
       </p>
 
       {issue.status === 'hooked' || epic || issue.abandon || issue.declined || drift || longBlockage ? (
-        // Les pastilles passent à la ligne plutôt que de serrer l'identifiant, qui ne doit jamais se couper en deux.
-        <div className="flex min-w-0 flex-wrap items-center gap-1">
+        // Les pastilles passent à la ligne plutôt que de serrer l'identifiant, qui ne doit jamais se couper en deux. Dans une colonne étroite, chacune perd
+        // son pictogramme et peut passer elle-même à la ligne entre deux mots (`layout.badges`).
+        <div className={cx('flex min-w-0 flex-wrap items-center gap-1', layout?.badges)}>
           {issue.abandon ? <AbandonBadge abandon={issue.abandon} /> : null}
           {issue.declined ? <DeclineBadge /> : null}
           {drift ? <SignalBadge signal={drift} label={signalKind('drift')} icon={Timer} /> : null}
@@ -105,8 +117,14 @@ export function Card({
         </div>
       ) : null}
       <Blocking issue={issue} />
-      {lane === 'paused' ? (
-        <p className="self-start rounded-full border border-line px-1.5 text-xs leading-5 text-ink-2">{statusLabel(issue.status, language)}</p>
+      {/* Le statut que la colonne ne dit pas (`showsStatus`) : celui d'un ticket en pause, un Statut de relais dans Bloqué, un autre statut déclaré de travail. */}
+      {showsStatus(issue.status, lane, declared) ? (
+        // Un statut déclaré ou inconnu peut être un seul long mot (`waiting_on_customer`). Alignée à gauche (`self-start`), la pastille prendrait la
+        // largeur du mot entier et déborderait de la carte, sur la colonne voisine : elle n'est jamais plus large que la carte (`max-w-full`), et le
+        // mot s'y coupe (`wrap-break-word`), sur autant de lignes qu'il le faut.
+        <p data-card-status className="max-w-full self-start rounded-full border border-line px-1.5 text-xs leading-5 text-ink-2 wrap-break-word">
+          {statusLabel(issue.status, language)}
+        </p>
       ) : null}
 
       {issue.assignee || age ? (

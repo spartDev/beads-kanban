@@ -115,14 +115,20 @@ export function priorityMeta(priority: number, language: Language = 'fr'): Prior
   return meta[Number.isFinite(priority) && priority < 0 ? 0 : 4];
 }
 
-/** Un statut que beads connaît : une clé du catalogue (qui y ajoute `unknown`, le statut vide). */
+/** Un statut que l'app nomme : un statut de beads ou un Statut de relais, clé du catalogue (qui y ajoute `unknown`, le statut vide). */
 type KnownStatus = Exclude<keyof (typeof kanban)['fr']['statuses'], 'unknown'>;
 
-/** Les statuts que beads connaît ; le compilateur refuse un statut sans libellé dans le catalogue, comme un libellé sans statut ici. */
+/**
+ * Les statuts que beads connaît, et les Statuts de relais, que l'app reconnaît à leur nom dans tous les Projets (ADR 0007) ; le compilateur refuse
+ * un statut sans libellé dans le catalogue, comme un libellé sans statut ici.
+ */
 const KNOWN_STATUSES: Readonly<Record<KnownStatus, true>> = {
   open: true,
   in_progress: true,
   hooked: true,
+  in_review: true,
+  in_integration: true,
+  awaiting_human: true,
   blocked: true,
   deferred: true,
   pinned: true,
@@ -130,7 +136,7 @@ const KNOWN_STATUSES: Readonly<Record<KnownStatus, true>> = {
 };
 
 /**
- * Libellé d'un statut beads dans `language` ; un statut personnalisé s'affiche tel quel, un statut vide se dit « inconnu ». Le nom brut ne se
+ * Libellé d'un statut beads ou d'un Statut de relais dans `language` ; un autre statut personnalisé s'affiche tel quel, un statut vide se dit « inconnu ». Le nom brut ne se
  * cherche pas dans le catalogue au-delà des statuts connus : un statut personnalisé qui s'appellerait `unknown` ou `toString` reste son nom.
  */
 export const statusLabel = (status: string, language: Language = 'fr'): string => {

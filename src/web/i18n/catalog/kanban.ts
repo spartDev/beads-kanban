@@ -33,6 +33,10 @@ const fr = {
     open: 'ouvert',
     in_progress: 'en cours',
     hooked: 'rattaché à un agent',
+    /** Les Statuts de relais (CONTEXT.md) : ils portent le même nom dans tous les Projets. */
+    in_review: 'en relecture',
+    in_integration: 'en intégration',
+    awaiting_human: 'à valider',
     blocked: 'statut bloqué',
     deferred: 'reporté',
     pinned: 'épinglé',
@@ -55,12 +59,30 @@ const fr = {
     inProgress: {
       label: 'En cours',
       hint: 'En cours, hors Blocage',
-      rule: 'Ticket en cours, rattaché à un agent ou dans un autre statut de travail, sans dépendance en suspens.',
+      rule: 'Ticket en cours, rattaché à un agent ou dans un autre statut que le Projet déclare comme travail, sans dépendance en suspens.',
+    },
+    /** Les colonnes des Statuts de relais (CONTEXT.md), seulement pour un Projet qui déclare leur statut ou dont un ticket le porte. */
+    inReview: {
+      label: 'En relecture',
+      hint: 'Agent relecteur, hors Blocage',
+      rule: 'Ticket qu’un agent relecteur examine, sans dépendance en suspens.',
+    },
+    inIntegration: {
+      label: 'En intégration',
+      hint: 'Fusion demandée, hors Blocage',
+      rule: 'Ticket dont la demande de fusion est ouverte, le temps de ses vérifications automatiques et de sa revue externe, sans dépendance en suspens.',
+    },
+    awaitingHuman: {
+      label: 'À valider',
+      hint: 'Vous attend, hors Blocage',
+      rule: 'Ticket qui vous attend : un test à la main, une décision ou votre feu vert pour fusionner, sans dépendance en suspens.',
     },
     blocked: {
       label: 'Bloqué',
       hint: 'Blocage ou statut bloqué',
-      rule: 'Ticket au statut bloqué, ou dans un statut de travail (en cours, rattaché à un agent…) mais en Blocage : il dépend d’un ticket qui n’est pas fermé.',
+      /** `relays` : les Statuts de relais qui ont leur colonne au tableau, écrits comme dans une phrase (« en relecture ») ; aucun sans eux. */
+      rule: (relays: readonly string[]) =>
+        `Ticket au statut bloqué, ou dans un statut de travail mais en Blocage (il dépend d’un ticket qui n’est pas fermé) : ${['en cours', 'rattaché à un agent', ...relays].join(', ')} ou un autre statut que le Projet déclare comme travail.`,
     },
     done: {
       label: 'Terminé',
@@ -333,6 +355,9 @@ const en: typeof fr = {
     open: 'open',
     in_progress: 'in progress',
     hooked: 'hooked to an agent',
+    in_review: 'in review',
+    in_integration: 'in integration',
+    awaiting_human: 'awaiting validation',
     blocked: 'blocked status',
     deferred: 'deferred',
     pinned: 'pinned',
@@ -353,12 +378,28 @@ const en: typeof fr = {
     inProgress: {
       label: 'In progress',
       hint: 'In progress, not Blocked',
-      rule: 'Ticket in progress, hooked to an agent or in another work status, with no pending dependency.',
+      rule: 'Ticket in progress, hooked to an agent or in another status the Project declares as work, with no pending dependency.',
+    },
+    inReview: {
+      label: 'In review',
+      hint: 'Agent reviewing, not Blocked',
+      rule: 'Ticket that an agent reviewer is examining, with no pending dependency.',
+    },
+    inIntegration: {
+      label: 'In integration',
+      hint: 'Merge requested, not Blocked',
+      rule: 'Ticket whose merge request is open, during its automated checks and external review, with no pending dependency.',
+    },
+    awaitingHuman: {
+      label: 'Awaiting validation',
+      hint: 'Waiting for you, not Blocked',
+      rule: 'Ticket waiting for you: a manual test, a decision or your go-ahead to merge, with no pending dependency.',
     },
     blocked: {
       label: 'Blocked',
       hint: 'Blockage or blocked status',
-      rule: 'Ticket with the blocked status, or in a work status (in progress, hooked to an agent…) but Blocked: it depends on a ticket that isn’t closed.',
+      rule: (relays: readonly string[]) =>
+        `Ticket with the blocked status, or in a work status but Blocked (it depends on a ticket that isn’t closed): ${['in progress', 'hooked to an agent', ...relays].join(', ')} or another status the Project declares as work.`,
     },
     done: {
       label: 'Done',

@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Issue } from '../shared/api';
-import { COLUMNS } from './columns';
+import { ALL_COLUMNS } from './columns';
 import {
   descendantIds,
   epicChildren,
   epicOf,
   epicProgress,
+  EPIC_GROUPS,
   epicTree,
   forecastEnd,
   groupByColumn,
@@ -296,10 +297,10 @@ describe('groupByColumn : les Enfants rangés par la règle de colonne du kanban
     expect(ids(groups.paused)).toEqual(['diffère', 'épinglé', 'inconnu']);
   });
 
-  it('a une entrée par colonne, vide ou non, plus « En pause » : aucun Enfant n’est perdu', () => {
+  it('a une entrée par colonne, celles des relais comprises, vide ou non, plus « En pause » : aucun Enfant n’est perdu', () => {
     const groups = groupByColumn([], NO_DECLARED_STATUSES);
 
-    expect(Object.keys(groups).sort()).toEqual([...COLUMNS, 'paused'].sort());
+    expect(Object.keys(groups).sort()).toEqual([...ALL_COLUMNS, 'paused'].sort());
     const filled = groupByColumn(children, NO_DECLARED_STATUSES);
     expect(Object.values(filled).flat()).toHaveLength(children.length);
   });
@@ -308,18 +309,28 @@ describe('groupByColumn : les Enfants rangés par la règle de colonne du kanban
     expect(ids(groupByColumn(children, NO_DECLARED_STATUSES).done)).toContain('doublon');
   });
 
-  it('range un Enfant d’un Statut de relais en En cours, et en Bloqué en Blocage, tant que la page n’a pas leurs colonnes (provisoire, bdesk-pz0.4)', () => {
+  it('range un Enfant d’un Statut de relais dans la colonne de son statut, et en Bloqué en Blocage, qu’il soit déclaré ou non', () => {
     const relayed = [
       child('relu', { status: 'in_review' }),
       child('integre', { status: 'in_integration' }),
       child('valide', { status: 'awaiting_human' }),
       child('relu-coince', { status: 'in_review', blockedBy: ['x'] }),
+      child('valide-coince', { status: 'awaiting_human', blockedBy: ['x'] }),
     ];
     const groups = groupByColumn(relayed, NO_DECLARED_STATUSES);
 
-    expect(ids(groups.inProgress)).toEqual(['relu', 'integre', 'valide']);
-    expect(ids(groups.blocked)).toEqual(['relu-coince']);
-    expect(Object.keys(groups).sort()).toEqual([...COLUMNS, 'paused'].sort());
+    expect(ids(groups.inReview)).toEqual(['relu']);
+    expect(ids(groups.inIntegration)).toEqual(['integre']);
+    expect(ids(groups.awaitingHuman)).toEqual(['valide']);
+    expect(ids(groups.blocked)).toEqual(['relu-coince', 'valide-coince']);
+    expect(groups.inProgress).toEqual([]);
+    expect(groups.paused).toEqual([]);
+  });
+});
+
+describe('EPIC_GROUPS : l’ordre des groupes de la page Epic', () => {
+  it('est celui des colonnes du kanban, relais compris, puis « En pause »', () => {
+    expect([...EPIC_GROUPS]).toEqual([...ALL_COLUMNS, 'paused']);
   });
 });
 

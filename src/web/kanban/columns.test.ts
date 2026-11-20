@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { COLUMNS, type HandoffColumn } from '../../domain/columns';
+import { ALL_COLUMNS, COLUMNS } from '../../domain/columns';
 import type { TicketHistory } from '../../domain/flow';
 import { buildTimeline, columnAt, stepsOf } from '../../domain/timeline';
 import type { MetricsCfdPoint } from '../../shared/api';
@@ -7,6 +7,7 @@ import type { Issue } from '../data/types';
 import { issue } from '../test/fixtures';
 import { withTimeZone } from '../test/timeZone';
 import {
+  boardColumns,
   buildBoard,
   closedWithin,
   COLUMN_IDS,
@@ -20,6 +21,7 @@ import {
   isBoardCard,
   onlyPaused,
   placeClosed,
+  showsStatus,
   type ColumnId,
 } from './columns';
 import { NO_DECLARED_STATUSES } from '../../domain/statuses';
@@ -44,12 +46,11 @@ const BLOCKERS = ['bdesk-38k.6'];
 
 describe('les colonnes du kanban', () => {
   it('sont celles du domaine et du CFD : une seule définition des colonnes pour le tableau et le graphique', () => {
-    // Vérifié à la compilation (pnpm typecheck) : renommer ou ajouter une colonne d'un seul côté échoue ici. Provisoire (bdesk-pz0.4) : le CFD a
-    // déjà les colonnes des Statuts de relais, que le tableau n'a pas encore (il les montre en En cours, `columnOf`).
-    expectTypeOf<ColumnId>().toEqualTypeOf<Exclude<keyof MetricsCfdPoint, 'date' | HandoffColumn>>();
-    expect([...COLUMN_IDS]).toEqual(['backlog', 'ready', 'inProgress', 'blocked', 'done']);
+    // Vérifié à la compilation (pnpm typecheck) : renommer ou ajouter une colonne d'un seul côté échoue ici, celles des Statuts de relais comprises.
+    expectTypeOf<ColumnId>().toEqualTypeOf<Exclude<keyof MetricsCfdPoint, 'date'>>();
+    expect([...COLUMN_IDS]).toEqual(['backlog', 'ready', 'inProgress', 'inReview', 'inIntegration', 'awaitingHuman', 'blocked', 'done']);
     // Pas une copie de la liste : la liste du domaine elle-même.
-    expect(COLUMN_IDS).toBe(COLUMNS);
+    expect(COLUMN_IDS).toBe(ALL_COLUMNS);
   });
 
   it('gardent par défaut les 14 derniers jours dans Terminé', () => {
@@ -215,8 +216,8 @@ describe('le tableau et le CFD rangent un ticket dans la même colonne', () => {
     return columnAt(buildTimeline(ticket, steps.get('a') ?? [], steps, NO_DECLARED_STATUSES), day(3).getTime());
   }
 
-  // Tous les statuts de beads, un statut personnalisé et le statut vide (NULL en base).
-  describe.each(['open', 'in_progress', 'blocked', 'deferred', 'closed', 'pinned', 'hooked', 'review', ''])('statut « %s »', (status) => {
+  // Tous les statuts de beads, les Statuts de relais, un statut personnalisé et le statut vide (NULL en base).
+  describe.each(['open', 'in_progress', 'blocked', 'deferred', 'closed', 'pinned', 'hooked', 'in_review', 'in_integration', 'awaiting_human', 'review', ''])('statut « %s »', (status) => {
     it.each([false, true])('en Blocage : %s', (blocked) => {
       // Fenêtre infinie : la fenêtre de Terminé est propre au tableau, le CFD cumule tous les tickets fermés.
       const lane = columnOf({ status, blockedBy: blocked ? ['b'] : [], closedAt: null }, { now: NOW, doneDays: Infinity });
@@ -744,20 +745,130 @@ describe('onlyPaused : un tableau dont tous les tickets sont dans le tiroir « E
   });
 });
 
-describe('les Statuts de relais, tant que le tableau n’a pas leurs colonnes (provisoire, bdesk-pz0.4)', () => {
-  it('montre un ticket En relecture, En intégration ou À valider dans En cours, et dans Bloqué en Blocage : aucun ne disparaît', () => {
-    for (const status of ['in_review', 'in_integration', 'awaiting_human']) {
-      expect(columnOf({ status, blockedBy: [], closedAt: null }, { now: NOW }), status).toBe('inProgress');
+describe('les colonnes des Statuts de relais (bdesk-pz0.4)', () => {
+  const at = (id: string, status: string, extra: Partial<Issue> = {}) => issue({ id, title: `Ticket ${id}`, status, ...extra });
+  const ids = (issues: Issue[]) => issues.map((i) => i.id);
+  const RELAYED: Issue[] = [
+    at('doing', 'in_progress'),
+    at('relu', 'in_review'),
+    at('integre', 'in_integration'),
+    at('valide', 'awaiting_human'),
+    at('relu-coince', 'in_review', { blockedBy: BLOCKERS }),
+    at('valide-coince', 'awaiting_human', { blockedBy: BLOCKERS }),
+  ];
+
+  it('range un ticket En relecture, En intégration ou À valider dans la colonne de son statut, et dans Bloqué en Blocage', () => {
+    const lanes = [
+      ['in_review', 'inReview'],
+      ['in_integration', 'inIntegration'],
+      ['awaiting_human', 'awaitingHuman'],
+    ] as const;
+    for (const [status, column] of lanes) {
+      expect(columnOf({ status, blockedBy: [], closedAt: null }, { now: NOW }), status).toBe(column);
       expect(columnOf({ status, blockedBy: BLOCKERS, closedAt: null }, { now: NOW }), status).toBe('blocked');
     }
   });
 
-  it('les compte dans les cartes du tableau, avec ceux en cours', () => {
-    const tickets = ['in_progress', 'in_review', 'in_integration', 'awaiting_human'].map((status) => issue({ id: status, title: status, status }));
-    const board = buildBoard(tickets, { now: NOW });
+  it('met chaque ticket dans sa colonne, et les compte tous parmi les cartes du tableau', () => {
+    const board = buildBoard(RELAYED, { now: NOW });
 
-    expect(board.columns.inProgress.map(({ id }) => id).sort()).toEqual(['awaiting_human', 'in_integration', 'in_progress', 'in_review']);
-    expect(board.total).toBe(4);
+    expect(ids(board.columns.inProgress)).toEqual(['doing']);
+    expect(ids(board.columns.inReview)).toEqual(['relu']);
+    expect(ids(board.columns.inIntegration)).toEqual(['integre']);
+    expect(ids(board.columns.awaitingHuman)).toEqual(['valide']);
+    expect(ids(board.columns.blocked)).toEqual(['relu-coince', 'valide-coince']);
     expect(board.paused).toEqual([]);
+    expect(board.total).toBe(RELAYED.length);
+  });
+
+  it('montre les colonnes des Statuts que portent les tickets, entre En cours et Bloqué, dans l’ordre du domaine', () => {
+    expect(buildBoard(RELAYED, { now: NOW }).columnIds).toEqual([
+      'backlog',
+      'ready',
+      'inProgress',
+      'inReview',
+      'inIntegration',
+      'awaitingHuman',
+      'blocked',
+      'done',
+    ]);
+    // Un ticket en Blocage, rangé dans Bloqué, porte quand même son statut : sa colonne existe, vide.
+    const stuck = buildBoard([at('relu-coince', 'in_review', { blockedBy: BLOCKERS })], { now: NOW });
+    expect(stuck.columnIds).toEqual(['backlog', 'ready', 'inProgress', 'inReview', 'blocked', 'done']);
+    expect(stuck.columns.inReview).toEqual([]);
+  });
+
+  it('montre la colonne d’un Statut de relais que le Projet déclare, même vide', () => {
+    const declared = { handoff: ['awaiting_human' as const], others: [] };
+    const board = buildBoard([at('doing', 'in_progress')], { now: NOW, declared });
+
+    expect(board.columnIds).toEqual(['backlog', 'ready', 'inProgress', 'awaitingHuman', 'blocked', 'done']);
+    expect(board.columns.awaitingHuman).toEqual([]);
+  });
+
+  it('garde ses cinq colonnes sans Statut de relais déclaré ni porté', () => {
+    const board = buildBoard([at('doing', 'in_progress'), at('later', 'deferred'), at('old', 'closed', { closedAt: daysAgo(40) })], { now: NOW });
+
+    expect(board.columnIds).toEqual([...COLUMNS]);
+    expect(boardColumns([], NO_DECLARED_STATUSES)).toEqual([...COLUMNS]);
+  });
+
+  it('tient ses colonnes du Projet, pas du filtre Epic : un relais hors de l’Epic choisie garde la sienne, vide', () => {
+    const tickets = [at('epic', 'open', { type: 'epic' }), at('enfant', 'in_progress', { parentId: 'epic' }), at('relu', 'in_review')];
+    const board = buildBoard(tickets, { now: NOW, epicId: 'epic' });
+
+    expect(board.columnIds).toContain('inReview');
+    expect(board.columns.inReview).toEqual([]);
+  });
+
+  it('ne fait pas apparaître de colonne pour une Epic qui porterait un Statut de relais : elle n’est pas une carte, comme au CFD', () => {
+    expect(boardColumns([at('epic', 'in_review', { type: 'epic' })], NO_DECLARED_STATUSES)).toEqual([...COLUMNS]);
+  });
+
+  it('ouvre sur mobile En cours d’abord, puis les colonnes de relais dans leur ordre, avant Prêt', () => {
+    expect(defaultColumn(buildBoard([at('r', 'open'), ...RELAYED], { now: NOW }))).toBe('inProgress');
+    expect(defaultColumn(buildBoard([at('r', 'open'), at('integre', 'in_integration'), at('valide', 'awaiting_human')], { now: NOW }))).toBe(
+      'inIntegration',
+    );
+    expect(defaultColumn(buildBoard([at('r', 'open'), at('valide', 'awaiting_human')], { now: NOW }))).toBe('awaitingHuman');
+  });
+
+  it('n’est pas un tableau « tout en pause » quand seules les colonnes de relais ont des cartes', () => {
+    expect(onlyPaused(buildBoard([at('later', 'deferred'), at('valide', 'awaiting_human')], { now: NOW }))).toBe(false);
+  });
+});
+
+describe('showsStatus : la carte écrit son statut quand sa colonne ne le dit pas', () => {
+  const declared = { handoff: [], others: [{ name: 'qa_testing', category: 'wip' as const }] };
+
+  it('dans le tiroir « En pause », toujours', () => {
+    for (const status of ['deferred', 'pinned', 'review', '']) expect(showsStatus(status, 'paused', declared), status).toBe(true);
+  });
+
+  it('pour un Statut de relais hors de sa colonne : dans Bloqué, on sait à quelle étape le ticket est bloqué', () => {
+    for (const status of ['in_review', 'in_integration', 'awaiting_human']) expect(showsStatus(status, 'blocked', declared), status).toBe(true);
+  });
+
+  it('pour un autre statut que le Projet déclare comme travail, en En cours comme en Bloqué', () => {
+    expect(showsStatus('qa_testing', 'inProgress', declared)).toBe(true);
+    expect(showsStatus('qa_testing', 'blocked', declared)).toBe(true);
+  });
+
+  it('jamais pour un Statut de relais dans sa colonne, ni pour un statut que sa colonne dit déjà ; « rattaché à un agent » a sa pastille', () => {
+    expect(showsStatus('in_review', 'inReview', declared)).toBe(false);
+    expect(showsStatus('in_integration', 'inIntegration', declared)).toBe(false);
+    expect(showsStatus('awaiting_human', 'awaitingHuman', declared)).toBe(false);
+    for (const [status, lane] of [
+      ['open', 'backlog'],
+      ['open', 'ready'],
+      ['in_progress', 'inProgress'],
+      ['in_progress', 'blocked'],
+      ['hooked', 'inProgress'],
+      ['hooked', 'blocked'],
+      ['blocked', 'blocked'],
+      ['closed', 'done'],
+    ] as const) {
+      expect(showsStatus(status, lane, declared), `${status} dans ${lane}`).toBe(false);
+    }
   });
 });

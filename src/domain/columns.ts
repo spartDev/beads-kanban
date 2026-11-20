@@ -48,6 +48,12 @@ export function columnsOf(handoff: readonly HandoffStatus[]): Column[] {
 }
 
 /**
+ * Toutes les colonnes qu'un Projet peut avoir, dans l'ordre du flux : celles d'un Projet qui a les trois Statuts de relais. Le tableau et la page Epic
+ * les rangent toutes ; ils ne montrent que celles du Projet (`columnsOf`), ou celles qui ont des tickets.
+ */
+export const ALL_COLUMNS: readonly Column[] = columnsOf(HANDOFF_STATUSES);
+
+/**
  * La colonne d'un ticket selon son statut et son Blocage ; `null` : « En pause », hors des colonnes.
  *
  *   closed                       Terminé, en Blocage ou non
@@ -91,14 +97,3 @@ export function columnFor(status: string | undefined, blocked: boolean, declared
       return blocked ? 'blocked' : 'inProgress';
   }
 }
-
-/**
- * PROVISOIRE (bdesk-pz0.4 donnera leurs colonnes aux Statuts de relais) : la colonne où le montre un écran qui n'a encore que les colonnes de tout
- * Projet, le tableau et la page Epic. Un ticket d'une colonne de relais y est montré en En cours, faute de colonne à lui (avant ce repli, il était
- * « En pause ») : aucun ne disparaît. Toute autre colonne est la sienne.
- */
-export function baseColumnOf(column: Column): BaseColumn {
-  return isHandoffColumn(column) ? 'inProgress' : column;
-}
-
-const isHandoffColumn = (column: Column): column is HandoffColumn => (HANDOFF_COLUMNS as readonly Column[]).includes(column);

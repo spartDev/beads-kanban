@@ -57,11 +57,12 @@ describe('the kanban, in English', () => {
     const rules: [column: string, hint: string, rule: string][] = [
       ['Backlog', 'Open, Blocked', 'Open ticket that is Blocked: it depends on at least one ticket that isn’t closed.'],
       ['Ready', 'Open, not Blocked', 'Open ticket with no pending dependency.'],
-      ['In progress', 'In progress, not Blocked', 'Ticket in progress, hooked to an agent or in another work status, with no pending dependency.'],
+      ['In progress', 'In progress, not Blocked', 'Ticket in progress, hooked to an agent or in another status the Project declares as work, with no pending dependency.'],
       [
         'Blocked',
         'Blockage or blocked status',
-        'Ticket with the blocked status, or in a work status (in progress, hooked to an agent…) but Blocked: it depends on a ticket that isn’t closed.',
+        // Cinq colonnes : aucun Statut de relais à citer.
+        'Ticket with the blocked status, or in a work status but Blocked (it depends on a ticket that isn’t closed): in progress, hooked to an agent or another status the Project declares as work.',
       ],
     ];
     for (const [column, hint, rule] of rules) {

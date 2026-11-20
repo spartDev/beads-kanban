@@ -2,16 +2,17 @@ import { CirclePause, Layers, type LucideIcon } from 'lucide-react';
 import { EPIC_GROUPS, type EpicGroup, type EpicProgress } from '../../domain/epics';
 import type { Issue } from '../data/types';
 import { compareClosed, compareIssues } from '../kanban/columns';
-import { COLUMN_META, ticketNoun } from '../kanban/meta';
-import { useFormat, useT } from '../i18n';
+import { columnMeta, ticketNoun } from '../kanban/meta';
+import { useFormat, useLanguage, useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { ChildRow } from './ChildRow';
 import { closedUndelivered } from './closedUndelivered';
 
-/** Le titre et le pictogramme d'un groupe : ceux de la colonne du kanban, plus « En pause ». */
+/** Le titre et le pictogramme d'un groupe : ceux de la colonne du kanban, dans la langue de l'interface, plus « En pause ». */
 export function useGroupMeta(): (group: EpicGroup) => { label: string; icon: LucideIcon } {
   const paused = useT().epics.children.paused;
-  return (group) => (group === 'paused' ? { label: paused, icon: CirclePause } : COLUMN_META[group]);
+  const meta = columnMeta(useLanguage().language);
+  return (group) => (group === 'paused' ? { label: paused, icon: CirclePause } : meta[group]);
 }
 
 const idOf = (group: EpicGroup, part: 'title' | 'count') => `epic-group-${group}-${part}`;

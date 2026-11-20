@@ -7,6 +7,9 @@ const lanes = (filled: readonly ColumnId[]): Lanes => ({
   backlog: filled.includes('backlog') ? ['a'] : [],
   ready: filled.includes('ready') ? ['b'] : [],
   inProgress: filled.includes('inProgress') ? ['c'] : [],
+  inReview: filled.includes('inReview') ? ['r'] : [],
+  inIntegration: filled.includes('inIntegration') ? ['i'] : [],
+  awaitingHuman: filled.includes('awaitingHuman') ? ['h'] : [],
   blocked: filled.includes('blocked') ? ['d'] : [],
   done: filled.includes('done') ? ['e'] : [],
   paused: ['p'],
@@ -18,6 +21,13 @@ describe('adjacentColumn : où va « h » ou « l »', () => {
   it('va à la colonne voisine', () => {
     expect(adjacentColumn(all, 'ready', 1)).toBe('inProgress');
     expect(adjacentColumn(all, 'ready', -1)).toBe('backlog');
+  });
+
+  it('passe par les colonnes des Statuts de relais, entre En cours et Bloqué', () => {
+    const relayed = lanes(['inProgress', 'inReview', 'awaitingHuman', 'blocked']);
+    expect(adjacentColumn(relayed, 'inProgress', 1)).toBe('inReview');
+    expect(adjacentColumn(relayed, 'inReview', 1)).toBe('awaitingHuman');
+    expect(adjacentColumn(relayed, 'blocked', -1)).toBe('awaitingHuman');
   });
 
   it('s’arrête aux bords du tableau', () => {
