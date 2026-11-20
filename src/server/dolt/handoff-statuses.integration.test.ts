@@ -12,7 +12,7 @@ import { scratchDir } from '../testing/scratch';
 import { createCheckedDoltClient } from './stored-sql';
 
 /**
- * Les Statuts de relais sont des statuts de travail (bdesk-pz0.3, ADR 0007), de la base Dolt aux métriques, sur de vraies bases (sans bd), par l'API de
+ * Les Statuts de relais sont des statuts de travail (bdesk-pz0.3, ADR 0007), de la base Dolt aux métriques et aux mesures de relecture (bdesk-pz0.5), sur de vraies bases (sans bd), par l'API de
  * l'app. Chaque commit est daté du jour `n` d'octobre 2026 à 10 h UTC ; les métriques se mesurent le 12 à midi, en UTC, du 1er au 12.
  *
  *   relais  déclare les trois Statuts de relais et `qa_testing:wip` (table `config`, comme bd l'écrit)
@@ -178,6 +178,19 @@ describe.skipIf(!hasBinary('dolt'))('Statuts de relais : des Projets jetables do
       done: 0,
     });
     expect((await chronology('nu', 'n-2')).cycleTime).toBeNull();
+  });
+
+  it('expose les mesures de relecture pour un Projet et pour la Vue globale (bdesk-pz0.5)', async () => {
+    // relais : r-1 relu, renvoyé une fois depuis la relecture ; r-4 jamais relu. nu : n-1 relu et accepté ; n-2 jamais relu.
+    const relais = (await metrics(`${PERIOD}&project=relais`)).review;
+    expect(relais).toMatchObject({ deliveries: 2, reviewed: 1, coverage: 0.5, firstPassAcceptance: { accepted: 0, reviewed: 1, rate: 0, significant: false } });
+    expect(relais.sendBacks).toEqual({ review: 1, integration: 0, validation: 0 });
+    expect(relais.roundsPerDelivery).toEqual({ one: 1, two: 0, three: 0, fourOrMore: 0 });
+
+    const global = (await metrics(PERIOD)).review;
+    expect(global).toMatchObject({ deliveries: 4, reviewed: 2, coverage: 0.5, firstPassAcceptance: { accepted: 1, reviewed: 2, rate: 0.5 } });
+    expect(global.sendBacks).toEqual({ review: 1, integration: 0, validation: 0 });
+    expect(global.failureRate).toMatchObject({ reviewed: { deliveries: 2, failed: 0 }, unreviewed: { deliveries: 2, failed: 0 } });
   });
 
   it('lit la déclaration dans le même processus dolt que les tickets : l’historique ne coûte aucun processus de plus', async () => {

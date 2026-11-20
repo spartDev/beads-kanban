@@ -906,6 +906,56 @@ export interface MetricsHealth {
   activity: MetricsActivity;
 }
 
+/** L'origine d'un Retour : le Statut de relais qu'il quitte (En relecture, En intégration, À valider). */
+export type MetricsSendBackOrigin = 'review' | 'integration' | 'validation';
+
+/** Un Taux d'échec sur une partie des Livraisons de la période (`MetricsReview.failureRate`). */
+export interface MetricsReviewFailureRate {
+  /** Livraisons de cette partie. */
+  deliveries: number;
+  /** Parmi elles, celles qui ont au moins un Bug d'origine. */
+  failed: number;
+  /** `failed / deliveries`, de 0 à 1 ; null sans Livraison. */
+  rate: number | null;
+}
+
+/**
+ * Les mesures de relecture de la période (bdesk-pz0.5, ADR 0007) : celles des Livraisons de la période, datées de leur dernière clôture comme le Débit.
+ * Elles se lisent dans les Transitions, Tours de relecture (vers En relecture) et Retours (d'un Statut de relais vers en cours, rattaché à un agent ou un
+ * autre statut que le Projet déclare de catégorie `wip`), d'avant la dernière clôture : ceux d'avant une Réouverture comptent. Rien n'est rétroactif :
+ * avant que les Statuts de relais soient posés, aucune Livraison n'est relue, et la Couverture de relecture dit quand ces mesures deviennent représentatives.
+ */
+export interface MetricsReview {
+  /** Livraisons de la période (le Débit). */
+  deliveries: number;
+  /** Parmi elles, les Livraisons relues : au moins un Tour de relecture avant leur dernière clôture. */
+  reviewed: number;
+  /** Couverture de relecture : `reviewed / deliveries`, de 0 à 1 ; null sans Livraison. */
+  coverage: number | null;
+  /** Acceptation au premier passage : la part des Livraisons relues qui n'ont subi aucun Retour, de quelque origine qu'il soit. */
+  firstPassAcceptance: {
+    /** Livraisons relues sans aucun Retour. */
+    accepted: number;
+    /** Livraisons relues : le dénominateur, `MetricsReview.reviewed`. */
+    reviewed: number;
+    /** `accepted / reviewed`, de 0 à 1 ; null sans Livraison relue. */
+    rate: number | null;
+    /** Faux sous `minReviewed` Livraisons relues. */
+    significant: boolean;
+    /** Le seuil : 10 Livraisons relues. */
+    minReviewed: number;
+  };
+  /** Tours par Livraison : les Livraisons relues selon leur nombre de Tours de relecture. La somme vaut `reviewed`. */
+  roundsPerDelivery: { one: number; two: number; three: number; fourOrMore: number };
+  /**
+   * Taux d'échec après relecture : le Taux d'échec (`MetricsFailureRateTile`) des seules Livraisons relues, à côté de celui des autres. Les deux parties
+   * font les Livraisons de la tuile, et leurs échecs les siens. Significatif par la règle du Taux d'échec, sur la Couverture de tous les bugs.
+   */
+  failureRate: MetricsSignificance & { reviewed: MetricsReviewFailureRate; unreviewed: MetricsReviewFailureRate };
+  /** Les Retours des Livraisons de la période (relues ou non), par origine : un Retour compte autant de fois qu'il a lieu. */
+  sendBacks: Record<MetricsSendBackOrigin, number>;
+}
+
 /** Ce que le domaine calcule : tout ce qu'affiche la page Métriques, hors Projets. */
 export interface MetricsReport {
   range: MetricsRange;
@@ -975,6 +1025,8 @@ export interface MetricsResponse extends MetricsReport {
   unreadable: MetricsUnreadableProject[];
   /** Santé du flux (bdesk-38k.13) : calculée par `computeHealth`, à côté de `computeMetrics`, sur la même période. */
   health: MetricsHealth;
+  /** Mesures de relecture (bdesk-pz0.5) : calculées par `computeReview`, à côté de `computeMetrics`, sur la même période. */
+  review: MetricsReview;
   /** Tendance longue (bdesk-l77.4) : calculée par `longTrendOf`, sur les 12 dernières semaines, quelle que soit la période. */
   longTrend: MetricsLongTrend;
 }

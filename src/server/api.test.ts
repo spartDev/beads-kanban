@@ -499,9 +499,11 @@ describe('API des métriques', () => {
     expect(Object.keys(body).sort()).toEqual(
       [
         'asOf', 'bucket', 'buckets', 'cfd', 'cycleTimeScatter', 'generatedAt', 'health', 'inProgress', 'longTrend', 'period', 'previousAsOf', 'previousPeriod',
-        'projects', 'range', 'slices', 'tiles', 'timeZone', 'timeZoneHonoured', 'unreadable',
+        'projects', 'range', 'review', 'slices', 'tiles', 'timeZone', 'timeZoneHonoured', 'unreadable',
       ].sort(),
     );
+    // Mesures de relecture (bdesk-pz0.5) : un ajout au contrat, à côté du rapport ; un Projet sans Statut de relais n'a aucune Livraison relue.
+    expect(body.review).toMatchObject({ reviewed: 0, firstPassAcceptance: { reviewed: 0, rate: null, significant: false, minReviewed: 10 } });
     // Santé du flux (bdesk-38k.13) : un ajout au contrat, les clés précédentes sont inchangées.
     expect(Object.keys(body.health).sort()).toEqual(['abandonment', 'activity', 'declines', 'efficiency', 'leadTimeBreakdown', 'readyAges', 'reopening', 'rework']);
     // Retravail (bdesk-l77.3) : un ajout aussi, la liste des tickets qui reviennent.

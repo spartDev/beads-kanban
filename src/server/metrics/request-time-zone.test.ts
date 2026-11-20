@@ -134,6 +134,26 @@ describe('service de métriques : le fuseau que la requête demande (bdesk-38k.4
     expect(utc.health.activity.cells[2]?.[23]).toBe(1); // mercredi (2), 23 h
   });
 
+  it('compte la relecture dans le fuseau demandé, comme le Débit : une Livraison relue du 29 octobre à 13 h à Paris tombe hors des 7 jours de Paris (bdesk-pz0.5)', async () => {
+    // 7 jours à 00:30 à Paris, jeudi 5 : du vendredi 30 octobre à minuit (29 octobre 23:00Z). En UTC : du jeudi 29 octobre à minuit.
+    const statuses: StatusSnapshot[] = [
+      { status: 'open', at: at('2026-10-20T08:00') },
+      { status: 'in_progress', at: at('2026-10-21T08:00') },
+      { status: 'in_review', at: at('2026-10-22T08:00') },
+      { status: 'closed', at: at('2026-10-29T12:00') },
+    ];
+    const { service } = lateDelivery();
+    const metrics = serverInUtc({ ...service, histories: async () => [{ id: 'p-1', type: 'task', statusSnapshots: statuses, dependencies: [] }] });
+
+    const paris = await metrics.compute({ ...week, timeZone: 'Europe/Paris' });
+    const utc = await metrics.compute(week);
+
+    expect(paris.tiles.throughput.total).toBe(0);
+    expect(paris.review).toMatchObject({ deliveries: 0, reviewed: 0 });
+    expect(utc.tiles.throughput.total).toBe(1);
+    expect(utc.review).toMatchObject({ deliveries: 1, reviewed: 1 });
+  });
+
   it('sert deux fuseaux avec une seule lecture de l’historique : l’analyse d’un Projet ne dépend pas du fuseau', async () => {
     const { service, calls } = lateDelivery();
     const metrics = serverInUtc(service);
