@@ -3,7 +3,7 @@ import { ticketTitle } from '../data/helpers';
 import { projectLabel } from '../data/projectNames';
 import { CATALOGS } from '../i18n/catalog';
 import type { Language } from '../i18n/language';
-import { SIGNAL_KINDS, signalSentence } from '../lib/signals';
+import { signalKinds, signalSentence } from '../lib/signals';
 import type { NamedMetricsResponse } from './api';
 import { describeComparison } from './comparison';
 import { failureRateReason } from './failureReason';
@@ -138,16 +138,16 @@ function signals(input: RetrospectiveSignals, timeZone: string, projectName: (id
   const at = CATALOGS[language].metrics.comparison.at(FORMATS[language].formatDay(dayInZone(response.generatedAt, timeZone)), formatTime(response.generatedAt, timeZone));
   const lines = [`## ${texts.signalsHeadingAt(counted(language, response.signals.length, texts.signals), at)}`, ''];
   if (response.signals.length === 0) return [...lines, texts.noSignals];
-  for (const { kind, label } of SIGNAL_KINDS) {
+  for (const { kind, label } of signalKinds(language)) {
     const group = response.signals.filter((signal) => signal.kind === kind);
     if (group.length === 0) continue;
     lines.push(`### ${label}`, '');
     for (const signal of group) {
       const where = escapeMarkdown(projectName(signal.project));
       if (signal.kind === 'unusualWip') {
-        lines.push(`- ${texts.item(where, signalSentence(signal))}`);
+        lines.push(`- ${texts.item(where, signalSentence(signal, language))}`);
       } else {
-        lines.push(`- ${texts.item(`\`${signal.ticket.id}\` ${escapeMarkdown(ticketTitle(signal.ticket))}${showProject ? ` (${where})` : ''}`, signalSentence(signal))}`);
+        lines.push(`- ${texts.item(`\`${signal.ticket.id}\` ${escapeMarkdown(ticketTitle(signal.ticket))}${showProject ? ` (${where})` : ''}`, signalSentence(signal, language))}`);
       }
     }
     lines.push('');

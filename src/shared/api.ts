@@ -303,7 +303,11 @@ export type ApiSignal =
   /** Prêt qui stagne : Prêt depuis `since`, d'un Âge calendaire `age`. */
   | { kind: 'stagnantReady'; project: string; ticket: SignalTicket; since: string; age: number }
   /** WIP inhabituel : `wip` dépasse `threshold`, le P85 du WIP quotidien des 90 derniers jours. */
-  | { kind: 'unusualWip'; project: string; wip: number; threshold: number };
+  | { kind: 'unusualWip'; project: string; wip: number; threshold: number }
+  /** Validation qui attend : À valider depuis `since`, depuis plus de 24 heures de Durée écoulée (`duration`). */
+  | { kind: 'waitingValidation'; project: string; ticket: SignalTicket; since: string; duration: number }
+  /** Boucle de Retours : un ticket non fermé qui a subi `sendBacks` Retours, au moins 3. */
+  | { kind: 'sendBackLoop'; project: string; ticket: SignalTicket; sendBacks: number };
 
 /** `GET /api/signals` : les Signaux des Projets demandés (`project`, répétable), ou de tous (Vue globale). */
 export interface SignalsResponse {
@@ -313,7 +317,7 @@ export interface SignalsResponse {
   timeZoneHonoured: boolean;
   projects: Array<{ id: string; name: string }>;
   unreadable: MetricsUnreadableProject[];
-  /** Groupés par sorte (Dérive, Blocage long, Prêt qui stagne, WIP inhabituel), le plus en excès d'abord. */
+  /** Groupés par sorte (Dérive, Blocage long, Prêt qui stagne, WIP inhabituel, Validation qui attend, Boucle de Retours), le plus en excès d'abord. */
   signals: ApiSignal[];
 }
 

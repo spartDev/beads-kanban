@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TicketSignals } from '../data/hooks';
-import { shownSignals } from './signals';
+import { shownSignals, signalKinds, signalSentence } from './signals';
 import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 
 /** Les Signaux d'un ticket que montrent sa carte et son Panneau : une Dérive et un Blocage long, tels que le serveur les a calculés. */
@@ -22,5 +22,27 @@ describe('shownSignals : les Signaux d’un ticket que l’écran montre', () =>
 
   it('ne montre rien tant que les Signaux manquent', () => {
     expect(shownSignals('in_review', undefined, NO_DECLARED_STATUSES)).toEqual({});
+  });
+});
+
+describe('signalSentence : les Signaux de relais', () => {
+  const ticket = { id: 't', title: 'T', type: 'task', priority: 2 };
+
+  it('dit depuis quand un ticket est À valider, et combien de Retours il a subis, dans les deux langues', () => {
+    const waiting = { kind: 'waitingValidation', project: 'p', ticket, since: '2026-10-20T10:00:00.000Z', duration: 2 * 86_400_000 } as const;
+    const loop = { kind: 'sendBackLoop', project: 'p', ticket, sendBacks: 3 } as const;
+
+    expect(signalSentence(waiting, 'fr').replaceAll('\u00a0', ' ')).toBe('À valider depuis 2 j');
+    expect(signalSentence(waiting, 'en').replaceAll('\u00a0', ' ')).toBe('Awaiting validation for 2 d');
+    expect(signalSentence(loop, 'fr')).toBe('3 Retours au développement, sans être fermé');
+    expect(signalSentence(loop, 'en')).toBe('3 Send-backs to development, still not closed');
+  });
+
+  it('les range après les autres sortes, sous leurs noms du glossaire', () => {
+    expect(signalKinds('fr').slice(-2)).toEqual([
+      { kind: 'waitingValidation', label: 'Validation qui attend' },
+      { kind: 'sendBackLoop', label: 'Boucle de Retours' },
+    ]);
+    expect(signalKinds('en').slice(-2).map(({ label }) => label)).toEqual(['Waiting validation', 'Send-back loop']);
   });
 });

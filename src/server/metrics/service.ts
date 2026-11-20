@@ -287,6 +287,7 @@ function toApiSignal(signal: Signal): ApiSignal {
   switch (signal.kind) {
     case 'longBlockage':
     case 'stagnantReady':
+    case 'waitingValidation':
       return { ...signal, since: new Date(signal.since).toISOString() };
     default:
       return signal;

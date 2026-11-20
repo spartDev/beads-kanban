@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { useProjects, useSignals } from '../data/hooks';
 import { projectInSentence } from '../data/projectNames';
 import { UnreadableProjects } from '../metrics/Notices';
+import { MetricHelp } from '../metrics/Tiles';
 import type { ApiSignal, Project, SignalsResponse } from '../data/types';
 import { useLanguage, useT } from '../i18n';
 import { isInvisibleText } from '../lib/invisibleText';
@@ -52,8 +53,9 @@ export function ProjectSignalsPage() {
 }
 
 /**
- * Les Signaux, groupés par sorte (l'ordre du serveur : Dérive, Blocage long, Prêt qui stagne, WIP inhabituel, le plus en excès d'abord). Un Signal vit tant
- * que sa condition est vraie : il n'y a rien à écarter, la page se relit avec les données.
+ * Les Signaux, groupés par sorte (l'ordre du serveur : Dérive, Blocage long, Prêt qui stagne, WIP inhabituel, Validation qui attend, Boucle de Retours, le
+ * plus en excès d'abord).
+ * Un Signal vit tant que sa condition est vraie : il n'y a rien à écarter, la page se relit avec les données.
  */
 function SignalsView({ project, description, lead }: { project?: Project; description: string; lead?: ReactNode }) {
   const query = useSignals(project?.id);
@@ -79,13 +81,26 @@ function SignalsView({ project, description, lead }: { project?: Project; descri
   );
 }
 
+/**
+ * Les sortes de Signal qui ne forment pas de groupe sur la page : aucune pour l'instant. La Validation qui attend en forme un, à titre provisoire (voir
+ * `help` dans `SignalGroups`).
+ */
+const NOT_GROUPED: readonly ApiSignal['kind'][] = [];
+
 function SignalGroups({ response }: { response: SignalsResponse }) {
   const named = useProjectNamer();
   const { language, t } = useLanguage();
   const projects = response.projects.map(named);
-  const groups = signalKinds(language).map(({ kind, label }) => ({ kind, label, signals: response.signals.filter((signal) => signal.kind === kind) })).filter(
-    (group) => group.signals.length > 0,
-  );
+  const help: Partial<Record<ApiSignal['kind'], string>> = {
+    // PROVISOIRE (bdesk-3e9.6) : la Validation qui attend forme un groupe, comme les autres Signaux, tant que la File de décisions n'existe pas. Celle-ci le
+    // remplacera par une marque sur la ligne du ticket (cadrage bdesk-3e9) : il faudra alors remettre `waitingValidation` dans `NOT_GROUPED`.
+    waitingValidation: t.metrics.metricHelp.waitingValidation,
+    sendBackLoop: t.metrics.metricHelp.sendBackLoop,
+  };
+  const groups = signalKinds(language)
+    .filter(({ kind }) => !NOT_GROUPED.includes(kind))
+    .map(({ kind, label }) => ({ kind, label, signals: response.signals.filter((signal) => signal.kind === kind) }))
+    .filter((group) => group.signals.length > 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -95,19 +110,29 @@ function SignalGroups({ response }: { response: SignalsResponse }) {
           <p>{t.shell.signalsPage.nothing}</p>
         </Notice>
       ) : (
-        groups.map((group) => <SignalGroup key={group.kind} label={group.label} signals={group.signals} projects={projects} />)
+        groups.map((group) => <SignalGroup key={group.kind} label={group.label} help={help[group.kind]} signals={group.signals} projects={projects} />)
       )}
     </div>
   );
 }
 
-function SignalGroup({ label, signals, projects }: { label: string; signals: ApiSignal[]; projects: NamedProject[] }) {
+function SignalGroup({ label, help, signals, projects }: { label: string; help?: string; signals: ApiSignal[]; projects: NamedProject[] }) {
   const headingId = useId();
+  const heading = (
+    <h2 id={headingId} className="text-ui font-semibold text-ink">
+      {label}
+    </h2>
+  );
   return (
     <section aria-labelledby={headingId} data-signal-group className="flex flex-col gap-2">
-      <h2 id={headingId} className="text-ui font-semibold text-ink">
-        {label}
-      </h2>
+      {help ? (
+        <div className="flex min-w-0 items-center gap-0.5">
+          {heading}
+          <MetricHelp title={label} help={help} />
+        </div>
+      ) : (
+        heading
+      )}
       <ul className="flex flex-col divide-y divide-line rounded-lg border border-line bg-panel">
         {signals.map((signal) => (
           <li key={'ticket' in signal ? `${signal.project}/${signal.ticket.id}` : signal.project} className="flex min-w-0 flex-col gap-0.5 px-3 py-2">

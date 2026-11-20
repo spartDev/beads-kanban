@@ -359,6 +359,32 @@ describe('API des Signaux', () => {
     });
   });
 
+  it('sert la Validation qui attend, datée en ISO, et la Boucle de Retours, avec son nombre de Retours', async () => {
+    const relayed: TicketHistory[] = [
+      { id: 'v', type: 'task', statusSnapshots: snapshots(['in_progress', 3], ['awaiting_human', 2]), dependencies: [] },
+      {
+        id: 'l',
+        type: 'task',
+        statusSnapshots: snapshots(['in_progress', 0.7], ['in_review', 0.6], ['in_progress', 0.5], ['in_integration', 0.4], ['in_progress', 0.3], ['awaiting_human', 0.2], ['in_progress', 0.1]),
+        dependencies: [],
+      },
+    ];
+    const relayedIssues = relayed.map((h): Issue => ({ ...issue, id: h.id, title: `Titre de ${h.id}`, type: 'task', priority: 2 }));
+    const res = await getSignals(serviceWith({ histories: async () => relayed, issues: async () => relayedIssues }));
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().signals).toEqual([
+      {
+        kind: 'waitingValidation',
+        project: 'beads-desktop',
+        ticket: { id: 'v', title: 'Titre de v', type: 'task', priority: 2 },
+        since: ago(2).toISOString(),
+        duration: 2 * DAY,
+      },
+      { kind: 'sendBackLoop', project: 'beads-desktop', ticket: { id: 'l', title: 'Titre de l', type: 'task', priority: 2 }, sendBacks: 3 },
+    ]);
+  });
+
   it('liste un Projet illisible dans la réponse, sans faire échouer le reste', async () => {
     const res = await getSignals(
       serviceWith({

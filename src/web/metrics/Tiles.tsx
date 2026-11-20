@@ -113,8 +113,11 @@ export function Tile({
   );
 }
 
-/** L'icône info d'une tuile : au survol ou au focus clavier, une infobulle dit ce que mesure la tuile et à quoi elle sert. */
-function MetricHelp({ title, help }: { title: string; help: string }) {
+/**
+ * L'icône info d'une tuile : au survol ou au focus clavier, une infobulle dit ce que mesure la tuile et à quoi elle sert. La page « À regarder » la pose
+ * aussi à côté du nom d'un Signal qui a son aide.
+ */
+export function MetricHelp({ title, help }: { title: string; help: string }) {
   const t = useT();
   return (
     <Tip label={help} side="bottom">
