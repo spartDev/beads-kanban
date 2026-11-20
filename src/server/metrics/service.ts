@@ -3,6 +3,7 @@ import { computeHealth } from '../../domain/health';
 import { longTrendOf } from '../../domain/longTrend';
 import { analyzeProject, computeMetrics, type MetricsInput, type ProjectAnalysis } from '../../domain/metrics';
 import { type Signal, signalsOf } from '../../domain/signals';
+import { computeReview } from '../../domain/review';
 import { lastVisitWindow, type SinceGroup, sinceLastVisit } from '../../domain/sinceLastVisit';
 import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 import type {
@@ -259,6 +260,7 @@ export function createMetricsService(
         unreadable,
         ...computeMetrics(measured, { period, now: at, timeZone: zone }),
         health: computeHealth(measured, { period, now: at, timeZone: zone }),
+        review: computeReview(measured, { period, now: at, timeZone: zone }),
         longTrend: longTrendOf(measured, { now: at, timeZone: zone }),
       };
     },

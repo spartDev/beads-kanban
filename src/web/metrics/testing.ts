@@ -17,6 +17,7 @@ import type {
   MetricsProject,
   MetricsReadyTicket,
   MetricsResponse,
+  MetricsReview,
   MetricsSignificance,
   MetricsSlice,
   MetricsTrend,
@@ -236,6 +237,23 @@ export function emptyHealthFixture(overrides: Partial<MetricsHealth> = {}): Metr
   };
 }
 
+/**
+ * Les mesures de relecture des fixtures (bdesk-pz0.5) : aucune Livraison relue, comme sur un Projet qui ne pose pas encore les Statuts de relais.
+ * `deliveries` : les Livraisons de la période, toutes non relues.
+ */
+export function reviewFixture(deliveries = 0, overrides: Partial<MetricsReview> = {}): MetricsReview {
+  return {
+    deliveries,
+    reviewed: 0,
+    coverage: deliveries === 0 ? null : 0,
+    firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10 },
+    roundsPerDelivery: { one: 0, two: 0, three: 0, fourOrMore: 0 },
+    failureRate: { ...LOW_COVERAGE, reviewed: { deliveries: 0, failed: 0, rate: null }, unreviewed: { deliveries, failed: 0, rate: deliveries === 0 ? null : 0 } },
+    sendBacks: { review: 0, integration: 0, validation: 0 },
+    ...overrides,
+  };
+}
+
 /** La significativité du Débit sain des fixtures : la Couverture de leur Taux d'échec, 19 %, trop faible. */
 export const LOW_COVERAGE: MetricsSignificance = {
   coverage: { bugs: 67, linked: 13, ratio: 13 / 67 },
@@ -361,6 +379,7 @@ export function metricsFixture(overrides: Partial<MetricsResponse> = {}): Metric
       ],
     },
     health: healthFixture(),
+    review: reviewFixture(18),
     longTrend: longTrendFixture(),
     ...overrides,
   };
@@ -387,6 +406,7 @@ export function emptyMetricsFixture(overrides: Partial<MetricsResponse> = {}): M
     inProgress: [],
     slices: { type: [], priority: [], project: [slice('bdesk', 'beads-desktop', { throughput: 0, arrivals: 0, wip: 0, failureRate: null, leadTime: { median: null, p85: null, n: 0 }, cycleTime: { median: null, p85: null, n: 0 }, coverage: { bugs: 0, linked: 0, ratio: null } })] },
     health: emptyHealthFixture(),
+    review: reviewFixture(),
     longTrend: longTrendFixture(new Array<number>(12).fill(0)),
     ...overrides,
   });
