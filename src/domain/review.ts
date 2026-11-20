@@ -42,10 +42,11 @@ const isDevelopment = (status: string, declared: DeclaredStatuses): boolean =>
   status === 'in_progress' || status === 'hooked' || isDeclaredWip(status, declared);
 
 /**
- * Les Tours de relecture et les Retours d'une suite de Transitions, dans l'ordre de l'historique : toutes celles qu'on lui donne. Les métriques lui donnent
- * celles d'une Livraison, qui finissent à sa dernière clôture. Un Tour est une Transition vers En relecture, la première du ticket comprise (un ticket créé
- * En relecture) ; un Retour, une Transition d'un Statut de relais vers en cours, rattaché à un agent ou un statut déclaré `wip` (`isDevelopment`), dont
- * l'origine est le statut qu'il quitte. Deux Transitions qui se suivent ne répètent jamais un statut (`recordedTransitions`).
+ * Les Tours de relecture et les Retours d'une suite de statuts datés (`TicketTimeline.steps` : le statut de création, puis les Transitions), dans l'ordre de
+ * l'historique : toute la suite qu'on lui donne. Les métriques lui donnent celle d'une Livraison, qui finit à sa dernière clôture. Un Tour est une
+ * Transition vers En relecture ; le statut de création n'est pas une Transition (CONTEXT.md), mais il compte comme un passage En relecture : un ticket créé
+ * En relecture a un Tour. Un Retour est une Transition d'un Statut de relais vers en cours, rattaché à un agent ou un statut déclaré `wip`
+ * (`isDevelopment`), dont l'origine est le statut qu'il quitte. Deux statuts qui se suivent ne se répètent jamais (`recordedTransitions`).
  *
  * `declared` : les statuts personnalisés que le Projet déclare, qui disent lesquels de ses autres statuts comptent comme en cours.
  */

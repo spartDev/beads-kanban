@@ -95,16 +95,28 @@ describe('Tours de relecture et Retours d’un ticket', () => {
     });
   });
 
-  it('vers bloqué, ouvert, différé ou fermé : pas un Retour', () => {
-    for (const to of ['blocked', 'open', 'deferred', 'closed']) {
-      expect(reviewOf(steps('in_progress', 'in_review', to), DECLARED).sendBacks).toEqual({ review: 0, integration: 0, validation: 0 });
-    }
-    // Repartir au développement depuis bloqué n'est pas un Retour non plus, même après une relecture.
-    expect(reviewOf(steps('in_review', 'blocked', 'in_progress'), DECLARED).sendBacks.review).toBe(0);
+  it('deux Retours de même origine sur un ticket comptent deux fois', () => {
+    expect(reviewOf(steps('open', 'in_progress', 'in_review', 'in_progress', 'in_review', 'in_progress', 'in_review', 'closed'), NO_DECLARED_STATUSES)).toEqual({
+      rounds: 3,
+      sendBacks: { review: 2, integration: 0, validation: 0 },
+    });
   });
 
-  it('un ticket créé En relecture : sa première Transition est un Tour', () => {
+  it.each([['in_review'], ['in_integration'], ['awaiting_human']])('de %s vers bloqué, ouvert, différé ou fermé : pas un Retour', (from) => {
+    // Vers ouvert : une Prise rendue depuis En relecture ou En intégration, un Report depuis À valider ; ni l'un ni l'autre n'est un Retour.
+    for (const to of ['blocked', 'open', 'deferred', 'closed']) {
+      expect(reviewOf(steps('open', 'in_progress', from, to), DECLARED).sendBacks).toEqual({ review: 0, integration: 0, validation: 0 });
+    }
+    // Repartir au développement depuis bloqué n'est pas un Retour non plus, même après une relecture.
+    expect(reviewOf(steps('in_review', 'blocked', 'in_progress'), DECLARED).sendBacks).toEqual({ review: 0, integration: 0, validation: 0 });
+  });
+
+  it('le statut de création compte comme un passage En relecture : un ticket créé En relecture a un Tour, et peut être renvoyé', () => {
     expect(reviewOf(steps('in_review', 'closed'), NO_DECLARED_STATUSES).rounds).toBe(1);
+    expect(reviewOf(steps('in_review', 'in_progress', 'closed'), NO_DECLARED_STATUSES)).toEqual({
+      rounds: 1,
+      sendBacks: { review: 1, integration: 0, validation: 0 },
+    });
   });
 });
 
@@ -151,6 +163,18 @@ describe('mesures de relecture de la période', () => {
     expect(review.roundsPerDelivery).toEqual({ one: 3, two: 1, three: 0, fourOrMore: 0 });
   });
 
+  it('deux Retours de même origine sur une Livraison comptent deux fois dans la période', () => {
+    const review = reviewIn([project([delivered('deux', ['in_progress', 'in_review', 'in_progress', 'in_review', 'in_progress', 'in_review'])])]);
+    expect(review.sendBacks).toEqual({ review: 2, integration: 0, validation: 0 });
+    expect(review.roundsPerDelivery.three).toBe(1);
+  });
+
+  it('un Retour d’intégration avant le premier Tour fait échouer l’Acceptation au premier passage', () => {
+    const review = reviewIn([project([delivered('ci', ['in_progress', 'in_integration', 'in_progress', 'in_review'])])]);
+    expect(review).toMatchObject({ reviewed: 1, firstPassAcceptance: { accepted: 0, reviewed: 1, rate: 0 } });
+    expect(review.sendBacks).toEqual({ review: 0, integration: 1, validation: 0 });
+  });
+
   it('un Retour d’une Livraison non relue (depuis En intégration) compte par origine, sans toucher l’Acceptation', () => {
     const review = reviewIn([project([delivered('pr', ['in_progress', 'in_integration', 'in_progress', 'in_integration'])])]);
     expect(review).toMatchObject({ deliveries: 1, reviewed: 0, coverage: 0, firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null } });
@@ -173,9 +197,45 @@ describe('mesures de relecture de la période', () => {
     expect(review).toMatchObject({ deliveries: 1, reviewed: 1, firstPassAcceptance: { accepted: 0, reviewed: 1 } });
     expect(review.roundsPerDelivery).toEqual({ one: 0, two: 0, three: 1, fourOrMore: 0 });
     expect(review.sendBacks).toEqual({ review: 1, integration: 0, validation: 0 });
+    // Le seul Retour précède la Réouverture : il compte encore, et la Livraison n'est pas acceptée au premier passage.
+    const before = ticket('avant', [
+      ['open', ago(20)],
+      ['in_progress', ago(19)],
+      ['in_review', ago(18)],
+      ['in_progress', ago(17.5)],
+      ['in_review', ago(17.2)],
+      ['closed', ago(17)],
+      ['in_progress', ago(3)],
+      ['closed', ago(1)],
+    ]);
+    expect(reviewIn([project([before])])).toMatchObject({
+      deliveries: 1,
+      reviewed: 1,
+      firstPassAcceptance: { accepted: 0, reviewed: 1 },
+      roundsPerDelivery: { two: 1 },
+      sendBacks: { review: 1, integration: 0, validation: 0 },
+    });
     // Une période qui ne voit que la première clôture n'a pas de Livraison : la Réouverture l'a annulée.
-    const before = computeReview([project([reopened])], { ...options, period: { from: '2026-10-05', to: '2026-10-07' } });
-    expect(before.deliveries).toBe(0);
+    const earlier = computeReview([project([reopened])], { ...options, period: { from: '2026-10-05', to: '2026-10-07' } });
+    expect(earlier.deliveries).toBe(0);
+  });
+
+  it('la période est celle du Débit : jours du Fuseau de l’utilisateur, début compris, fin à maintenant exclue', () => {
+    // 7 jours à Paris, mesurés le 23 octobre à 18:00Z : du samedi 17 octobre à minuit (16 octobre 22:00Z) jusqu'à maintenant.
+    const closedAt = (id: string, iso: string | number) =>
+      ticket(id, [['open', ago(12)], ['in_progress', ago(11)], ['in_review', ago(10)], ['closed', typeof iso === 'number' ? iso : Date.parse(iso)]]);
+    const cases = [
+      [closedAt('debut', '2026-10-16T22:00:00Z'), 1],
+      [closedAt('nuit', '2026-10-16T23:30:00Z'), 1],
+      [closedAt('veille', '2026-10-16T21:59:59Z'), 0],
+      [closedAt('avance', NOW + 3_600_000), 0],
+    ] as const;
+    for (const [delivery, expected] of cases) {
+      const projects = [project([delivery])];
+      expect(computeMetrics(projects, options).tiles.throughput.total).toBe(expected);
+      expect(reviewIn(projects)).toMatchObject({ deliveries: expected, reviewed: expected });
+    }
+    expect(computeMetrics([project([])], options).period.from).toBe('2026-10-17');
   });
 
   it('Tours par Livraison : 1, 2, 3, et 4 ou plus', () => {
