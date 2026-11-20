@@ -7,6 +7,7 @@ import type { IgnoredFolder, Project as ApiProject } from '../../shared/api';
  */
 export type {
   ApiSignal,
+  DeclaredStatuses,
   IgnoredFolder,
   Issue,
   IssueAbandon,

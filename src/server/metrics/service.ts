@@ -1,10 +1,10 @@
 import { type PeriodSpec, resolvePeriod } from '../../domain/calendar';
-import type { TicketHistory } from '../../domain/flow';
 import { computeHealth } from '../../domain/health';
 import { longTrendOf } from '../../domain/longTrend';
 import { analyzeProject, computeMetrics, type MetricsInput, type ProjectAnalysis } from '../../domain/metrics';
 import { type Signal, signalsOf } from '../../domain/signals';
 import { lastVisitWindow, type SinceGroup, sinceLastVisit } from '../../domain/sinceLastVisit';
+import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 import type {
   ApiSignal,
   MetricsResponse,
@@ -15,6 +15,7 @@ import type {
   SinceLastVisitResponse,
 } from '../../shared/api';
 import { ReadAborted } from '../abort';
+import type { ProjectHistory } from '../dolt/history';
 import { ANALYSIS_GRACE_MS, Flight } from '../flight';
 import { createHeadReader } from '../projects/head-reader';
 import { ProjectNotFoundError, type ProjectService, ProjectUnreadableError, type ReadOptions } from '../projects/service';
@@ -117,9 +118,9 @@ export function createMetricsService(
    * personne n'a recueillie, reste là pour la requête qui arrive ensuite ; celle qui échoue ou qu'on abandonne n'est pas gardée, ni
    * celle d'une analyse achevée (son résultat suffit).
    */
-  const historyReads = new Map<string, { head: string; read: Flight<TicketHistory[]> }>();
+  const historyReads = new Map<string, { head: string; read: Flight<ProjectHistory> }>();
 
-  function historyOf(projectId: string, head: string): Flight<TicketHistory[]> {
+  function historyOf(projectId: string, head: string): Flight<ProjectHistory> {
     const known = historyReads.get(projectId);
     if (known?.head === head && !known.read.abandoned) return known.read;
     const entry = { head, read: new Flight((flightSignal) => projects.histories(projectId, { signal: flightSignal }), { graceMs }) };
@@ -143,6 +144,8 @@ export function createMetricsService(
         const issue = current.get(row.id);
         return issue ? [{ ...row, title: issue.title, priority: issue.priority }] : [];
       }),
+      // Lus avec l'historique, dans le même état : les tickets du tableau (`issues`) ne donnent que titres et priorités. Absents : le Projet n'en déclare aucun.
+      rows.declaredStatuses ?? NO_DECLARED_STATUSES,
     );
   }
 

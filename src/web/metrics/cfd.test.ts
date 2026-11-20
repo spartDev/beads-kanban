@@ -93,3 +93,19 @@ describe('en anglais', () => {
     expect(cfdSummary([], 'en')).toBe('Cumulative flow: no days to show.');
   });
 });
+
+describe('les colonnes des Statuts de relais, tant que la pile n’a pas leurs bandes (provisoire, bdesk-pz0.4)', () => {
+  const relayed: MetricsCfdPoint = { ...point('2026-11-02', 5, 33, 11, 1, 170), inReview: 2, inIntegration: 3, awaitingHuman: 4 };
+
+  it('compte leurs tickets dans En cours : la pile, le total et le tableau des valeurs les gardent', () => {
+    const [row] = toCfdRows([relayed]);
+
+    expect(row).toMatchObject({ inProgress: 11 + 2 + 3 + 4, total: 5 + 33 + 11 + 2 + 3 + 4 + 1 + 170, blocked: 1, done: 170 });
+    expect(row).not.toHaveProperty('inReview');
+    expect(cfdSummary(toCfdRows([relayed]), 'fr')).toContain('20 En cours');
+  });
+
+  it('laisse tel quel un point sans colonne de relais', () => {
+    expect(toCfdRows(POINTS)).toEqual(POINTS.map((p) => expect.objectContaining({ ...p })));
+  });
+});

@@ -111,3 +111,16 @@ describe('en anglais', () => {
     ]);
   });
 });
+
+describe('le tronçon En cours et les Statuts de relais (bdesk-pz0.3)', () => {
+  it('compte dans ses tickets ceux des colonnes de relais, qui sont en statut de travail', () => {
+    const data = metricsFixture();
+    const last = data.cfd.at(-1);
+    const cfd = last ? [...data.cfd.slice(0, -1), { ...last, inReview: 2, inIntegration: 1, awaitingHuman: 3 }] : data.cfd;
+
+    const view = describeJourney({ tiles: data.tiles, health: data.health, cfd }, 'fr');
+
+    expect(view.stages[2].stock).toBe(11 + 2 + 1 + 3);
+    expect(view.blockedStock).toBe(last?.blocked);
+  });
+});

@@ -32,7 +32,8 @@ describe.skipIf(!hasBinary('dolt'))('l’Abandon lu dans une base Dolt', () => {
       create table dependencies (
         id char(36) primary key, issue_id varchar(255) not null, depends_on_issue_id varchar(255) not null,
         type varchar(32) not null default 'blocks', created_at datetime not null, created_by varchar(255) not null);
-      create table labels (issue_id varchar(255) not null, label varchar(255) not null, primary key (issue_id, label));`);
+      create table labels (issue_id varchar(255) not null, label varchar(255) not null, primary key (issue_id, label));
+      create table config (\`key\` varchar(255) primary key, value text not null);`);
     const issue = (id: string, type: string, status: string, reason = '') =>
       `insert into issues (id, title, description, design, acceptance_criteria, notes, status, issue_type, created_at, updated_at, closed_at, close_reason)
        values ('${id}', 'Ticket ${id}', '', '', '', '', '${status}', '${type}', '2026-10-01 10:00:00', '2026-10-02 10:00:00',

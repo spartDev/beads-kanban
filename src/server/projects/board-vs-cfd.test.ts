@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeProject, computeMetrics, type MetricsTicket } from '../../domain/metrics';
-import type { Issue } from '../../shared/api';
+import type { DeclaredStatuses, Issue } from '../../shared/api';
 import { buildBoard, type ColumnId } from '../../web/kanban/columns';
 import { withTimeZone } from '../../web/test/timeZone';
 import type { DependencyRecord, IssueSummary } from '../dolt/reader';
 import { buildIssues } from './issues';
+import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 
 /**
  * Le tableau du kanban et le CFD, sur un Projet entier : le même Projet nourrit les deux (l'historique de chaque ticket pour
@@ -108,14 +109,17 @@ describe('le tableau d’un Projet et le dernier point de son CFD comptent les m
     return buildIssues(summaries, dependencies);
   }
 
-  /** Le dernier point du CFD : le Projet tel qu'il est à NOW, par colonne. */
-  function lastCfdPoint(): Record<ColumnId, number> {
-    const analysis = analyzeProject(PROJECT);
+  /**
+   * Le dernier point du CFD : le Projet tel qu'il est à NOW, par colonne, avec les statuts qu'il déclare. PROVISOIRE (bdesk-pz0.4) : le tableau n'a pas
+   * encore les colonnes des Statuts de relais, et les montre en En cours ; leurs tickets sont donc comptés ici dans En cours.
+   */
+  function lastCfdPoint(tickets = PROJECT, declared: DeclaredStatuses = NO_DECLARED_STATUSES): Record<ColumnId, number> {
+    const analysis = analyzeProject(tickets, declared);
     const report = computeMetrics([{ id: 'p', name: 'Projet P', analysis }], { period: { range: '7d' }, now: new Date(NOW), timeZone: 'Europe/Paris' });
     const last = report.cfd.at(-1);
     if (!last) throw new Error('CFD vide');
-    const { backlog, ready, inProgress, blocked, done } = last;
-    return { backlog, ready, inProgress, blocked, done };
+    const { backlog, ready, inProgress, blocked, done, inReview = 0, inIntegration = 0, awaitingHuman = 0 } = last;
+    return { backlog, ready, inProgress: inProgress + inReview + inIntegration + awaitingHuman, blocked, done };
   }
 
   const counts = (board: ReturnType<typeof buildBoard>): Record<ColumnId, number> => {
@@ -144,5 +148,36 @@ describe('le tableau d’un Projet et le dernier point de son CFD comptent les m
     expect(board.closedEarlier).toBe(1); // livre-ancien, fermé le 1er août
     expect(counts(board).done + board.closedEarlier + board.closedUndated).toBe(cfd.done);
     expect({ ...counts(board), done: 0 }).toEqual({ ...cfd, done: 0 });
+  });
+  it('compte de même un statut que le Projet déclare wip et les Statuts de relais (en En cours au tableau, provisoire : bdesk-pz0.4)', () => {
+    const declared: DeclaredStatuses = {
+      handoff: [],
+      others: [
+        { name: 'qa_testing', category: 'wip' },
+        { name: 'on_hold', category: 'frozen' },
+      ],
+    };
+    const extended = [
+      ...PROJECT,
+      moved('recette', 'qa_testing'),
+      moved('recette-coincee', 'qa_testing', { dependencies: [blocks('ready', '2026-10-02T09:00')] }),
+      moved('relecture', 'in_review'),
+      moved('integration', 'in_integration'),
+      moved('validation', 'awaiting_human'),
+      moved('relecture-coincee', 'in_review', { dependencies: [blocks('ready', '2026-10-02T09:00')] }),
+      moved('gele', 'on_hold'),
+    ];
+
+    const board = buildBoard(currentIssues(extended), { now: NOW, doneDays: Infinity, declared });
+
+    expect(ids(board.columns.inProgress)).toEqual(['agent', 'en-cours', 'integration', 'recette', 'relecture', 'validation']);
+    expect(ids(board.columns.blocked)).toEqual(['agent-coince', 'coince', 'recette-coincee', 'relecture-coincee', 'statut-bloque']);
+    expect(ids(board.paused)).toEqual(['differe', 'differe-bloque', 'epingle', 'gele', 'revue']);
+    expect(counts(board)).toEqual(lastCfdPoint(extended, declared));
+
+    // Sans la déclaration, le tableau et le CFD laissent tous deux qa_testing hors des colonnes : le tableau dans « En pause ».
+    const bare = buildBoard(currentIssues(extended), { now: NOW, doneDays: Infinity });
+    expect(ids(bare.paused)).toEqual(['differe', 'differe-bloque', 'epingle', 'gele', 'recette', 'recette-coincee', 'revue']);
+    expect(counts(bare)).toEqual(lastCfdPoint(extended));
   });
 });

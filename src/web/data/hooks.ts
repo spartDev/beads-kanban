@@ -1,10 +1,12 @@
 import { QueryClient, queryOptions, useQuery } from '@tanstack/react-query';
+import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 import { ApiError, apiGet } from './client';
 import { useLanguage, type Language } from '../i18n';
 import { browserTimeZone } from '../lib/instant';
 import { namedProjects } from './projectNames';
 import type {
   ApiSignal,
+  DeclaredStatuses,
   IssueChronologyResponse,
   IssueResponse,
   IssuesResponse,
@@ -131,6 +133,17 @@ export function useIssues(projectId: string | undefined) {
     enabled: Boolean(projectId),
     select: (data) => data.issues,
   });
+}
+
+/**
+ * Les statuts que déclare un Projet (ADR 0007), que le serveur rend avec ses tickets. Le tableau, la page Epic et les Signaux d'un ticket les passent à
+ * la règle des colonnes (`columnFor`) et des statuts de travail (`isWork`), comme le CFD : un statut que le Projet déclare de catégorie `wip` y est en
+ * cours. Ce hook ne lit rien lui-même (`enabled: false`) : il lit la réponse de `useIssues`, la même requête, que le tableau et la page Epic demandent,
+ * et que le tableau tient sous le panneau d'un ticket (le panneau ne relit jamais la liste). Tant qu'elle manque, aucun : `NO_DECLARED_STATUSES`.
+ */
+export function useDeclaredStatuses(projectId: string | undefined): DeclaredStatuses {
+  const declared = useQuery({ ...issuesQuery(projectId ?? ''), enabled: false, select: (data) => data.declaredStatuses });
+  return declared.data ?? NO_DECLARED_STATUSES;
 }
 
 /** Détail d'un ticket (champs texte, étiquettes, dépendances, commentaires). Inactif tant que le Projet ou le ticket manque. */

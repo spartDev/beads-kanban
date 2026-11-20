@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeProject, type MetricsTicket } from './metrics';
 import { lastVisitWindow, sinceLastVisit, WITHOUT_LAST_VISIT } from './sinceLastVisit';
+import { NO_DECLARED_STATUSES } from './statuses';
 
 /** Le statut À valider (ADR 0007 : son nom est un contrat). */
 const AWAITING_VALIDATION = 'awaiting_human';
@@ -28,7 +29,7 @@ function ticket(id: string, statuses: [string, string][], extra: Partial<Metrics
   };
 }
 
-const project = (id: string, tickets: MetricsTicket[]) => ({ id, name: `Projet ${id}`, analysis: analyzeProject(tickets) });
+const project = (id: string, tickets: MetricsTicket[]) => ({ id, name: `Projet ${id}`, analysis: analyzeProject(tickets, NO_DECLARED_STATUSES) });
 
 /** Les genres d'un seul Projet, « p », sur la fenêtre. */
 const groupsOf = (tickets: MetricsTicket[], window = WINDOW) => sinceLastVisit([project('p', tickets)], window);

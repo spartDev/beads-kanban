@@ -1,7 +1,7 @@
 import { FolderSearch, Inbox } from 'lucide-react';
 import { Link } from 'react-router';
 import { ApiError } from '../data/client';
-import { useIssues } from '../data/hooks';
+import { useDeclaredStatuses, useIssues } from '../data/hooks';
 import { projectInSentence } from '../data/projectNames';
 import { Board } from '../kanban/Board';
 import { BoardSkeleton } from '../kanban/BoardSkeleton';
@@ -21,6 +21,8 @@ import { useProject } from './ProjectGate';
 export function KanbanPage() {
   const project = useProject();
   const issues = useIssues(project.id);
+  // La même réponse que les tickets : ils arrivent ensemble.
+  const declared = useDeclaredStatuses(project.id);
   const retry = useRetryFocus(issues);
   const { page } = useT().kanban;
   useDocumentTitle(page.title, project.name);
@@ -34,7 +36,7 @@ export function KanbanPage() {
           </Notice>
         ) : (
           // `key` : un autre Projet est un autre tableau, qui choisit sa propre colonne d'ouverture sur mobile.
-          <Board key={project.id} project={project} issues={issues.data} />
+          <Board key={project.id} project={project} issues={issues.data} declared={declared} />
         )
       ) : issues.isError ? (
         issues.error instanceof ApiError && issues.error.status === 404 ? (

@@ -5,7 +5,18 @@ import { StrictMode } from 'react';
 import { vi } from 'vitest';
 import { createMemoryRouter, type InitialEntry, RouterProvider } from 'react-router';
 import { epicOf } from '../../domain/epics';
-import type { ApiSignal, Issue, IssueChronology, IssueDetail, IssueEpic, IssueRef, IssuesResponse, ProjectsResponse, SinceLastVisitResponse } from '../data/types';
+import type {
+  ApiSignal,
+  DeclaredStatuses,
+  Issue,
+  IssueChronology,
+  IssueDetail,
+  IssueEpic,
+  IssueRef,
+  IssuesResponse,
+  ProjectsResponse,
+  SinceLastVisitResponse,
+} from '../data/types';
 import { LanguageProvider } from '../i18n';
 import { routes } from '../routes';
 import { ThemeProvider } from '../theme/ThemeProvider';
@@ -27,6 +38,8 @@ interface ApiFixture {
   projects: Reply<ProjectsResponse>;
   /** Tickets par identifiant de Projet. */
   issues?: Record<string, Reply<Issue[]>>;
+  /** Les statuts que déclare un Projet, rendus avec ses tickets, par identifiant de Projet ; à défaut, aucun. */
+  declared?: Record<string, DeclaredStatuses>;
   /** Fiche d'un ticket, par `projet/ticket` ; à défaut, elle est tirée de la liste des tickets du Projet. */
   details?: Record<string, Reply<IssueDetail>>;
   /** Chronologie d'un ticket, par `projet/ticket` ; à défaut, celle d'un ticket resté ouvert depuis sa création. */
@@ -72,7 +85,7 @@ function epicNamedBy(listed: Issue, list: Issue[]): IssueEpic | null {
 }
 
 /** Remplace fetch par un faux serveur d'API ; renvoie le mock pour inspecter les appels. */
-export function stubApi({ projects, issues = {}, details = {}, chronologies = {}, signals = {}, sinceLastVisit }: ApiFixture) {
+export function stubApi({ projects, issues = {}, details = {}, chronologies = {}, signals = {}, declared = {}, sinceLastVisit }: ApiFixture) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const { pathname } = new URL(String(input), 'http://localhost');
     if (pathname === '/api/projects') return respond(projects);
@@ -89,8 +102,12 @@ export function stubApi({ projects, issues = {}, details = {}, chronologies = {}
     const list = projectId ? issues[projectId] : undefined;
     if (!projectId || !list) return notFound(`Projet inconnu : ${projectId ?? ''}`);
 
-    // Comme le serveur, la liste vient avec les statuts que le Projet déclare (bdesk-pz0.2) : aucun ici, et l'interface ne les lit pas encore.
-    if (issueId === undefined) return respond(list, (data): IssuesResponse => ({ issues: data, declaredStatuses: { handoff: [], others: [] } }));
+    // Comme le serveur, la liste vient avec les statuts que le Projet déclare (bdesk-pz0.2) : ceux de `declared`, aucun à défaut. Le tableau, la page
+    // Epic et les Signaux d'un ticket les lisent (`useDeclaredStatuses`).
+    if (issueId === undefined) {
+      const declaredStatuses = declared[projectId] ?? { handoff: [], others: [] };
+      return respond(list, (data): IssuesResponse => ({ issues: data, declaredStatuses }));
+    }
 
     if (chronologyOnly) {
       const scripted = chronologies[`${projectId}/${issueId}`];

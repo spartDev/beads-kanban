@@ -8,6 +8,7 @@ import { createDatabase, day, hasBinary, isolatedDoltEnv } from '../testing/dolt
 import { scratchDir } from '../testing/scratch';
 import { readTicketHistories } from './history';
 import { createCheckedDoltClient } from './stored-sql';
+import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 
 /**
  * L'Intention écrite (bdesk-3e9.4) sur de vraies bases Dolt, lues par le client de l'app (garde de lecture seule et vérification du SQL stocké compris) : la présence des
@@ -140,7 +141,7 @@ describe.skipIf(!hasBinary('dolt'))('Intention écrite : critères d’acceptati
   });
 
   it('la porte sur chaque ticket mesuré, démarré ou non', () => {
-    const { tickets } = analyzeProject([...histories.values()].map((history) => ({ ...history, title: history.id, priority: 2 })));
+    const { tickets } = analyzeProject([...histories.values()].map((history) => ({ ...history, title: history.id, priority: 2 })), NO_DECLARED_STATUSES);
 
     expect(Object.fromEntries(tickets.map(({ id, writtenIntent }) => [id, writtenIntent]))).toEqual({
       'w-1': true,

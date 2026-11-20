@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { driftsOf } from './drift';
 import { analyzeProject, type MetricsTicket } from './metrics';
+import { NO_DECLARED_STATUSES } from './statuses';
 
 /** Vendredi 23 octobre 2026, 18:00Z. */
 const NOW = new Date('2026-10-23T18:00:00Z').getTime();
@@ -50,7 +51,7 @@ const working = (id: string, daysAgo: number, extra: Partial<MetricsTicket> = {}
     extra,
   );
 
-const driftsAt = (tickets: MetricsTicket[], now = NOW) => driftsOf(analyzeProject(tickets), now);
+const driftsAt = (tickets: MetricsTicket[], now = NOW) => driftsOf(analyzeProject(tickets, NO_DECLARED_STATUSES), now);
 
 describe('driftsOf (Dérive)', () => {
   it('un ticket en cours au-delà du P85 du Cycle Time des Livraisons de son type dérive', () => {

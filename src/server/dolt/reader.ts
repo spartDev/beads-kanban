@@ -171,7 +171,7 @@ export function parseCustomStatuses(value: string): CustomStatus[] {
 }
 
 /** Les lignes de `CUSTOM_STATUSES_SQL` : la valeur de la clé, s'il y en a une ; NULL (absente de la sortie JSON) ne déclare rien. */
-const toDeclaredStatuses = (rows: Row[]): DeclaredStatuses => declareStatuses(parseCustomStatuses(asText(rows[0]?.value)));
+export const toDeclaredStatuses = (rows: Row[]): DeclaredStatuses => declareStatuses(parseCustomStatuses(asText(rows[0]?.value)));
 
 const issueSql = (id: string) => `select id, title, description, design, acceptance_criteria, notes, issue_type, status, priority, assignee,
             created_at, updated_at, closed_at, close_reason

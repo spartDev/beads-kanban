@@ -2,7 +2,7 @@ import { CirclePause, SearchX } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { epicOf } from '../../domain/epics';
 import { useTicketSignals } from '../data/hooks';
-import type { Issue, Project } from '../data/types';
+import type { DeclaredStatuses, Issue, Project } from '../data/types';
 import { useFormat, useLanguage, useT } from '../i18n';
 import { Button } from '../ui/Button';
 import { Notice } from '../ui/states';
@@ -33,8 +33,10 @@ import { useBoardShortcuts, type Lanes } from './useBoardShortcuts';
  * - Quand tous les tickets du tableau sont en pause, aucune colonne n'a de carte : un état vide le dit et renvoie au
  *   tiroir « En pause », qu'il ouvre.
  * - Lecture seule : rien ne se déplace, une carte ouvre son ticket. Mais un commit peut la changer de colonne : elle garde alors le focus (voir `boardFocus`).
+ * - `declared` : les statuts que le Projet déclare, rendus avec ses tickets. Un statut qu'il déclare de catégorie `wip` est en En cours, et sa carte
+ *   montre ses Signaux, comme le CFD et la page « À regarder » le comptent. PROVISOIRE (bdesk-pz0.4) : les trois Statuts de relais sont en En cours.
  */
-export function Board({ project, issues }: { project: Project; issues: readonly Issue[] }) {
+export function Board({ project, issues, declared }: { project: Project; issues: readonly Issue[]; declared: DeclaredStatuses }) {
   const params = useBoardParams();
   const now = useNow();
   const { language } = useLanguage();
@@ -52,8 +54,8 @@ export function Board({ project, issues }: { project: Project; issues: readonly 
   const epic = params.epicId ? [...choices.open, ...choices.closed].find((candidate) => candidate.id === params.epicId) : undefined;
 
   const board = useMemo(
-    () => buildBoard(issues, { now, doneDays: params.doneDays, epicId: epic?.id ?? null }),
-    [issues, now, params.doneDays, epic?.id],
+    () => buildBoard(issues, { now, doneDays: params.doneDays, epicId: epic?.id ?? null, declared }),
+    [issues, now, params.doneDays, epic?.id, declared],
   );
   // Minuit du premier jour de Terminé, pour écrire la règle en toutes lettres.
   const since = doneSince(now, params.doneDays);
@@ -89,7 +91,9 @@ export function Board({ project, issues }: { project: Project; issues: readonly 
   const renderCard = (issue: Issue, lane: Lane) => {
     const own = epicOf(issue, byId);
     const pill = epic !== undefined && own?.id === epic.id ? null : own;
-    return <Card key={issue.id} issue={issue} lane={lane} projectId={project.id} epic={pill} now={now} signals={signals?.get(issue.id)} />;
+    return (
+      <Card key={issue.id} issue={issue} lane={lane} projectId={project.id} epic={pill} now={now} signals={signals?.get(issue.id)} declared={declared} />
+    );
   };
 
   return (

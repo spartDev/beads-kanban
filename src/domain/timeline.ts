@@ -1,3 +1,4 @@
+import type { DeclaredStatuses } from '../shared/api';
 import { type Column, columnFor } from './columns';
 import { isWork, type TicketHistory, type TicketId, type Transition } from './flow';
 import { type Interval, intersect, union } from './intervals';
@@ -51,9 +52,16 @@ export function stepsOf(transitions: Transition[]): Step[] {
  * La chronologie d'un ticket. `stepsById` donne les statuts de tous les tickets du Projet : une dépendance bloque tant
  * que sa cible n'est pas fermée, et une cible inconnue (hors Projet) ne bloque pas. Même Blocage que `analyzeFlow` :
  * statut bloqué, ou dépendance `blocks` active vers une cible non fermée. À chaque instant, la colonne est celle que
- * `columnFor` donne au statut et au Blocage d'alors : la règle du tableau.
+ * `columnFor` donne au statut et au Blocage d'alors : la règle du tableau. Le CFD gagne ainsi les colonnes des Statuts de relais sans autre règle,
+ * et un ticket qui passe d'un statut de travail à un autre en Blocage reste dans le même segment, Bloqué (le Blocage long ne recommence pas).
+ * `declared` (obligatoire, voir `isWork`) : les statuts personnalisés que le Projet déclare, pour les colonnes et le travail de ses autres statuts.
  */
-export function buildTimeline(ticket: TicketHistory, steps: Step[], stepsById: Map<TicketId, Step[]>): TicketTimeline {
+export function buildTimeline(
+  ticket: TicketHistory,
+  steps: Step[],
+  stepsById: Map<TicketId, Step[]>,
+  declared: DeclaredStatuses,
+): TicketTimeline {
   const first = steps[0];
   if (!first) return { steps, segments: [], work: [], blockages: [] };
 
@@ -65,12 +73,12 @@ export function buildTimeline(ticket: TicketHistory, steps: Step[], stepsById: M
 
   const segments: ColumnSegment[] = [];
   for (const from of changes) {
-    const column = columnFor(statusIn(steps, from), blockage.some(([start, end]) => start <= from && from < end));
+    const column = columnFor(statusIn(steps, from), blockage.some(([start, end]) => start <= from && from < end), declared);
     if (segments.at(-1)?.column !== column || segments.length === 0) segments.push({ from, column });
   }
   // La colonne d'un ticket fermé est Terminé, en Blocage ou non ; ses périodes de Blocage, elles, s'arrêtent à sa clôture : un ticket fermé n'attend rien.
   const blockages = intersect(blockage, periodsOf(steps, (status) => status !== 'closed'));
-  return { steps, segments, work: periodsOf(steps, isWork), blockages };
+  return { steps, segments, work: periodsOf(steps, (status) => isWork(status, declared)), blockages };
 }
 
 /** La colonne du ticket à cet instant ; null avant sa création ou en « En pause ». */

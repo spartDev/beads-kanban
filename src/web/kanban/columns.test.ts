@@ -1,5 +1,5 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
-import { COLUMNS } from '../../domain/columns';
+import { COLUMNS, type HandoffColumn } from '../../domain/columns';
 import type { TicketHistory } from '../../domain/flow';
 import { buildTimeline, columnAt, stepsOf } from '../../domain/timeline';
 import type { MetricsCfdPoint } from '../../shared/api';
@@ -22,6 +22,7 @@ import {
   placeClosed,
   type ColumnId,
 } from './columns';
+import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 
 withTimeZone('Europe/Paris');
 
@@ -43,8 +44,9 @@ const BLOCKERS = ['bdesk-38k.6'];
 
 describe('les colonnes du kanban', () => {
   it('sont celles du domaine et du CFD : une seule définition des colonnes pour le tableau et le graphique', () => {
-    // Vérifié à la compilation (pnpm typecheck) : renommer ou ajouter une colonne d'un seul côté échoue ici.
-    expectTypeOf<ColumnId>().toEqualTypeOf<Exclude<keyof MetricsCfdPoint, 'date'>>();
+    // Vérifié à la compilation (pnpm typecheck) : renommer ou ajouter une colonne d'un seul côté échoue ici. Provisoire (bdesk-pz0.4) : le CFD a
+    // déjà les colonnes des Statuts de relais, que le tableau n'a pas encore (il les montre en En cours, `columnOf`).
+    expectTypeOf<ColumnId>().toEqualTypeOf<Exclude<keyof MetricsCfdPoint, 'date' | HandoffColumn>>();
     expect([...COLUMN_IDS]).toEqual(['backlog', 'ready', 'inProgress', 'blocked', 'done']);
     // Pas une copie de la liste : la liste du domaine elle-même.
     expect(COLUMN_IDS).toBe(COLUMNS);
@@ -210,7 +212,7 @@ describe('le tableau et le CFD rangent un ticket dans la même colonne', () => {
       blocked ? [{ type: 'blocks', target: 'b', addedAt: day(1) }] : [],
     );
     const steps = new Map([target, ticket].map((t) => [t.id, stepsOf(t.statusSnapshots)] as const));
-    return columnAt(buildTimeline(ticket, steps.get('a') ?? [], steps), day(3).getTime());
+    return columnAt(buildTimeline(ticket, steps.get('a') ?? [], steps, NO_DECLARED_STATUSES), day(3).getTime());
   }
 
   // Tous les statuts de beads, un statut personnalisé et le statut vide (NULL en base).
@@ -739,5 +741,23 @@ describe('onlyPaused : un tableau dont tous les tickets sont dans le tiroir « E
     ];
     expect(onlyPaused(buildBoard(tickets, { now: NOW }))).toBe(false);
     expect(onlyPaused(buildBoard(tickets, { now: NOW, epicId: 'e' }))).toBe(true);
+  });
+});
+
+describe('les Statuts de relais, tant que le tableau n’a pas leurs colonnes (provisoire, bdesk-pz0.4)', () => {
+  it('montre un ticket En relecture, En intégration ou À valider dans En cours, et dans Bloqué en Blocage : aucun ne disparaît', () => {
+    for (const status of ['in_review', 'in_integration', 'awaiting_human']) {
+      expect(columnOf({ status, blockedBy: [], closedAt: null }, { now: NOW }), status).toBe('inProgress');
+      expect(columnOf({ status, blockedBy: BLOCKERS, closedAt: null }, { now: NOW }), status).toBe('blocked');
+    }
+  });
+
+  it('les compte dans les cartes du tableau, avec ceux en cours', () => {
+    const tickets = ['in_progress', 'in_review', 'in_integration', 'awaiting_human'].map((status) => issue({ id: status, title: status, status }));
+    const board = buildBoard(tickets, { now: NOW });
+
+    expect(board.columns.inProgress.map(({ id }) => id).sort()).toEqual(['awaiting_human', 'in_integration', 'in_progress', 'in_review']);
+    expect(board.total).toBe(4);
+    expect(board.paused).toEqual([]);
   });
 });

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeFlow, isWork, recordedTransitions, type TicketFlow, type TicketHistory, writtenIntentOf } from './flow';
+import type { DeclaredStatuses } from '../shared/api';
+import { analyzeFlow, isHandback, isWork, recordedTransitions, type TicketFlow, type TicketHistory, writtenIntentOf } from './flow';
 import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing/random-histories';
+import { NO_DECLARED_STATUSES } from './statuses';
 
 const at = (iso: string) => new Date(`${iso}Z`);
 const HOUR = 3_600_000;
@@ -705,10 +707,10 @@ describe('analyzeFlow', () => {
           if (flow.leadTime === null) continue;
           const stays = flow.transitions.slice(0, -1).map((t, index) => ({ status: t.status, ms: (flow.transitions[index + 1]?.at.getTime() ?? 0) - t.at.getTime() }));
           const spent = (matches: (status: string) => boolean) => stays.filter((stay) => matches(stay.status)).reduce((total, stay) => total + stay.ms, 0);
-          const worked = stays.some((stay) => isWork(stay.status));
+          const worked = stays.some((stay) => isWork(stay.status, NO_DECLARED_STATUSES));
           if (worked) started++;
           expect(flow.leadTime, `${where} : Lead Time`).toBe(spent(() => true));
-          expect(flow.cycleTime, `${where} : Cycle Time`).toBe(worked ? spent(isWork) : null);
+          expect(flow.cycleTime, `${where} : Cycle Time`).toBe(worked ? spent((status) => isWork(status, NO_DECLARED_STATUSES)) : null);
           expect(flow.blockedTime, `${where} : temps bloqué`).toBe(spent((status) => status === 'blocked'));
           expect(flow.dependencyWait, `${where} : Attente de dépendance`).toBe(0);
         }
@@ -767,7 +769,7 @@ describe('Intention écrite (writtenIntentOf)', () => {
   type Seen = [status: string, iso: string, criteria?: boolean];
   const snapshots = (seen: Seen[]) =>
     seen.map(([status, iso, criteria]) => ({ status, at: at(iso), ...(criteria === undefined ? {} : { hasAcceptanceCriteria: criteria }) }));
-  const intentOf = (seen: Seen[]) => writtenIntentOf(snapshots(seen));
+  const intentOf = (seen: Seen[]) => writtenIntentOf(snapshots(seen), NO_DECLARED_STATUSES);
 
   it('oui : les critères étaient là au premier démarrage, écrits avant lui', () => {
     expect(intentOf([['open', '2026-10-01T09:00', true], ['in_progress', '2026-10-02T09:00', true], ['closed', '2026-10-03T09:00', true]])).toBe(true);
@@ -830,7 +832,7 @@ describe('Intention écrite (writtenIntentOf)', () => {
   });
 
   it('null pour un ticket sans historique', () => {
-    expect(writtenIntentOf([])).toBeNull();
+    expect(writtenIntentOf([], NO_DECLARED_STATUSES)).toBeNull();
   });
 
   it('est porté par le flux de chaque ticket, ouvert ou fermé, sans changer ses Transitions', () => {
@@ -848,5 +850,74 @@ describe('Intention écrite (writtenIntentOf)', () => {
       { status: 'open', at: at('2026-10-01T09:00') },
       { status: 'in_progress', at: at('2026-10-02T09:00') },
     ]);
+  });
+});
+
+describe('les Statuts de relais sont des statuts de travail (bdesk-pz0.3, ADR 0007)', () => {
+  const QA: DeclaredStatuses = { handoff: [], others: [{ name: 'qa_testing', category: 'wip' }, { name: 'on_hold', category: 'frozen' }] };
+
+  it('isWork : en cours, rattaché à un agent, bloqué et les trois Statuts de relais, déclarés ou non ; un autre statut seulement déclaré wip', () => {
+    for (const status of ['in_progress', 'hooked', 'blocked', 'in_review', 'in_integration', 'awaiting_human']) {
+      expect(isWork(status, NO_DECLARED_STATUSES), status).toBe(true);
+      expect(isWork(status, QA), status).toBe(true);
+    }
+    for (const status of ['open', 'closed', 'deferred', 'pinned', 'on_hold', 'review', '']) expect(isWork(status, QA), status).toBe(false);
+    expect(isWork('qa_testing', QA)).toBe(true);
+    expect(isWork('qa_testing', NO_DECLARED_STATUSES)).toBe(false);
+  });
+
+  it('un ticket passé par les trois Statuts de relais a pour Cycle Time la somme de ses intervalles de travail', () => {
+    const flow = analyzeFlow([
+      ticket('t-1', [
+        ['open', '2026-10-01T09:00'],
+        ['in_progress', '2026-10-02T09:00'], // 3 h
+        ['in_review', '2026-10-02T12:00'], // 1 h
+        ['in_progress', '2026-10-02T13:00'], // 2 h : un Retour
+        ['in_review', '2026-10-02T15:00'], // 1 h
+        ['in_integration', '2026-10-02T16:00'], // 2 h
+        ['awaiting_human', '2026-10-02T18:00'], // 15 h
+        ['deferred', '2026-10-03T09:00'], // 24 h hors travail : un Report
+        ['awaiting_human', '2026-10-04T09:00'], // 3 h
+        ['closed', '2026-10-04T12:00'],
+      ]),
+    ]).get('t-1');
+
+    expect(flow?.cycleTime).toBe(27 * HOUR);
+    expect(flow?.leadTime).toBe(75 * HOUR);
+    expect(flow?.dependencyWait).toBe(0);
+    expect(flow?.blockedTime).toBe(0);
+  });
+
+  it('compte le temps d’un statut déclaré wip dans le Cycle Time avec la déclaration, et pas sans elle (« En pause », comme avant)', () => {
+    const history = ticket('t-1', [
+      ['open', '2026-10-01T09:00'],
+      ['in_progress', '2026-10-01T10:00'],
+      ['qa_testing', '2026-10-01T12:00'],
+      ['closed', '2026-10-01T16:00'],
+    ]);
+
+    expect(analyzeFlow([history], QA).get('t-1')?.cycleTime).toBe(6 * HOUR);
+    expect(analyzeFlow([history]).get('t-1')?.cycleTime).toBe(2 * HOUR);
+  });
+
+  it('date le premier démarrage d’un ticket qui va droit en relecture à son passage en relecture (Attente de dépendance, Intention écrite)', () => {
+    const history = ticket('t-1', [
+      ['open', '2026-10-01T09:00'],
+      ['in_review', '2026-10-01T12:00'],
+      ['closed', '2026-10-01T13:00'],
+    ]);
+    history.statusSnapshots = history.statusSnapshots.map((snapshot, index) => ({ ...snapshot, hasAcceptanceCriteria: index > 0 }));
+
+    expect(analyzeFlow([history]).get('t-1')).toMatchObject({ cycleTime: HOUR, writtenIntent: true });
+    expect(writtenIntentOf(history.statusSnapshots, NO_DECLARED_STATUSES)).toBe(true);
+  });
+
+  it('isHandback : d’un statut de travail autre que À valider vers ouvert est une Prise rendue ; d’À valider vers ouvert, un Report', () => {
+    for (const from of ['in_progress', 'hooked', 'blocked', 'in_review', 'in_integration']) expect(isHandback(from, 'open', NO_DECLARED_STATUSES), from).toBe(true);
+    expect(isHandback('awaiting_human', 'open', NO_DECLARED_STATUSES)).toBe(false);
+    expect(isHandback('awaiting_human', 'open', { handoff: ['awaiting_human'], others: [] })).toBe(false);
+    for (const from of ['closed', 'deferred', 'pinned', 'open', 'qa_testing']) expect(isHandback(from, 'open', NO_DECLARED_STATUSES), from).toBe(false);
+    expect(isHandback('qa_testing', 'open', QA)).toBe(true);
+    for (const to of ['in_progress', 'deferred', 'closed', 'blocked']) expect(isHandback('in_review', to, NO_DECLARED_STATUSES), to).toBe(false);
   });
 });

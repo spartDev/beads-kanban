@@ -16,6 +16,7 @@ import {
   type TreeNode,
   youngEpicAge,
 } from './epics';
+import { NO_DECLARED_STATUSES } from './statuses';
 
 const DAY = 86_400_000;
 const NOW = Date.parse('2026-11-04T12:00:00Z');
@@ -285,7 +286,7 @@ describe('groupByColumn : les Enfants rangés par la règle de colonne du kanban
   ];
 
   it('range chaque Enfant dans la colonne que `columnFor` lui donne, et dans « En pause » quand elle n’en donne aucune', () => {
-    const groups = groupByColumn(children);
+    const groups = groupByColumn(children, NO_DECLARED_STATUSES);
 
     expect(ids(groups.backlog)).toEqual(['backlog']);
     expect(ids(groups.ready)).toEqual(['ready']);
@@ -296,15 +297,29 @@ describe('groupByColumn : les Enfants rangés par la règle de colonne du kanban
   });
 
   it('a une entrée par colonne, vide ou non, plus « En pause » : aucun Enfant n’est perdu', () => {
-    const groups = groupByColumn([]);
+    const groups = groupByColumn([], NO_DECLARED_STATUSES);
 
     expect(Object.keys(groups).sort()).toEqual([...COLUMNS, 'paused'].sort());
-    const filled = groupByColumn(children);
+    const filled = groupByColumn(children, NO_DECLARED_STATUSES);
     expect(Object.values(filled).flat()).toHaveLength(children.length);
   });
 
   it('range les Abandons dans Terminé, avec les Livraisons : ils sont fermés', () => {
-    expect(ids(groupByColumn(children).done)).toContain('doublon');
+    expect(ids(groupByColumn(children, NO_DECLARED_STATUSES).done)).toContain('doublon');
+  });
+
+  it('range un Enfant d’un Statut de relais en En cours, et en Bloqué en Blocage, tant que la page n’a pas leurs colonnes (provisoire, bdesk-pz0.4)', () => {
+    const relayed = [
+      child('relu', { status: 'in_review' }),
+      child('integre', { status: 'in_integration' }),
+      child('valide', { status: 'awaiting_human' }),
+      child('relu-coince', { status: 'in_review', blockedBy: ['x'] }),
+    ];
+    const groups = groupByColumn(relayed, NO_DECLARED_STATUSES);
+
+    expect(ids(groups.inProgress)).toEqual(['relu', 'integre', 'valide']);
+    expect(ids(groups.blocked)).toEqual(['relu-coince']);
+    expect(Object.keys(groups).sort()).toEqual([...COLUMNS, 'paused'].sort());
   });
 });
 

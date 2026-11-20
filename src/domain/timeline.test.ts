@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Column } from './columns';
 import { analyzeFlow, type DependencyHistory, isWork, type TicketHistory } from './flow';
 import { buildTimeline, columnAt, isWorking, stepsOf, type TicketTimeline } from './timeline';
+import { NO_DECLARED_STATUSES } from './statuses';
 
 const at = (iso: string) => new Date(`${iso}Z`);
 const ms = (iso: string) => at(iso).getTime();
@@ -28,7 +29,7 @@ const blocks = (target: string, added: string, removed?: string): DependencyHist
 function timelines(tickets: TicketHistory[]): (id: string) => TicketTimeline {
   const flows = analyzeFlow(tickets);
   const steps = new Map([...flows].map(([id, flow]) => [id, stepsOf(flow.transitions)]));
-  const built = new Map(tickets.map((t) => [t.id, buildTimeline(t, steps.get(t.id) ?? [], steps)]));
+  const built = new Map(tickets.map((t) => [t.id, buildTimeline(t, steps.get(t.id) ?? [], steps, NO_DECLARED_STATUSES)]));
   return (id) => {
     const timeline = built.get(id);
     if (!timeline) throw new Error(`ticket inconnu : ${id}`);
@@ -303,7 +304,7 @@ describe('chronologie des colonnes', () => {
         if (!flow || flow.outcome.kind !== 'delivered') continue;
         const { segments } = timeline(t.id);
         const close = flow.transitions.at(-1)?.at.getTime() ?? 0;
-        const firstStart = flow.transitions.find((tr) => isWork(tr.status))?.at.getTime() ?? close;
+        const firstStart = flow.transitions.find((tr) => isWork(tr.status, NO_DECLARED_STATUSES))?.at.getTime() ?? close;
         const spent = (column: Column, until: number) =>
           segments.reduce((total, s, i) => {
             if (s.column !== column) return total;

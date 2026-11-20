@@ -1,4 +1,5 @@
 import { analyzeChronologies, chronologyFromDates, type ProjectChronologies } from '../../domain/chronology';
+import { NO_DECLARED_STATUSES } from '../../domain/statuses';
 import type { IssueChronology } from '../../shared/api';
 import { ReadAborted } from '../abort';
 import { ANALYSIS_GRACE_MS, Flight } from '../flight';
@@ -52,7 +53,10 @@ export function createChronologyService(projects: ProjectService, { graceMs = AN
     if (signal?.aborted) throw new ReadAborted(); // parti pendant la lecture du HEAD : inutile de lire l'historique pour personne
     const entry = {
       head,
-      analysis: new Flight((flightSignal) => projects.histories(projectId, { signal: flightSignal }).then(analyzeChronologies), { graceMs }),
+      analysis: new Flight(
+        (flightSignal) => projects.histories(projectId, { signal: flightSignal }).then((history) => analyzeChronologies(history, history.declaredStatuses ?? NO_DECLARED_STATUSES)),
+        { graceMs },
+      ),
     };
     cache.set(projectId, entry);
     entry.analysis.start();

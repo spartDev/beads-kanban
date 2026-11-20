@@ -1,4 +1,12 @@
-import type { IssueBlockage, IssueBlockagePhase, IssueBlockagePhaseKind, IssueChronology, IssueOutcome, IssueTransition } from '../shared/api';
+import type {
+  DeclaredStatuses,
+  IssueBlockage,
+  IssueBlockagePhase,
+  IssueBlockagePhaseKind,
+  IssueChronology,
+  IssueOutcome,
+  IssueTransition,
+} from '../shared/api';
 import { analyzeFlow, isWork, type Outcome, type TicketHistory, type TicketId } from './flow';
 import { type Interval, intersect, union } from './intervals';
 import { type Step, stepsOf } from './timeline';
@@ -19,10 +27,11 @@ export interface ProjectChronologies {
 /**
  * Analyse l'historique complet d'un Projet. Il faut tous les tickets, pas un seul : le Blocage d'un ticket dépend de
  * l'état, à chaque instant, des tickets dont il dépend. Le travail lourd (`analyzeFlow`) est fait une fois ; la
- * chronologie d'un ticket se construit à la demande.
+ * chronologie d'un ticket se construit à la demande. `declared` (obligatoire, voir `isWork`) : les statuts personnalisés que le Projet déclare,
+ * qui disent lesquels de ses autres statuts sont de travail, comme pour les métriques.
  */
-export function analyzeChronologies(tickets: TicketHistory[]): ProjectChronologies {
-  const flows = analyzeFlow(tickets);
+export function analyzeChronologies(tickets: TicketHistory[], declared: DeclaredStatuses): ProjectChronologies {
+  const flows = analyzeFlow(tickets, declared);
   const stepsById = new Map([...flows].map(([id, flow]) => [id, stepsOf(flow.transitions)]));
   const byId = new Map(tickets.map((ticket) => [ticket.id, ticket]));
   const memo = new Map<TicketId, IssueChronology | undefined>();
@@ -45,7 +54,7 @@ export function analyzeChronologies(tickets: TicketHistory[]): ProjectChronologi
     return {
       source: 'history',
       transitions,
-      blockages: blockagesOf(byId.get(id)?.dependencies ?? [], steps, stepsById),
+      blockages: blockagesOf(byId.get(id)?.dependencies ?? [], steps, stepsById, declared),
       outcome: toOutcome(flow.outcome),
       leadTime: flow.leadTime,
       cycleTime: flow.cycleTime,
@@ -80,6 +89,7 @@ function blockagesOf(
   dependencies: TicketHistory['dependencies'],
   steps: Step[],
   stepsById: Map<TicketId, Step[]>,
+  declared: DeclaredStatuses,
 ): IssueBlockage[] {
   const alive = periodsOf(steps, (status) => status !== 'closed');
   // Une période en statut bloqué s'arrête à la Transition suivante : elle ne déborde jamais sur une période fermée.
@@ -99,7 +109,7 @@ function blockagesOf(
     to: Number.isFinite(period[1]) ? new Date(period[1]).toISOString() : null,
     blockedBy: [...new Set(byDependency.filter(({ interval }) => overlaps(interval, period)).map(({ target }) => target))].sort(),
     statusBlocked: byStatus.some((interval) => overlaps(interval, period)),
-    phases: phasesOf(period, steps),
+    phases: phasesOf(period, steps, (status) => isWork(status, declared)),
   }));
 }
 
@@ -107,14 +117,14 @@ function blockagesOf(
  * Les phases que le ticket traverse pendant le Blocage `period` : en travail (la part que le temps bloqué compte), ouvert et
  * jamais démarré (l'Attente de dépendance), ou en attente autrement. Le Blocage se déduit des dépendances, il court donc tant
  * que le ticket n'est pas fermé, quel que soit son statut ; le temps bloqué des métriques, lui, ne prend que la part passée
- * en statut de travail (`analyzeFlow`). Les phases voisines de même nature n'en font qu'une (en cours, puis bloqué).
+ * en statut de travail (`analyzeFlow`). Les phases voisines de même nature n'en font qu'une (en cours, puis bloqué, ou en relecture).
  */
-function phasesOf(period: Interval, steps: Step[]): IssueBlockagePhase[] {
-  const firstWork = steps.findIndex((step) => isWork(step.status));
+function phasesOf(period: Interval, steps: Step[], working: (status: string) => boolean): IssueBlockagePhase[] {
+  const firstWork = steps.findIndex((step) => working(step.status));
   const phases: { kind: IssueBlockagePhaseKind; from: number; to: number }[] = [];
   // `period` ne recouvre jamais une période fermée (`blockagesOf` : statut bloqué, ou dépendance prise sur les périodes non fermées).
   steps.forEach((step, index) => {
-    const kind: IssueBlockagePhaseKind = isWork(step.status)
+    const kind: IssueBlockagePhaseKind = working(step.status)
       ? 'work'
       : step.status === 'open' && (firstWork < 0 || index < firstWork)
         ? 'dependencyWait'

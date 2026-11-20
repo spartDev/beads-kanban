@@ -498,3 +498,26 @@ describe('chronologie abandonnée par son demandeur (bdesk-38k.20)', () => {
     expect(error).not.toBeInstanceOf(ProjectUnreadableError);
   });
 });
+
+describe('chronologie d’un ticket : les statuts que déclare le Projet (bdesk-pz0.3)', () => {
+  const QA = history('t-1', [
+    ['open', '2026-10-01T09:00'],
+    ['in_review', '2026-10-01T10:00'],
+    ['qa_testing', '2026-10-01T12:00'],
+    ['closed', '2026-10-01T15:00'],
+  ]);
+
+  it('compte le temps d’un statut déclaré wip dans le Cycle Time, avec la déclaration lue avec l’historique', async () => {
+    const { service, state } = fakeProjects();
+    state.histories = Object.assign([QA], { declaredStatuses: { handoff: [], others: [{ name: 'qa_testing', category: 'wip' as const }] } });
+
+    expect((await createChronologyService(service).chronology('p', 't-1')).cycleTime).toBe(5 * 3_600_000);
+  });
+
+  it('compte sans déclaration le seul temps du Statut de relais', async () => {
+    const { service, state } = fakeProjects();
+    state.histories = [QA];
+
+    expect((await createChronologyService(service).chronology('p', 't-1')).cycleTime).toBe(2 * 3_600_000);
+  });
+});

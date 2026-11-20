@@ -11,6 +11,7 @@ import {
   percentile,
 } from './metrics';
 import { CLOCKS, clockWentBack, randomHistories, seededRandom } from './testing/random-histories';
+import { NO_DECLARED_STATUSES } from './statuses';
 
 const PARIS = 'Europe/Paris';
 /** Vendredi 23 octobre 2026, 20:00 à Paris. */
@@ -69,7 +70,7 @@ interface Options {
 
 /** Les métriques d'un Projet, sur 7 jours par défaut. */
 function metricsOf(tickets: MetricsTicket[], { period = { range: '7d' }, now = NOW, timeZone = PARIS }: Options = {}): MetricsReport {
-  return computeMetrics([{ id: 'p', name: 'Projet P', analysis: analyzeProject(tickets) }], { period, now, timeZone });
+  return computeMetrics([{ id: 'p', name: 'Projet P', analysis: analyzeProject(tickets, NO_DECLARED_STATUSES) }], { period, now, timeZone });
 }
 
 describe('percentile (interpolation linéaire, méthode 7)', () => {
@@ -612,7 +613,7 @@ describe('Renoncement', () => {
   });
 
   it('se lit dans l’analyse du Projet : daté de sa dernière clôture, sans Livraison ni Abandon', () => {
-    const [tracked] = analyzeProject([worked('renonce', '2026-10-18T08:00', '2026-10-19T08:00', '2026-10-20T10:00', DECLINED)]).tickets;
+    const [tracked] = analyzeProject([worked('renonce', '2026-10-18T08:00', '2026-10-19T08:00', '2026-10-20T10:00', DECLINED)], NO_DECLARED_STATUSES).tickets;
 
     expect(tracked).toMatchObject({
       deliveredAt: null,
@@ -957,7 +958,7 @@ function steadyFlow(now: Date, hours: number): MetricsTicket[] {
 describe('comparaison à durée écoulée égale', () => {
   // Mardi 27 octobre 2026, 08:00 à Paris : la dernière journée de la période n'en est qu'au tiers.
   const MORNING = new Date('2026-10-27T07:00:00Z');
-  const steady = [{ id: 'p', name: 'Projet P', analysis: analyzeProject(steadyFlow(MORNING, 200 * 24)) }];
+  const steady = [{ id: 'p', name: 'Projet P', analysis: analyzeProject(steadyFlow(MORNING, 200 * 24), NO_DECLARED_STATUSES) }];
   const steadyReport = (period: PeriodSpec) => computeMetrics(steady, { period, now: MORNING, timeZone: PARIS });
 
   it('compte la période précédente sur la même durée écoulée : un flux stable à 1 Livraison par heure n’a pas de tendance (7 j, le matin)', () => {
@@ -1232,7 +1233,7 @@ describe('période en cours : rien de daté après asOf', () => {
 
 function metricsOfProjects(projects: Record<string, MetricsTicket[]>, { period = { range: '7d' }, now = NOW, timeZone = PARIS }: Options = {}): MetricsReport {
   return computeMetrics(
-    Object.entries(projects).map(([id, tickets]) => ({ id, name: `Nom de ${id}`, analysis: analyzeProject(tickets) })),
+    Object.entries(projects).map(([id, tickets]) => ({ id, name: `Nom de ${id}`, analysis: analyzeProject(tickets, NO_DECLARED_STATUSES) })),
     { period, now, timeZone },
   );
 }
@@ -1511,7 +1512,7 @@ describe('horloge de commit qui recule', () => {
     let started = 0;
     for (let round = 0; round < 300; round++) {
       const histories = randomHistories(random, { tickets: 5, clockBack: 25, sharedClock });
-      const { tickets } = analyzeProject(histories.map((history) => ({ ...history, title: history.id, priority: 2 })));
+      const { tickets } = analyzeProject(histories.map((history) => ({ ...history, title: history.id, priority: 2 })), NO_DECLARED_STATUSES);
       for (const tracked of tickets) {
         if (tracked.deliveredAt === null) continue;
         delivered++;
@@ -1555,7 +1556,7 @@ describe('Intention écrite du ticket mesuré', () => {
       withCriteria('en-cours', [['open', '2026-10-19T08:00', false], ['in_progress', '2026-10-20T08:00', true]]),
       withCriteria('inconnue', [['open', '2026-10-19T08:00'], ['in_progress', '2026-10-20T08:00']]),
       withCriteria('jamais', [['open', '2026-10-19T08:00', true], ['closed', '2026-10-20T08:00', true]]),
-    ]);
+    ], NO_DECLARED_STATUSES);
 
     expect(tickets.map(({ id, startedAt, writtenIntent }) => [id, startedAt !== null, writtenIntent])).toEqual([
       ['avant', true, true],

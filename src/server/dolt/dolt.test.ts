@@ -575,11 +575,15 @@ describe.skipIf(!hasBinary('dolt'))('lectures groupées et abandonnées sur une 
   });
 });
 
-/** Le schéma minimal que lit l'historique : les tickets, leurs dépendances et leurs labels (le label du Renoncement se lit au dernier commit). */
+/**
+ * Le schéma minimal que lit l'historique : les tickets, leurs dépendances, leurs labels (le label du Renoncement se lit au dernier commit) et la table
+ * `config` (les statuts que déclare le Projet s'y lisent au dernier commit, bdesk-pz0.3).
+ */
 const ISSUES_AND_DEPENDENCIES = `
   create table issues (id varchar(64) primary key, status varchar(32), issue_type varchar(32));
   create table dependencies (issue_id varchar(64), depends_on_issue_id varchar(64), type varchar(32), primary key (issue_id, depends_on_issue_id));
-  create table labels (issue_id varchar(64) not null, label varchar(64) not null, primary key (issue_id, label));`;
+  create table labels (issue_id varchar(64) not null, label varchar(64) not null, primary key (issue_id, label));
+  create table config (\`key\` varchar(64) primary key, value text not null);`;
 
 /** Historiques tordus, sur de vraies bases Dolt jetables : fusion de branches, horloge qui recule, ticket recréé. */
 describe.skipIf(!hasBinary('dolt'))('historique d’une base Dolt aux commits tordus', () => {
@@ -635,6 +639,7 @@ describe.skipIf(!hasBinary('dolt'))('historique d’une base Dolt aux commits to
       create table issues (id varchar(64) primary key, status varchar(32), issue_type varchar(32));
       create table dependencies (issue_id varchar(64), depends_on_id varchar(64), type varchar(32), primary key (issue_id, depends_on_id));
       create table labels (issue_id varchar(64) not null, label varchar(64) not null, primary key (issue_id, label));
+      create table config (\`key\` varchar(64) primary key, value text not null);
       insert into issues values ('t-1','open','task'), ('t-2','open','task'), ('t-3','open','task');
       insert into dependencies values ('t-1','t-2','blocks')`);
     db.commit(5, 'c1 : dépendance ajoutée, horloge en avance');

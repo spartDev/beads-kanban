@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { longTrendOf } from './longTrend';
 import { analyzeProject, type MetricsTicket } from './metrics';
+import { NO_DECLARED_STATUSES } from './statuses';
 
 /**
  * La Tendance longue : Débit, Lead Time au P85 et Taux de Réouverture, semaine par semaine sur les 12 semaines du Fuseau de
@@ -25,7 +26,7 @@ function ticket(id: string, statuses: [string, string][], extra: Partial<Metrics
 }
 
 const trendOf = (tickets: MetricsTicket[], timeZone = PARIS) =>
-  longTrendOf([{ id: 'p', name: 'Projet P', analysis: analyzeProject(tickets) }], { now: NOW, timeZone });
+  longTrendOf([{ id: 'p', name: 'Projet P', analysis: analyzeProject(tickets, NO_DECLARED_STATUSES) }], { now: NOW, timeZone });
 
 describe('Tendance longue', () => {
   it('découpe les 12 semaines du fuseau, du lundi au dimanche, la dernière étant la semaine en cours', () => {
@@ -101,7 +102,7 @@ describe('Tendance longue', () => {
 
   it('mesure la Vue globale sur l’union des tickets des Projets', () => {
     const closedOn = (id: string, day: string) => ticket(id, [['open', '2026-10-01T09:00:00'], ['closed', `${day}T09:00:00`]]);
-    const project = (id: string, tickets: MetricsTicket[]) => ({ id, name: id, analysis: analyzeProject(tickets) });
+    const project = (id: string, tickets: MetricsTicket[]) => ({ id, name: id, analysis: analyzeProject(tickets, NO_DECLARED_STATUSES) });
     const { weeks } = longTrendOf(
       [project('a', [closedOn('a1', '2026-10-13'), closedOn('a2', '2026-10-14')]), project('b', [closedOn('b1', '2026-10-15'), closedOn('b2', '2026-10-16')])],
       { now: NOW, timeZone: PARIS },

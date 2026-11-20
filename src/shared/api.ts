@@ -87,8 +87,10 @@ export interface IssuesResponse {
   issues: Issue[];
   /**
    * Les statuts personnalisés que le Projet déclare, lus au Dernier commit, dans le même état que les tickets : les Statuts de relais
-   * et les autres (ADR 0007). Le kanban ne s'en sert pas encore : ranger les Statuts de relais parmi les statuts de travail, et leur
-   * donner des colonnes, est l'affaire de bdesk-pz0.3.
+   * et les autres (ADR 0007). Ce qu'ils font des tickets est la règle du domaine : la colonne (`columnFor`) et les colonnes de relais qui
+   * existent pour le Projet (`visibleHandoffStatuses`). Le tableau, la page Epic et les Signaux d'un ticket s'en servent (`useDeclaredStatuses`) :
+   * un statut que le Projet déclare de catégorie `wip` y est en En cours, comme au CFD. PROVISOIRE (bdesk-pz0.4) : ils montrent les Statuts de relais
+   * en En cours tant qu'ils n'ont pas leurs colonnes.
    */
   declaredStatuses: DeclaredStatuses;
 }
@@ -217,7 +219,8 @@ export interface IssueTransition {
 
 /**
  * Où en est le ticket pendant une partie d'un Blocage, ce qui décide si elle compte dans le temps bloqué des métriques :
- *   `work`            en statut de travail (en cours, rattaché à un agent, bloqué) : la part du Cycle Time passée en Blocage,
+ *   `work`            en statut de travail (en cours, rattaché à un agent, bloqué, un Statut de relais, ou un autre statut que le Projet déclare
+ *                     comme travail) : la part du Cycle Time passée en Blocage,
  *                     celle que `IssueChronology.blockedTime` totalise ;
  *   `dependencyWait`  ticket ouvert, jamais démarré : l'Attente de dépendance, hors du Cycle Time ;
  *   `otherWait`       tout autre statut non fermé (revenu à ouvert après un démarrage, différé…) : hors du Cycle Time aussi.
@@ -542,7 +545,10 @@ export interface MetricsSoundThroughputTile extends MetricsSignificance {
 }
 
 export interface MetricsWipTile {
-  /** Tickets en statut de travail (en cours, rattaché à un agent, bloqué) à `asOf` : maintenant si la période court jusqu'à aujourd'hui. */
+  /**
+   * Tickets en statut de travail (en cours, rattaché à un agent, bloqué, un Statut de relais, ou un autre statut que le Projet déclare comme travail) à
+   * `asOf` : maintenant si la période court jusqu'à aujourd'hui.
+   */
   current: number;
   /** Moyenne du WIP de `period.start` à `asOf`, pondérée par le temps. */
   average: number;
@@ -602,16 +608,23 @@ export interface MetricsCycleTimePoint {
 }
 
 /**
- * Nombre de tickets par colonne du kanban à la fin d'un jour (ou à `asOf` pour le jour en cours).
- * Backlog : ouvert en Blocage ; Prêt : ouvert hors Blocage ; En cours : statut de travail hors Blocage ;
- * Bloqué : statut de travail en Blocage, ou statut bloqué ; Terminé : fermé (Abandons et Renoncements compris, Epics exclues).
- * Les tickets différés, épinglés ou d'un statut inconnu (« En pause ») ne sont dans aucune colonne.
+ * Nombre de tickets par colonne du kanban à la fin d'un jour (ou à `asOf` pour le jour en cours), selon `columnFor`.
+ * Backlog : ouvert en Blocage ; Prêt : ouvert hors Blocage ; En cours : en cours, rattaché à un agent ou statut déclaré de catégorie `wip`, hors
+ * Blocage ; En relecture, En intégration, À valider : le Statut de relais, hors Blocage ; Bloqué : statut de travail en Blocage, ou statut
+ * bloqué ; Terminé : fermé (Abandons et Renoncements compris, Epics exclues).
+ * Les tickets différés, épinglés ou d'un autre statut inconnu (« En pause ») ne sont dans aucune colonne.
+ *
+ * Les colonnes des Statuts de relais ne sont là que si l'un des Projets mesurés les a (`ProjectAnalysis.handoff`) : il déclare le statut, ou un
+ * de ses tickets l'a porté. Absentes, aucun ticket n'y a jamais été : un Projet sans Statut de relais garde ses cinq colonnes.
  */
 export interface MetricsCfdPoint {
   date: string;
   backlog: number;
   ready: number;
   inProgress: number;
+  inReview?: number;
+  inIntegration?: number;
+  awaitingHuman?: number;
   blocked: number;
   done: number;
 }
@@ -624,7 +637,7 @@ export interface MetricsInProgressTicket {
   priority: number;
   /** Identifiant du Projet. */
   project: string;
-  /** in_progress, hooked ou blocked. */
+  /** Un statut de travail : in_progress, hooked, blocked, un Statut de relais ou un statut que le Projet déclare de catégorie `wip`. */
   status: string;
   /** Dans la colonne Bloqué du kanban. */
   blocked: boolean;
@@ -735,7 +748,7 @@ export interface MetricsReworkTicket {
   project: string;
   /** Réouvertures de la période : Transitions d'un statut fermé vers un statut non fermé. */
   reopenings: number;
-  /** Prises rendues de la période : Transitions d'un statut de travail vers ouvert. */
+  /** Prises rendues de la période : Transitions d'un statut de travail autre que À valider vers ouvert (d'À valider, c'est un Report). */
   returns: number;
   /** Les Bugs d'origine de cette Livraison créés sur la période, dans l'ordre de leur création. */
   originBugs: string[];
