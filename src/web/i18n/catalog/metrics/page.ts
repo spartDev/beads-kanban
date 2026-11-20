@@ -96,7 +96,8 @@ const fr = {
     signalsHeadingAt: (signals: string, at: string) => `Signaux en cours (${signals}, au ${at})`,
     signals: (count: string, n: number) => `${count} ${n >= 2 ? 'Signaux' : 'Signal'}`,
     signalsUnreadable: 'Les Signaux n’ont pas pu être lus.',
-    noSignals: 'Aucune Dérive, aucun Blocage long, aucun Prêt qui stagne ni aucun WIP inhabituel en ce moment.',
+    noSignals:
+      'Aucune Dérive, aucun Blocage long, aucun Prêt qui stagne, aucun WIP inhabituel, aucune Validation qui attend ni aucune Boucle de Retours en ce moment.',
   },
   /** Le bouton qui copie le Rapport de rétrospective et son aperçu (`metrics/RetrospectiveReport.tsx`). */
   retrospectiveReport: {
@@ -194,7 +195,7 @@ const en: typeof fr = {
     signalsHeadingAt: (signals, at) => `Current Signals (${signals}, as of ${at})`,
     signals: (count, n) => `${count} ${n === 1 ? 'Signal' : 'Signals'}`,
     signalsUnreadable: 'The Signals could not be read.',
-    noSignals: 'No Drift, no Long blockage, no Stale ready and no Unusual WIP right now.',
+    noSignals: 'No Drift, no Long blockage, no Stale ready, no Unusual WIP, no Waiting validation and no Send-back loop right now.',
   },
   retrospectiveReport: {
     copy: 'Copy report',

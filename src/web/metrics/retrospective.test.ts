@@ -103,6 +103,39 @@ describe('rapport de rétrospective', () => {
   });
 });
 
+describe('rapport de rétrospective : les Signaux de relais', () => {
+  const relayed = signalsResponse({
+    projects: [{ id: 'bdesk', name: 'beads-desktop' }],
+    signals: [
+      { kind: 'unusualWip', project: 'bdesk', wip: 9, threshold: 6 },
+      { kind: 'waitingValidation', project: 'bdesk', ticket: { id: 'bdesk-v', title: 'Export *csv*', type: 'task', priority: 2 }, since: '2026-10-30T19:00:00.000Z', duration: 3 * DAY },
+      { kind: 'sendBackLoop', project: 'bdesk', ticket: { id: 'bdesk-l', title: 'Thème sombre', type: 'feature', priority: 1 }, sendBacks: 4 },
+    ],
+  });
+  const metrics = () => metricsFixture({ projects: [{ id: 'bdesk', name: 'beads-desktop' }] });
+
+  it('figurent avec les autres Signaux, après le WIP inhabituel : la Validation qui attend, puis la Boucle de Retours', () => {
+    const text = build(metrics(), relayed);
+    expect(text).toContain('## Signaux en cours (3 Signaux, au 2 nov. à 20:00)');
+    expect(text).toContain(
+      '### WIP inhabituel\n\n- beads-desktop : 9 tickets en cours, au-delà de 6, le P85 du WIP quotidien des 90 derniers jours\n\n' +
+        '### Validation qui attend\n\n- `bdesk-v` Export \\*csv\\* : À valider depuis 3 j\n\n' +
+        '### Boucle de Retours\n\n- `bdesk-l` Thème sombre : 4 Retours au développement, sans être fermé',
+    );
+  });
+
+  it('en anglais, sous leurs noms anglais', () => {
+    const text = plain(buildRetrospective({ scopeName: 'beads-desktop', metrics: metrics(), signals: { status: 'ok', response: relayed }, language: 'en' }));
+    expect(text).toContain('### Unusual WIP\n\n- beads-desktop: 9 tickets in progress, above 6, the P85 of daily WIP over the last 90 days');
+    expect(text).toContain('### Waiting validation\n\n- `bdesk-v` Export \\*csv\\*: Awaiting validation for 3 d');
+    expect(text).toContain('### Send-back loop\n\n- `bdesk-l` Thème sombre: 4 Send-backs to development, still not closed');
+  });
+
+  it('comptent dans « aucun Signal »', () => {
+    expect(build(undefined, signalsResponse({ signals: [] }))).toContain('ni aucune Boucle de Retours en ce moment.');
+  });
+});
+
 describe('évolution', () => {
   it('dit l’écart, sa part et s’il est un mieux', () => {
     expect(plain(evolution(trendOf(12, 9), MEASURES.fr.count))).toBe('+3 (+33 %), en mieux');

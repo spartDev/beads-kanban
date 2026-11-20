@@ -6,7 +6,7 @@ import type { Language } from '../i18n/language';
 import { FORMATS } from '../metrics/format';
 
 /** Les sortes de Signal, dans l'ordre de la page « À regarder ». */
-const KINDS: readonly ApiSignal['kind'][] = ['drift', 'longBlockage', 'stagnantReady', 'unusualWip'];
+const KINDS: readonly ApiSignal['kind'][] = ['drift', 'longBlockage', 'stagnantReady', 'unusualWip', 'waitingValidation', 'sendBackLoop'];
 
 /** Le nom de chaque sorte de Signal, dans l'ordre de la page « À regarder », dans une langue (`t.shell.signals.kinds`). */
 export const signalKinds = (language: Language): ReadonlyArray<{ kind: ApiSignal['kind']; label: string }> =>
@@ -41,5 +41,9 @@ export function signalSentence(signal: ApiSignal, language: Language = 'fr'): st
         Number.isInteger(signal.threshold) ? formatCount(signal.threshold) : formatDecimal(signal.threshold, 1),
         signal.wip,
       );
+    case 'waitingValidation':
+      return t.waitingValidation(formatDuration(signal.duration));
+    case 'sendBackLoop':
+      return t.sendBackLoop(formatCount(signal.sendBacks));
   }
 }

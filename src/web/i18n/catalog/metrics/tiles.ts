@@ -33,6 +33,11 @@ const fr = {
       'Part des tickets fermés comme doublon d’un autre ou remplacés par un autre (Abandons). Ni bonne ni mauvaise en soi, elle renseigne sur l’hygiène du backlog et le travail en double.',
     ready:
       'Tickets Prêts (sans dépendance bloquante, démarrables) qui attendent depuis plus de 14 jours sans être démarrés. Ils signalent du travail oublié ou peu prioritaire, à trier ou à fermer.',
+    /** Les Signaux de relais (ADR 0007) : leur aide, là où ils se montrent. */
+    waitingValidation:
+      'Un ticket À valider depuis plus de 24 heures de Durée écoulée, nuits et week-ends compris. Il attend votre décision (un Feu vert, une réponse, un test) : tant que vous ne l’avez pas prise, la chaîne ne peut pas avancer.',
+    sendBackLoop:
+      'Un ticket non fermé revenu au moins 3 fois au développement après une relecture, une intégration ou une validation (des Retours). Le défaut revient, ou le besoin est flou : mieux vaut regarder le ticket que relancer un tour de plus.',
   },
   /** Le cadre d'une tuile et sa tendance (`Tile`, `Trend` de `metrics/Tiles.tsx`), partagés par toutes les tuiles. */
   tileFrame: {
@@ -249,6 +254,10 @@ const en: typeof fr = {
       'Share of closed tickets closed as a duplicate of another or superseded by another (Dropped). Neither good nor bad in itself, it tells about backlog hygiene and duplicated work.',
     ready:
       'Ready tickets (no blocking dependency, can be started) waiting for more than 14 days without being started. They point to forgotten or low-priority work, to triage or close.',
+    waitingValidation:
+      'A ticket Awaiting validation for more than 24 hours of Elapsed time, nights and weekends included. It waits for your decision (a Green light, an answer, a test): until you make it, the chain cannot move on.',
+    sendBackLoop:
+      'A ticket not yet closed that went back to development at least 3 times after a review, an integration or a validation (Send-backs). The defect keeps coming back, or the need is unclear: better look at the ticket than run one more round.',
   },
   tileFrame: {
     about: (title) => `About ${title}`,

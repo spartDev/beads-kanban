@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { ApiSignal } from '../data/types';
 import { withAsyncTimeout } from '../test/asyncTimeout';
@@ -127,6 +128,56 @@ describe('l’accueil : la page « À regarder » de tous les Projets', () => {
     renderApp('/p/bdesk/signals');
     await screen.findByRole('region', { name: 'Dérive' });
     expect(screen.queryByRole('region', { name: 'Depuis votre dernière visite' })).toBeNull();
+  });
+});
+
+describe('« À regarder » : les Signaux de relais', () => {
+  const RELAYED: ApiSignal[] = [
+    { kind: 'sendBackLoop', project: 'bdesk', ticket: ticketOf('bdesk-l'), sendBacks: 4 },
+    { kind: 'waitingValidation', project: 'bdesk', ticket: ticketOf('bdesk-v'), since: '2026-10-20T18:00:00.000Z', duration: 3 * DAY },
+  ];
+
+  it('montre la Validation qui attend puis la Boucle de Retours en derniers groupes, chacune avec ce qu’elle dit et son aide', async () => {
+    stubSignals({ bdesk: [...BDESK, ...RELAYED], mpm: MPM });
+    renderApp('/');
+
+    const loop = await screen.findByRole('region', { name: 'Boucle de Retours' });
+    const titled = screen.getAllByRole('region').filter((group) => group.hasAttribute('data-signal-group'));
+    expect(titled.map((group) => group.querySelector('h2')?.textContent)).toEqual([
+      'Dérive',
+      'Blocage long',
+      'Prêt qui stagne',
+      'WIP inhabituel',
+      'Validation qui attend',
+      'Boucle de Retours',
+    ]);
+    expect(within(loop).getByRole('link', { name: 'Titre de bdesk-l' }).getAttribute('href')).toBe('/p/bdesk/t/bdesk-l');
+    expect(text(loop)).toContain('beads-desktop · 4 Retours au développement, sans être fermé');
+
+    await userEvent.setup().hover(within(loop).getByRole('button', { name: 'À propos de Boucle de Retours' }));
+    expect(text(await screen.findByRole('tooltip'))).toContain('au moins 3 fois au développement');
+  });
+
+  // PROVISOIRE (bdesk-3e9.6) : la File de décisions remplacera ce groupe par une marque sur la ligne du ticket.
+  it('fait un groupe de la Validation qui attend, avec son aide : un Projet qui n’a qu’elle a quelque chose à regarder', async () => {
+    stubSignals({ bdesk: RELAYED.filter(({ kind }) => kind === 'waitingValidation') });
+    renderApp('/p/bdesk/signals');
+
+    const waiting = await screen.findByRole('region', { name: 'Validation qui attend' });
+    expect(screen.queryByText(/Rien à regarder/)).toBeNull();
+    expect(within(waiting).getByRole('link', { name: 'Titre de bdesk-v' }).getAttribute('href')).toBe('/p/bdesk/t/bdesk-v');
+    expect(text(waiting)).toContain('beads-desktop · À valider depuis 3 j');
+
+    await userEvent.setup().hover(within(waiting).getByRole('button', { name: 'À propos de Validation qui attend' }));
+    expect(text(await screen.findByRole('tooltip'))).toContain('plus de 24 heures de Durée écoulée');
+  });
+
+  it('laisse les autres groupes sans aide', async () => {
+    stubSignals();
+    renderApp('/');
+
+    const drift = await screen.findByRole('region', { name: 'Dérive' });
+    expect(within(drift).queryByRole('button')).toBeNull();
   });
 });
 

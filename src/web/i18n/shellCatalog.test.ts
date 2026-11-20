@@ -67,8 +67,8 @@ describe('the shared helpers of the shell zone, in English', () => {
   });
 
   it('says the signals', () => {
-    expect(signalKinds('en').map(({ label }) => label)).toEqual(['Drift', 'Long blockage', 'Stale ready', 'Unusual WIP']);
-    expect(SIGNAL_KINDS.map(({ label }) => label)).toEqual(['Dérive', 'Blocage long', 'Prêt qui stagne', 'WIP inhabituel']);
+    expect(signalKinds('en').map(({ label }) => label)).toEqual(['Drift', 'Long blockage', 'Stale ready', 'Unusual WIP', 'Waiting validation', 'Send-back loop']);
+    expect(SIGNAL_KINDS.map(({ label }) => label)).toEqual(['Dérive', 'Blocage long', 'Prêt qui stagne', 'WIP inhabituel', 'Validation qui attend', 'Boucle de Retours']);
     expect(signalSentence({ kind: 'longBlockage', project: 'p', ticket, since: '', duration: 4 * DAY }, 'en')).toBe(
       `blocked while in progress for 4${NBSP}d`,
     );

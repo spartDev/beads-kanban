@@ -24,6 +24,7 @@ const SIGNALS: Record<string, ApiSignal[]> = {
   bdesk: [
     { kind: 'drift', project: 'bdesk', ticket: { id: 'bdesk-w', title: 'Ticket w', type: 'task', priority: 2 }, cycleTime: 12 * DAY, reference: 8.65 * DAY, scope: 'type' },
     { kind: 'stagnantReady', project: 'bdesk', ticket: { id: 'bdesk-r', title: '   ', type: 'task', priority: 2 }, since: '2026-10-03T18:00:00.000Z', age: 20 * DAY },
+    { kind: 'sendBackLoop', project: 'bdesk', ticket: { id: 'bdesk-l', title: 'Ticket l', type: 'task', priority: 2 }, sendBacks: 3 },
   ],
   mpm: [{ kind: 'unusualWip', project: 'mpm', wip: 6, threshold: 4.5 }],
 };
@@ -110,6 +111,9 @@ describe('the Watch list in English', () => {
     expect(text(screen.getByRole('region', { name: 'Unusual WIP' }))).toBe(
       'Unusual WIPMon-Pommier-Malin: 6 tickets in progress, above 4.5, the P85 of daily WIP over the last 90 days',
     );
+    const loop = screen.getByRole('region', { name: 'Send-back loop' });
+    expect(text(loop)).toContain('beads-desktop · 3 Send-backs to development, still not closed');
+    expect(within(loop).getByRole('button', { name: 'About Send-back loop' })).toBeTruthy();
     await waitFor(() => expect(document.title).toBe('Watch list · Throughline'));
   });
 
