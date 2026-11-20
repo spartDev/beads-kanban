@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeProject, computeMetrics, type MetricsTicket } from '../../domain/metrics';
 import type { DeclaredStatuses, Issue } from '../../shared/api';
-import { buildBoard, type ColumnId } from '../../web/kanban/columns';
+import { buildBoard, COLUMN_IDS, type ColumnId } from '../../web/kanban/columns';
 import { withTimeZone } from '../../web/test/timeZone';
 import type { DependencyRecord, IssueSummary } from '../dolt/reader';
 import { buildIssues } from './issues';
@@ -110,8 +110,8 @@ describe('le tableau d’un Projet et le dernier point de son CFD comptent les m
   }
 
   /**
-   * Le dernier point du CFD : le Projet tel qu'il est à NOW, par colonne, avec les statuts qu'il déclare. PROVISOIRE (bdesk-pz0.4) : le tableau n'a pas
-   * encore les colonnes des Statuts de relais, et les montre en En cours ; leurs tickets sont donc comptés ici dans En cours.
+   * Le dernier point du CFD : le Projet tel qu'il est à NOW, par colonne, avec les statuts qu'il déclare. Une colonne de relais qu'il n'a pas y vaut
+   * zéro, comme au tableau, où elle est vide.
    */
   function lastCfdPoint(tickets = PROJECT, declared: DeclaredStatuses = NO_DECLARED_STATUSES): Record<ColumnId, number> {
     const analysis = analyzeProject(tickets, declared);
@@ -119,12 +119,16 @@ describe('le tableau d’un Projet et le dernier point de son CFD comptent les m
     const last = report.cfd.at(-1);
     if (!last) throw new Error('CFD vide');
     const { backlog, ready, inProgress, blocked, done, inReview = 0, inIntegration = 0, awaitingHuman = 0 } = last;
-    return { backlog, ready, inProgress: inProgress + inReview + inIntegration + awaitingHuman, blocked, done };
+    return { backlog, ready, inProgress, inReview, inIntegration, awaitingHuman, blocked, done };
   }
 
-  const counts = (board: ReturnType<typeof buildBoard>): Record<ColumnId, number> => {
-    const { backlog, ready, inProgress, blocked, done } = board.columns;
-    return { backlog: backlog.length, ready: ready.length, inProgress: inProgress.length, blocked: blocked.length, done: done.length };
+  const counts = (board: ReturnType<typeof buildBoard>): Record<ColumnId, number> =>
+    Object.fromEntries(COLUMN_IDS.map((id) => [id, board.columns[id].length])) as Record<ColumnId, number>;
+  /** Les colonnes que le CFD a, dans son ordre : les clés de son dernier point. */
+  const cfdColumns = (tickets: MetricsTicket[], declared: DeclaredStatuses = NO_DECLARED_STATUSES) => {
+    const analysis = analyzeProject(tickets, declared);
+    const report = computeMetrics([{ id: 'p', name: 'Projet P', analysis }], { period: { range: '7d' }, now: new Date(NOW), timeZone: 'Europe/Paris' });
+    return Object.keys(report.cfd.at(-1) ?? {}).filter((key) => key !== 'date');
   };
   const ids = (issues: Issue[]) => issues.map((i) => i.id).sort();
 
@@ -138,6 +142,18 @@ describe('le tableau d’un Projet et le dernier point de son CFD comptent les m
     expect(ids(board.columns.done)).toEqual(['livre-ancien', 'livre-malgre-dependance', 'livre-recent']);
     expect(ids(board.paused)).toEqual(['differe', 'differe-bloque', 'epingle', 'revue']);
     expect(counts(board)).toEqual(lastCfdPoint());
+    // Sans Statut de relais déclaré ni porté : les cinq colonnes, au tableau comme au CFD.
+    expect(board.columnIds).toEqual(cfdColumns(PROJECT));
+    expect(board.columnIds).toEqual(['backlog', 'ready', 'inProgress', 'blocked', 'done']);
+  });
+
+  it('a les colonnes des Statuts de relais que le Projet déclare, vides, comme le CFD', () => {
+    const declared: DeclaredStatuses = { handoff: ['in_integration'], others: [] };
+    const board = buildBoard(currentIssues(PROJECT), { now: NOW, doneDays: Infinity, declared });
+
+    expect(board.columnIds).toEqual(['backlog', 'ready', 'inProgress', 'inIntegration', 'blocked', 'done']);
+    expect(board.columnIds).toEqual(cfdColumns(PROJECT, declared));
+    expect(counts(board)).toEqual(lastCfdPoint(PROJECT, declared));
   });
 
   it('avec la fenêtre de Terminé, seul Terminé s’écarte du CFD, exactement des tickets fermés plus tôt', () => {
@@ -149,7 +165,7 @@ describe('le tableau d’un Projet et le dernier point de son CFD comptent les m
     expect(counts(board).done + board.closedEarlier + board.closedUndated).toBe(cfd.done);
     expect({ ...counts(board), done: 0 }).toEqual({ ...cfd, done: 0 });
   });
-  it('compte de même un statut que le Projet déclare wip et les Statuts de relais (en En cours au tableau, provisoire : bdesk-pz0.4)', () => {
+  it('compte de même un statut que le Projet déclare wip, et les Statuts de relais dans leurs colonnes', () => {
     const declared: DeclaredStatuses = {
       handoff: [],
       others: [
@@ -170,10 +186,15 @@ describe('le tableau d’un Projet et le dernier point de son CFD comptent les m
 
     const board = buildBoard(currentIssues(extended), { now: NOW, doneDays: Infinity, declared });
 
-    expect(ids(board.columns.inProgress)).toEqual(['agent', 'en-cours', 'integration', 'recette', 'relecture', 'validation']);
+    expect(ids(board.columns.inProgress)).toEqual(['agent', 'en-cours', 'recette']);
+    expect(ids(board.columns.inReview)).toEqual(['relecture']);
+    expect(ids(board.columns.inIntegration)).toEqual(['integration']);
+    expect(ids(board.columns.awaitingHuman)).toEqual(['validation']);
     expect(ids(board.columns.blocked)).toEqual(['agent-coince', 'coince', 'recette-coincee', 'relecture-coincee', 'statut-bloque']);
     expect(ids(board.paused)).toEqual(['differe', 'differe-bloque', 'epingle', 'gele', 'revue']);
     expect(counts(board)).toEqual(lastCfdPoint(extended, declared));
+    // Les mêmes colonnes, dans le même ordre : celles des Statuts de relais que portent les tickets, sans qu'ils soient déclarés.
+    expect(board.columnIds).toEqual(cfdColumns(extended, declared));
 
     // Sans la déclaration, le tableau et le CFD laissent tous deux qa_testing hors des colonnes : le tableau dans « En pause ».
     const bare = buildBoard(currentIssues(extended), { now: NOW, doneDays: Infinity });

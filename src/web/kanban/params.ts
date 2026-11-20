@@ -5,8 +5,8 @@ import { COLUMN_IDS, DEFAULT_DONE_DAYS, type ColumnId } from './columns';
  *
  *   ?epic=<id>    limite le tableau aux Enfants de l'Epic
  *   ?done=<jours> Terminé : les <jours> derniers jours calendaires, aujourd'hui compris (14 par défaut)
- *   ?col=<id>     colonne affichée sur mobile (backlog, ready, inProgress, blocked, done) ; sans lui, celle que le
- *                 tableau a choisie à l'ouverture
+ *   ?col=<id>     colonne affichée sur mobile (backlog, ready, inProgress, inReview, inIntegration, awaitingHuman, blocked,
+ *                 done) ; sans lui, ou pour une colonne que le Projet n'a pas, celle que le tableau a choisie à l'ouverture
  */
 export const EPIC_PARAM = 'epic';
 export const DONE_PARAM = 'done';

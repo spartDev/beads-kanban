@@ -1,4 +1,4 @@
-import { Ban, Circle, CircleCheck, CircleDashed, Contrast, type LucideIcon } from 'lucide-react';
+import { Ban, Circle, CircleCheck, CircleDashed, CircleUserRound, Contrast, Eye, GitMerge, type LucideIcon } from 'lucide-react';
 import { kanban } from '../i18n/catalog/kanban';
 import type { Language } from '../i18n/language';
 import { localDateFormat } from '../lib/localDay';
@@ -53,6 +53,10 @@ const columnMetaIn = (language: Language): Record<ColumnId, ColumnMeta> => {
     backlog: plain('backlog', CircleDashed),
     ready: plain('ready', Circle),
     inProgress: plain('inProgress', Contrast),
+    // Les Statuts de relais : qui a la main. Un agent relit ; la demande de fusion est ouverte ; le ticket attend une personne, vous.
+    inReview: plain('inReview', Eye),
+    inIntegration: plain('inIntegration', GitMerge),
+    awaitingHuman: plain('awaitingHuman', CircleUserRound),
     blocked: plain('blocked', Ban),
     done: {
       id: 'done',
@@ -78,10 +82,10 @@ const COLUMNS_BY_LANGUAGE: Record<Language, readonly ColumnMeta[]> = {
   en: COLUMN_IDS.map((id) => COLUMN_META_BY_LANGUAGE.en[id]),
 };
 
-/** Les colonnes dans l'ordre du flux, nommées en français ; `columnsIn(language)` pour une autre langue. */
+/** Toutes les colonnes dans l'ordre du flux, celles des Statuts de relais comprises, nommées en français ; `columnsIn(language)` pour une autre langue. */
 export const COLUMNS: readonly ColumnMeta[] = COLUMNS_BY_LANGUAGE.fr;
 
-/** Les colonnes dans l'ordre du flux, nommées dans `language`. */
+/** Toutes les colonnes dans l'ordre du flux, nommées dans `language` ; celles d'un Projet sont `Board.columnIds`. */
 export const columnsIn = (language: Language = 'fr'): readonly ColumnMeta[] => COLUMNS_BY_LANGUAGE[language];
 
 /** Le nom du tiroir « En pause » (« Paused »). */

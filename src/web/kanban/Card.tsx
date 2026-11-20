@@ -10,7 +10,7 @@ import { useFormat, useLanguage, useT } from '../i18n';
 import { parsePath, paths } from '../paths';
 import { AbandonBadge, DeclineBadge, PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
 import { openedFromCard } from './boardFocus';
-import type { Lane } from './columns';
+import { showsStatus, type Lane } from './columns';
 import { epicName, epicShortName } from './epics';
 
 /** Combien d'identifiants bloquants la carte nomme avant de compter le reste. */
@@ -47,7 +47,10 @@ export function Card({
   now: number;
   /** Les Signaux du ticket : sa Dérive, son Blocage long. */
   signals?: TicketSignals | undefined;
-  /** Les statuts que le Projet déclare : un ticket dans un statut qu'il déclare `wip` est en travail, et montre ses Signaux (`shownSignals`). */
+  /**
+   * Les statuts que le Projet déclare : un ticket dans un statut qu'il déclare `wip` est en travail, et montre ses Signaux (`shownSignals`) ; sa carte écrit
+   * ce statut, que sa colonne ne dit pas (`showsStatus`).
+   */
   declared: DeclaredStatuses;
 }) {
   const { language } = useLanguage();
@@ -105,8 +108,11 @@ export function Card({
         </div>
       ) : null}
       <Blocking issue={issue} />
-      {lane === 'paused' ? (
-        <p className="self-start rounded-full border border-line px-1.5 text-xs leading-5 text-ink-2">{statusLabel(issue.status, language)}</p>
+      {/* Le statut que la colonne ne dit pas (`showsStatus`) : celui d'un ticket en pause, un Statut de relais dans Bloqué, un autre statut déclaré de travail. */}
+      {showsStatus(issue.status, lane, declared) ? (
+        <p data-card-status className="self-start rounded-full border border-line px-1.5 text-xs leading-5 text-ink-2">
+          {statusLabel(issue.status, language)}
+        </p>
       ) : null}
 
       {issue.assignee || age ? (

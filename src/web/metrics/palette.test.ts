@@ -12,7 +12,8 @@ import { OUTLINE_FILL_SHARE, outlineOf } from './palette';
  * - le texte d'une tendance (--good, --danger) atteint 4,5:1 sur les fonds des tuiles (WCAG 1.4.3) ;
  * - chaque forme pleine d'un graphique (bande du CFD, barre, point, pastille de légende) est cernée d'un trait mêlé à
  *   l'encre du thème, et ce contour atteint 3:1 sur le panneau (WCAG 1.4.11) ;
- * - les cinq colonnes du CFD se distinguent de leurs voisines ;
+ * - les colonnes du CFD se distinguent de leurs voisines : celles des Statuts de relais, qui n'y sont que pour un Projet qui les a, de toutes celles
+ *   qu'elles peuvent toucher, quelles que soient les colonnes de relais présentes ;
  * - le segment d'accent du trait qui dit « calcul en cours » au-dessus des chiffres gardés (bdesk-38k.80), qui remplace leur atténuation, atteint lui aussi 3:1 sur le panneau (le reste du trait : busyBar.test.ts).
  */
 
@@ -115,7 +116,7 @@ describe.each(THEMES)('thème $name', ({ tokens, numbers }) => {
 
   it(`le contour de chaque colonne du CFD atteint ${GRAPHIC_MIN}:1 sur le panneau`, () => {
     const failures: string[] = [];
-    for (const name of ['flow-backlog', 'flow-ready', 'flow-progress', 'flow-blocked', 'flow-done']) {
+    for (const name of ['flow-backlog', 'flow-ready', 'flow-progress', 'flow-review', 'flow-integration', 'flow-awaiting', 'flow-blocked', 'flow-done']) {
       const ratio = contrastRatio(toSrgb(outline(token(tokens, name), ink)), panel);
       if (ratio < GRAPHIC_MIN) failures.push(`--${name} : ${ratio.toFixed(2)}:1`);
     }
@@ -166,6 +167,20 @@ describe.each(THEMES)('thème $name', ({ tokens, numbers }) => {
       const [lower, upper] = [order[i - 1] as string, order[i] as string];
       const gap = distance(token(tokens, lower), token(tokens, upper));
       if (gap < 0.08) failures.push(`--${lower} / --${upper} : ${gap.toFixed(3)}`);
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it('distingue les bandes des Statuts de relais de toutes celles qu’elles peuvent toucher, et entre elles', () => {
+    // De bas en haut : En cours, puis celles des relais que le CFD a, puis Bloqué. Toute paire de ce segment peut se toucher.
+    const segment = ['flow-progress', 'flow-review', 'flow-integration', 'flow-awaiting', 'flow-blocked'];
+    const failures: string[] = [];
+    for (let i = 0; i < segment.length; i++) {
+      for (let j = i + 1; j < segment.length; j++) {
+        const [lower, upper] = [segment[i] as string, segment[j] as string];
+        const gap = distance(token(tokens, lower), token(tokens, upper));
+        if (gap < 0.08) failures.push(`--${lower} / --${upper} : ${gap.toFixed(3)}`);
+      }
     }
     expect(failures).toEqual([]);
   });

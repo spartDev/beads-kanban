@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { baseColumnOf, columnFor } from '../../domain/columns';
+import { columnFor } from '../../domain/columns';
 import type { EpicProgress } from '../../domain/epics';
 import { ticketTitle } from '../data/helpers';
 import type { DeclaredStatuses, Issue } from '../data/types';
@@ -16,11 +16,11 @@ type Words = Messages['epics']['children'];
 
 /**
  * La colonne d'un ticket écrite pour une ligne, ou « En pause », avec les statuts que le Projet déclare : un statut qu'il déclare `wip` s'y écrit En
- * cours, comme au tableau et au CFD. PROVISOIRE (bdesk-pz0.4) : un Statut de relais s'y écrit En cours, comme au tableau (`baseColumnOf`).
+ * cours, comme au tableau et au CFD. Un Statut de relais s'y écrit du nom de sa colonne (En relecture, En intégration, À valider), et Bloqué en Blocage.
  */
 function columnLabel(issue: Pick<Issue, 'status' | 'blockedBy'>, words: Words, declared: DeclaredStatuses): string {
   const column = columnFor(issue.status, issue.blockedBy.length > 0, declared);
-  return column === null ? words.paused : COLUMN_META[baseColumnOf(column)].label;
+  return column === null ? words.paused : COLUMN_META[column].label;
 }
 
 /** Ce qui retient un ticket qui n'est pas fermé : les tickets dont il dépend, ou le seul statut bloqué ; rien sinon. */
@@ -88,7 +88,8 @@ export function ChildRow(
         ) : null}
         {reason ? <span className="wrap-anywhere">{reason}</span> : null}
         {issue.assignee ? <span className="wrap-anywhere">{issue.assignee}</span> : null}
-        {props.showColumn && !isEpic ? <span className="sm:w-14">{columnLabel(issue, words, props.declared)}</span> : null}
+        {/* Au moins la largeur des noms courts, pour qu'ils s'alignent d'une ligne à l'autre ; un nom plus long (En intégration) l'élargit plutôt que de déborder. */}
+        {props.showColumn && !isEpic ? <span className="sm:min-w-14">{columnLabel(issue, words, props.declared)}</span> : null}
         {isEpic ? null : <PriorityBadge priority={issue.priority} className="text-xs sm:w-8" />}
         {closedAge && issue.closedAt ? (
           <time dateTime={issue.closedAt} title={format.formatDateTime(issue.closedAt)} className="sm:w-[4.5rem] sm:text-right">

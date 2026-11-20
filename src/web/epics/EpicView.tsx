@@ -36,9 +36,9 @@ const LINK = '-my-0.5 min-h-[24px] py-0.5 font-medium text-accent hover:underlin
  * le kanban a déjà : rien de plus à lire, et les mises à jour en direct la tiennent à jour comme lui.
  *
  * Les Enfants sont les mêmes que ceux du filtre Epic du kanban (`epicChildren`), rangés par la même règle de colonne
- * (`columnFor`), avec les statuts que le Projet déclare (`declared`, rendus avec ses tickets) : un statut qu'il déclare `wip` est en En cours.
- * PROVISOIRE (bdesk-pz0.4) : les trois Statuts de relais y sont en En cours (`groupByColumn`, `ChildRow`). L'affichage choisi vit dans l'adresse
- * (`?view=tree`), pour qu'un lien le partage.
+ * (`columnFor`), avec les statuts que le Projet déclare (`declared`, rendus avec ses tickets) : un statut qu'il déclare `wip` est en En cours, un
+ * Statut de relais dans sa colonne, par colonne comme en arbre (`groupByColumn`, `ChildRow`). Une colonne sans Enfant n'y est pas : celles des
+ * Statuts de relais n'apparaissent que si un Enfant y est. L'affichage choisi vit dans l'adresse (`?view=tree`), pour qu'un lien le partage.
  */
 export function EpicView({ project, epic, issues, declared }: { project: Project; epic: Issue; issues: readonly Issue[]; declared: DeclaredStatuses }) {
   const now = useNow();

@@ -47,7 +47,16 @@ const fr = {
   },
   /** Le Flux cumulé (`metrics/cfd.ts`, `metrics/CfdChart.tsx`) ; les colonnes sont celles du kanban. */
   cfd: {
-    columns: { done: 'Terminé', inProgress: 'En cours', blocked: 'Bloqué', ready: 'Prêt', backlog: 'Backlog' },
+    columns: {
+      done: 'Terminé',
+      inProgress: 'En cours',
+      inReview: 'En relecture',
+      inIntegration: 'En intégration',
+      awaitingHuman: 'À valider',
+      blocked: 'Bloqué',
+      ready: 'Prêt',
+      backlog: 'Backlog',
+    },
     summaryEmpty: 'Flux cumulé : aucun jour à montrer.',
     spanOne: (day: string) => `le ${day}`,
     spanRange: (from: string, to: string) => `du ${from} au ${to}`,
@@ -55,6 +64,9 @@ const fr = {
     summary: (span: string, state: string) => `Flux cumulé ${span}. Dernier jour : ${state}.`,
     title: 'Flux cumulé',
     description: 'Tickets dans chaque colonne du kanban à la fin de chaque jour. L’épaisseur des bandes En cours et Bloqué est le travail en cours.',
+    /** La même, quand le CFD a des colonnes de Statuts de relais : elles sont du travail en cours. */
+    descriptionWithHandoff:
+      'Tickets dans chaque colonne du kanban à la fin de chaque jour. L’épaisseur des bandes En cours et Bloqué, et entre elles des Statuts de relais, est le travail en cours.',
     hideDone: 'Masquer Terminé',
     legend: 'Colonnes du flux',
     empty: 'Aucun ticket sur cette période.',
@@ -187,13 +199,24 @@ const en: typeof fr = {
     spokenHours: (hours, n) => `${hours} ${n === 1 ? 'hour' : 'hours'}`,
   },
   cfd: {
-    columns: { done: 'Done', inProgress: 'In progress', blocked: 'Blocked', ready: 'Ready', backlog: 'Backlog' },
+    columns: {
+      done: 'Done',
+      inProgress: 'In progress',
+      inReview: 'In review',
+      inIntegration: 'In integration',
+      awaitingHuman: 'Awaiting validation',
+      blocked: 'Blocked',
+      ready: 'Ready',
+      backlog: 'Backlog',
+    },
     summaryEmpty: 'Cumulative flow: no days to show.',
     spanOne: (day) => `on ${day}`,
     spanRange: (from, to) => `from ${from} to ${to}`,
     summary: (span, state) => `Cumulative flow ${span}. Last day: ${state}.`,
     title: 'Cumulative flow',
     description: 'Tickets in each kanban column at the end of each day. The thickness of the In progress and Blocked bands is the work in progress.',
+    descriptionWithHandoff:
+      'Tickets in each kanban column at the end of each day. The thickness of the In progress and Blocked bands, and of the Handoff status bands between them, is the work in progress.',
     hideDone: 'Hide Done',
     legend: 'Flow columns',
     empty: 'No tickets in this period.',

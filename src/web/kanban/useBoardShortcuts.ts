@@ -8,7 +8,8 @@ export type Lanes = Record<Lane, readonly string[]>;
 
 /**
  * La colonne la plus proche de `from` dans le sens `direction` qui a des cartes : le curseur saute les colonnes
- * vides et ne s'arrête jamais sur du vide. Sans point de départ (`from` nul), elle part du bord du tableau : la première
+ * vides et ne s'arrête jamais sur du vide. Les colonnes sont parcourues dans l'ordre du tableau (`COLUMN_IDS`) ; une colonne que le Projet n'a
+ * pas n'a jamais de carte. Sans point de départ (`from` nul), elle part du bord du tableau : la première
  * colonne qui a des cartes dans le sens « suivante », la dernière dans le sens « précédente ». Indéfinie au bout du tableau.
  */
 export function adjacentColumn(lanes: Lanes, from: ColumnId | null, direction: 1 | -1): ColumnId | undefined {
@@ -44,10 +45,10 @@ export const cardLink = (root: Element | null, id: string, project?: string | nu
   );
 
 /**
- * Le panneau est-il trop étroit pour les cinq colonnes ? Alors une seule est affichée, avec le sélecteur de colonne ;
- * dès que le panneau est assez large, le sélecteur disparaît et les cinq colonnes s'affichent (`ColumnSelector`, `Board`).
+ * Le panneau est-il trop étroit pour toutes les colonnes ? Alors une seule est affichée, avec le sélecteur de colonne ;
+ * dès que le panneau est assez large, le sélecteur disparaît et toutes les colonnes s'affichent (`ColumnSelector`, `Board`).
  * C'est le navigateur qui tranche, par une requête de conteneur : on lit son verdict (le sélecteur est-il affiché ?) au
- * lieu de répéter la mesure de 60 rem. Sans sélecteur à lire, on suppose le panneau étroit, la disposition d'origine.
+ * lieu de répéter la mesure, qui dépend du nombre de colonnes (`layout.ts`). Sans sélecteur à lire, on suppose le panneau étroit, la disposition d'origine.
  */
 function isNarrow(root: HTMLElement | null): boolean {
   const selector = root?.querySelector('[data-column-selector]');
@@ -66,7 +67,7 @@ function isNarrow(root: HTMLElement | null): boolean {
  * sélection, « j » prend la première carte de la colonne affichée, « k » la dernière.
  *
  * Sans carte sélectionnée, « h » et « l » dépendent de la disposition. Panneau étroit (une colonne à la fois), ils partent de
- * la colonne affichée, comme « j » et « k ». Panneau large (les cinq colonnes), aucune n'est « la » colonne courante : le
+ * la colonne affichée, comme « j » et « k ». Panneau large (toutes les colonnes), aucune n'est « la » colonne courante : le
  * choix du mobile (celui de l'ouverture, ou `?col=`) n'y compte pas. « l » prend la première colonne qui a des cartes et
  * « h » la dernière, comme « j » prend la première carte et « k » la dernière ; la carte est la première de la colonne.
  * Sur panneau large, l'adresse n'est jamais touchée : `?col=` ne sert qu'au mobile.
@@ -129,7 +130,7 @@ export function useBoardShortcuts({
     if (lane === 'paused') return;
     const narrow = isNarrow(root);
     // D'où l'on part : de la carte qui a le focus ; sans carte, de la colonne affichée quand il n'y en a qu'une, sinon du
-    // bord du tableau (aucune des cinq n'est alors « la » colonne courante).
+    // bord du tableau (aucune n'est alors « la » colonne courante).
     const target = adjacentColumn(lanes, lane ?? (narrow ? column : null), direction);
     if (!target) return;
     const ids = lanes[target];
@@ -141,7 +142,7 @@ export function useBoardShortcuts({
       onColumn(target);
       if (next !== undefined && !focusCard(next)) pending.current = { id: next, column: target };
     } else if (next !== undefined) {
-      // Les cinq colonnes sont affichées : la carte est déjà là, l'adresse n'a rien à retenir.
+      // Toutes les colonnes sont affichées : la carte est déjà là, l'adresse n'a rien à retenir.
       focusCard(next);
     }
   };

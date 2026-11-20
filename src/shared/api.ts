@@ -89,8 +89,7 @@ export interface IssuesResponse {
    * Les statuts personnalisés que le Projet déclare, lus au Dernier commit, dans le même état que les tickets : les Statuts de relais
    * et les autres (ADR 0007). Ce qu'ils font des tickets est la règle du domaine : la colonne (`columnFor`) et les colonnes de relais qui
    * existent pour le Projet (`visibleHandoffStatuses`). Le tableau, la page Epic et les Signaux d'un ticket s'en servent (`useDeclaredStatuses`) :
-   * un statut que le Projet déclare de catégorie `wip` y est en En cours, comme au CFD. PROVISOIRE (bdesk-pz0.4) : ils montrent les Statuts de relais
-   * en En cours tant qu'ils n'ont pas leurs colonnes.
+   * un statut que le Projet déclare de catégorie `wip` y est en En cours, comme au CFD, et un Statut de relais déclaré y a sa colonne même vide.
    */
   declaredStatuses: DeclaredStatuses;
 }

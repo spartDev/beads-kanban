@@ -68,6 +68,15 @@ describe('statusLabel', () => {
     expect(statusLabel('custom')).toBe('custom');
   });
 
+  it('nomme les Statuts de relais, qu’ils soient déclarés ou non : le Panneau et la Chronologie les disent en toutes lettres', () => {
+    expect(['in_review', 'in_integration', 'awaiting_human'].map((status) => statusLabel(status))).toEqual(['en relecture', 'en intégration', 'à valider']);
+    expect(['in_review', 'in_integration', 'awaiting_human'].map((status) => statusLabel(status, 'en'))).toEqual([
+      'in review',
+      'in integration',
+      'awaiting validation',
+    ]);
+  });
+
   it('dit « inconnu » d’un statut vide, au lieu d’une pastille sans texte', () => {
     expect(statusLabel('')).toBe('inconnu');
     expect(statusLabel('   ')).toBe('inconnu');

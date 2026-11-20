@@ -1,21 +1,23 @@
-import { type BaseColumn, baseColumnOf, COLUMNS, columnFor } from '../../domain/columns';
+import { ALL_COLUMNS, type Column, columnFor, columnsOf, HANDOFF_COLUMN } from '../../domain/columns';
 import { descendantIds } from '../../domain/epics';
-import { NO_DECLARED_STATUSES } from '../../domain/statuses';
+import { isDeclaredWip, isHandoffStatus, NO_DECLARED_STATUSES, visibleHandoffStatuses } from '../../domain/statuses';
 import type { DeclaredStatuses, Issue } from '../data/types';
 import { startOfLocalDay } from '../lib/localDay';
 
 /**
  * Le classement des tickets en colonnes du kanban : des fonctions pures, sans React ni horloge cachée.
  *
- *   Backlog   ticket ouvert, en Blocage
- *   Prêt      ticket ouvert, hors Blocage
- *   En cours  statut de travail (en cours, rattaché à un agent, un statut que le Projet déclare de catégorie `wip`), hors Blocage ;
- *             pour l'instant aussi les Statuts de relais (provisoire, voir `columnOf`)
- *   Bloqué    statut de travail en Blocage, ou statut bloqué
- *   Terminé   ticket fermé ces `doneDays` derniers jours, aujourd'hui compris (14 par défaut) : des jours calendaires
- *             du fuseau du navigateur, comme les périodes de la page Métriques (`resolvePeriod`) et CONTEXT.md. Avec 14
- *             jours, le lundi 26 octobre, Terminé commence le mardi 13 à minuit.
- *   En pause  tiroir : statut différé ou épinglé, et tout autre statut que le Projet ne déclare pas de catégorie `wip`, comme dans le CFD
+ *   Backlog          ticket ouvert, en Blocage
+ *   Prêt             ticket ouvert, hors Blocage
+ *   En cours         en cours, rattaché à un agent, ou un autre statut que le Projet déclare de catégorie `wip`, hors Blocage
+ *   En relecture,    le Statut de relais du même nom, hors Blocage ; ces colonnes ne sont là que pour un Projet qui déclare leur
+ *   En intégration,  statut ou dont un ticket le porte (`boardColumns`)
+ *   À valider
+ *   Bloqué           statut de travail en Blocage (de relais compris), ou statut bloqué
+ *   Terminé          ticket fermé ces `doneDays` derniers jours, aujourd'hui compris (14 par défaut) : des jours calendaires
+ *                    du fuseau du navigateur, comme les périodes de la page Métriques (`resolvePeriod`) et CONTEXT.md. Avec 14
+ *                    jours, le lundi 26 octobre, Terminé commence le mardi 13 à minuit.
+ *   En pause         tiroir : statut différé ou épinglé, et tout autre statut que le Projet ne déclare pas de catégorie `wip`, comme dans le CFD
  *
  * Le Blocage se déduit des dépendances (`blockedBy`, les cibles `blocks` non fermées), pas du statut : voir CONTEXT.md.
  *
@@ -26,10 +28,13 @@ import { startOfLocalDay } from '../lib/localDay';
  * entier, c'est `src/server/projects/board-vs-cfd.test.ts` (il passe par `buildIssues`, du serveur).
  */
 
-/** Les colonnes, dans l'ordre du flux : celles de tout Projet, du domaine, que le CFD partage. */
-export const COLUMN_IDS = COLUMNS;
+/**
+ * Toutes les colonnes que peut avoir le tableau, dans l'ordre du flux, celles des Statuts de relais comprises : la liste du domaine, que le CFD
+ * partage. Celles d'un Projet sont `Board.columnIds`.
+ */
+export const COLUMN_IDS = ALL_COLUMNS;
 
-export type ColumnId = BaseColumn;
+export type ColumnId = Column;
 
 /** Une colonne, ou le tiroir « En pause ». */
 export type Lane = ColumnId | 'paused';
@@ -47,7 +52,7 @@ export interface PlacementOptions {
   doneDays?: number;
   /**
    * Les statuts que le Projet déclare, rendus avec ses tickets (`useDeclaredStatuses`) : un statut qu'il déclare de catégorie `wip` va en En cours,
-   * comme au CFD. Facultatif ici (défaut : aucun), le tableau (`Board`) l'exige.
+   * comme au CFD, et un Statut de relais qu'il déclare a sa colonne, même vide. Facultatif ici (défaut : aucun), le tableau (`Board`) l'exige.
    */
   declared?: DeclaredStatuses;
 }
@@ -65,10 +70,8 @@ export const isBlocked = (issue: Pick<Issue, 'status' | 'blockedBy'>): boolean =
  *
  * Un ticket fermé est dans Terminé s'il l'a été ces `doneDays` derniers jours, aujourd'hui compris (`closedWithin`).
  *
- * Un statut que le Projet déclare de catégorie `wip` (`declared`) est en En cours, ou Bloqué en Blocage, comme au CFD.
- *
- * PROVISOIRE (bdesk-pz0.4) : le tableau n'a pas encore les colonnes des Statuts de relais, que le CFD a déjà ; un ticket En relecture, En
- * intégration ou À valider y est montré en En cours (`baseColumnOf`), faute de colonne à lui, plutôt que perdu (avant ce repli, il était « En pause »). En Blocage, il est dans Bloqué, comme au CFD.
+ * Un statut que le Projet déclare de catégorie `wip` (`declared`) est en En cours, ou Bloqué en Blocage, comme au CFD. Un ticket En relecture, En
+ * intégration ou À valider est dans la colonne de son statut, déclaré ou non, et dans Bloqué en Blocage, comme au CFD.
  */
 export function columnOf(issue: IssueFacts, { now, doneDays = DEFAULT_DONE_DAYS, declared = NO_DECLARED_STATUSES }: PlacementOptions): Lane | null {
   const column = columnFor(issue.status, isBlocked(issue), declared);
@@ -77,7 +80,29 @@ export function columnOf(issue: IssueFacts, { now, doneDays = DEFAULT_DONE_DAYS,
   if (column === null) return 'paused';
   // Le CFD cumule tous les tickets fermés ; le tableau ne garde dans Terminé que ceux de la fenêtre.
   if (column === 'done') return closedWithin(issue.closedAt, now, doneDays) ? 'done' : null;
-  return baseColumnOf(column);
+  return column;
+}
+
+/**
+ * Les colonnes du tableau d'un Projet, dans l'ordre du flux (`columnsOf`) : celles de tout Projet et celles de ses Statuts de relais visibles
+ * (`visibleHandoffStatuses`), ceux qu'il déclare, même vides, et ceux que porte une de ses cartes au Dernier commit, en Blocage ou non. Sans Statut
+ * de relais, les cinq colonnes d'avant. Ce sont celles du Projet, pas du filtre Epic : choisir une Epic ne retire aucune colonne. Une Epic n'est
+ * pas une carte (`isBoardCard`) : son statut n'en ajoute aucune, comme au CFD, qui ne la mesure pas.
+ */
+export function boardColumns(issues: readonly Pick<Issue, 'type' | 'status'>[], declared: DeclaredStatuses): ColumnId[] {
+  return columnsOf(visibleHandoffStatuses(declared.handoff, issues.filter(isBoardCard).map((issue) => issue.status)));
+}
+
+/**
+ * La carte écrit-elle son statut ? Oui quand sa colonne ne suffit pas à le dire : dans le tiroir « En pause », toujours (reporté, épinglé, un statut
+ * inconnu…) ; ailleurs, pour un Statut de relais hors de sa colonne (dans Bloqué : à quelle étape le ticket est bloqué) et pour un autre statut que
+ * le Projet déclare de catégorie `wip` (`qa_testing` en En cours ou dans Bloqué). Jamais pour un Statut de relais dans sa colonne, ni pour ouvert, en
+ * cours, bloqué ou fermé, que leur colonne dit ; un ticket rattaché à un agent a déjà sa pastille « agent », dans En cours comme dans Bloqué.
+ */
+export function showsStatus(status: string, lane: Lane, declared: DeclaredStatuses): boolean {
+  if (lane === 'paused') return true;
+  if (isHandoffStatus(status)) return HANDOFF_COLUMN[status] !== lane;
+  return isDeclaredWip(status, declared);
 }
 
 /**
@@ -152,10 +177,13 @@ export function compareClosed(a: Issue, b: Issue): number {
 }
 
 export interface Board {
+  /** Les colonnes du Projet, dans l'ordre du flux (`boardColumns`) : celles qu'on affiche. */
+  columnIds: readonly ColumnId[];
+  /** Les cartes de chaque colonne ; une colonne que le Projet n'a pas est vide. */
   columns: Record<ColumnId, Issue[]>;
   /** Le tiroir « En pause ». */
   paused: Issue[];
-  /** Cartes du tableau : les cinq colonnes et le tiroir. */
+  /** Cartes du tableau : les colonnes et le tiroir. */
   total: number;
   /** Tickets fermés avant la fenêtre de Terminé (leur date de clôture est connue). */
   closedEarlier: number;
@@ -171,7 +199,16 @@ export interface BoardOptions extends PlacementOptions {
 /** Le tableau d'un Projet : chaque carte dans sa colonne, chaque colonne triée. */
 export function buildBoard(issues: readonly Issue[], { epicId, ...placement }: BoardOptions): Board {
   const scope = epicId ? descendantIds(epicId, issues) : null;
-  const columns: Record<ColumnId, Issue[]> = { backlog: [], ready: [], inProgress: [], blocked: [], done: [] };
+  const columns: Record<ColumnId, Issue[]> = {
+    backlog: [],
+    ready: [],
+    inProgress: [],
+    inReview: [],
+    inIntegration: [],
+    awaitingHuman: [],
+    blocked: [],
+    done: [],
+  };
   const paused: Issue[] = [];
   let closedEarlier = 0;
   let closedUndated = 0;
@@ -188,14 +225,15 @@ export function buildBoard(issues: readonly Issue[], { epicId, ...placement }: B
   for (const id of COLUMN_IDS) columns[id].sort(id === 'done' ? compareClosed : compareIssues);
   paused.sort(compareIssues);
   const total = paused.length + COLUMN_IDS.reduce((sum, id) => sum + columns[id].length, 0);
-  return { columns, paused, total, closedEarlier, closedUndated };
+  const columnIds = boardColumns(issues, placement.declared ?? NO_DECLARED_STATUSES);
+  return { columnIds, columns, paused, total, closedEarlier, closedUndated };
 }
 
-/** Colonnes dans l'ordre où l'on préfère ouvrir le tableau : ce qui avance d'abord. */
-const OPENING_ORDER: readonly ColumnId[] = ['inProgress', 'ready', 'blocked', 'backlog', 'done'];
+/** Colonnes dans l'ordre où l'on préfère ouvrir le tableau : ce qui avance d'abord, En cours puis les relais dans l'ordre du flux. */
+const OPENING_ORDER: readonly ColumnId[] = ['inProgress', 'inReview', 'inIntegration', 'awaitingHuman', 'ready', 'blocked', 'backlog', 'done'];
 
 /**
- * La colonne montrée à l'ouverture sur mobile : la première qui a des cartes, en commençant par En cours. Quand le
+ * La colonne montrée à l'ouverture sur mobile : la première qui a des cartes, en commençant par En cours (`OPENING_ORDER`). Quand le
  * tableau n'a aucune carte mais que des tickets fermés restent de côté, Terminé : c'est là que le décompte des fermés
  * plus tôt est écrit, au lieu d'un « Aucun ticket » qui laisserait croire le Projet vide. Sinon Prêt.
  *

@@ -1,6 +1,9 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MetricsCfdPoint } from '../../shared/api';
+import { LanguageProvider } from '../i18n';
+import { setBrowserLanguages } from '../test/languages';
 import { CfdPanel } from './CfdChart';
 import { emptyMetricsFixture, metricsFixture, stubChartWidth } from './testing';
 
@@ -110,5 +113,117 @@ describe('CfdPanel : le flux cumulé', () => {
 
     fireEvent.pointerMove(hitArea(container), { clientX: 590, clientY: 60, pointerType: 'mouse' });
     expect(container.querySelector('[data-chart-tooltip]')?.textContent).toContain(`1${NBSP}234`);
+  });
+});
+
+describe('CfdPanel : les bandes des Statuts de relais (bdesk-pz0.4)', () => {
+  /** Le CFD d'un Projet qui a les trois Statuts de relais : le serveur écrit leurs colonnes sur chaque point. */
+  const relayed = (): MetricsCfdPoint[] => metricsFixture().cfd.map((point, index) => ({ ...point, inReview: 2, inIntegration: index % 2, awaitingHuman: 4 }));
+
+  it('dessine une bande de plus par colonne de relais, et les dit dans le résumé du dessin', () => {
+    render(<CfdPanel points={relayed()} />);
+
+    const chart = screen.getByRole('img', { name: /^Flux cumulé/ });
+    expect(chart.querySelectorAll('path[fill^="var(--flow-"]')).toHaveLength(8);
+    for (const token of ['review', 'integration', 'awaiting']) expect(chart.querySelector(`path[fill="var(--flow-${token})"]`), token).not.toBeNull();
+    expect(chart.getAttribute('aria-label')).toContain('Dernier jour : 170 Terminé, 11 En cours, 2 En relecture, 0 En intégration, 4 À valider, 0 Bloqué, 33 Prêt, 5 Backlog.');
+  });
+
+  it('range la légende comme les bandes, du haut de la pile vers le bas : les relais entre Bloqué et En cours', () => {
+    render(<CfdPanel points={relayed()} />);
+
+    const legend = screen.getByRole('list', { name: 'Colonnes du flux' });
+    expect(within(legend).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Backlog',
+      'Prêt',
+      'Bloqué',
+      'À valider',
+      'En intégration',
+      'En relecture',
+      'En cours',
+      'Terminé',
+    ]);
+  });
+
+  it('dit que les bandes des relais sont du travail en cours, et seulement quand le CFD les a', () => {
+    const { unmount } = render(<CfdPanel points={relayed()} />);
+    expect(screen.getByText(/et entre elles des Statuts de relais, est le travail en cours\.$/)).toBeTruthy();
+    unmount();
+
+    render(<CfdPanel points={metricsFixture().cfd} />);
+    expect(screen.getByText('Tickets dans chaque colonne du kanban à la fin de chaque jour. L’épaisseur des bandes En cours et Bloqué est le travail en cours.')).toBeTruthy();
+  });
+
+  it('détaille les relais au survol, entre Bloqué et En cours', () => {
+    const { container } = render(<CfdPanel points={relayed()} />);
+
+    fireEvent.pointerMove(hitArea(container), { clientX: 590, clientY: 60, pointerType: 'mouse' });
+    const tooltip = container.querySelector<HTMLElement>('[data-chart-tooltip]')!;
+    expect([...tooltip.querySelectorAll('li')].map((item) => item.textContent)).toEqual([
+      'Backlog5',
+      'Prêt33',
+      'Bloqué0',
+      'À valider4',
+      'En intégration0',
+      'En relecture2',
+      'En cours11',
+      'Terminé170',
+    ]);
+  });
+
+  it('donne leurs valeurs en tableau, dans l’ordre du kanban, et les compte dans le total', async () => {
+    const user = userEvent.setup();
+    const points = relayed();
+    render(<CfdPanel points={points} />);
+
+    await user.click(screen.getByText('Données du graphique'));
+    const table = screen.getByRole('table', { name: 'Tickets par colonne du kanban à la fin de chaque jour' });
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual([
+      'Jour',
+      'Backlog',
+      'Prêt',
+      'En cours',
+      'En relecture',
+      'En intégration',
+      'À valider',
+      'Bloqué',
+      'Terminé',
+      'Total',
+    ]);
+    const last = points.at(-1)!;
+    const cells = within(within(table).getAllByRole('row').at(-1)!).getAllByRole('cell').map((cell) => cell.textContent);
+    expect(cells).toEqual(['5', '33', '11', '2', '0', '4', '0', '170', String(5 + 33 + 11 + 2 + 0 + 4 + 0 + 170)]);
+    expect(last.inIntegration).toBe(0);
+  });
+
+  it('garde sans relais ses cinq bandes et les cinq colonnes de son tableau', async () => {
+    const user = userEvent.setup();
+    render(<CfdPanel points={metricsFixture().cfd} />);
+
+    await user.click(screen.getByText('Données du graphique'));
+    const table = screen.getByRole('table', { name: 'Tickets par colonne du kanban à la fin de chaque jour' });
+    expect(within(table).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['Jour', 'Backlog', 'Prêt', 'En cours', 'Bloqué', 'Terminé', 'Total']);
+  });
+
+  it('nomme les bandes de relais en anglais, avec les termes de CONTEXT.md', () => {
+    setBrowserLanguages(['en-US']);
+    render(
+      <LanguageProvider switchEnabled>
+        <CfdPanel points={relayed()} />
+      </LanguageProvider>,
+    );
+
+    const legend = screen.getByRole('list', { name: 'Flow columns' });
+    expect(within(legend).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Backlog',
+      'Ready',
+      'Blocked',
+      'Awaiting validation',
+      'In integration',
+      'In review',
+      'In progress',
+      'Done',
+    ]);
+    expect(screen.getByRole('img', { name: /Last day: 170 Done, 11 In progress, 2 In review, 0 In integration, 4 Awaiting validation, 0 Blocked/ })).toBeTruthy();
   });
 });

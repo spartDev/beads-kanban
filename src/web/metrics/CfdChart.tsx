@@ -9,7 +9,7 @@ import type { MetricsCfdPoint } from '../../shared/api';
 import { useFormat, useLanguage, useT } from '../i18n';
 import { cx } from '../lib/cx';
 import { Button } from '../ui/Button';
-import { cfdMax, cfdSummary, FLOW_SERIES, flowSeries, stackKeys, toCfdRows, type CfdRow, type FlowKey } from './cfd';
+import { cfdMax, cfdSummary, FLOW_SERIES, flowColumns, flowSeries, isHandoffKey, stackKeys, TABLE_COLUMNS, toCfdRows, type CfdRow, type FlowKey } from './cfd';
 import { ChartCard, ChartFrame, ChartTitleId, ChartTooltip, DataTable, Legend, pointerIn, Swatch, useActive } from './ChartParts';
 import { AXIS_TEXT } from './axes';
 import { outlineOf } from './palette';
@@ -27,7 +27,7 @@ function useTopDown() {
 
 /**
  * Le diagramme de flux cumulé, à la largeur donnée. Chaque jour, une pile : Terminé en bas, puis le travail en cours
- * (En cours, Bloqué), puis Prêt et Backlog. Survoler (ou toucher) un jour en donne le détail.
+ * (En cours, les Statuts de relais quand le CFD les a, Bloqué), puis Prêt et Backlog. Survoler (ou toucher) un jour en donne le détail.
  */
 export function CfdPlot({ rows, keys, width, height }: { rows: readonly CfdRow[]; keys: readonly FlowKey[]; width: number; height: number }) {
   const { active, frame, show, leave } = useActive<number>();
@@ -124,7 +124,7 @@ export function CfdPlot({ rows, keys, width, height }: { rows: readonly CfdRow[]
               <li key={key} className="flex items-center gap-1.5">
                 <Swatch color={color} />
                 <span className="text-ink-2">{label}</span>
-                <span className="tnum ml-auto pl-3 font-medium">{format.formatCount(row[key])}</span>
+                <span className="tnum ml-auto pl-3 font-medium">{format.formatCount(row[key] ?? 0)}</span>
               </li>
             ))}
           </ul>
@@ -134,12 +134,18 @@ export function CfdPlot({ rows, keys, width, height }: { rows: readonly CfdRow[]
   );
 }
 
-/** La carte « Flux cumulé » : le dessin, sa légende, le bouton qui masque Terminé, et les valeurs en tableau. */
+/**
+ * La carte « Flux cumulé » : le dessin, sa légende, le bouton qui masque Terminé, et les valeurs en tableau. Ses colonnes sont celles que les points
+ * portent (`flowColumns`) : les cinq de tout Projet, et celles des Statuts de relais quand l'un des Projets mesurés les a.
+ */
 export function CfdPanel({ points }: { points: readonly MetricsCfdPoint[] }) {
   // Terminé domine l'échelle (il ne fait que monter) : le masquer agrandit les bandes du travail en cours.
   const [hideDone, setHideDone] = useState(false);
   const rows = useMemo(() => toCfdRows(points), [points]);
-  const keys = stackKeys(hideDone);
+  const columns = useMemo(() => flowColumns(points), [points]);
+  const keys = stackKeys(columns, hideDone);
+  // Avec des colonnes de relais, la description dit qu'elles sont du travail en cours ; sans elles, celle d'avant.
+  const handoff = columns.some(isHandoffKey);
   const empty = rows.every((row) => row.total === 0);
   const text = useT().metrics.cfd;
   const topDown = useTopDown();
@@ -147,7 +153,7 @@ export function CfdPanel({ points }: { points: readonly MetricsCfdPoint[] }) {
   return (
     <ChartCard
       title={text.title}
-      description={text.description}
+      description={handoff ? text.descriptionWithHandoff : text.description}
       actions={
         // Le bouton se range à droite de sa ligne, qu'il soit à côté du titre, où `justify-between` le mettait
         // déjà, ou seul sur la sienne. À gauche, la barre du haut, collante, le recouvrait quand on défile avec le
@@ -161,7 +167,7 @@ export function CfdPanel({ points }: { points: readonly MetricsCfdPoint[] }) {
         </Button>
       }
       legend={<Legend label={text.legend} items={topDown.filter(({ key }) => keys.includes(key))} />}
-      data={<CfdTable rows={rows} />}
+      data={<CfdTable rows={rows} columns={columns} />}
     >
       {empty ? (
         <EmptyChart>{text.empty}</EmptyChart>
@@ -172,9 +178,9 @@ export function CfdPanel({ points }: { points: readonly MetricsCfdPoint[] }) {
   );
 }
 
-function CfdTable({ rows }: { rows: readonly CfdRow[] }) {
-  // Les colonnes du kanban, de gauche à droite.
-  const columns: FlowKey[] = ['backlog', 'ready', 'inProgress', 'blocked', 'done'];
+/** Les valeurs du dessin, une ligne par jour : les colonnes du CFD (`columns`), dans l'ordre du kanban, de gauche à droite (`TABLE_COLUMNS`). */
+function CfdTable({ rows, columns: present }: { rows: readonly CfdRow[]; columns: readonly FlowKey[] }) {
+  const columns = TABLE_COLUMNS.filter((key) => present.includes(key));
   const text = useT().metrics.cfd;
   const format = useFormat();
   return (
@@ -203,7 +209,7 @@ function CfdTable({ rows }: { rows: readonly CfdRow[] }) {
           </th>
           {columns.map((key) => (
             <td key={key} className="px-3 py-1 text-right">
-              {format.formatCount(row[key])}
+              {format.formatCount(row[key] ?? 0)}
             </td>
           ))}
           <td className="px-3 py-1 text-right font-medium">{format.formatCount(row.total)}</td>
