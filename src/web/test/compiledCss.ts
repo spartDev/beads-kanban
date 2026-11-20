@@ -86,6 +86,24 @@ export function holds(condition: string, viewport: number): boolean {
   return match[1] === '<' ? viewport < limit : viewport >= limit;
 }
 
+/** La taille de police du navigateur, en px : une requête de média compte en rem de celle-là, et la racine de l'application en est un pourcentage. */
+export const BROWSER_FONT_SIZE = 16;
+
+/**
+ * La taille de la racine de l'application, en px : la règle `html { font-size: … % }` de styles.css (112,5 % : 18 px), sur la taille du navigateur.
+ * Un rem, dans une longueur comme dans une requête de conteneur, vaut cette taille-là ; seule une requête de média compte en rem du navigateur. Une
+ * autre écriture que le pourcentage, ou plus d'une règle, fait échouer le test. `sheet` : une feuille compilée par `rulesFor` (la base y est toujours).
+ */
+export function rootFontSizeOf(sheet: readonly Rule[]): number {
+  const sizes = sheet
+    .filter((rule) => rule.within.length === 0 && selectorList(rule.selector).some((part) => part.trim() === 'html') && 'font-size' in rule.declarations)
+    .map((rule) => rule.declarations['font-size'] as string);
+  if (sizes.length !== 1) throw new Error(`styles.css : une règle html { font-size } attendue, ${sizes.length} trouvée(s)`);
+  const percent = /^([\d.]+)%$/.exec(sizes[0] as string);
+  if (!percent) throw new Error(`Taille de racine que ce test ne sait pas lire : ${sizes[0]}`);
+  return (BROWSER_FONT_SIZE * Number(percent[1])) / 100;
+}
+
 /**
  * Le sélecteur de la classe tel que Tailwind l'écrit (`CSS.escape`) : tout ce qui n'est ni lettre, ni chiffre, ni `-`, ni `_`, ni un caractère hors ASCII y est échappé (`md:hidden` : `.md\:hidden`), et un chiffre en tête, derrière un `-`
  * s'il y en a un, s'écrit en hexadécimal : la variante `2xl` devient `.\32 xl\:`, suivie du reste du nom. Une classe cherchée sous un autre nom que celui de sa règle n'est lue par personne, et sans bruit.

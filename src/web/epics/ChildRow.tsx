@@ -4,8 +4,8 @@ import type { EpicProgress } from '../../domain/epics';
 import { ticketTitle } from '../data/helpers';
 import type { DeclaredStatuses, Issue } from '../data/types';
 import { typeMeta } from '../design/issue-palette';
-import { useFormat, useT, type DisplayFormat, type Messages } from '../i18n';
-import { COLUMN_META } from '../kanban/meta';
+import { useFormat, useLanguage, useT, type DisplayFormat, type Language, type Messages } from '../i18n';
+import { columnMeta } from '../kanban/meta';
 import { paths } from '../paths';
 import { AbandonBadge, DeclineBadge, PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
 
@@ -17,11 +17,18 @@ type Words = Messages['epics']['children'];
 /**
  * La colonne d'un ticket écrite pour une ligne, ou « En pause », avec les statuts que le Projet déclare : un statut qu'il déclare `wip` s'y écrit En
  * cours, comme au tableau et au CFD. Un Statut de relais s'y écrit du nom de sa colonne (En relecture, En intégration, À valider), et Bloqué en Blocage.
+ * Dans la langue de l'interface.
  */
-function columnLabel(issue: Pick<Issue, 'status' | 'blockedBy'>, words: Words, declared: DeclaredStatuses): string {
+function columnLabel(issue: Pick<Issue, 'status' | 'blockedBy'>, words: Words, declared: DeclaredStatuses, language: Language): string {
   const column = columnFor(issue.status, issue.blockedBy.length > 0, declared);
-  return column === null ? words.paused : COLUMN_META[column].label;
+  return column === null ? words.paused : columnMeta(language)[column].label;
 }
+
+/**
+ * La largeur de la colonne d'une ligne, à partir de `sm` : celle du plus long nom de colonne des deux langues (« Awaiting validation », 112,3 px à
+ * 13,5 px), pour que les noms s'alignent d'une ligne à l'autre. layout.test.ts mesure chaque nom contre elle.
+ */
+export const CHILD_COLUMN_WIDTH = 'sm:w-[6.5rem]';
 
 /** Ce qui retient un ticket qui n'est pas fermé : les tickets dont il dépend, ou le seul statut bloqué ; rien sinon. */
 function holdingBack(issue: Issue, words: Words, { formatCount }: Pick<DisplayFormat, 'formatCount'>): string | null {
@@ -57,6 +64,7 @@ export function ChildRow(
 ) {
   const { issue, projectId, now, idChars, nested } = props;
   const t = useT();
+  const { language } = useLanguage();
   const format = useFormat();
   const words = t.epics.children;
   const reason = holdingBack(issue, words, format);
@@ -88,8 +96,8 @@ export function ChildRow(
         ) : null}
         {reason ? <span className="wrap-anywhere">{reason}</span> : null}
         {issue.assignee ? <span className="wrap-anywhere">{issue.assignee}</span> : null}
-        {/* Au moins la largeur des noms courts, pour qu'ils s'alignent d'une ligne à l'autre ; un nom plus long (En intégration) l'élargit plutôt que de déborder. */}
-        {props.showColumn && !isEpic ? <span className="sm:min-w-14">{columnLabel(issue, words, props.declared)}</span> : null}
+        {/* Une largeur fixe, celle du plus long nom de colonne des deux langues : les noms s'alignent d'une ligne à l'autre (`CHILD_COLUMN_WIDTH`). */}
+        {props.showColumn && !isEpic ? <span className={CHILD_COLUMN_WIDTH}>{columnLabel(issue, words, props.declared, language)}</span> : null}
         {isEpic ? null : <PriorityBadge priority={issue.priority} className="text-xs sm:w-8" />}
         {closedAge && issue.closedAt ? (
           <time dateTime={issue.closedAt} title={format.formatDateTime(issue.closedAt)} className="sm:w-[4.5rem] sm:text-right">

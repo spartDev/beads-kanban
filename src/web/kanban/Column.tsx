@@ -12,8 +12,9 @@ export const columnCountId = (id: ColumnId) => `kanban-${id}-count`;
 /**
  * Une colonne : titre, nombre de cartes, la règle qui y range un ticket, puis ses cartes (`children`, des `<li>`).
  * Sur mobile, une seule colonne est affichée à la fois (`shown`) ; dès que le panneau est assez large pour toutes (`layout`, selon leur nombre),
- * toutes le sont. Un titre long passe à la ligne, entre deux mots : la colonne ne rogne rien. Dans une colonne étroite (six à huit côte à côte), la
- * ligne de l'en-tête passe elle aussi à la ligne : le compte va sous le libellé s'il ne tient pas à côté (`layout.headerRow`, `layout.title`).
+ * toutes le sont. Un titre long passe à la ligne, entre deux mots : la colonne ne rogne rien. Dans une colonne étroite (six à huit côte à côte),
+ * l'en-tête se lit comme une phrase (`layout.inlineHeader`) : pictogramme, libellé, compte et choix de Terminé se suivent, séparés d'espaces, et
+ * passent à la ligne entre deux mots, comme un texte.
  */
 export function Column({
   id,
@@ -58,14 +59,22 @@ export function Column({
     >
       <header className={cx('z-[1] flex flex-col gap-0.5 rounded-t-xl bg-well px-2.5 pb-1.5 pt-2.5', layout.header)}>
         <div className={cx('flex min-h-6 min-w-0 items-center gap-2', layout.headerRow)}>
-          <Icon size={14} strokeWidth={2} aria-hidden="true" className={cx('shrink-0', id === 'blocked' ? 'text-danger' : 'text-ink-3')} />
+          <Icon
+            size={14}
+            strokeWidth={2}
+            aria-hidden="true"
+            className={cx('shrink-0', id === 'blocked' ? 'text-danger' : 'text-ink-3', layout.headerIcon)}
+          />
           <h2 id={columnTitleId(id)} className={cx('text-ui font-semibold text-ink', layout.title)}>
             {meta.label}
           </h2>
+          {/* Une espace, où la ligne de texte d'une colonne étroite peut passer à la ligne ; une boîte flex l'ignore. */}
+          {layout.inlineHeader ? ' ' : null}
           <span id={columnCountId(id)} className="tnum text-xs text-ink-2">
             {format.formatCount(count)}
             <span className="sr-only"> {ticketNoun(count, language)}</span>
           </span>
+          {id === 'done' && layout.inlineHeader ? ' ' : null}
           {id === 'done' ? <DoneWindow doneDays={doneDays} onChange={onDoneDays} /> : null}
         </div>
         <p title={meta.rule(doneDays, since)} className="text-xs text-ink-3">

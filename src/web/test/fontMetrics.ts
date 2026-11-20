@@ -180,6 +180,12 @@ function advanceDelta(hvar: DataView | undefined): (glyph: number, coordinates: 
   };
 }
 
+/**
+ * Ce que le crénage peut ajouter à une mesure sans crénage, par mot : moins d'un pixel aux tailles de l'interface, étalonné sur Chromium
+ * (fontMetrics.test.ts). layout.test.ts l'ajoute à chaque mot qu'il mesure.
+ */
+export const KERNING_ALLOWANCE = 1;
+
 export interface TextStyle {
   /** Taille de police, en px. */
   size: number;

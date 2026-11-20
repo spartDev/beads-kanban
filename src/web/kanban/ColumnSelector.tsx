@@ -13,7 +13,7 @@ import { columnMeta, ticketNoun } from './meta';
  *
  * Il a un bouton par colonne du Projet (`Board.columnIds`). Au-delà de cinq, avec les colonnes des Statuts de relais, les boutons gardent leur nom
  * sur une ligne et la rangée défile en elle-même quand elle ne tient pas (`layout.scrolls`) : le bouton de la colonne affichée y est ramené à la vue,
- * à l'ouverture (`?col=`) comme quand h ou l change de colonne.
+ * à l'ouverture (`?col=`), quand h ou l change de colonne et quand la rangée change de largeur, avec la place de son anneau de focus.
  */
 export function ColumnSelector({
   board,
@@ -34,12 +34,23 @@ export function ColumnSelector({
 
   useLayoutEffect(() => {
     const group = row.current;
-    const button = group?.querySelector<HTMLElement>('button[aria-pressed="true"]');
-    if (!layout.scrolls || !group || !button) return;
-    // Le défilement de la rangée seule, à la main : `scrollIntoView` pourrait aussi faire défiler la page.
-    const { offsetLeft, offsetWidth } = button;
-    if (offsetLeft < group.scrollLeft) group.scrollLeft = offsetLeft;
-    else if (offsetLeft + offsetWidth > group.scrollLeft + group.clientWidth) group.scrollLeft = offsetLeft + offsetWidth - group.clientWidth;
+    if (!layout.scrolls || !group) return;
+    const reveal = () => {
+      const button = group.querySelector<HTMLElement>('button[aria-pressed="true"]');
+      if (!button) return;
+      // Le défilement de la rangée seule, à la main : `scrollIntoView` pourrait aussi faire défiler la page. Le bouton garde de chaque côté la place
+      // du remplissage de la rangée, où tient son anneau de focus.
+      const room = Number.parseFloat(getComputedStyle(group).paddingLeft) || 0;
+      const { offsetLeft, offsetWidth } = button;
+      if (offsetLeft - room < group.scrollLeft) group.scrollLeft = offsetLeft - room;
+      else if (offsetLeft + offsetWidth + room > group.scrollLeft + group.clientWidth) group.scrollLeft = offsetLeft + offsetWidth + room - group.clientWidth;
+    };
+    reveal();
+    // Et quand la rangée change de largeur (fenêtre redimensionnée, téléphone tourné) : le bouton actif ne sort pas de la vue.
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(reveal);
+    observer.observe(group);
+    return () => observer.disconnect();
   }, [current, layout.scrolls]);
 
   return (

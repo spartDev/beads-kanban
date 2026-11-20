@@ -1,11 +1,14 @@
-import { screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import type { QueryClient } from '@tanstack/react-query';
+import { act, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DeclaredStatuses, Issue } from '../data/types';
+import { refreshProject } from '../live/refresh';
 import { withAsyncTimeout } from '../test/asyncTimeout';
 import { issue, projectsResponse } from '../test/fixtures';
 import { setBrowserLanguages } from '../test/languages';
 import { classesOf, rulesFor, selectorOf } from '../test/compiledCss';
 import { renderApp, stubApi } from '../test/render';
+import { installFakeResizeObserver } from '../test/resizeObserver';
 
 /**
  * Les colonnes des Statuts de relais au tableau (bdesk-pz0.4, ADR 0007) : En relecture, En intégration et À valider, entre En cours et Bloqué. Une
@@ -132,6 +135,35 @@ describe('les colonnes de relais', () => {
     expect(columns().filter((region) => region.dataset.shown === 'true').map((region) => region.dataset.column)).toEqual(['inProgress']);
   });
 
+  it('remplacent une seule fois la colonne d’ouverture qui disparaît en direct : la remplaçante reste, rafraîchissement après rafraîchissement', async () => {
+    const ready = issue({ id: 'bdesk-1', title: 'Prêt à démarrer' });
+    const relayed = (status: string, extra: Partial<Issue> = {}) => [ready, issue({ id: 'bdesk-2', title: 'Relu', status, ...extra })];
+    const shown = () => columns().filter((region) => region.dataset.shown === 'true').map((region) => region.dataset.column);
+    const serve = (issues: Issue[]) => stubApi({ projects: projectsResponse, issues: { bdesk: issues } });
+    const commit = (queryClient: QueryClient) => act(() => refreshProject(queryClient, 'bdesk'));
+
+    // La colonne d'ouverture est En relecture, la seule qui ait un ticket en travail.
+    const { queryClient } = await openBoard(relayed('in_review'));
+    const seen = [shown()];
+    // Le ticket passe en cours : la colonne En relecture disparaît, le tableau prend celle qu'on choisirait à l'ouverture.
+    serve(relayed('in_progress'));
+    await commit(queryClient);
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'En relecture' })).toBeNull());
+    seen.push(shown());
+    // Il est fermé : En cours se vide, sans faire sauter le tableau ailleurs.
+    serve(relayed('closed', { closedAt: new Date().toISOString() }));
+    await commit(queryClient);
+    await waitFor(() => expect(card('bdesk-2').closest('section')?.dataset.column).toBe('done'));
+    seen.push(shown());
+    // Il revient en relecture : la colonne reparaît, sans reprendre la place de la remplaçante.
+    serve(relayed('in_review'));
+    await commit(queryClient);
+    await screen.findByRole('region', { name: 'En relecture' });
+    seen.push(shown());
+
+    expect(seen).toEqual([['inReview'], ['inProgress'], ['inProgress'], ['inProgress']]);
+  });
+
   it('se suivent aux raccourcis h et l, comme les autres colonnes', async () => {
     const { user, router } = await openBoard(TICKETS, { path: '/p/bdesk/kanban?col=inProgress' });
 
@@ -143,23 +175,23 @@ describe('les colonnes de relais', () => {
     await waitFor(() => expect(router.state.location.search).toBe('?col=inReview'));
   });
 
-  it('passent côte à côte à 9 rem par colonne : huit dès 72 rem, la largeur du panneau à 1 440 px', async () => {
+  it('passent côte à côte à 7,7 rem par colonne : huit dès 61,6 rem, qui tiennent dans le panneau à 1 440 px', async () => {
     await openBoard(TICKETS);
 
     const grid = columns()[0]?.parentElement as HTMLElement;
-    expect(grid.className).toContain('@min-[72rem]:grid-cols-8');
+    expect(grid.className).toContain('@min-[61.6rem]:grid-cols-8');
     expect(grid.className).not.toContain('@min-[60rem]');
   });
 });
 
 /**
- * Le tableau à huit colonnes, côte à côte dès 72 rem : des colonnes de 137 px. Ce rendu vérifie que chaque élément porte les classes qui le gardent
- * lisible (layout.test.ts mesure, mot par mot, que les textes y tiennent), et ce que les règles compilées de ses classes et de celles de ses
- * ancêtres disent du retour à la ligne : un libellé de colonne se coupe entre deux mots, jamais dans un mot ; un titre de carte passe à la ligne,
- * jamais tronqué ; rien n'interdit le retour à la ligne.
+ * Le tableau à huit colonnes, côte à côte dès 61,6 rem : des colonnes de 130,7 px au seuil, 132,75 px à 1 440 px. Ce rendu vérifie que chaque élément
+ * porte les classes qui le gardent lisible (layout.test.ts mesure, mot par mot, que les textes y tiennent), et ce que les règles compilées de ses
+ * classes et de celles de ses ancêtres disent du retour à la ligne : un libellé de colonne se coupe entre deux mots, jamais dans un mot ; un titre de
+ * carte passe à la ligne, jamais tronqué ; une pastille aussi, entre deux mots ; rien n'interdit le retour à la ligne.
  */
 describe('à huit colonnes, côte à côte', () => {
-  const WIDE = '@min-[72rem]';
+  const WIDE = '@min-[61.6rem]';
   const CUTTING: Record<string, readonly string[]> = {
     'white-space': ['nowrap', 'pre'],
     'text-overflow': ['ellipsis', 'clip'],
@@ -190,8 +222,8 @@ describe('à huit colonnes, côte à côte', () => {
     return found;
   }
 
-  it.each(['fr', 'en'] as const)('en %s, chaque en-tête passe à la ligne entre deux mots, et chaque carte se resserre sans rien tronquer', async (language) => {
-    await openBoard([...TICKETS, issue({ id: 'bdesk-11', title: 'Reporté', status: 'deferred' })], {
+  it.each(['fr', 'en'] as const)('en %s, chaque en-tête passe à la ligne entre deux mots, et chaque carte s’allège sans rien tronquer', async (language) => {
+    await openBoard([...TICKETS, issue({ id: 'bdesk-7', title: 'Rattaché', status: 'hooked' }), issue({ id: 'bdesk-11', title: 'Reporté', status: 'deferred' })], {
       declared: ALL_HANDOFF,
       ...(language === 'en' ? { language } : {}),
     });
@@ -199,19 +231,34 @@ describe('à huit colonnes, côte à côte', () => {
     expect(headings()).toHaveLength(8);
     for (const region of columns()) {
       const title = region.querySelector('h2') as HTMLElement;
-      expect(title.className, title.textContent ?? '').toContain(`${WIDE}:grow`);
-      expect((title.parentElement as HTMLElement).className).toContain(`${WIDE}:flex-wrap`);
+      const row = title.parentElement as HTMLElement;
+      // Une ligne de texte : pictogramme, libellé, compte (et la liste de Terminé), séparés d'espaces où elle passe à la ligne.
+      expect(row.className).toContain(`${WIDE}:block`);
+      expect(title.className, title.textContent ?? '').toContain(`${WIDE}:inline`);
+      expect(row.querySelector('svg')?.getAttribute('class')).toContain(`${WIDE}:inline`);
+      expect(title.nextSibling?.textContent).toBe(' ');
+      if (region.dataset.column === 'done') expect(row.querySelector('label')?.previousSibling?.textContent).toBe(' ');
       expect(await cutsOf(title, { inWord: true }), title.textContent ?? '').toEqual([]);
       expect(await cutsOf(region.querySelector('header p') as HTMLElement, { inWord: true })).toEqual([]);
     }
     expect(headings()).toContain(language === 'en' ? 'Awaiting validation' : 'À valider');
 
     for (const item of document.querySelectorAll<HTMLElement>('section[data-column] li[data-card-id]')) {
-      expect(item.className).toContain(`${WIDE}:px-2`);
-      expect((item.parentElement as HTMLElement).className).toContain(`${WIDE}:px-1`);
+      expect(item.className).toContain(`${WIDE}:px-1.5`);
+      expect((item.parentElement as HTMLElement).className).toContain(`${WIDE}:px-0.5`);
+      // La priorité ne garde que ses barres ; son libellé reste pour les lecteurs d'écran.
+      const priority = item.querySelector('[title]') as HTMLElement;
+      expect(priority.querySelector('.tnum')?.getAttribute('class')).toContain(`${WIDE}:hidden`);
+      expect(priority.querySelector('.sr-only')?.textContent).not.toBe('');
       const link = item.querySelector('a[data-card-link]') as HTMLElement;
       expect(await cutsOf(link, { inWord: false }), link.textContent ?? '').toEqual([]);
     }
+    // Les pastilles perdent leur pictogramme et passent à la ligne entre deux mots, jamais dans un mot.
+    const agent = within(card('bdesk-7')).getByText('agent');
+    const badges = agent.parentElement as HTMLElement;
+    expect(badges.className).toContain(`${WIDE}:[&>span>svg]:hidden`);
+    expect(badges.className).toContain(`${WIDE}:[&>span]:shrink`);
+    expect(await cutsOf(agent, { inWord: true })).toEqual([]);
     const pill = card('bdesk-6').querySelector('[data-card-status]') as HTMLElement;
     expect(pill.textContent).toBe(language === 'en' ? 'in review' : 'en relecture');
     expect(await cutsOf(pill, { inWord: false })).toEqual([]);
@@ -226,16 +273,66 @@ describe('à huit colonnes, côte à côte', () => {
     const { user } = await openBoard([...TICKETS, issue({ id: 'bdesk-11', title: 'Reporté', status: 'deferred' })], { declared: ALL_HANDOFF });
 
     await user.click(screen.getByRole('button', { name: /^En pause/ }));
-    expect(card('bdesk-11').className).not.toContain(`${WIDE}:px-2`);
+    expect(card('bdesk-11').className).not.toContain(`${WIDE}:`);
+    expect(card('bdesk-11').innerHTML).not.toContain(`${WIDE}:`);
   });
 
   it('garde à cinq colonnes les en-têtes et les cartes d’avant', async () => {
     await openBoard(PLAIN);
 
-    const title = columns()[0]?.querySelector('h2') as HTMLElement;
-    expect(title.className).toBe('text-ui font-semibold text-ink');
-    expect((title.parentElement as HTMLElement).className).toBe('flex min-h-6 min-w-0 items-center gap-2');
-    expect(card('bdesk-1').className).not.toContain(':px-2');
+    for (const region of columns()) {
+      const title = region.querySelector('h2') as HTMLElement;
+      expect(title.className).toBe('text-ui font-semibold text-ink');
+      expect((title.parentElement as HTMLElement).className).toBe('flex min-h-6 min-w-0 items-center gap-2');
+      // Pas d'espace entre les morceaux de l'en-tête : la boîte flex d'avant, telle quelle.
+      expect([...(title.parentElement as HTMLElement).childNodes].filter((node) => node.nodeType === Node.TEXT_NODE)).toEqual([]);
+    }
+    for (const id of ['bdesk-1', 'bdesk-7']) {
+      expect(card(id).className).not.toMatch(/@min-\[[\d.]+rem\]:px-/);
+      expect(card(id).innerHTML).not.toMatch(/@min-\[[\d.]+rem\]:/);
+    }
+  });
+});
+
+/**
+ * Le sélecteur de plus de cinq colonnes défile en lui-même : il ramène à la vue le bouton de la colonne affichée, avec de chaque côté la place de son
+ * anneau de focus (le remplissage de la rangée), et le fait encore quand la rangée change de largeur. jsdom ne met rien en page : le test donne aux
+ * boutons et à la rangée les mesures que le navigateur leur donnerait, et dit à la page quand la rangée change de largeur (`installFakeResizeObserver`).
+ */
+describe('le sélecteur de plus de cinq colonnes, qui défile', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Des boutons de 100 px séparés de 2,25 px, dans une rangée de 300 px de large au remplissage de 4,5 px ; son défilement, retenu. */
+  function measure(group: HTMLElement) {
+    let scrollLeft = 0;
+    Object.defineProperty(group, 'scrollLeft', { configurable: true, get: () => scrollLeft, set: (value: number) => (scrollLeft = value) });
+    Object.defineProperty(group, 'clientWidth', { configurable: true, get: () => 300 });
+    group.style.paddingLeft = '4.5px';
+    within(group)
+      .getAllByRole('button')
+      .forEach((button, index) => {
+        Object.defineProperty(button, 'offsetLeft', { configurable: true, get: () => 4.5 + index * 102.25 });
+        Object.defineProperty(button, 'offsetWidth', { configurable: true, get: () => 100 });
+      });
+    return { scrollLeft: () => scrollLeft };
+  }
+
+  it('ramène le bouton de la colonne affichée à la vue quand la rangée change de largeur, et garde la place de l’anneau de focus', async () => {
+    const resize = installFakeResizeObserver();
+    const { user } = await openBoard(TICKETS, { declared: ALL_HANDOFF, path: '/p/bdesk/kanban?col=awaitingHuman' });
+    const group = screen.getByRole('group', { name: 'Colonne affichée' });
+    expect(resize.observed()).toContain(group);
+    const row = measure(group);
+
+    // La rangée change de largeur : le bouton À valider (le sixième, de 515,75 à 615,75 px) vient au bord droit, 4,5 px avant lui.
+    resize.emit(group, 54);
+    expect(row.scrollLeft()).toBeCloseTo(615.75 + 4.5 - 300);
+
+    // En relecture (de 311,25 à 411,25 px) est à gauche de la vue : il vient au bord gauche, 4,5 px après lui.
+    await user.click(within(group).getByRole('button', { name: /^En relecture/ }));
+    expect(row.scrollLeft()).toBeCloseTo(311.25 - 4.5);
   });
 });
 

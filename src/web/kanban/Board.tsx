@@ -26,14 +26,15 @@ import { useBoardShortcuts, type Lanes } from './useBoardShortcuts';
  * Le kanban d'un Projet : ses colonnes (Backlog, Prêt, En cours, Bloqué, Terminé, et celles de ses Statuts de relais, En relecture, En intégration et
  * À valider, entre En cours et Bloqué : `boardColumns`) et le tiroir « En pause ».
  *
- * - Le panneau est assez large (12 rem par colonne : 60 rem pour cinq, 96 pour huit, voir `layout.ts`) : toutes les colonnes côte à côte, à largeurs
- *   égales. Sinon, une colonne à la fois, avec un sélecteur : la page ne défile jamais horizontalement. La largeur se mesure sur le panneau, pas sur
- *   l'écran : la barre latérale en prend une partie.
+ * - Le panneau est assez large (12 rem par colonne à cinq, 60 rem ; 7,7 rem de six à huit, 61,6 rem pour huit, à 18 px le rem : voir `layout.ts`) :
+ *   toutes les colonnes côte à côte, à largeurs égales. Sinon, une colonne à la fois, avec un sélecteur : la page ne défile jamais horizontalement.
+ *   La largeur se mesure sur le panneau, pas sur l'écran : la barre latérale en prend une partie.
  * - Le filtre Epic, la durée de Terminé et la colonne affichée vivent dans l'adresse (`params.ts`). Terminé couvre les
  *   N derniers jours calendaires, aujourd'hui compris (`columns.ts`).
  * - Sans `?col=`, la colonne affichée sur mobile est choisie à l'ouverture et gardée : un rafraîchissement des données
  *   qui la vide ne fait pas sauter le tableau d'une colonne à l'autre. Seul un choix de l'utilisateur la change, ou la disparition de sa colonne
- *   (une colonne de relais dont plus aucun ticket ne porte le statut, que le Projet ne déclare pas) : le tableau reprend alors la colonne d'ouverture.
+ *   (une colonne de relais dont plus aucun ticket ne porte le statut, que le Projet ne déclare pas) : elle est alors remplacée une fois, par la
+ *   colonne qu'on choisirait à l'ouverture, et ce remplaçant est gardé à son tour.
  * - Quand tous les tickets du tableau sont en pause, aucune colonne n'a de carte : un état vide le dit et renvoie au
  *   tiroir « En pause », qu'il ouvre.
  * - Lecture seule : rien ne se déplace, une carte ouvre son ticket. Mais un commit peut la changer de colonne : elle garde alors le focus (voir `boardFocus`).
@@ -65,9 +66,11 @@ export function Board({ project, issues, declared }: { project: Project; issues:
   const since = doneSince(now, params.doneDays);
   const layout = boardLayout(board.columnIds.length);
   // Choisie une fois, au premier rendu avec des données : le composant est remonté pour un autre Projet (voir la page). Une colonne que le Projet n'a
-  // pas (`?col=` d'une colonne de relais absente, ou disparue depuis l'ouverture) n'est jamais celle qu'on affiche.
-  const [opening] = useState(() => defaultColumn(board));
-  const column = [params.column, opening].find((id) => id !== null && board.columnIds.includes(id)) ?? defaultColumn(board);
+  // pas (`?col=` d'une colonne de relais absente, ou disparue depuis l'ouverture) n'est jamais celle qu'on affiche. Si la colonne d'ouverture
+  // disparaît, elle est remplacée une seule fois, au rendu, et le remplaçant est gardé : un rafraîchissement suivant ne la fait pas sauter ailleurs.
+  const [opening, setOpening] = useState(() => defaultColumn(board));
+  if (!board.columnIds.includes(opening)) setOpening(defaultColumn(board));
+  const column = params.column !== null && board.columnIds.includes(params.column) ? params.column : opening;
 
   const lanes = useMemo<Lanes>(() => {
     const ids = (cards: Issue[]) => cards.map((issue) => issue.id);
@@ -111,7 +114,7 @@ export function Board({ project, issues, declared }: { project: Project; issues:
         now={now}
         signals={signals?.get(issue.id)}
         declared={declared}
-        className={lane === 'paused' ? undefined : layout.card}
+        layout={lane === 'paused' ? undefined : layout.card}
       />
     );
   };
