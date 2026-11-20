@@ -96,12 +96,23 @@ export function Board({ project, issues, declared }: { project: Project; issues:
     pausedToggle.current?.focus();
   };
 
-  // Le filtre dit déjà de quelle Epic sont les cartes : la pastille n'y répéterait que l'Epic choisie.
+  // Le filtre dit déjà de quelle Epic sont les cartes : la pastille n'y répéterait que l'Epic choisie. Une carte d'une colonne se resserre dans une
+  // colonne étroite (`layout.card`) ; celles du tiroir « En pause » ont toute la largeur.
   const renderCard = (issue: Issue, lane: Lane) => {
     const own = epicOf(issue, byId);
     const pill = epic !== undefined && own?.id === epic.id ? null : own;
     return (
-      <Card key={issue.id} issue={issue} lane={lane} projectId={project.id} epic={pill} now={now} signals={signals?.get(issue.id)} declared={declared} />
+      <Card
+        key={issue.id}
+        issue={issue}
+        lane={lane}
+        projectId={project.id}
+        epic={pill}
+        now={now}
+        signals={signals?.get(issue.id)}
+        declared={declared}
+        className={lane === 'paused' ? undefined : layout.card}
+      />
     );
   };
 

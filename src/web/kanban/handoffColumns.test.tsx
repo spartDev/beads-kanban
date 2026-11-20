@@ -4,6 +4,7 @@ import type { DeclaredStatuses, Issue } from '../data/types';
 import { withAsyncTimeout } from '../test/asyncTimeout';
 import { issue, projectsResponse } from '../test/fixtures';
 import { setBrowserLanguages } from '../test/languages';
+import { classesOf, rulesFor, selectorOf } from '../test/compiledCss';
 import { renderApp, stubApi } from '../test/render';
 
 /**
@@ -142,12 +143,99 @@ describe('les colonnes de relais', () => {
     await waitFor(() => expect(router.state.location.search).toBe('?col=inReview'));
   });
 
-  it('passent côte à côte à un seuil qui croît avec leur nombre, sans écraser une colonne : la grille du tableau a une piste par colonne', async () => {
+  it('passent côte à côte à 9 rem par colonne : huit dès 72 rem, la largeur du panneau à 1 440 px', async () => {
     await openBoard(TICKETS);
 
     const grid = columns()[0]?.parentElement as HTMLElement;
-    expect(grid.className).toContain('@min-[96rem]:grid-cols-8');
+    expect(grid.className).toContain('@min-[72rem]:grid-cols-8');
     expect(grid.className).not.toContain('@min-[60rem]');
+  });
+});
+
+/**
+ * Le tableau à huit colonnes, côte à côte dès 72 rem : des colonnes de 137 px. Ce rendu vérifie que chaque élément porte les classes qui le gardent
+ * lisible (layout.test.ts mesure, mot par mot, que les textes y tiennent), et ce que les règles compilées de ses classes et de celles de ses
+ * ancêtres disent du retour à la ligne : un libellé de colonne se coupe entre deux mots, jamais dans un mot ; un titre de carte passe à la ligne,
+ * jamais tronqué ; rien n'interdit le retour à la ligne.
+ */
+describe('à huit colonnes, côte à côte', () => {
+  const WIDE = '@min-[72rem]';
+  const CUTTING: Record<string, readonly string[]> = {
+    'white-space': ['nowrap', 'pre'],
+    'text-overflow': ['ellipsis', 'clip'],
+    '-webkit-line-clamp': [],
+    overflow: ['hidden', 'clip'],
+  };
+
+  /** Ce que les classes de l'élément et de ses ancêtres, jusqu'à la colonne, déclarent pour couper ou tronquer un texte. */
+  async function cutsOf(element: Element, { inWord }: { inWord: boolean }): Promise<string[]> {
+    const chain: Element[] = [];
+    for (let at: Element | null = element; at && !at.hasAttribute('data-column-selector'); at = at.parentElement) {
+      chain.push(at);
+      if (at.tagName === 'SECTION') break;
+    }
+    const rules = await rulesFor(chain.flatMap(classesOf));
+    const own = new Set(chain.flatMap(classesOf).map(selectorOf));
+    const found: string[] = [];
+    for (const rule of rules) {
+      if (!own.has(rule.selector)) continue;
+      for (const [property, value] of Object.entries(rule.declarations)) {
+        const values = CUTTING[property];
+        if (values && (values.length === 0 || values.includes(value))) found.push(`${rule.selector} ${property}: ${value}`);
+        if (inWord && ((property === 'overflow-wrap' && value === 'anywhere') || (property === 'word-break' && value === 'break-all'))) {
+          found.push(`${rule.selector} ${property}: ${value}`);
+        }
+      }
+    }
+    return found;
+  }
+
+  it.each(['fr', 'en'] as const)('en %s, chaque en-tête passe à la ligne entre deux mots, et chaque carte se resserre sans rien tronquer', async (language) => {
+    await openBoard([...TICKETS, issue({ id: 'bdesk-11', title: 'Reporté', status: 'deferred' })], {
+      declared: ALL_HANDOFF,
+      ...(language === 'en' ? { language } : {}),
+    });
+
+    expect(headings()).toHaveLength(8);
+    for (const region of columns()) {
+      const title = region.querySelector('h2') as HTMLElement;
+      expect(title.className, title.textContent ?? '').toContain(`${WIDE}:grow`);
+      expect((title.parentElement as HTMLElement).className).toContain(`${WIDE}:flex-wrap`);
+      expect(await cutsOf(title, { inWord: true }), title.textContent ?? '').toEqual([]);
+      expect(await cutsOf(region.querySelector('header p') as HTMLElement, { inWord: true })).toEqual([]);
+    }
+    expect(headings()).toContain(language === 'en' ? 'Awaiting validation' : 'À valider');
+
+    for (const item of document.querySelectorAll<HTMLElement>('section[data-column] li[data-card-id]')) {
+      expect(item.className).toContain(`${WIDE}:px-2`);
+      expect((item.parentElement as HTMLElement).className).toContain(`${WIDE}:px-1`);
+      const link = item.querySelector('a[data-card-link]') as HTMLElement;
+      expect(await cutsOf(link, { inWord: false }), link.textContent ?? '').toEqual([]);
+    }
+    const pill = card('bdesk-6').querySelector('[data-card-status]') as HTMLElement;
+    expect(pill.textContent).toBe(language === 'en' ? 'in review' : 'en relecture');
+    expect(await cutsOf(pill, { inWord: false })).toEqual([]);
+    // Un statut inconnu d'un seul long mot se coupe plutôt que de déborder de la carte.
+    expect((await rulesFor(classesOf(pill))).some((rule) => rule.declarations['overflow-wrap'] === 'break-word')).toBe(true);
+    // Témoin : le nom d'un bouton du sélecteur, qui ne passe jamais à la ligne, est bien vu.
+    const label = selectorButtons()[0]?.querySelector('span') as HTMLElement;
+    expect(await cutsOf(label, { inWord: false })).toEqual([expect.stringContaining('white-space: nowrap')]);
+  });
+
+  it('laisse au tiroir « En pause » ses cartes sur toute la largeur, sans les marges resserrées', async () => {
+    const { user } = await openBoard([...TICKETS, issue({ id: 'bdesk-11', title: 'Reporté', status: 'deferred' })], { declared: ALL_HANDOFF });
+
+    await user.click(screen.getByRole('button', { name: /^En pause/ }));
+    expect(card('bdesk-11').className).not.toContain(`${WIDE}:px-2`);
+  });
+
+  it('garde à cinq colonnes les en-têtes et les cartes d’avant', async () => {
+    await openBoard(PLAIN);
+
+    const title = columns()[0]?.querySelector('h2') as HTMLElement;
+    expect(title.className).toBe('text-ui font-semibold text-ink');
+    expect((title.parentElement as HTMLElement).className).toBe('flex min-h-6 min-w-0 items-center gap-2');
+    expect(card('bdesk-1').className).not.toContain(':px-2');
   });
 });
 

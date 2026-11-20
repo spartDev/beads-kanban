@@ -10,6 +10,7 @@ import { useFormat, useLanguage, useT } from '../i18n';
 import { parsePath, paths } from '../paths';
 import { AbandonBadge, DeclineBadge, PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
 import { openedFromCard } from './boardFocus';
+import { cx } from '../lib/cx';
 import { showsStatus, type Lane } from './columns';
 import { epicName, epicShortName } from './epics';
 
@@ -37,6 +38,7 @@ export function Card({
   now,
   signals,
   declared,
+  className,
 }: {
   issue: Issue;
   /** La colonne de la carte, ou `paused` dans le tiroir. */
@@ -52,6 +54,8 @@ export function Card({
    * ce statut, que sa colonne ne dit pas (`showsStatus`).
    */
   declared: DeclaredStatuses;
+  /** Les marges de la carte selon la disposition du tableau : resserrées dans une colonne étroite (`BoardLayout.card`). */
+  className?: string | undefined;
 }) {
   const { language } = useLanguage();
   const t = useT();
@@ -70,7 +74,10 @@ export function Card({
       data-card-id={issue.id}
       data-card-project={projectId}
       data-column={lane}
-      className="relative flex scroll-mb-20 scroll-mt-28 flex-col gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-2 shadow-panel transition-colors hover:border-line-strong has-[a[data-card-link]:focus-visible]:border-accent has-[a[data-card-link]:focus-visible]:ring-2 has-[a[data-card-link]:focus-visible]:ring-accent"
+      className={cx(
+        'relative flex scroll-mb-20 scroll-mt-28 flex-col gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-2 shadow-panel transition-colors hover:border-line-strong has-[a[data-card-link]:focus-visible]:border-accent has-[a[data-card-link]:focus-visible]:ring-2 has-[a[data-card-link]:focus-visible]:ring-accent',
+        className,
+      )}
     >
       <div className="flex min-w-0 items-start gap-1.5">
         <span className="mt-0.5 shrink-0">
@@ -110,7 +117,8 @@ export function Card({
       <Blocking issue={issue} />
       {/* Le statut que la colonne ne dit pas (`showsStatus`) : celui d'un ticket en pause, un Statut de relais dans Bloqué, un autre statut déclaré de travail. */}
       {showsStatus(issue.status, lane, declared) ? (
-        <p data-card-status className="self-start rounded-full border border-line px-1.5 text-xs leading-5 text-ink-2">
+        // Un statut inconnu peut être un seul long mot : il se coupe plutôt que de déborder de la carte (`wrap-break-word`).
+        <p data-card-status className="self-start rounded-full border border-line px-1.5 text-xs leading-5 text-ink-2 wrap-break-word">
           {statusLabel(issue.status, language)}
         </p>
       ) : null}
