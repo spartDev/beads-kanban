@@ -237,18 +237,27 @@ export function emptyHealthFixture(overrides: Partial<MetricsHealth> = {}): Metr
   };
 }
 
+/** La signification d'un Taux d'échec sans aucun bug : celle de la fixture d'un Projet sans Livraison (`emptyMetricsFixture`). */
+export const NO_BUGS: MetricsSignificance = {
+  coverage: { bugs: 0, linked: 0, ratio: null },
+  significant: false,
+  reasons: ['few-bugs'],
+  thresholds: { minCoverage: 0.5, minBugs: 5 },
+};
+
 /**
  * Les mesures de relecture des fixtures (bdesk-pz0.5) : aucune Livraison relue, comme sur un Projet qui ne pose pas encore les Statuts de relais.
- * `deliveries` : les Livraisons de la période, toutes non relues.
+ * `deliveries` : les Livraisons de la période, toutes non relues. `significance` : celle du Taux d'échec de la fixture, que le Taux d'échec après relecture
+ * reprend (la Couverture de tous les bugs) ; par défaut celle de `metricsFixture`, trop faible.
  */
-export function reviewFixture(deliveries = 0, overrides: Partial<MetricsReview> = {}): MetricsReview {
+export function reviewFixture(deliveries = 0, significance: MetricsSignificance = LOW_COVERAGE, overrides: Partial<MetricsReview> = {}): MetricsReview {
   return {
     deliveries,
     reviewed: 0,
     coverage: deliveries === 0 ? null : 0,
     firstPassAcceptance: { accepted: 0, reviewed: 0, rate: null, significant: false, minReviewed: 10 },
     roundsPerDelivery: { one: 0, two: 0, three: 0, fourOrMore: 0 },
-    failureRate: { ...LOW_COVERAGE, reviewed: { deliveries: 0, failed: 0, rate: null }, unreviewed: { deliveries, failed: 0, rate: deliveries === 0 ? null : 0 } },
+    failureRate: { ...significance, reviewed: { deliveries: 0, failed: 0, rate: null }, unreviewed: { deliveries, failed: 0, rate: deliveries === 0 ? null : 0 } },
     sendBacks: { review: 0, integration: 0, validation: 0 },
     ...overrides,
   };
@@ -406,7 +415,7 @@ export function emptyMetricsFixture(overrides: Partial<MetricsResponse> = {}): M
     inProgress: [],
     slices: { type: [], priority: [], project: [slice('bdesk', 'beads-desktop', { throughput: 0, arrivals: 0, wip: 0, failureRate: null, leadTime: { median: null, p85: null, n: 0 }, cycleTime: { median: null, p85: null, n: 0 }, coverage: { bugs: 0, linked: 0, ratio: null } })] },
     health: emptyHealthFixture(),
-    review: reviewFixture(),
+    review: reviewFixture(0, NO_BUGS),
     longTrend: longTrendFixture(new Array<number>(12).fill(0)),
     ...overrides,
   });
