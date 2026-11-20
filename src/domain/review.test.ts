@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DeclaredStatuses } from '../shared/api';
 import { analyzeProject, computeMetrics, type MetricsInput, type MetricsTicket } from './metrics';
-import { computeReview, MIN_REVIEWED_DELIVERIES, reviewOf } from './review';
+import { computeReview, firstSendBackAt, MIN_REVIEWED_DELIVERIES, reviewOf } from './review';
 import { NO_DECLARED_STATUSES } from './statuses';
 
 /**
@@ -52,6 +52,15 @@ const options = { period: { range: '7d' }, now: new Date(NOW), timeZone: PARIS }
 const reviewIn = (projects: MetricsInput[]) => computeReview(projects, options);
 
 describe('Tours de relecture et Retours d’un ticket', () => {
+  it('le premier Retour (bdesk-pz0.6) : la date de la première Transition qui en est un, un Tour l’ait précédée ou non ; null sans Retour', () => {
+    const dated = (...statuses: string[]) => statuses.map((status, at) => ({ status, at }));
+    expect(firstSendBackAt(dated('open', 'in_progress', 'in_review', 'in_integration', 'closed'), NO_DECLARED_STATUSES)).toBeNull();
+    expect(firstSendBackAt(dated('in_review', 'in_progress', 'in_review', 'hooked'), NO_DECLARED_STATUSES)).toBe(1);
+    expect(firstSendBackAt(dated('open', 'in_integration', 'in_review', 'open', 'in_progress', 'awaiting_human', 'hooked'), NO_DECLARED_STATUSES)).toBe(6);
+    expect(firstSendBackAt(dated('in_progress', 'in_review', 'fixing', 'in_review', 'in_progress'), DECLARED)).toBe(2);
+    expect(firstSendBackAt(dated('in_progress', 'in_review', 'fixing', 'in_review', 'in_progress'), NO_DECLARED_STATUSES)).toBe(4);
+  });
+
   it('aucun Tour : un ticket développé puis fermé, sans Statut de relais', () => {
     expect(reviewOf(steps('open', 'in_progress', 'closed'), NO_DECLARED_STATUSES)).toEqual({
       rounds: 0,

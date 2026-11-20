@@ -498,12 +498,15 @@ describe('API des métriques', () => {
     expect(body.cfd).toHaveLength(30);
     expect(Object.keys(body).sort()).toEqual(
       [
-        'asOf', 'bucket', 'buckets', 'cfd', 'cycleTimeScatter', 'generatedAt', 'health', 'inProgress', 'longTrend', 'period', 'previousAsOf', 'previousPeriod',
+        'asOf', 'bucket', 'buckets', 'cfd', 'cycleTimeBreakdown', 'cycleTimeScatter', 'generatedAt', 'health', 'inProgress', 'longTrend', 'period', 'previousAsOf', 'previousPeriod',
         'projects', 'range', 'review', 'slices', 'tiles', 'timeZone', 'timeZoneHonoured', 'unreadable',
       ].sort(),
     );
     // Mesures de relecture (bdesk-pz0.5) : un ajout au contrat, à côté du rapport ; un Projet sans Statut de relais n'a aucune Livraison relue.
     expect(body.review).toMatchObject({ reviewed: 0, firstPassAcceptance: { reviewed: 0, rate: null, significant: false, minReviewed: 10 } });
+    // Décomposition du Cycle Time (bdesk-pz0.6) : un ajout au contrat, à côté de la relecture ; sans Statut de relais ni Retour, tout le travail est en Développement.
+    expect(body.cycleTimeBreakdown).toMatchObject({ review: 0, integration: 0, humanWait: 0, correction: 0, humanWaits: { waited: 0, minDeliveries: 4 } });
+    expect(body.cycleTimeBreakdown.total).toBe(body.health.leadTimeBreakdown.work + body.health.leadTimeBreakdown.blocked);
     // Santé du flux (bdesk-38k.13) : un ajout au contrat, les clés précédentes sont inchangées.
     expect(Object.keys(body.health).sort()).toEqual(['abandonment', 'activity', 'declines', 'efficiency', 'leadTimeBreakdown', 'readyAges', 'reopening', 'rework']);
     // Retravail (bdesk-l77.3) : un ajout aussi, la liste des tickets qui reviennent.

@@ -55,10 +55,26 @@ export function reviewOf(steps: readonly Pick<Step, 'status'>[], declared: Decla
   let rounds = 0;
   steps.forEach(({ status }, index) => {
     if (status === 'in_review') rounds++;
-    const from = steps[index - 1]?.status;
-    if (from !== undefined && isHandoffStatus(from) && isDevelopment(status, declared)) sendBacks[ORIGINS[from]]++;
+    const origin = sendBackOrigin(steps, index, declared);
+    if (origin !== null) sendBacks[origin]++;
   });
   return { rounds, sendBacks };
+}
+
+/**
+ * L'instant du premier Retour d'une suite de statuts datés (`TicketTimeline.steps`), la règle de `reviewOf` : la date de la première Transition d'un Statut
+ * de relais vers en cours, rattaché à un agent ou un statut déclaré `wip`, qu'un Tour de relecture l'ait précédée ou non. null sans Retour. C'est là que la
+ * Décomposition du Cycle Time coupe le travail entre Développement et Correction (`cycleTimePartsOf`).
+ */
+export function firstSendBackAt(steps: readonly Step[], declared: DeclaredStatuses): number | null {
+  return steps.find((_, index) => sendBackOrigin(steps, index, declared) !== null)?.at ?? null;
+}
+
+/** L'origine du Retour qu'est le statut `index` de la suite, depuis le précédent ; null s'il n'en est pas un (le statut de création n'est pas une Transition). */
+function sendBackOrigin(steps: readonly Pick<Step, 'status'>[], index: number, declared: DeclaredStatuses): MetricsSendBackOrigin | null {
+  const from = steps[index - 1]?.status;
+  const to = steps[index]?.status;
+  return from !== undefined && to !== undefined && isHandoffStatus(from) && isDevelopment(to, declared) ? ORIGINS[from] : null;
 }
 
 /** Une Livraison de la période, avec sa relecture. */

@@ -5,6 +5,7 @@
  */
 import { beforeAll, vi } from 'vitest';
 import type {
+  MetricsCycleTimeBreakdown,
   MetricsLongTrend,
   MetricsLongTrendWeek,
   MetricsBucket,
@@ -263,6 +264,26 @@ export function reviewFixture(deliveries = 0, significance: MetricsSignificance 
   };
 }
 
+/**
+ * La Décomposition du Cycle Time des fixtures (bdesk-pz0.6) : sans Statut de relais ni Retour, tout le travail est en Développement. `work` et `blocked` :
+ * les parts travail et Blocage de la Décomposition du Lead Time de la fixture, dont elle détaille la somme ; par défaut celles de `healthFixture`.
+ */
+export function cycleTimeBreakdownFixture(deliveries = 0, work = 0, blocked = 0, overrides: Partial<MetricsCycleTimeBreakdown> = {}): MetricsCycleTimeBreakdown {
+  const total = work + blocked;
+  return {
+    deliveries,
+    total,
+    review: 0,
+    integration: 0,
+    humanWait: 0,
+    blocked,
+    development: work,
+    correction: 0,
+    humanWaits: { waited: 0, stats: { median: null, p85: null, n: 0 }, reliable: false, minDeliveries: 4, share: total === 0 ? null : 0 },
+    ...overrides,
+  };
+}
+
 /** La significativité du Débit sain des fixtures : la Couverture de leur Taux d'échec, 19 %, trop faible. */
 export const LOW_COVERAGE: MetricsSignificance = {
   coverage: { bugs: 67, linked: 13, ratio: 13 / 67 },
@@ -389,6 +410,7 @@ export function metricsFixture(overrides: Partial<MetricsResponse> = {}): Metric
     },
     health: healthFixture(),
     review: reviewFixture(18),
+    cycleTimeBreakdown: cycleTimeBreakdownFixture(18, 28.5 * DAY, 2.5 * DAY),
     longTrend: longTrendFixture(),
     ...overrides,
   };
@@ -416,6 +438,7 @@ export function emptyMetricsFixture(overrides: Partial<MetricsResponse> = {}): M
     slices: { type: [], priority: [], project: [slice('bdesk', 'beads-desktop', { throughput: 0, arrivals: 0, wip: 0, failureRate: null, leadTime: { median: null, p85: null, n: 0 }, cycleTime: { median: null, p85: null, n: 0 }, coverage: { bugs: 0, linked: 0, ratio: null } })] },
     health: emptyHealthFixture(),
     review: reviewFixture(0, NO_BUGS),
+    cycleTimeBreakdown: cycleTimeBreakdownFixture(),
     longTrend: longTrendFixture(new Array<number>(12).fill(0)),
     ...overrides,
   });
