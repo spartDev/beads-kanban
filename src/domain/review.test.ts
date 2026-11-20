@@ -158,6 +158,7 @@ describe('mesures de relecture de la période', () => {
         delivered('ok', ['in_progress', 'in_review']),
       ]),
     ]);
+    expect(review).toMatchObject({ deliveries: 4, reviewed: 4, coverage: 1 });
     expect(review.firstPassAcceptance).toMatchObject({ accepted: 1, reviewed: 4, rate: 0.25 });
     expect(review.sendBacks).toEqual({ review: 1, integration: 1, validation: 1 });
     expect(review.roundsPerDelivery).toEqual({ one: 3, two: 1, three: 0, fourOrMore: 0 });
@@ -228,6 +229,7 @@ describe('mesures de relecture de la période', () => {
       [closedAt('debut', '2026-10-16T22:00:00Z'), 1],
       [closedAt('nuit', '2026-10-16T23:30:00Z'), 1],
       [closedAt('veille', '2026-10-16T21:59:59Z'), 0],
+      [closedAt('maintenant', NOW), 0],
       [closedAt('avance', NOW + 3_600_000), 0],
     ] as const;
     for (const [delivery, expected] of cases) {
@@ -236,6 +238,17 @@ describe('mesures de relecture de la période', () => {
       expect(reviewIn(projects)).toMatchObject({ deliveries: expected, reviewed: expected });
     }
     expect(computeMetrics([project([])], options).period.from).toBe('2026-10-17');
+
+    // Une période finie, du 19 au 21 octobre à Paris : sa fin est le 22 à minuit (21 octobre 22:00Z), exclue.
+    const past = { ...options, period: { from: '2026-10-19', to: '2026-10-21' } } as const;
+    for (const [delivery, expected] of [
+      [closedAt('fin', '2026-10-21T22:00:00Z'), 0],
+      [closedAt('avant-fin', '2026-10-21T21:59:59Z'), 1],
+    ] as const) {
+      const projects = [project([delivery])];
+      expect(computeMetrics(projects, past).tiles.throughput.total).toBe(expected);
+      expect(computeReview(projects, past)).toMatchObject({ deliveries: expected, reviewed: expected });
+    }
   });
 
   it('Tours par Livraison : 1, 2, 3, et 4 ou plus', () => {
@@ -288,24 +301,35 @@ describe('mesures de relecture de la période', () => {
       delivered('relue-ok', ['in_progress', 'in_review']),
       delivered('relue-ok2', ['in_progress', 'in_review', 'in_progress', 'in_review']),
       delivered('brute-ko', ['in_progress']),
+      // Passée par En intégration et À valider, renvoyée une fois, mais jamais relue : elle compte parmi les non relues.
+      delivered('integree-ko', ['in_progress', 'in_integration', 'in_progress', 'in_integration', 'awaiting_human']),
       bug('b1', 'relue-ko'),
       bug('b2', 'brute-ko'),
+      bug('b3', 'integree-ko'),
     ];
     const projects = [project(tickets)];
     const review = reviewIn(projects);
     const tile = computeMetrics(projects, options).tiles.failureRate;
     expect(review.failureRate.reviewed).toEqual({ deliveries: 3, failed: 1, rate: 1 / 3 });
-    expect(review.failureRate.unreviewed).toEqual({ deliveries: 1, failed: 1, rate: 1 });
+    expect(review.failureRate.unreviewed).toEqual({ deliveries: 2, failed: 2, rate: 1 });
     expect(review.failureRate.reviewed.deliveries + review.failureRate.unreviewed.deliveries).toBe(tile.deliveries);
     expect(review.failureRate.reviewed.failed + review.failureRate.unreviewed.failed).toBe(tile.failed);
-    expect(tile).toMatchObject({ deliveries: 4, failed: 2, rate: 0.5 });
-    // Significatif par la règle du Taux d'échec : ici deux bugs, trop peu.
+    expect(tile).toMatchObject({ deliveries: 5, failed: 3, rate: 0.6 });
+    // Significatif par la règle du Taux d'échec : ici trois bugs, trop peu.
     expect(review.failureRate).toMatchObject({ significant: tile.significant, reasons: tile.reasons, coverage: tile.coverage });
   });
 
   it('la Vue globale : un seul calcul sur l’union des Projets, chacun avec les statuts qu’il déclare', () => {
     const a = project([delivered('a1', ['in_progress', 'in_review', 'fixing', 'in_review'])], DECLARED, 'a');
-    const b = project([delivered('b1', ['in_progress', 'in_review', 'fixing', 'in_review']), delivered('b2', ['in_progress'])], NO_DECLARED_STATUSES, 'b');
+    const b = project(
+      [
+        delivered('b1', ['in_progress', 'in_review', 'fixing', 'in_review']),
+        delivered('b2', ['in_progress']),
+        ticket('b-bug', [['open', ago(0.5)]], { type: 'bug', dependencies: [{ type: 'discovered-from', target: 'b2', addedAt: new Date(ago(0.5)) }] }),
+      ],
+      NO_DECLARED_STATUSES,
+      'b',
+    );
     const global = reviewIn([a, b]);
     // `fixing` est un statut de travail de « a », pas de « b » : seul le Retour de « a » compte.
     expect(global).toMatchObject({ deliveries: 3, reviewed: 2, firstPassAcceptance: { accepted: 1, reviewed: 2, rate: 0.5 } });
@@ -313,5 +337,9 @@ describe('mesures de relecture de la période', () => {
     expect(global.roundsPerDelivery.two).toBe(2);
     expect(reviewIn([a]).sendBacks.review).toBe(1);
     expect(reviewIn([b]).sendBacks.review).toBe(0);
+    // La signification du Taux d'échec après relecture repose sur la Couverture de tous les bugs des Projets mesurés, comme la tuile.
+    const tile = computeMetrics([a, b], options).tiles.failureRate;
+    expect(global.failureRate.coverage).toEqual(tile.coverage);
+    expect(global.failureRate.coverage).toEqual({ bugs: 1, linked: 1, ratio: 1 });
   });
 });

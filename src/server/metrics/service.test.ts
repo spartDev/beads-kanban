@@ -592,6 +592,16 @@ describe('service de métriques : santé du flux', () => {
     expect(health.activity.total).toBe(4);
   });
 
+  it('mesure la relecture de la Vue globale, comme sa santé, avec la période, l’instant et le fuseau des autres métriques (bdesk-pz0.5)', async () => {
+    const { service } = fakeProjects(healthWorld());
+
+    const { review, tiles } = await createMetricsService(service, options).compute({ projects: [], ...week });
+
+    // a-1 et b-1, livrés le 21, sans Statut de relais : deux Livraisons, aucune relue.
+    expect(review).toMatchObject({ deliveries: tiles.throughput.total, reviewed: 0, coverage: 0 });
+    expect(review.deliveries).toBe(2);
+  });
+
   it('ne mesure que les Projets demandés', async () => {
     const { service } = fakeProjects(healthWorld());
 

@@ -27,7 +27,7 @@ const ORIGINS: Record<HandoffStatus, MetricsSendBackOrigin> = {
 
 /** Ce que les Transitions d'un ticket disent de sa relecture. */
 export interface TicketReview {
-  /** Tours de relecture : les Transitions vers En relecture. */
+  /** Tours de relecture : les passages En relecture, c'est-à-dire les Transitions vers ce statut, et le statut de création s'il l'est. */
   rounds: number;
   /** Retours, par origine. */
   sendBacks: Record<MetricsSendBackOrigin, number>;
