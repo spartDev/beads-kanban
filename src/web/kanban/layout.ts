@@ -78,9 +78,11 @@ export interface BoardLayout {
  */
 export interface CardLayout {
   /**
-   * La carte : ses marges, et, côte à côte, sa marge de défilement. Remontée au clavier (j, k, h, l : `scrollIntoView`), elle s'arrête sous les
-   * en-têtes collants et non dessous : la barre du haut (`top-11`, 49,5 px), l'en-tête le plus haut (132,75 px au seuil, Terminé avec 9 999 cartes) et
-   * son anneau de focus (2 px) tiennent dans `scroll-mt-41` (184,5 px). Une colonne seule garde la marge d'avant (`scroll-mt-28`, Card.tsx).
+   * La carte : ses marges, et sa marge de défilement. Remontée au clavier (j, k, h, l : `scrollIntoView`), elle s'arrête sous ce qui colle et non
+   * dessous. Côte à côte : la barre du haut (`top-11`, 49,5 px), l'en-tête le plus haut (132,75 px au seuil, Terminé avec 9 999 cartes) et son anneau
+   * de focus (2 px) tiennent dans `scroll-mt-41` (184,5 px). Une colonne à la fois : le sélecteur, plus haut qu'à cinq colonnes (`p-1`), colle sous la
+   * barre du haut et finit à 132,5 px au téléphone (128 px dès `md`) ; avec l'anneau, `scroll-mt-30` (135 px), et non la marge d'avant
+   * (`scroll-mt-28`, Card.tsx), qui en cachait le haut.
    */
   item: string;
   /** Son titre : coupé d'un tiret plutôt qu'au milieu d'un mot sans rien dire. */
@@ -152,7 +154,7 @@ const LAYOUTS: Readonly<Record<5 | 6 | 7 | 8, BoardLayout>> = {
     title: '@min-[46.2rem]/board:inline',
     inlineHeader: true,
     cards: '@min-[36rem]/board:grid-cols-2 @min-[46.2rem]/board:grid-cols-1 @max-[9.5rem]/column:px-0.5',
-    card: { ...NARROW_CARD, item: '@min-[46.2rem]/board:scroll-mt-41 @max-[9.5rem]/column:px-1.5' },
+    card: { ...NARROW_CARD, item: '@max-[46.2rem]/board:scroll-mt-30 @min-[46.2rem]/board:scroll-mt-41 @max-[9.5rem]/column:px-1.5' },
     selector: '@min-[46.2rem]:hidden',
     ...SCROLLING_SELECTOR,
   },
@@ -166,7 +168,7 @@ const LAYOUTS: Readonly<Record<5 | 6 | 7 | 8, BoardLayout>> = {
     title: '@min-[53.9rem]/board:inline',
     inlineHeader: true,
     cards: '@min-[36rem]/board:grid-cols-2 @min-[53.9rem]/board:grid-cols-1 @max-[9.5rem]/column:px-0.5',
-    card: { ...NARROW_CARD, item: '@min-[53.9rem]/board:scroll-mt-41 @max-[9.5rem]/column:px-1.5' },
+    card: { ...NARROW_CARD, item: '@max-[53.9rem]/board:scroll-mt-30 @min-[53.9rem]/board:scroll-mt-41 @max-[9.5rem]/column:px-1.5' },
     selector: '@min-[53.9rem]:hidden',
     ...SCROLLING_SELECTOR,
   },
@@ -180,7 +182,7 @@ const LAYOUTS: Readonly<Record<5 | 6 | 7 | 8, BoardLayout>> = {
     title: '@min-[61.6rem]/board:inline',
     inlineHeader: true,
     cards: '@min-[36rem]/board:grid-cols-2 @min-[61.6rem]/board:grid-cols-1 @max-[9.5rem]/column:px-0.5',
-    card: { ...NARROW_CARD, item: '@min-[61.6rem]/board:scroll-mt-41 @max-[9.5rem]/column:px-1.5' },
+    card: { ...NARROW_CARD, item: '@max-[61.6rem]/board:scroll-mt-30 @min-[61.6rem]/board:scroll-mt-41 @max-[9.5rem]/column:px-1.5' },
     selector: '@min-[61.6rem]:hidden',
     ...SCROLLING_SELECTOR,
   },

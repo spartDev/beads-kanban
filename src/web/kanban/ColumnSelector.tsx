@@ -13,8 +13,8 @@ import { columnMeta, ticketNoun } from './meta';
  *
  * Il a un bouton par colonne du Projet (`Board.columnIds`). Au-delà de cinq, avec les colonnes des Statuts de relais, les boutons gardent leur nom
  * sur une ligne et la rangée défile en elle-même quand elle ne tient pas (`layout.scrolls`) : le bouton de la colonne affichée y est ramené à la vue,
- * à l'ouverture (`?col=`) et quand h ou l change de colonne, avec la place de son anneau de focus. Quand la rangée change de largeur, c'est le bouton
- * qui a le focus, si on la parcourt au clavier, sinon celui de la colonne affichée.
+ * à l'ouverture (`?col=`), quand h ou l change de colonne et quand une colonne s'ajoute ou disparaît en direct, avec la place de son anneau de focus.
+ * Quand la rangée change de largeur, c'est le bouton qui a le focus, si on la parcourt au clavier, sinon celui de la colonne affichée.
  */
 
 /** Ramène ce bouton à la vue, en faisant défiler la rangée seule, à la main : `scrollIntoView` pourrait aussi faire défiler la page. */
@@ -47,11 +47,13 @@ export function ColumnSelector({
   const meta = columnMeta(language);
   const row = useRef<HTMLDivElement>(null);
 
-  // À l'ouverture et à chaque changement de colonne : le bouton de la colonne affichée.
+  // À l'ouverture, à chaque changement de colonne, et quand une colonne s'ajoute ou disparaît en direct (un bouton s'insère avant celui de la colonne
+  // affichée et le pousse hors de la vue, sans que la rangée change de largeur) : le bouton de la colonne affichée.
+  const columnSet = board.columnIds.join(' ');
   useLayoutEffect(() => {
     const group = row.current;
     if (layout.scrolls && group) reveal(group, activeButton(group));
-  }, [current, layout.scrolls]);
+  }, [current, columnSet, layout.scrolls]);
 
   // Quand la rangée change de largeur (fenêtre redimensionnée, téléphone tourné, rangée qui apparaît) : le bouton qui a le focus, s'il est dans la
   // rangée (on la parcourt au clavier), sinon celui de la colonne affichée, ne sort pas de la vue. Un seul observateur, de l'ouverture à la fin,

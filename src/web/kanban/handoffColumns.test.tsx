@@ -379,11 +379,13 @@ describe('à huit colonnes, côte à côte', () => {
 describe('le sélecteur de plus de cinq colonnes, qui défile', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   /**
-   * Des boutons de 100 px séparés de 2,25 px, dans une rangée de 300 px de large au remplissage de 4,5 px ; son défilement, retenu. `resize` : la
-   * rangée prend une autre largeur, avant que le navigateur ne le dise à la page (`emit`).
+   * Des boutons de 100 px séparés de 2,25 px, dans une rangée de 300 px de large au remplissage de 4,5 px ; son défilement, retenu. Chaque bouton est
+   * mesuré à sa place du moment dans la rangée, même ajouté ou déplacé en direct. `resize` : la rangée prend une autre largeur, avant que le
+   * navigateur ne le dise à la page (`emit`).
    */
   function measure(group: HTMLElement) {
     let scrollLeft = 0;
@@ -391,12 +393,14 @@ describe('le sélecteur de plus de cinq colonnes, qui défile', () => {
     Object.defineProperty(group, 'scrollLeft', { configurable: true, get: () => scrollLeft, set: (value: number) => (scrollLeft = value) });
     Object.defineProperty(group, 'clientWidth', { configurable: true, get: () => width });
     group.style.paddingLeft = '4.5px';
-    within(group)
-      .getAllByRole('button')
-      .forEach((button, index) => {
-        Object.defineProperty(button, 'offsetLeft', { configurable: true, get: () => 4.5 + index * 102.25 });
-        Object.defineProperty(button, 'offsetWidth', { configurable: true, get: () => 100 });
-      });
+    const place = (element: HTMLElement) => [...group.querySelectorAll('button')].indexOf(element as HTMLButtonElement);
+    vi.spyOn(HTMLElement.prototype, 'offsetLeft', 'get').mockImplementation(function (this: HTMLElement) {
+      const index = place(this);
+      return index < 0 ? 0 : 4.5 + index * 102.25;
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      return place(this) < 0 ? 0 : 100;
+    });
     return { scrollLeft: () => scrollLeft, resize: (next: number) => (width = next) };
   }
 
@@ -465,6 +469,33 @@ describe('le sélecteur de plus de cinq colonnes, qui défile', () => {
     resize.flushInitial();
     expect(row.scrollLeft()).toBeCloseTo(718 + 4.5 - 300);
     expect(resize.observed().filter((node) => node === group)).toHaveLength(1);
+  });
+
+  it('garde à la vue le bouton de la colonne affichée quand une colonne de relais s’ajoute en direct avant lui', async () => {
+    const resize = installFakeResizeObserver();
+    const serve = (issues: Issue[]) => stubApi({ projects: projectsResponse, issues: { bdesk: issues } });
+    const commit = (queryClient: QueryClient) => act(() => refreshProject(queryClient, 'bdesk'));
+    const shipped = [
+      issue({ id: 'bdesk-1', title: 'Prêt à démarrer' }),
+      issue({ id: 'bdesk-5', title: 'Attend votre test', status: 'awaiting_human' }),
+      issue({ id: 'bdesk-9', title: 'Livré', status: 'closed', closedAt: new Date().toISOString() }),
+    ];
+    // Six colonnes, Terminé affiché : son bouton, le sixième (de 515,75 à 615,75 px), est au bord droit de la rangée.
+    const { queryClient } = await openBoard(shipped, { path: '/p/bdesk/kanban?col=done' });
+    const group = screen.getByRole('group', { name: 'Colonne affichée' });
+    const row = measure(group);
+    resize.emit(group, 54);
+    expect(row.scrollLeft()).toBeCloseTo(615.75 + 4.5 - 300);
+
+    // Un ticket passe en relecture : la colonne En relecture s'ajoute, son bouton avant Terminé, qui devient le septième (de 618 à 718 px). La rangée
+    // ne change pas de largeur ; le bouton de Terminé revient tout de même au bord droit.
+    serve([...shipped, issue({ id: 'bdesk-3', title: 'Relu par un agent', status: 'in_review' })]);
+    await commit(queryClient);
+    await waitFor(() => expect(selectorButtons()).toHaveLength(7));
+    const done = within(group).getByRole('button', { name: /^Terminé/ });
+    expect(done.getAttribute('aria-pressed')).toBe('true');
+    expect(done.offsetLeft).toBeCloseTo(618);
+    expect(row.scrollLeft()).toBeCloseTo(718 + 4.5 - 300);
   });
 
   it('cesse d’observer la rangée quand le tableau est démonté, sans observation en double quand la colonne change', async () => {

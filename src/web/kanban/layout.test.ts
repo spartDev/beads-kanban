@@ -63,6 +63,9 @@ const HEADER = matched(/<header className=\{cx\('([^']+)', layout\.header\)\}/.e
 const HEADER_ROW = matched(/<div className=\{cx\('([^']+)', layout\.headerRow\)\}/.exec(source('./Column.tsx')), 'la ligne de l’en-tête');
 const DONE_SELECT = matched(/className="(ml-auto h-6 [^"]+)"/.exec(source('./Column.tsx')), 'la liste de Terminé');
 const CARD = matched(/'(relative flex scroll-mb-20 [^']+)'/.exec(source('./Card.tsx')), 'la carte');
+// Le sélecteur de colonne, collant au-dessus d'une colonne seule, et le compte de chacun de ses boutons.
+const SELECTOR = matched(/<div data-column-selector className=\{cx\('([^']+)', layout\.selector\)\}/.exec(source('./ColumnSelector.tsx')), 'le sélecteur de colonne');
+const SELECTOR_COUNT = matched(/<span className="(tnum text-xs [^"]+)">/.exec(source('./ColumnSelector.tsx')), 'le compte d’un bouton du sélecteur');
 const BODY_TEXT = 'body';
 
 const TEXT = { ui: 'text-ui', xs: 'text-xs', micro: 'text-micro', semibold: 'font-semibold', medium: 'font-medium' } as const;
@@ -85,7 +88,7 @@ const LAYOUT_PARTS = (layout: BoardLayout) => [
   layout.selectorLabel,
 ];
 const COUNTS = [5, 6, 7, 8] as const;
-const sheet = await sheetFor([SIDEBAR, PAGE, WIDE_PAGE, GRID, HEADER, HEADER_ROW, DONE_SELECT, CARD, ...Object.values(TEXT), ...COUNTS.flatMap((count) => LAYOUT_PARTS(boardLayout(count)))]);
+const sheet = await sheetFor([SIDEBAR, PAGE, WIDE_PAGE, GRID, HEADER, HEADER_ROW, DONE_SELECT, CARD, SELECTOR, SELECTOR_COUNT, ...Object.values(TEXT), ...COUNTS.flatMap((count) => LAYOUT_PARTS(boardLayout(count)))]);
 const ROOT = rootFontSizeOf(sheet);
 const px = (value: string) => lengthOf(sheet, value, ROOT);
 /** `n` unités d'espacement de Tailwind (`px-1.5` : 1,5), lues dans la feuille (`--spacing`). */
@@ -363,6 +366,52 @@ describe('boardLayout : le sélecteur de plus de cinq colonnes', () => {
     expect(padding).toBeGreaterThanOrEqual(ring);
   });
 
+  /** Une longueur que les classes `value` déclarent pour `property` à cette largeur de fenêtre ; un nombre sans unité compte en `font-size`. */
+  const lengthAt = (value: string, property: string, viewport: number, fontSize?: () => number) =>
+    lengthOf(sheet, resolved(sheet, atViewport(sheet, value, property, viewport) as string), ROOT, fontSize);
+
+  /**
+   * Le bas du sélecteur collant, à cette largeur de fenêtre, refait d'après ses classes : où il colle (`top-12`, `md:top-11`, sous la barre du
+   * haut), ses marges (`py-1.5`), la bordure et le remplissage de sa rangée (`border`, `p-1`), et un bouton : ses marges (`py-1.5`), son nom sur
+   * une ligne (`text-micro`), l'écart (`gap-0.5`), son compte (`text-xs`).
+   */
+  function selectorBottom(layout: BoardLayout, viewport: number): number {
+    const font = (value: string) => () => lengthAt(value, 'font-size', viewport);
+    const wrapper = lengthAt(SELECTOR, 'top', viewport) + 2 * lengthAt(SELECTOR, 'padding-block', viewport);
+    const group = 2 * lengthAt(layout.selectorGroup, 'border-width', viewport) + 2 * lengthAt(layout.selectorGroup, 'padding', viewport);
+    const button =
+      2 * lengthAt(layout.selectorButton, 'padding-block', viewport) +
+      lengthAt(layout.selectorButton, 'line-height', viewport, font(layout.selectorButton)) +
+      lengthAt(layout.selectorButton, 'gap', viewport) +
+      lengthAt(SELECTOR_COUNT, 'line-height', viewport, font(SELECTOR_COUNT));
+    return wrapper + group + button;
+  }
+
+  it.each([6, 7, 8])('à %i colonnes, une colonne à la fois : la carte remontée au clavier s’arrête sous le sélecteur collant, anneau de focus compris', (count) => {
+    const layout = boardLayout(count);
+    // En deçà du seuil, les en-têtes ne collent pas : seul le sélecteur, sous la barre du haut, couvre le haut de la colonne affichée.
+    const below = thresholdPx(count) - 1;
+    expect(valueAt(layout.selector, 'display', below)).toBeUndefined();
+    expect(valueAt(layout.header, 'position', { board: below, column: below - 2 * BORDER })).toBeUndefined();
+    // L'anneau de focus de la carte (`ring-2`) déborde de 2 px au-dessus d'elle.
+    const cardRing = Number(matched(/(?:^|:)ring-(\d+)(?:\s|$)/.exec(CARD), 'l’anneau de focus de la carte'));
+    // Au téléphone, la barre du haut est plus haute (`top-12`) qu'à partir de `md` (`top-11`) : 134,5 px et 130 px.
+    const needs = [375, 1440].map((viewport) => selectorBottom(layout, viewport) + cardRing);
+    expect(needs).toEqual([134.5, 130]);
+    const needed = Math.max(...needs);
+    for (const board of [343, below]) {
+      const margin = px(valueAt(`${CARD} ${layout.card.item}`, 'scroll-margin-top', { board, column: board - 2 * BORDER }) as string);
+      expect(margin, `${margin} px pour ${needed} px, à ${board} px de tableau`).toBeGreaterThanOrEqual(needed);
+      // Pas plus qu'il ne faut : une carte remontée au clavier ne s'éloigne pas du sélecteur de plus d'une demi-rem.
+      expect(margin - needed).toBeLessThan(ROOT / 2);
+    }
+  });
+
+  it('à cinq colonnes, ne change rien à la carte : elle garde la marge d’avant (`scroll-mt-28`, Card.tsx)', () => {
+    expect(boardLayout(5).card.item).toBe('');
+    expect(valueAt(CARD, 'scroll-margin-top', 0)).toBe('calc(var(--spacing) * 28)');
+  });
+
   it('à cinq colonnes, garde sa grille de cinq boutons, qui ne défile pas : l’anneau en déborde sans être rogné', () => {
     const layout = boardLayout(5);
 
@@ -534,9 +583,6 @@ describe.each([6, 7, 8])('à %i colonnes côte à côte, au seuil, une colonne �
     expect(margin, `${margin} px pour ${needed.toFixed(2)} px`).toBeGreaterThanOrEqual(needed);
     // Pas plus qu'il ne faut : une carte remontée au clavier ne s'éloigne pas de son en-tête de plus d'une demi-rem.
     expect(margin - needed).toBeLessThan(ROOT / 2);
-    // Une colonne seule, en deçà du seuil : l'en-tête ne colle pas, la carte garde la marge d'avant (`scroll-mt-28`), celle du tableau de cinq colonnes.
-    expect(valueAt(`${CARD} ${layout.card.item}`, 'scroll-margin-top', { board: wide - 1, column: 337 })).toBe(valueAt(CARD, 'scroll-margin-top', 0));
-    expect(valueAt(CARD, 'scroll-margin-top', 0)).toBe('calc(var(--spacing) * 28)');
   });
 
   it.each(LANGUAGES)('en %s, chaque pastille d’une carte tient, sans pictogramme : agent, Signaux, Abandon, Renoncement, et chaque mot du statut', (language) => {
