@@ -8,6 +8,8 @@ import { vi } from 'vitest';
 export interface FakeResizeObservers {
   /** Les nœuds que la page observe en ce moment, tous observateurs confondus. */
   observed: () => Element[];
+  /** Combien d'observations sont actives en ce moment : un nœud par observateur qui l'observe, tous observateurs confondus. Zéro quand tout est démonté. */
+  active: () => number;
   /** Le navigateur dit que ce nœud mesure maintenant cette hauteur (px). Rend le nombre d'observateurs prévenus : zéro si rien ne l'observe. */
   emit: (node: Element, height: number) => number;
   /** Comme `emit`, sans `act` : pour une mesure que le navigateur donne pendant que React travaille (dans un effet de mise en page), où `act` n'a rien à attendre. */
@@ -47,6 +49,7 @@ export function installFakeResizeObserver(): FakeResizeObservers {
   vi.stubGlobal('ResizeObserver', FakeResizeObserver);
   return {
     observed: () => [...live].flatMap((observer) => [...observer.nodes]),
+    active: () => [...live].reduce((count, observer) => count + observer.nodes.size, 0),
     notify,
     emit: (node, height) => {
       let notified = 0;

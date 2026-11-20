@@ -1,7 +1,7 @@
 /**
  * La disposition du tableau selon son nombre de colonnes : cinq pour tout Projet, jusqu'à huit avec les colonnes des Statuts de relais (`boardColumns`).
- * Les colonnes passent côte à côte dès que le panneau (le conteneur `@container` de `Board`) leur donne à chacune sa largeur, écart compris ; en deçà,
- * une colonne à la fois, avec le sélecteur de colonne, comme sur mobile. Tailwind ne lit que des classes écrites en entier : chaque seuil a les
+ * Les colonnes passent côte à côte dès que le panneau (le conteneur `@container/board` de `Board`) leur donne à chacune sa largeur, écart compris ; en
+ * deçà, une colonne à la fois, avec le sélecteur de colonne, comme sur mobile. Tailwind ne lit que des classes écrites en entier : chaque seuil a les
  * siennes, ici, et nulle part ailleurs (`Board`, `Column`, `ColumnSelector`, `Card`).
  *
  * Un rem vaut 18 px : la racine est à 112,5 % (styles.css). Une requête de conteneur compte en rem de la racine (une requête de média, elle, en
@@ -17,10 +17,18 @@
  *   - Au seuil, une colonne fait (N × 7,7 rem − (N − 1) × 9 px) / N, l'écart de 9 px (`gap-2`) déduit : 130,7 px à huit, un peu plus à six ou sept ;
  *     132,75 px à huit sur le panneau de 1 125 px.
  *   - Côte à côte, l'en-tête se lit comme une phrase (`inlineHeader`) : pictogramme, libellé et compte se suivent et passent à la ligne entre deux
- *     mots, jamais dans un mot ; marges de 6,75 px (`px-1.5`), soit 130,7 − 2 − 13,5 = 115,2 px de ligne.
- *   - La carte s'allège : marges de 2,25 px pour la liste (`px-0.5`) et de 6,75 px pour la carte (`px-1.5`), soit 130,7 − 2 − 4,5 − 2 − 13,5 =
- *     108,7 px de contenu ; ses pastilles perdent leur pictogramme et passent à la ligne entre deux mots, la priorité ne garde que ses barres (son
- *     code reste en infobulle et pour les lecteurs d'écran).
+ *     mots, jamais dans un mot ; marges de 6,75 px (`px-1.5`), soit 130,7 − 2 − 13,5 = 115,2 px de ligne. Les en-têtes ont tous la hauteur du plus
+ *     haut, et les premières cartes s'alignent d'une colonne à l'autre : chaque colonne est une sous-grille de deux rangées de la grille du tableau
+ *     (`grid-rows-subgrid`) : l'en-tête, puis le bloc qui réunit la liste et la note de Terminé (`body`).
+ *   - Ce bloc est un conteneur (`@container/column`), de la largeur du contenu de la colonne, et la carte ne s'allège que si elle est vraiment
+ *     étroite : moins de 9,5 rem (`NARROW_COLUMN_REM`, 171 px), là où la carte d'avant ne tient plus (layout.test.ts le mesure). Une colonne de
+ *     367 px (six colonnes à 2 560 px) garde la carte d'avant. Le conteneur ne peut pas être la colonne elle-même : un conteneur a un confinement
+ *     de mise en page, et un élément confiné n'est jamais une sous-grille (CSS Grid 2, § 9). La liste, dans ce bloc, vise donc le tableau par son
+ *     nom (`/board`) ; l'en-tête aussi, par cohérence.
+ *   - La carte allégée : marges de 2,25 px pour la liste (`px-0.5`) et de 6,75 px pour la carte (`px-1.5`), soit 130,7 − 2 − 4,5 − 2 − 13,5 =
+ *     108,7 px de contenu ; ses pastilles perdent leur pictogramme et passent à la ligne entre deux mots ; son titre se coupe d'un tiret
+ *     (`hyphens-auto`, dans la langue de la page). La priorité garde son code (« P2 »), qui la dit en clair, et perd ses barres : avec elles,
+ *     l'identifiant n'aurait que 43,2 px, moins que « bdesk- » (51,2 px), et se couperait en trois.
  *   - layout.test.ts le vérifie avec les polices de l'application (`test/fontMetrics.ts`), aux tailles réelles (15,75 px pour le libellé, 13,5 px
  *     pour le reste ; pictogrammes et bordures en px) : libellés, comptes, pastilles, âges, identifiants, en français et en anglais.
  *
@@ -31,8 +39,13 @@
 export interface BoardLayout {
   /** Le conteneur des colonnes : une piste de grille par colonne, toutes côte à côte. */
   grid: string;
-  /** Une colonne : affichée côte à côte avec les autres, même quand ce n'est pas celle du sélecteur. */
+  /** Une colonne : affichée côte à côte avec les autres, même quand ce n'est pas celle du sélecteur ; de six à huit, une sous-grille de deux rangées. */
   column: string;
+  /**
+   * Ce qui suit l'en-tête d'une colonne (la liste, la note de Terminé) : de six à huit colonnes, réuni dans un bloc de ces classes, la seconde rangée
+   * de la sous-grille, et le conteneur (`column`) dont la carte lit la largeur ; à cinq, `null` : laissé tel quel, le DOM d'avant.
+   */
+  body: string | null;
   /** L'en-tête d'une colonne : collant sous la barre du haut, quand les colonnes sont côte à côte. */
   header: string;
   /** La ligne de l'en-tête (pictogramme, libellé, compte) : dans une colonne étroite, une ligne de texte qui passe à la ligne entre deux mots. */
@@ -59,23 +72,36 @@ export interface BoardLayout {
   scrolls: boolean;
 }
 
-/** Une carte allégée dans une colonne étroite (`Card`). */
+/** Une carte allégée quand sa colonne est étroite (`Card`) : rien pour un tableau de cinq colonnes ni pour le tiroir « En pause ». */
 export interface CardLayout {
   /** La carte : ses marges. */
   item: string;
+  /** Son titre : coupé d'un tiret plutôt qu'au milieu d'un mot sans rien dire. */
+  title: string;
   /** La rangée de ses pastilles : chacune perd son pictogramme et peut passer à la ligne entre deux mots. */
   badges: string;
-  /** Le code de sa priorité (« P2 ») : masqué, les barres restent. */
-  priorityCode: string;
+  /** Les barres de sa priorité : masquées, le code (« P2 ») reste. */
+  priorityGlyph: string;
 }
 
-const PLAIN_CARD: CardLayout = { item: '', badges: '', priorityCode: '' };
+const PLAIN_CARD: CardLayout = { item: '', title: '', badges: '', priorityGlyph: '' };
 
 /** La largeur d'une colonne côte à côte, écart compris, à cinq colonnes : 60 rem pour les cinq, le seuil d'avant les Statuts de relais. */
 export const WIDE_REM_PER_COLUMN = 12;
 
 /** La largeur d'une colonne côte à côte, écart compris, de six à huit colonnes : 61,6 rem pour les huit, qui tiennent dans le panneau à 1 440 px. */
 export const NARROW_REM_PER_COLUMN = 7.7;
+
+/** Le contenu d'une colonne (le conteneur `column`, `body`) en deçà duquel sa carte s'allège : 9,5 rem, 171 px. */
+export const NARROW_COLUMN_REM = 9.5;
+
+/** La carte d'une colonne de moins de 9,5 rem (`NARROW_COLUMN_REM`), de six à huit colonnes, à toute largeur du tableau. */
+const NARROW_CARD: CardLayout = {
+  item: '@max-[9.5rem]/column:px-1.5',
+  title: '@max-[9.5rem]/column:hyphens-auto',
+  badges: '@max-[9.5rem]/column:[&>span]:shrink @max-[9.5rem]/column:[&>span>svg]:hidden',
+  priorityGlyph: '@max-[9.5rem]/column:hidden',
+};
 
 /** La rangée qui défile du sélecteur de plus de cinq colonnes : chaque bouton a la largeur de son nom, et la rangée s'étire quand elle tient. */
 const SCROLLING_SELECTOR = {
@@ -91,6 +117,7 @@ const LAYOUTS: Readonly<Record<5 | 6 | 7 | 8, BoardLayout>> = {
   5: {
     grid: '@min-[60rem]:grid @min-[60rem]:grid-cols-5',
     column: '@min-[60rem]:flex',
+    body: null,
     header: '@min-[60rem]:sticky @min-[60rem]:top-11',
     headerRow: '',
     headerIcon: '',
@@ -104,55 +131,47 @@ const LAYOUTS: Readonly<Record<5 | 6 | 7 | 8, BoardLayout>> = {
     selectorLabel: 'text-center wrap-anywhere',
     scrolls: false,
   },
-  // Six à huit : une colonne seule a deux cartes par ligne dès 36 rem, puis une seule quand toutes sont côte à côte ; jamais trois.
+  // Six à huit : une colonne seule a deux cartes par ligne dès 36 rem, puis une seule quand toutes sont côte à côte ; jamais trois. Côte à côte, pas
+  // d'écart entre les deux rangées de la grille : l'en-tête et la liste d'une colonne se touchent, comme avant.
   6: {
-    grid: '@min-[46.2rem]:grid @min-[46.2rem]:grid-cols-6',
-    column: '@min-[46.2rem]:flex',
-    header: '@min-[46.2rem]:sticky @min-[46.2rem]:top-11 @min-[46.2rem]:px-1.5',
-    headerRow: '@min-[46.2rem]:block',
-    headerIcon: '@min-[46.2rem]:inline @min-[46.2rem]:mr-1.5',
-    title: '@min-[46.2rem]:inline',
+    grid: '@min-[46.2rem]:grid @min-[46.2rem]:grid-cols-6 @min-[46.2rem]:gap-y-0',
+    column: '@min-[46.2rem]:grid @min-[46.2rem]:data-[shown=true]:grid @min-[46.2rem]:row-span-2 @min-[46.2rem]:grid-rows-subgrid',
+    body: '@container/column',
+    header: '@min-[46.2rem]/board:sticky @min-[46.2rem]/board:top-11 @min-[46.2rem]/board:px-1.5',
+    headerRow: '@min-[46.2rem]/board:block',
+    headerIcon: '@min-[46.2rem]/board:inline @min-[46.2rem]/board:mr-1.5',
+    title: '@min-[46.2rem]/board:inline',
     inlineHeader: true,
-    cards: '@min-[36rem]:grid-cols-2 @min-[46.2rem]:grid-cols-1 @min-[46.2rem]:px-0.5',
-    card: {
-      item: '@min-[46.2rem]:px-1.5',
-      badges: '@min-[46.2rem]:[&>span]:shrink @min-[46.2rem]:[&>span>svg]:hidden',
-      priorityCode: '@min-[46.2rem]:hidden',
-    },
+    cards: '@min-[36rem]/board:grid-cols-2 @min-[46.2rem]/board:grid-cols-1 @max-[9.5rem]/column:px-0.5',
+    card: NARROW_CARD,
     selector: '@min-[46.2rem]:hidden',
     ...SCROLLING_SELECTOR,
   },
   7: {
-    grid: '@min-[53.9rem]:grid @min-[53.9rem]:grid-cols-7',
-    column: '@min-[53.9rem]:flex',
-    header: '@min-[53.9rem]:sticky @min-[53.9rem]:top-11 @min-[53.9rem]:px-1.5',
-    headerRow: '@min-[53.9rem]:block',
-    headerIcon: '@min-[53.9rem]:inline @min-[53.9rem]:mr-1.5',
-    title: '@min-[53.9rem]:inline',
+    grid: '@min-[53.9rem]:grid @min-[53.9rem]:grid-cols-7 @min-[53.9rem]:gap-y-0',
+    column: '@min-[53.9rem]:grid @min-[53.9rem]:data-[shown=true]:grid @min-[53.9rem]:row-span-2 @min-[53.9rem]:grid-rows-subgrid',
+    body: '@container/column',
+    header: '@min-[53.9rem]/board:sticky @min-[53.9rem]/board:top-11 @min-[53.9rem]/board:px-1.5',
+    headerRow: '@min-[53.9rem]/board:block',
+    headerIcon: '@min-[53.9rem]/board:inline @min-[53.9rem]/board:mr-1.5',
+    title: '@min-[53.9rem]/board:inline',
     inlineHeader: true,
-    cards: '@min-[36rem]:grid-cols-2 @min-[53.9rem]:grid-cols-1 @min-[53.9rem]:px-0.5',
-    card: {
-      item: '@min-[53.9rem]:px-1.5',
-      badges: '@min-[53.9rem]:[&>span]:shrink @min-[53.9rem]:[&>span>svg]:hidden',
-      priorityCode: '@min-[53.9rem]:hidden',
-    },
+    cards: '@min-[36rem]/board:grid-cols-2 @min-[53.9rem]/board:grid-cols-1 @max-[9.5rem]/column:px-0.5',
+    card: NARROW_CARD,
     selector: '@min-[53.9rem]:hidden',
     ...SCROLLING_SELECTOR,
   },
   8: {
-    grid: '@min-[61.6rem]:grid @min-[61.6rem]:grid-cols-8',
-    column: '@min-[61.6rem]:flex',
-    header: '@min-[61.6rem]:sticky @min-[61.6rem]:top-11 @min-[61.6rem]:px-1.5',
-    headerRow: '@min-[61.6rem]:block',
-    headerIcon: '@min-[61.6rem]:inline @min-[61.6rem]:mr-1.5',
-    title: '@min-[61.6rem]:inline',
+    grid: '@min-[61.6rem]:grid @min-[61.6rem]:grid-cols-8 @min-[61.6rem]:gap-y-0',
+    column: '@min-[61.6rem]:grid @min-[61.6rem]:data-[shown=true]:grid @min-[61.6rem]:row-span-2 @min-[61.6rem]:grid-rows-subgrid',
+    body: '@container/column',
+    header: '@min-[61.6rem]/board:sticky @min-[61.6rem]/board:top-11 @min-[61.6rem]/board:px-1.5',
+    headerRow: '@min-[61.6rem]/board:block',
+    headerIcon: '@min-[61.6rem]/board:inline @min-[61.6rem]/board:mr-1.5',
+    title: '@min-[61.6rem]/board:inline',
     inlineHeader: true,
-    cards: '@min-[36rem]:grid-cols-2 @min-[61.6rem]:grid-cols-1 @min-[61.6rem]:px-0.5',
-    card: {
-      item: '@min-[61.6rem]:px-1.5',
-      badges: '@min-[61.6rem]:[&>span]:shrink @min-[61.6rem]:[&>span>svg]:hidden',
-      priorityCode: '@min-[61.6rem]:hidden',
-    },
+    cards: '@min-[36rem]/board:grid-cols-2 @min-[61.6rem]/board:grid-cols-1 @max-[9.5rem]/column:px-0.5',
+    card: NARROW_CARD,
     selector: '@min-[61.6rem]:hidden',
     ...SCROLLING_SELECTOR,
   },

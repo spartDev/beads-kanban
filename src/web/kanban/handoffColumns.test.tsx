@@ -191,7 +191,16 @@ describe('les colonnes de relais', () => {
  * carte passe à la ligne, jamais tronqué ; une pastille aussi, entre deux mots ; rien n'interdit le retour à la ligne.
  */
 describe('à huit colonnes, côte à côte', () => {
-  const WIDE = '@min-[61.6rem]';
+  /** Le seuil du tableau, nommé : chaque colonne y est elle-même un conteneur. */
+  const WIDE = '@min-[61.6rem]/board';
+  /** Une colonne de moins de 9,5 rem de contenu : la carte s'y allège. */
+  const NARROW = '@max-[9.5rem]/column';
+  /** Les classes de la carte d'avant, telles quelles : celles d'une carte qui ne s'allège jamais. */
+  const PLAIN_CARD = {
+    item: 'relative flex scroll-mb-20 scroll-mt-28 flex-col gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-2 shadow-panel transition-colors hover:border-line-strong has-[a[data-card-link]:focus-visible]:border-accent has-[a[data-card-link]:focus-visible]:ring-2 has-[a[data-card-link]:focus-visible]:ring-accent',
+    title: 'wrap-anywhere text-ui text-ink',
+    badges: 'flex min-w-0 flex-wrap items-center gap-1',
+  };
   const CUTTING: Record<string, readonly string[]> = {
     'white-space': ['nowrap', 'pre'],
     'text-overflow': ['ellipsis', 'clip'],
@@ -244,11 +253,21 @@ describe('à huit colonnes, côte à côte', () => {
     expect(headings()).toContain(language === 'en' ? 'Awaiting validation' : 'À valider');
 
     for (const item of document.querySelectorAll<HTMLElement>('section[data-column] li[data-card-id]')) {
-      expect(item.className).toContain(`${WIDE}:px-1.5`);
-      expect((item.parentElement as HTMLElement).className).toContain(`${WIDE}:px-0.5`);
-      // La priorité ne garde que ses barres ; son libellé reste pour les lecteurs d'écran.
+      // La carte ne s'allège que dans une colonne étroite : le bloc qui suit l'en-tête, de la largeur de la colonne, est le conteneur qu'elle interroge.
+      const body = item.closest('[data-column-body]') as HTMLElement;
+      expect(body.className).toBe('@container/column');
+      expect(body.parentElement?.tagName).toBe('SECTION');
+      expect((body.parentElement as HTMLElement).className).not.toContain('@container');
+      expect(item.className).toContain(`${NARROW}:px-1.5`);
+      expect((item.parentElement as HTMLElement).className).toContain(`${NARROW}:px-0.5`);
+      // Le titre peut se couper en fin de ligne, d'un trait d'union, dans la langue de la page.
+      expect(item.querySelector('p')?.className).toBe(`${PLAIN_CARD.title} ${NARROW}:hyphens-auto`);
+      expect(document.documentElement.lang).toBe(language);
+      // La priorité perd ses barres, et garde son code (P0 à P4) en clair ; son libellé reste pour les lecteurs d'écran.
       const priority = item.querySelector('[title]') as HTMLElement;
-      expect(priority.querySelector('.tnum')?.getAttribute('class')).toContain(`${WIDE}:hidden`);
+      expect(priority.querySelector('.tnum')?.getAttribute('class')).toBe('tnum');
+      expect(priority.querySelector('.tnum')?.textContent).toMatch(/^P[0-4]$/);
+      expect(priority.querySelector('svg')?.getAttribute('class')).toContain(`${NARROW}:hidden`);
       expect(priority.querySelector('.sr-only')?.textContent).not.toBe('');
       const link = item.querySelector('a[data-card-link]') as HTMLElement;
       expect(await cutsOf(link, { inWord: false }), link.textContent ?? '').toEqual([]);
@@ -256,8 +275,7 @@ describe('à huit colonnes, côte à côte', () => {
     // Les pastilles perdent leur pictogramme et passent à la ligne entre deux mots, jamais dans un mot.
     const agent = within(card('bdesk-7')).getByText('agent');
     const badges = agent.parentElement as HTMLElement;
-    expect(badges.className).toContain(`${WIDE}:[&>span>svg]:hidden`);
-    expect(badges.className).toContain(`${WIDE}:[&>span]:shrink`);
+    expect(badges.className).toBe(`${PLAIN_CARD.badges} ${NARROW}:[&>span]:shrink ${NARROW}:[&>span>svg]:hidden`);
     expect(await cutsOf(agent, { inWord: true })).toEqual([]);
     const pill = card('bdesk-6').querySelector('[data-card-status]') as HTMLElement;
     expect(pill.textContent).toBe(language === 'en' ? 'in review' : 'en relecture');
@@ -269,12 +287,18 @@ describe('à huit colonnes, côte à côte', () => {
     expect(await cutsOf(label, { inWord: false })).toEqual([expect.stringContaining('white-space: nowrap')]);
   });
 
-  it('laisse au tiroir « En pause » ses cartes sur toute la largeur, sans les marges resserrées', async () => {
-    const { user } = await openBoard([...TICKETS, issue({ id: 'bdesk-11', title: 'Reporté', status: 'deferred' })], { declared: ALL_HANDOFF });
+  it('laisse au tiroir « En pause » ses cartes d’avant, jamais allégées', async () => {
+    const { user } = await openBoard([...TICKETS, issue({ id: 'bdesk-11', title: 'Reporté', status: 'deferred', priority: 0 })], { declared: ALL_HANDOFF });
 
     await user.click(screen.getByRole('button', { name: /^En pause/ }));
-    expect(card('bdesk-11').className).not.toContain(`${WIDE}:`);
-    expect(card('bdesk-11').innerHTML).not.toContain(`${WIDE}:`);
+    const paused = card('bdesk-11');
+    expect(paused.closest('section')).toBeNull();
+    expect(paused.className).toBe(PLAIN_CARD.item);
+    expect(paused.querySelector('p')?.className).toBe(PLAIN_CARD.title);
+    expect(paused.outerHTML).not.toMatch(/@(min|max)-\[/);
+    // La priorité garde ses barres (P0 : le carré plein) et son code.
+    expect(paused.querySelector('[title] svg')?.getAttribute('class')).toBe('shrink-0');
+    expect(paused.querySelector('[title] .tnum')?.textContent).toBe('P0');
   });
 
   it('garde à cinq colonnes les en-têtes et les cartes d’avant', async () => {
@@ -288,8 +312,15 @@ describe('à huit colonnes, côte à côte', () => {
       expect([...(title.parentElement as HTMLElement).childNodes].filter((node) => node.nodeType === Node.TEXT_NODE)).toEqual([]);
     }
     for (const id of ['bdesk-1', 'bdesk-7']) {
-      expect(card(id).className).not.toMatch(/@min-\[[\d.]+rem\]:px-/);
-      expect(card(id).innerHTML).not.toMatch(/@min-\[[\d.]+rem\]:/);
+      expect(card(id).className).toBe(PLAIN_CARD.item);
+      expect(card(id).querySelector('p')?.className).toBe(PLAIN_CARD.title);
+      expect(card(id).outerHTML).not.toMatch(/@(min|max)-\[/);
+      expect(card(id).querySelector('[title] svg')?.getAttribute('class')).toBe('shrink-0');
+    }
+    // Ni conteneur dans la colonne, ni bloc autour de la liste : le DOM d'avant.
+    for (const region of columns()) {
+      expect(region.className).not.toContain('@container');
+      expect(region.querySelector('[data-column-body]')).toBeNull();
     }
   });
 });
@@ -333,6 +364,35 @@ describe('le sélecteur de plus de cinq colonnes, qui défile', () => {
     // En relecture (de 311,25 à 411,25 px) est à gauche de la vue : il vient au bord gauche, 4,5 px après lui.
     await user.click(within(group).getByRole('button', { name: /^En relecture/ }));
     expect(row.scrollLeft()).toBeCloseTo(311.25 - 4.5);
+  });
+
+  it('ramène à la vue, quand la rangée change de largeur, le bouton qui a le focus plutôt que celui de la colonne affichée', async () => {
+    const resize = installFakeResizeObserver();
+    await openBoard(TICKETS, { declared: ALL_HANDOFF, path: '/p/bdesk/kanban?col=awaitingHuman' });
+    const group = screen.getByRole('group', { name: 'Colonne affichée' });
+    const row = measure(group);
+    resize.emit(group, 54);
+    expect(row.scrollLeft()).toBeCloseTo(320.25);
+
+    // On parcourt la rangée au clavier : le focus est sur Backlog, le premier bouton, hors de la vue. La rangée change de largeur : il y revient.
+    within(group).getByRole('button', { name: /^Backlog/ }).focus();
+    resize.emit(group, 54);
+    expect(row.scrollLeft()).toBeCloseTo(0);
+  });
+
+  it('cesse d’observer la rangée quand le tableau est démonté, sans observation en double quand la colonne change', async () => {
+    const resize = installFakeResizeObserver();
+    const { user, unmount } = await openBoard(TICKETS, { declared: ALL_HANDOFF });
+    const group = screen.getByRole('group', { name: 'Colonne affichée' });
+    const observing = () => resize.observed().filter((node) => node === group).length;
+    expect(observing()).toBe(1);
+
+    await user.click(within(group).getByRole('button', { name: /^Backlog/ }));
+    expect(observing()).toBe(1);
+
+    unmount();
+    expect(observing()).toBe(0);
+    expect(resize.active()).toBe(0);
   });
 });
 

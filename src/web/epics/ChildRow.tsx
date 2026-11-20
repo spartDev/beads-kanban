@@ -5,6 +5,7 @@ import { ticketTitle } from '../data/helpers';
 import type { DeclaredStatuses, Issue } from '../data/types';
 import { typeMeta } from '../design/issue-palette';
 import { useFormat, useLanguage, useT, type DisplayFormat, type Language, type Messages } from '../i18n';
+import type { ColumnId } from '../kanban/columns';
 import { columnMeta } from '../kanban/meta';
 import { paths } from '../paths';
 import { AbandonBadge, DeclineBadge, PriorityBadge, TypeGlyph } from '../ui/IssueBadges';
@@ -24,11 +25,26 @@ function columnLabel(issue: Pick<Issue, 'status' | 'blockedBy'>, words: Words, d
   return column === null ? words.paused : columnMeta(language)[column].label;
 }
 
+/** Les largeurs de la case de la colonne d'une ligne, de la plus étroite à la plus large ; la première est celle d'avant les Statuts de relais. */
+const CHILD_COLUMN_WIDTHS = ['sm:w-14', 'sm:w-16', 'sm:w-17', 'sm:w-19', 'sm:w-26'] as const;
+type ChildColumnWidth = (typeof CHILD_COLUMN_WIDTHS)[number];
+
+/** Celle qu'il faut au nom d'une colonne, dans chaque langue, quand `sm:w-14` ne lui suffit pas ; « En pause » y tient dans les deux. */
+const WIDER_LABELS: Readonly<Record<Language, Partial<Record<ColumnId, ChildColumnWidth>>>> = {
+  fr: { inReview: 'sm:w-17', inIntegration: 'sm:w-19' },
+  en: { inProgress: 'sm:w-16', inReview: 'sm:w-16', inIntegration: 'sm:w-19', awaitingHuman: 'sm:w-26' },
+};
+
 /**
- * La largeur de la colonne d'une ligne, à partir de `sm` : celle du plus long nom de colonne des deux langues (« Awaiting validation », 112,3 px à
- * 13,5 px), pour que les noms s'alignent d'une ligne à l'autre. layout.test.ts mesure chaque nom contre elle.
+ * La largeur de la case de la colonne d'une ligne, à partir de `sm` : une largeur fixe, pour que les noms, la priorité et l'âge qui les suivent
+ * s'alignent d'une ligne à l'autre ; celle du plus long nom des colonnes du Projet (`boardColumns`, celles de son tableau) et d'« En pause », dans la
+ * langue de l'interface. En français, un Projet sans colonne de relais garde celle d'avant (`sm:w-14`). childColumnWidth.test.ts mesure chaque nom
+ * contre elle, pour chaque jeu de colonnes de relais et chaque langue.
  */
-export const CHILD_COLUMN_WIDTH = 'sm:w-[6.5rem]';
+export function childColumnWidth(columns: readonly ColumnId[], language: Language): ChildColumnWidth {
+  const widest = Math.max(0, ...columns.map((id) => CHILD_COLUMN_WIDTHS.indexOf(WIDER_LABELS[language][id] ?? 'sm:w-14')));
+  return CHILD_COLUMN_WIDTHS[widest] as ChildColumnWidth;
+}
 
 /** Ce qui retient un ticket qui n'est pas fermé : les tickets dont il dépend, ou le seul statut bloqué ; rien sinon. */
 function holdingBack(issue: Issue, words: Words, { formatCount }: Pick<DisplayFormat, 'formatCount'>): string | null {
@@ -42,7 +58,8 @@ function holdingBack(issue: Issue, words: Words, { formatCount }: Pick<DisplayFo
 /**
  * Un Enfant, en une ligne qui est un seul lien : son panneau (`/p/<projet>/t/<id>`), d'où « Retour » ramène à la page Epic.
  * Une Epic imbriquée, elle, mène à sa propre page, et dit son avancement (`nested`). `showColumn` : la colonne du ticket est
- * écrite sur la ligne, là où l'arborescence ne les groupe pas ; elle exige alors `declared`, les statuts que le Projet déclare. `idChars` : la largeur de l'identifiant, en caractères (celle du
+ * écrite sur la ligne, là où l'arborescence ne les groupe pas ; elle exige alors `declared`, les statuts que le Projet déclare, et `columns`, les
+ * colonnes de son tableau, qui donnent la largeur de sa case (`childColumnWidth`). `idChars` : la largeur de l'identifiant, en caractères (celle du
  * plus long de la liste) : les titres d'une colonne commencent alors au même endroit ; dès que l'écran est étroit, la ligne passe
  * à la ligne et cette largeur n'y change rien. Elle est plafonnée à la largeur de la ligne (`min(…ch, 100%)`) : un identifiant de 152 caractères
  * ferait 152ch, que la largeur minimale impose avant toute largeur maximale, et la page défilerait d'un côté. Un identifiant plus long que la
@@ -60,7 +77,7 @@ export function ChildRow(
     idChars?: number;
     /** L'avancement de l'Epic imbriquée que la ligne représente. */
     nested?: EpicProgress;
-  } & ({ showColumn: true; declared: DeclaredStatuses } | { showColumn?: false; declared?: never }),
+  } & ({ showColumn: true; declared: DeclaredStatuses; columns: readonly ColumnId[] } | { showColumn?: false; declared?: never; columns?: never }),
 ) {
   const { issue, projectId, now, idChars, nested } = props;
   const t = useT();
@@ -96,8 +113,10 @@ export function ChildRow(
         ) : null}
         {reason ? <span className="wrap-anywhere">{reason}</span> : null}
         {issue.assignee ? <span className="wrap-anywhere">{issue.assignee}</span> : null}
-        {/* Une largeur fixe, celle du plus long nom de colonne des deux langues : les noms s'alignent d'une ligne à l'autre (`CHILD_COLUMN_WIDTH`). */}
-        {props.showColumn && !isEpic ? <span className={CHILD_COLUMN_WIDTH}>{columnLabel(issue, words, props.declared, language)}</span> : null}
+        {/* Une largeur fixe, selon les colonnes du Projet : les noms s'alignent d'une ligne à l'autre (`childColumnWidth`). */}
+        {props.showColumn && !isEpic ? (
+          <span className={childColumnWidth(props.columns, language)}>{columnLabel(issue, words, props.declared, language)}</span>
+        ) : null}
         {isEpic ? null : <PriorityBadge priority={issue.priority} className="text-xs sm:w-8" />}
         {closedAge && issue.closedAt ? (
           <time dateTime={issue.closedAt} title={format.formatDateTime(issue.closedAt)} className="sm:w-[4.5rem] sm:text-right">

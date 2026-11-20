@@ -82,6 +82,33 @@ describe('la page Epic, en arbre', () => {
   });
 });
 
+describe('la page Epic, en arbre : la case de la colonne de chaque ligne', () => {
+  /** Les classes de la case où la ligne de `title` écrit sa colonne (`label`). */
+  async function columnCell(title: string, label: string) {
+    const tree = await screen.findByRole('list', { name: 'Arborescence' });
+    const row = within(tree).getAllByRole('link').find((link) => link.textContent?.includes(title)) as HTMLElement;
+    return [...row.querySelectorAll('span')].find((span) => span.textContent === label)?.getAttribute('class');
+  }
+
+  it('garde exactement la classe d’avant pour un Projet sans colonne de relais, déclarée ou portée', async () => {
+    open([EPIC, child('bdesk-1', 'En développement', { status: 'in_progress' }), child('bdesk-6', 'À démarrer')], '/p/bdesk/epics?epic=bdesk-e1&view=tree');
+
+    expect(await columnCell('En développement', 'En cours')).toBe('sm:w-14');
+    expect(await columnCell('À démarrer', 'Prêt')).toBe('sm:w-14');
+  });
+
+  it('s’élargit au plus long nom des colonnes de relais du Projet : celles que portent ses tickets, même hors de l’Epic, ou qu’il déclare', async () => {
+    // Un ticket hors de l'Epic, En relecture : le tableau du Projet a cette colonne, l'arbre lui fait place.
+    open([EPIC, child('bdesk-1', 'En développement', { status: 'in_progress' }), issue({ id: 'bdesk-9', title: 'Ailleurs', status: 'in_review' })], '/p/bdesk/epics?epic=bdesk-e1&view=tree');
+    expect(await columnCell('En développement', 'En cours')).toBe('sm:w-17');
+  });
+
+  it('prend en français, avec les trois colonnes de relais, la largeur d’« En intégration »', async () => {
+    open(CHILDREN, '/p/bdesk/epics?epic=bdesk-e1&view=tree');
+    expect(await columnCell('Attend votre test', 'À valider')).toBe('sm:w-19');
+  });
+});
+
 describe('la page Epic, en anglais', () => {
   // Un Enfant dans chacune des huit colonnes.
   const EVERY_COLUMN: Issue[] = [
@@ -120,5 +147,10 @@ describe('la page Epic, en anglais', () => {
     for (const french of ['Prêt', 'En cours', 'En relecture', 'En intégration', 'À valider', 'Bloqué']) {
       expect(tree.textContent, french).not.toContain(french);
     }
+    // La case de la colonne prend la largeur d'« Awaiting validation », le plus long nom anglais.
+    const cell = [...(within(tree).getAllByRole('link').find((link) => link.textContent?.includes('Child awaiting')) as HTMLElement).querySelectorAll('span')].find(
+      (span) => span.textContent === 'Awaiting validation',
+    );
+    expect(cell?.className).toBe('sm:w-26');
   });
 });

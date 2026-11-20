@@ -14,7 +14,8 @@ export const columnCountId = (id: ColumnId) => `kanban-${id}-count`;
  * Sur mobile, une seule colonne est affichée à la fois (`shown`) ; dès que le panneau est assez large pour toutes (`layout`, selon leur nombre),
  * toutes le sont. Un titre long passe à la ligne, entre deux mots : la colonne ne rogne rien. Dans une colonne étroite (six à huit côte à côte),
  * l'en-tête se lit comme une phrase (`layout.inlineHeader`) : pictogramme, libellé, compte et choix de Terminé se suivent, séparés d'espaces, et
- * passent à la ligne entre deux mots, comme un texte.
+ * passent à la ligne entre deux mots, comme un texte. Les colonnes y sont des sous-grilles de deux rangées : tous les en-têtes ont la hauteur du plus
+ * haut, et ce qui les suit (la liste, la note de Terminé) est réuni dans un bloc (`layout.body`), la seconde rangée, dont la carte lit la largeur.
  */
 export function Column({
   id,
@@ -82,22 +83,32 @@ export function Column({
         </p>
       </header>
 
-      {count > 0 ? (
-        // Une seule colonne affichée et le panneau large : les cartes s'y rangent sur deux colonnes, ou trois (`layout.cards`), plutôt que de s'étirer.
-        <ul className={cx('grid grid-cols-1 gap-1.5 px-1.5 pb-1.5', layout.cards)}>{children}</ul>
-      ) : (
-        <p className="px-2.5 py-5 text-center text-xs text-ink-3">{meta.empty(doneDays)}</p>
-      )}
+      <Body className={layout.body}>
+        {count > 0 ? (
+          // Une seule colonne affichée et le panneau large : les cartes s'y rangent sur deux colonnes (`layout.cards`), plutôt que de s'étirer.
+          <ul className={cx('grid grid-cols-1 gap-1.5 px-1.5 pb-1.5', layout.cards)}>{children}</ul>
+        ) : (
+          <p className="px-2.5 py-5 text-center text-xs text-ink-3">{meta.empty(doneDays)}</p>
+        )}
 
-      {id === 'done' && (closedEarlier > 0 || closedUndated > 0) ? (
-        // Deux lignes, pas une somme : « plus tôt » ne vaut que pour une clôture datée.
-        <div className="flex flex-col gap-0.5 px-2.5 pb-2.5 pt-1 text-xs text-ink-3">
-          {closedEarlier > 0 ? <p>{closedEarlierLabel(closedEarlier, language)}</p> : null}
-          {closedUndated > 0 ? <p>{closedUndatedLabel(closedUndated, language)}</p> : null}
-        </div>
-      ) : null}
+        {id === 'done' && (closedEarlier > 0 || closedUndated > 0) ? (
+          // Deux lignes, pas une somme : « plus tôt » ne vaut que pour une clôture datée.
+          <div className="flex flex-col gap-0.5 px-2.5 pb-2.5 pt-1 text-xs text-ink-3">
+            {closedEarlier > 0 ? <p>{closedEarlierLabel(closedEarlier, language)}</p> : null}
+            {closedUndated > 0 ? <p>{closedUndatedLabel(closedUndated, language)}</p> : null}
+          </div>
+        ) : null}
+      </Body>
     </section>
   );
+}
+
+/**
+ * Ce qui suit l'en-tête d'une colonne : de six à huit colonnes, réuni dans un bloc (`layout.body`), qui tient dans la seconde rangée de la sous-grille
+ * et dont la carte lit la largeur ; à cinq (`null`), tel quel, comme avant : le tableau garde son DOM.
+ */
+function Body({ className, children }: { className: string | null; children: ReactNode }) {
+  return className === null ? <>{children}</> : <div data-column-body className={className}>{children}</div>;
 }
 
 /** Le réglage de Terminé : combien de jours calendaires les tickets fermés y restent. Une liste native : clavier et mobile pour rien. */

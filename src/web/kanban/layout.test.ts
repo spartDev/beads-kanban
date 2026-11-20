@@ -8,7 +8,7 @@ import { formatAge } from '../lib/relativeTime';
 import { FLEX_SHRINK, holds, lengthOf, names, resolved, rootFontSizeOf, rulesFor, selectorOf, type Rule } from '../test/compiledCss';
 import { KERNING_ALLOWANCE, MONO_FILE, SANS_FILE, textMeasurer } from '../test/fontMetrics';
 import { COLUMN_IDS } from './columns';
-import { boardLayout, NARROW_REM_PER_COLUMN, WIDE_REM_PER_COLUMN, type BoardLayout } from './layout';
+import { boardLayout, NARROW_COLUMN_REM, NARROW_REM_PER_COLUMN, WIDE_REM_PER_COLUMN, type BoardLayout } from './layout';
 import { columnMeta, daysLabel } from './meta';
 import { doneDayChoices } from './params';
 
@@ -63,14 +63,16 @@ const TEXT = { ui: 'text-ui', xs: 'text-xs', micro: 'text-micro', semibold: 'fon
 const LAYOUT_PARTS = (layout: BoardLayout) => [
   layout.grid,
   layout.column,
+  layout.body ?? '',
   layout.header,
   layout.headerRow,
   layout.headerIcon,
   layout.title,
   layout.cards,
   layout.card.item,
+  layout.card.title,
   layout.card.badges,
-  layout.card.priorityCode,
+  layout.card.priorityGlyph,
   layout.selector,
   layout.selectorGroup,
   layout.selectorButton,
@@ -97,38 +99,65 @@ const columnWidth = (panel: number, count: number) => (panel - (count - 1) * GAP
 /** Le seuil où `count` colonnes passent côte à côte, en px. */
 const thresholdPx = (count: number) => count * (count === 5 ? WIDE_REM_PER_COLUMN : NARROW_REM_PER_COLUMN) * ROOT;
 
-/** Le seuil d'une requête de conteneur, en px ; toute autre condition fait échouer le test. */
-function threshold(condition: string): number {
-  const match = /^@container\s*\(width\s*>=\s*([\d.]+)rem\)$/.exec(condition);
+/**
+ * Les tailles des conteneurs que les classes interrogent : le tableau (`board`, ou sans nom : le plus proche, le tableau hors d'une colonne), et le
+ * contenu d'une colonne (`column`, de six à huit colonnes) ; sans `column`, les requêtes qui la visent ne valent rien.
+ */
+interface Sizes {
+  board: number;
+  column?: number;
+}
+const sizesOf = (sizes: number | Sizes): Sizes => (typeof sizes === 'number' ? { board: sizes } : sizes);
+
+/** Une requête de conteneur : son nom, son sens et son seuil, en px ; toute autre condition fait échouer le test. */
+function conditionOf(condition: string): { name: 'board' | 'column' | undefined; below: boolean; limit: number } {
+  const match = /^@container(?:\s+(board|column))?\s*\(width\s*(>=|<)\s*([\d.]+)rem\)$/.exec(condition);
   if (!match) throw new Error(`Condition que ce test ne sait pas lire : ${condition}`);
-  return Number(match[1]) * ROOT;
+  return { name: match[1] as 'board' | 'column' | undefined, below: match[2] === '<', limit: Number(match[3]) * ROOT };
 }
 
-/** Ce que les classes `value` déclarent pour `property` dans un panneau de `width` px : la dernière règle qui s'applique, dans l'ordre de la feuille. */
-function valueAt(value: string, property: string, width: number, rules: readonly Rule[] = sheet): string | undefined {
+/** La condition vaut-elle à ces tailles ? Une requête sans nom vise ici le tableau : ce test vérifie à part qu'aucune n'est dans une colonne-conteneur. */
+function holdsIn(condition: string, sizes: Sizes): boolean {
+  const { name, below, limit } = conditionOf(condition);
+  const size = name === 'column' ? sizes.column : sizes.board;
+  if (size === undefined) return false;
+  return below ? size < limit : size >= limit;
+}
+
+/** Ce que les classes `value` déclarent pour `property` à ces tailles (un nombre : le tableau seul) : la dernière règle qui s'applique. */
+function valueAt(value: string, property: string, sizes: number | Sizes): string | undefined {
+  const at = sizesOf(sizes);
   const selectors = new Set(classes(value).map(selectorOf));
   let found: string | undefined;
-  for (const rule of rules) {
+  for (const rule of sheet) {
     if (!selectors.has(rule.selector) || !(property in rule.declarations)) continue;
-    if (rule.within.every((condition) => threshold(condition) <= width)) found = rule.declarations[property];
+    if (rule.within.every((condition) => holdsIn(condition, at))) found = rule.declarations[property];
   }
   return found;
 }
 
-/** Les seuils de toutes les requêtes de conteneur des classes `value`, sélecteurs composés compris (`[&>span]:…`). */
-function thresholdsOf(value: string): number[] {
+/** Les requêtes de conteneur de toutes les classes `value`, sélecteurs composés compris (`[&>span]:…`), telles que la feuille les écrit. */
+function conditionsOf(value: string): string[] {
   const selectors = classes(value).map(selectorOf);
   const own = sheet.filter((rule) => selectors.some((selector) => names(rule, selector)));
-  return [...new Set(own.flatMap((rule) => rule.within.map(threshold)))].sort((a, b) => a - b);
+  return [...new Set(own.flatMap((rule) => rule.within))].sort();
 }
 
-/** Ce que la classe `name` déclare, à `width` px, pour les descendants que son sélecteur vise (`[&>span>svg]:hidden` : `… > span > svg`). */
-function descendantsAt(name: string, property: string, width: number): { selector: string; value: string }[] {
+/** Ce que la classe `name` déclare, à ces tailles, pour les descendants que son sélecteur vise (`[&>span>svg]:hidden` : `… > span > svg`). */
+function descendantsAt(name: string, property: string, sizes: number | Sizes): { selector: string; value: string }[] {
+  const at = sizesOf(sizes);
   return sheet
     .filter((rule) => names(rule, selectorOf(name)) && rule.selector !== selectorOf(name) && property in rule.declarations)
-    .filter((rule) => rule.within.every((condition) => threshold(condition) <= width))
+    .filter((rule) => rule.within.every((condition) => holdsIn(condition, at)))
     .map((rule) => ({ selector: rule.selector.slice(selectorOf(name).length).trim(), value: rule.declarations[property] as string }));
 }
+
+/** La bordure d'une colonne et d'une carte (`border`, 1 px). */
+const BORDER = 1;
+/** Le contenu d'une colonne côte à côte (le conteneur `column`) : sa largeur, sa bordure en moins. */
+const columnContent = (panel: number, count: number) => columnWidth(panel, count) - 2 * BORDER;
+/** Le seuil du contenu d'une colonne en deçà duquel la carte s'allège, en px. */
+const NARROW_COLUMN = NARROW_COLUMN_REM * ROOT;
 
 describe('le modèle : la racine, le panneau, l’écart', () => {
   it('lit la racine à 112,5 % : 18 px le rem', () => {
@@ -147,13 +176,14 @@ describe('boardLayout : cinq colonnes, comme avant', () => {
     expect(boardLayout(5)).toEqual({
       grid: '@min-[60rem]:grid @min-[60rem]:grid-cols-5',
       column: '@min-[60rem]:flex',
+      body: null,
       header: '@min-[60rem]:sticky @min-[60rem]:top-11',
       headerRow: '',
       headerIcon: '',
       title: '',
       inlineHeader: false,
       cards: '@min-[36rem]:grid-cols-2 @min-[60rem]:grid-cols-1',
-      card: { item: '', badges: '', priorityCode: '' },
+      card: { item: '', title: '', badges: '', priorityGlyph: '' },
       selector: '@min-[60rem]:hidden',
       selectorGroup: 'grid grid-cols-5 gap-0.5 rounded-lg border border-line bg-well p-0.5',
       selectorButton: 'flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-0.5 py-1.5 text-micro font-medium transition-colors',
@@ -199,17 +229,21 @@ describe('les seuils : 12 rem par colonne à cinq, 7,7 rem de six à huit', () =
 describe.each(COUNTS)('boardLayout : %i colonnes', (count) => {
   const layout = boardLayout(count);
   const wide = thresholdPx(count);
+  const T = `${Number((wide / ROOT).toFixed(2))}rem`;
+  /** Ce que contient une colonne : l'en-tête, la liste et la carte. */
+  const inside = [layout.header, layout.headerRow, layout.headerIcon, layout.title, layout.cards, layout.card.item, layout.card.title, layout.card.badges, layout.card.priorityGlyph];
 
-  it('passe toutes les colonnes côte à côte à un seul seuil : la grille, les colonnes, leurs en-têtes, les cartes et le sélecteur', () => {
-    const parts = [layout.grid, layout.column, layout.header, layout.headerRow, layout.headerIcon, layout.title, layout.card.item, layout.card.badges, layout.card.priorityCode, layout.selector];
-    for (const part of parts) expect(thresholdsOf(part), part).toEqual(part === '' ? [] : [wide]);
+  it('passe toutes les colonnes côte à côte à un seul seuil du tableau : la grille, les colonnes, leurs en-têtes, et le sélecteur', () => {
+    const side = count === 5 ? `@container (width >= ${T})` : `@container board (width >= ${T})`;
+    for (const part of [layout.grid, layout.column, layout.selector]) expect(conditionsOf(part), part).toEqual([`@container (width >= ${T})`]);
+    for (const part of [layout.header, layout.headerRow, layout.headerIcon, layout.title]) expect(conditionsOf(part), part).toEqual(part === '' ? [] : [side]);
     // Juste en deçà : une colonne à la fois, avec le sélecteur.
     expect(valueAt(layout.grid, 'display', wide - 1)).toBeUndefined();
     expect(valueAt(layout.selector, 'display', wide - 1)).toBeUndefined();
     // Au seuil : une piste de grille par colonne, toutes affichées, en-têtes collants, sans sélecteur.
     expect(valueAt(layout.grid, 'display', wide)).toBe('grid');
     expect(valueAt(layout.grid, 'grid-template-columns', wide)).toBe(`repeat(${count}, minmax(0, 1fr))`);
-    expect(valueAt(layout.column, 'display', wide)).toBe('flex');
+    expect(valueAt(layout.column, 'display', wide)).toBe(count === 5 ? 'flex' : 'grid');
     expect(valueAt(layout.header, 'position', wide)).toBe('sticky');
     expect(valueAt(layout.selector, 'display', wide)).toBe('none');
   });
@@ -222,25 +256,72 @@ describe.each(COUNTS)('boardLayout : %i colonnes', (count) => {
     for (const width of [wide, wide + 200, 2560]) expect(cardColumns(width), `${width} px`).toBe('repeat(1, minmax(0, 1fr))');
   });
 
-  if (count > 5) {
-    it('écrit côte à côte l’en-tête comme une ligne de texte, et allège la carte', () => {
+  if (count === 5) {
+    it('ne fait pas de la colonne un conteneur, ne réunit pas la liste dans un bloc, et n’allège jamais la carte', () => {
+      expect(classes(layout.column).some((name) => name.startsWith('@container'))).toBe(false);
+      expect(layout.body).toBeNull();
+      expect(Object.values(layout.card).every((value) => value === '')).toBe(true);
+    });
+  } else {
+    it('fait du bloc qui suit l’en-tête un conteneur nommé, pas de la colonne, et ce qu’il contient ne vise jamais un conteneur sans nom', () => {
+      expect(layout.body).toBe('@container/column');
+      expect(valueAt(layout.body as string, 'container-type', wide)).toBe('inline-size');
+      expect(valueAt(layout.body as string, 'container-name', wide)).toBe('column');
+      // Un conteneur a un confinement de mise en page, et un élément confiné n'est jamais une sous-grille : la colonne n'en est pas un.
+      expect(classes(layout.column).some((name) => name.startsWith('@container'))).toBe(false);
+      for (const part of inside) {
+        for (const condition of conditionsOf(part)) expect(conditionOf(condition).name, `${part} : ${condition}`).toBeDefined();
+      }
+    });
+
+    it('écrit côte à côte l’en-tête comme une ligne de texte, et aligne les en-têtes : chaque colonne est une sous-grille de deux rangées', () => {
       expect(layout.inlineHeader).toBe(true);
       expect(valueAt(layout.header, 'padding-inline', wide)).toBe('calc(var(--spacing) * 1.5)');
       expect(valueAt(layout.headerRow, 'display', wide)).toBe('block');
       expect(valueAt(layout.headerIcon, 'display', wide)).toBe('inline');
       expect(valueAt(layout.headerIcon, 'margin-right', wide)).toBe('calc(var(--spacing) * 1.5)');
       expect(valueAt(layout.title, 'display', wide)).toBe('inline');
-      expect(valueAt(layout.cards, 'padding-inline', wide)).toBe('calc(var(--spacing) * 0.5)');
-      expect(valueAt(layout.card.item, 'padding-inline', wide)).toBe('calc(var(--spacing) * 1.5)');
-      expect(valueAt(layout.card.priorityCode, 'display', wide)).toBe('none');
+      expect(valueAt(layout.grid, 'row-gap', wide)).toBe('0px');
+      expect(valueAt(layout.column, 'grid-row', wide)).toBe('span 2 / span 2');
+      expect(valueAt(layout.column, 'grid-template-rows', wide)).toBe('subgrid');
+      // La colonne affichée (`data-[shown=true]:flex`, plus précise) est une sous-grille elle aussi.
+      expect(classes(layout.column)).toContain(`@min-[${T}]:data-[shown=true]:grid`);
+      // En deçà, une colonne seule garde l'en-tête d'avant.
+      expect(valueAt(layout.header, 'padding-inline', wide - 1)).toBeUndefined();
+      for (const part of [layout.headerRow, layout.headerIcon, layout.title, layout.column]) expect(valueAt(part, 'display', wide - 1), part).toBeUndefined();
+      expect(valueAt(layout.grid, 'row-gap', wide - 1)).toBeUndefined();
+    });
+
+    it('allège la carte quand sa colonne a moins de 9,5 rem de contenu, et seulement alors, quel que soit le nombre de colonnes', () => {
+      const narrow = { board: wide, column: NARROW_COLUMN - 1 };
+      const roomy = { board: wide, column: NARROW_COLUMN };
+      for (const part of [layout.cards, layout.card.item, layout.card.title, layout.card.badges, layout.card.priorityGlyph]) {
+        expect(conditionsOf(part).filter((condition) => conditionOf(condition).name === 'column'), part).toEqual(['@container column (width < 9.5rem)']);
+      }
+      expect(valueAt(layout.cards, 'padding-inline', narrow)).toBe('calc(var(--spacing) * 0.5)');
+      expect(valueAt(layout.card.item, 'padding-inline', narrow)).toBe('calc(var(--spacing) * 1.5)');
+      expect(valueAt(layout.card.title, 'hyphens', narrow)).toBe('auto');
+      expect(valueAt(layout.card.priorityGlyph, 'display', narrow)).toBe('none');
       // Les pastilles : leur pictogramme masqué, et chacune peut rétrécir, donc passer elle-même à la ligne entre deux mots.
       const [shrinks, hidesIcon] = classes(layout.card.badges);
-      expect(descendantsAt(shrinks as string, FLEX_SHRINK, wide)).toEqual([{ selector: '> span', value: '1' }]);
-      expect(descendantsAt(hidesIcon as string, 'display', wide)).toEqual([{ selector: '> span > svg', value: 'none' }]);
-      // En deçà, une colonne seule garde l'en-tête et les cartes d'avant.
-      for (const part of [layout.header, layout.cards, layout.card.item]) expect(valueAt(part, 'padding-inline', wide - 1), part).toBeUndefined();
-      for (const part of [layout.headerRow, layout.headerIcon, layout.title, layout.card.priorityCode]) expect(valueAt(part, 'display', wide - 1), part).toBeUndefined();
-      expect(descendantsAt(hidesIcon as string, 'display', wide - 1)).toEqual([]);
+      expect(descendantsAt(shrinks as string, FLEX_SHRINK, narrow)).toEqual([{ selector: '> span', value: '1' }]);
+      expect(descendantsAt(hidesIcon as string, 'display', narrow)).toEqual([{ selector: '> span > svg', value: 'none' }]);
+      // Une colonne de 9,5 rem ou plus garde la carte d'avant, à toute largeur du tableau.
+      expect(valueAt(layout.cards, 'padding-inline', roomy)).toBeUndefined();
+      for (const part of [layout.card.item, layout.card.title, layout.card.priorityGlyph]) expect(valueAt(part, 'padding-inline', roomy) ?? valueAt(part, 'display', roomy) ?? valueAt(part, 'hyphens', roomy), part).toBeUndefined();
+      expect(descendantsAt(hidesIcon as string, 'display', roomy)).toEqual([]);
+    });
+
+    it('allège la carte au seuil ; à 1 440 px, à sept et huit colonnes, pas à six (178 px de contenu) ; ni à 2 560 px, ni à une colonne seule', () => {
+      const lightened = (sizes: Sizes) => valueAt(layout.card.priorityGlyph, 'display', sizes) === 'none';
+      expect(lightened({ board: wide, column: columnContent(wide, count) })).toBe(true);
+      expect(columnContent(panelAt(1440), count)).toBeCloseTo({ 6: 178, 7: 151, 8: 130.75 }[count] as number, 1);
+      expect(lightened({ board: panelAt(1440), column: columnContent(panelAt(1440), count) })).toBe(count > 6);
+      // 2 560 px : des colonnes de 367 px à six, 274 px à huit.
+      expect(columnContent(panelAt(2560), count)).toBeGreaterThan(NARROW_COLUMN);
+      expect(lightened({ board: panelAt(2560), column: columnContent(panelAt(2560), count) })).toBe(false);
+      // Une colonne seule prend la largeur du tableau (sa bordure en moins), 339 px à 375 px.
+      expect(lightened({ board: 339, column: 337 })).toBe(false);
     });
   }
 });
@@ -305,10 +386,10 @@ describe.each([6, 7, 8])('à %i colonnes côte à côte, au seuil, une colonne �
   const MEDIUM = weight(TEXT.medium);
   /** Une largeur de texte, crénage compris. */
   const text = (value: string, size: number, weightOf = 400) => sans(value, { size, weight: weightOf }) + KERNING_ALLOWANCE;
-  const spacing = (property: string, value: string) => px(valueAt(value, property, wide) as string);
-
-  const BORDER = 1;
   const column = columnWidth(wide, count);
+  /** Au seuil : le tableau, et le contenu de la colonne, sous les 9,5 rem où la carte s'allège. */
+  const sizes = { board: wide, column: columnContent(wide, count) };
+  const spacing = (property: string, value: string) => px(valueAt(value, property, sizes) as string);
   /** L'en-tête : bordure de la colonne et ses marges resserrées (`layout.header`). */
   const header = column - 2 * BORDER - 2 * spacing('padding-inline', layout.header);
   /** Une carte : bordure de la colonne, marges de la liste (`layout.cards`), bordure de la carte et ses marges (`layout.card.item`). */
@@ -319,9 +400,10 @@ describe.each([6, 7, 8])('à %i colonnes côte à côte, au seuil, une colonne �
   const digit = Math.max(...[...'0123456789'].map((d) => sans(d, { size: XS })));
   const LANGUAGES: Language[] = ['fr', 'en'];
 
-  it('lit les tailles réelles : 15,75 px pour le libellé, 13,5 px pour le reste, et des colonnes d’au moins 130,7 px', () => {
+  it('lit les tailles réelles : 15,75 px pour le libellé, 13,5 px pour le reste, et des colonnes d’au moins 130,7 px, toutes étroites', () => {
     expect([UI, XS, MICRO, BODY, SEMIBOLD, MEDIUM]).toEqual([15.75, 13.5, 13.5, 15.75, 600, 500]);
     expect(column).toBeGreaterThanOrEqual(130.7);
+    expect(sizes.column).toBeLessThan(NARROW_COLUMN);
     expect(header).toBeGreaterThanOrEqual(115.2);
     expect(card).toBeGreaterThanOrEqual(108.7);
   });
@@ -426,7 +508,7 @@ describe.each([6, 7, 8])('à %i colonnes côte à côte, au seuil, une colonne �
     }
   });
 
-  it.each(LANGUAGES)('en %s, l’âge d’une carte tient sur sa ligne, et l’identifiant garde de la place à côté de la priorité', (language) => {
+  it.each(LANGUAGES)('en %s, l’âge d’une carte tient sur sa ligne, et l’identifiant garde de la place à côté du code de la priorité', (language) => {
     const now = Date.parse('2026-11-20T12:00:00Z');
     const ago = [0, 59 * 60_000, 23 * 3_600_000, ...[1, 2, 3, 13, 20, 27, 40, 400].map((days) => days * 86_400_000)];
     const failures: string[] = [];
@@ -437,9 +519,38 @@ describe.each([6, 7, 8])('à %i colonnes côte à côte, au seuil, une colonne �
       if (width > card) failures.push(`« ${age} » : ${width.toFixed(1)} px pour ${card.toFixed(1)} px`);
     }
     expect(failures).toEqual([]);
-    // Ligne de l'identifiant : pictogramme de type (14 px), écarts (`gap-1.5`), barres de la priorité (14 px), sans son code (`layout.card.priorityCode`).
-    // L'identifiant se coupe n'importe où (`wrap-anywhere`), et garde au moins le préfixe du Projet et un caractère par ligne.
-    const idWidth = card - 14 - 2 * unit(1.5) - 14;
-    expect(idWidth).toBeGreaterThanOrEqual(mono('bdesk-1', { size: XS }));
+    // Ligne de l'identifiant : pictogramme de type (14 px), écarts (`gap-1.5`), code de la priorité (le plus large de P0 à P4), sans ses barres
+    // (`layout.card.priorityGlyph`). L'identifiant passe à la ligne après son tiret : le préfixe du Projet, puis le reste, tiennent chacun sur une ligne.
+    const code = Math.max(...[0, 1, 2, 3, 4].map((priority) => text(`P${priority}`, XS)));
+    const idWidth = card - 14 - 2 * unit(1.5) - code;
+    for (const part of ['bdesk-', '38k.109']) expect(mono(part, { size: XS }), part).toBeLessThanOrEqual(idWidth);
+    // Avec les barres (14 px, écart `gap-1.5`), il n'aurait que 43,2 px au seuil de huit colonnes : moins que « bdesk- », coupé en trois lignes.
+    expect(idWidth - 14 - unit(1.5)).toBeLessThan(mono('bdesk-', { size: XS }));
+  });
+});
+
+/**
+ * Une colonne de 9,5 rem de contenu tout juste, où la carte cesse de s'alléger : la carte d'avant y tient, telle quelle. Marges de la liste (`px-1.5`)
+ * et de la carte (`px-2.5`), pictogrammes des pastilles (11 px, écart `gap-1`), priorité en barres et en code, aux tailles réelles.
+ */
+describe('à 9,5 rem de contenu de colonne, la carte d’avant tient : c’est là que l’allègement s’arrête', () => {
+  const sans = textMeasurer(SANS_FILE);
+  const mono = textMeasurer(MONO_FILE);
+  const XS = 0.75 * ROOT;
+  const text = (value: string, size: number, weightOf = 400) => sans(value, { size, weight: weightOf }) + KERNING_ALLOWANCE;
+  const card = NARROW_COLUMN - 2 * unit(1.5) - 2 * BORDER - 2 * unit(2.5);
+
+  it('garde l’identifiant (« bdesk- », puis « 38k.109 ») à côté des barres et du code de la priorité', () => {
+    const code = Math.max(...[0, 1, 2, 3, 4].map((priority) => text(`P${priority}`, XS)));
+    const idWidth = card - 14 - 2 * unit(1.5) - (14 + unit(1.5) + code);
+    for (const part of ['bdesk-', '38k.109']) expect(mono(part, { size: XS }), part).toBeLessThanOrEqual(idWidth);
+  });
+
+  it.each(['fr', 'en'] as const)('en %s, garde chaque pastille sur une ligne, avec son pictogramme', (language) => {
+    const { kanban, shell } = CATALOGS[language];
+    const badge = (value: string) => 11 + unit(1) + text(value, XS, 500) + 2 * unit(1.5) + 2 * BORDER;
+    for (const value of [kanban.card.agent, shell.signals.kinds.drift, shell.signals.kinds.longBlockage, shell.badges.abandon, shell.badges.decline]) {
+      expect(badge(value), value).toBeLessThanOrEqual(card);
+    }
   });
 });

@@ -119,8 +119,10 @@ export function Board({ project, issues, declared }: { project: Project; issues:
     );
   };
 
+  // Le conteneur du tableau, nommé : dans un tableau de six à huit colonnes, le bloc qui suit l'en-tête de chaque colonne en est un aussi
+  // (`layout.body`), et la liste qu'il contient vise le tableau par son nom (`layout.ts`). Une classe sans nom vise le conteneur le plus proche.
   return (
-    <div ref={rootRef} className="@container flex min-w-0 flex-col gap-4">
+    <div ref={rootRef} className="@container/board flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         {hasEpics ? (
           <EpicFilter open={choices.open} closed={choices.closed} value={epic?.id ?? ''} onChange={params.setEpic} />

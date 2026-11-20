@@ -109,10 +109,10 @@ export function PriorityGlyph({
 }
 
 /**
- * Priorité : barres et code (`P1`) ; le libellé complet reste en infobulle et pour les lecteurs d'écran. `codeClassName` : le code peut être masqué
- * (une carte d'une colonne étroite du tableau), les barres et le libellé restent.
+ * Priorité : barres et code (`P1`) ; le libellé complet reste en infobulle et pour les lecteurs d'écran. `glyphClassName` : les barres peuvent être
+ * masquées (une carte d'une colonne étroite du tableau) ; le code, qui dit la priorité en clair, et le libellé restent.
  */
-export function PriorityBadge({ priority, className, codeClassName }: { priority: number; className?: string; codeClassName?: string | undefined }) {
+export function PriorityBadge({ priority, className, glyphClassName }: { priority: number; className?: string; glyphClassName?: string | undefined }) {
   const meta = priorityMeta(priority);
   const t = useT();
   return (
@@ -120,8 +120,8 @@ export function PriorityBadge({ priority, className, codeClassName }: { priority
       className={cx('inline-flex items-center gap-1.5 text-ink-2', className)}
       title={t.shell.badges.priority(meta.label)}
     >
-      <PriorityGlyph priority={priority} />
-      <span className={cx('tnum', codeClassName)}>{meta.code}</span>
+      <PriorityGlyph priority={priority} {...(glyphClassName ? { className: glyphClassName } : {})} />
+      <span className="tnum">{meta.code}</span>
       <span className="sr-only">{meta.label}</span>
     </span>
   );

@@ -88,10 +88,10 @@ export function Card({
         <span id={idId} className="min-w-0 flex-1 wrap-anywhere font-mono text-xs leading-5 text-ink-3">
           {issue.id}
         </span>
-        <PriorityBadge priority={issue.priority} className="shrink-0 text-xs leading-5" codeClassName={layout?.priorityCode} />
+        <PriorityBadge priority={issue.priority} className="shrink-0 text-xs leading-5" glyphClassName={layout?.priorityGlyph} />
       </div>
 
-      <p className="wrap-anywhere text-ui text-ink">
+      <p className={cx('wrap-anywhere text-ui text-ink', layout?.title)}>
         <Link
           to={{ pathname: paths.issue(projectId, issue.id), search }}
           replace={panelOpen}

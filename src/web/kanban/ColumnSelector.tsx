@@ -13,7 +13,8 @@ import { columnMeta, ticketNoun } from './meta';
  *
  * Il a un bouton par colonne du Projet (`Board.columnIds`). Au-delà de cinq, avec les colonnes des Statuts de relais, les boutons gardent leur nom
  * sur une ligne et la rangée défile en elle-même quand elle ne tient pas (`layout.scrolls`) : le bouton de la colonne affichée y est ramené à la vue,
- * à l'ouverture (`?col=`), quand h ou l change de colonne et quand la rangée change de largeur, avec la place de son anneau de focus.
+ * à l'ouverture (`?col=`) et quand h ou l change de colonne, avec la place de son anneau de focus. Quand la rangée change de largeur, c'est le bouton
+ * qui a le focus, si on la parcourt au clavier, sinon celui de la colonne affichée.
  */
 export function ColumnSelector({
   board,
@@ -35,20 +36,24 @@ export function ColumnSelector({
   useLayoutEffect(() => {
     const group = row.current;
     if (!layout.scrolls || !group) return;
-    const reveal = () => {
-      const button = group.querySelector<HTMLElement>('button[aria-pressed="true"]');
+    /** Ramène ce bouton à la vue, en faisant défiler la rangée seule, à la main : `scrollIntoView` pourrait aussi faire défiler la page. */
+    const reveal = (button: HTMLElement | null) => {
       if (!button) return;
-      // Le défilement de la rangée seule, à la main : `scrollIntoView` pourrait aussi faire défiler la page. Le bouton garde de chaque côté la place
-      // du remplissage de la rangée, où tient son anneau de focus.
+      // Le bouton garde de chaque côté la place du remplissage de la rangée, où tient son anneau de focus.
       const room = Number.parseFloat(getComputedStyle(group).paddingLeft) || 0;
       const { offsetLeft, offsetWidth } = button;
       if (offsetLeft - room < group.scrollLeft) group.scrollLeft = offsetLeft - room;
       else if (offsetLeft + offsetWidth + room > group.scrollLeft + group.clientWidth) group.scrollLeft = offsetLeft + offsetWidth + room - group.clientWidth;
     };
-    reveal();
-    // Et quand la rangée change de largeur (fenêtre redimensionnée, téléphone tourné) : le bouton actif ne sort pas de la vue.
+    const active = () => group.querySelector<HTMLElement>('button[aria-pressed="true"]');
+    reveal(active());
+    // Et quand la rangée change de largeur (fenêtre redimensionnée, téléphone tourné) : le bouton qui a le focus, s'il est dans la rangée (on la
+    // parcourt au clavier), sinon celui de la colonne affichée, ne sort pas de la vue.
     if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(reveal);
+    const observer = new ResizeObserver(() => {
+      const focused = document.activeElement instanceof HTMLElement && group.contains(document.activeElement) ? document.activeElement.closest('button') : null;
+      reveal(focused ?? active());
+    });
     observer.observe(group);
     return () => observer.disconnect();
   }, [current, layout.scrolls]);

@@ -4,6 +4,7 @@ import { epicChildren, epicProgress, epicTree, groupByColumn } from '../../domai
 import type { DeclaredStatuses, Issue, Project } from '../data/types';
 import { statusLabel } from '../design/issue-palette';
 import { useT } from '../i18n';
+import { boardColumns } from '../kanban/columns';
 import { epicName } from '../kanban/epics';
 import { useDocumentTitle } from '../lib/useDocumentTitle';
 import { useNow } from '../lib/useNow';
@@ -60,6 +61,8 @@ export function EpicView({ project, epic, issues, declared }: { project: Project
   const progress = useMemo(() => epicProgress(children), [children]);
   const groups = useMemo(() => groupByColumn(children, declared), [children, declared]);
   const tree = useMemo(() => epicTree(epic.id, issues), [epic.id, issues]);
+  // Les colonnes du Projet, comme au tableau (déclarées ou portées) : la case de la colonne de chaque ligne de l'arbre a la largeur de leurs noms.
+  const columns = useMemo(() => boardColumns(issues, declared), [issues, declared]);
   const progressOf = useCallback((epicId: string) => epicProgress(epicChildren(epicId, issues).children), [issues]);
 
   // Chaque changement remplace l'entrée de l'historique : « Retour » quitte la page, il ne rejoue pas les bascules.
@@ -119,7 +122,7 @@ export function EpicView({ project, epic, issues, declared }: { project: Project
             <ViewSwitch value={view} onChange={setView} />
           </div>
           {view === 'tree' ? (
-            <Tree nodes={tree} projectId={project.id} now={now} progressOf={progressOf} declared={declared} />
+            <Tree nodes={tree} projectId={project.id} now={now} progressOf={progressOf} declared={declared} columns={columns} />
           ) : (
             <ByColumn groups={groups} nestedEpics={nestedEpics} projectId={project.id} now={now} progressOf={progressOf} />
           )}
