@@ -27,7 +27,7 @@ const ORIGINS: Record<HandoffStatus, MetricsSendBackOrigin> = {
 
 /** Ce que les Transitions d'un ticket disent de sa relecture. */
 export interface TicketReview {
-  /** Tours de relecture : les passages En relecture, c'est-à-dire les Transitions vers ce statut, et le statut de création s'il l'est. */
+  /** Tours de relecture : les passages En relecture, c'est-à-dire les Transitions vers ce statut, ou la création dans ce statut. */
   rounds: number;
   /** Retours, par origine. */
   sendBacks: Record<MetricsSendBackOrigin, number>;
@@ -44,8 +44,8 @@ const isDevelopment = (status: string, declared: DeclaredStatuses): boolean =>
 /**
  * Les Tours de relecture et les Retours d'une suite de statuts datés (`TicketTimeline.steps` : le statut de création, puis les Transitions), dans l'ordre de
  * l'historique : toute la suite qu'on lui donne. Les métriques lui donnent celle d'une Livraison, qui finit à sa dernière clôture. Un Tour est une
- * Transition vers En relecture ; le statut de création n'est pas une Transition (CONTEXT.md), mais il compte comme un passage En relecture : un ticket créé
- * En relecture a un Tour. Un Retour est une Transition d'un Statut de relais vers en cours, rattaché à un agent ou un statut déclaré `wip`
+ * Transition vers En relecture, ou la création du ticket dans ce statut (CONTEXT.md) : un ticket créé En relecture a un Tour, bien que sa création ne soit
+ * pas une Transition. Un Retour est une Transition d'un Statut de relais vers en cours, rattaché à un agent ou un statut déclaré `wip`
  * (`isDevelopment`), dont l'origine est le statut qu'il quitte. Deux statuts qui se suivent ne se répètent jamais (`recordedTransitions`).
  *
  * `declared` : les statuts personnalisés que le Projet déclare, qui disent lesquels de ses autres statuts comptent comme en cours.
@@ -55,10 +55,26 @@ export function reviewOf(steps: readonly Pick<Step, 'status'>[], declared: Decla
   let rounds = 0;
   steps.forEach(({ status }, index) => {
     if (status === 'in_review') rounds++;
-    const from = steps[index - 1]?.status;
-    if (from !== undefined && isHandoffStatus(from) && isDevelopment(status, declared)) sendBacks[ORIGINS[from]]++;
+    const origin = sendBackOrigin(steps, index, declared);
+    if (origin !== null) sendBacks[origin]++;
   });
   return { rounds, sendBacks };
+}
+
+/**
+ * L'instant du premier Retour d'une suite de statuts datés (`TicketTimeline.steps`), la règle de `reviewOf` : la date de la première Transition d'un Statut
+ * de relais vers en cours, rattaché à un agent ou un statut déclaré `wip`, qu'un Tour de relecture l'ait précédée ou non. null sans Retour. C'est là que la
+ * Décomposition du Cycle Time coupe le travail entre Développement et Correction (`cycleTimePartsOf`).
+ */
+export function firstSendBackAt(steps: readonly Step[], declared: DeclaredStatuses): number | null {
+  return steps.find((_, index) => sendBackOrigin(steps, index, declared) !== null)?.at ?? null;
+}
+
+/** L'origine du Retour qu'est le statut `index` de la suite, depuis le précédent ; null s'il n'en est pas un (le statut de création n'est pas une Transition). */
+function sendBackOrigin(steps: readonly Pick<Step, 'status'>[], index: number, declared: DeclaredStatuses): MetricsSendBackOrigin | null {
+  const from = steps[index - 1]?.status;
+  const to = steps[index]?.status;
+  return from !== undefined && to !== undefined && isHandoffStatus(from) && isDevelopment(to, declared) ? ORIGINS[from] : null;
 }
 
 /** Une Livraison de la période, avec sa relecture. */

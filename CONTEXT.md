@@ -264,7 +264,7 @@ _English_: Retrospective report
 _Avoid_: export, bilan
 
 **Tour de relecture**:
-Un passage d'un ticket En relecture : une Transition vers ce statut.
+Un passage d'un ticket En relecture : une Transition vers ce statut, ou sa création dans ce statut.
 _English_: Review round
 _Avoid_: itération
 
@@ -295,7 +295,7 @@ Le Taux d'échec des seules Livraisons relues d'une période, à lire à côté 
 _English_: Change failure rate after review
 
 **Attente humaine**:
-Temps cumulé passé À valider par un ticket, toutes périodes confondues ; composante du Cycle Time.
+Temps cumulé passé À valider par un ticket, toutes périodes confondues, hors Blocage (un temps À valider en Blocage compte en Blocage) ; composante du Cycle Time.
 _English_: Human wait
 _Avoid_: temps de validation
 

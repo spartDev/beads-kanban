@@ -921,7 +921,7 @@ export interface MetricsReviewFailureRate {
 
 /**
  * Les mesures de relecture de la période (bdesk-pz0.5, ADR 0007) : celles des Livraisons de la période, datées de leur dernière clôture comme le Débit.
- * Elles se lisent dans les Transitions, Tours de relecture (vers En relecture) et Retours (d'un Statut de relais vers en cours, rattaché à un agent ou un
+ * Elles se lisent dans les Transitions, Tours de relecture (Transitions vers En relecture, ou création dans ce statut) et Retours (d'un Statut de relais vers en cours, rattaché à un agent ou un
  * autre statut que le Projet déclare de catégorie `wip`), d'avant la dernière clôture : ceux d'avant une Réouverture comptent. Rien n'est rétroactif :
  * avant que les Statuts de relais soient posés, aucune Livraison n'est relue, et la Couverture de relecture dit quand ces mesures deviennent représentatives.
  */
@@ -954,6 +954,47 @@ export interface MetricsReview {
   failureRate: MetricsSignificance & { reviewed: MetricsReviewFailureRate; unreviewed: MetricsReviewFailureRate };
   /** Les Retours des Livraisons de la période (relues ou non), par origine : un Retour compte autant de fois qu'il a lieu. */
   sendBacks: Record<MetricsSendBackOrigin, number>;
+}
+
+/**
+ * Décomposition du Cycle Time des Livraisons de la période (bdesk-pz0.6, ADR 0007), datées de leur dernière clôture comme le Débit. Les six parts
+ * s'additionnent, pour chaque Livraison comme pour leur somme, en ms : `total` est le Cycle Time cumulé, celui de leurs parts travail et Blocage dans la
+ * Décomposition du Lead Time (`MetricsLeadTimeBreakdown.work + blocked`). Un temps à la fois de relais et de Blocage compte en Blocage, comme pour
+ * l'Efficacité du flux. Rien n'est rétroactif : avant que les Statuts de relais soient posés, tout le travail est en Développement.
+ */
+export interface MetricsCycleTimeBreakdown {
+  /** Livraisons de la période (le Débit) ; une Livraison jamais démarrée n'a pas de Cycle Time, et n'ajoute rien aux parts. */
+  deliveries: number;
+  /** Cycle Time cumulé de ces Livraisons ; vaut `review + integration + humanWait + blocked + development + correction`. */
+  total: number;
+  /** Relecture : le temps En relecture hors Blocage. */
+  review: number;
+  /** Intégration : le temps En intégration hors Blocage. */
+  integration: number;
+  /** Attente humaine : le temps À valider hors Blocage (un temps À valider en Blocage compte en Blocage). */
+  humanWait: number;
+  /** Blocage dans le Cycle Time (statut bloqué, ou dépendance non fermée pendant le travail), Statuts de relais compris. */
+  blocked: number;
+  /** Développement : le reste du travail (en cours, rattaché à un agent, statut déclaré `wip`) hors Blocage, avant le premier Retour ; tout le reste sans Retour. */
+  development: number;
+  /** Correction : ce même reste du travail, à partir du premier Retour, Réouvertures comprises. */
+  correction: number;
+  /** L'Attente humaine par Livraison. */
+  humanWaits: MetricsHumanWaits;
+}
+
+/** L'Attente humaine des Livraisons de la période, Livraison par Livraison (`MetricsCycleTimeBreakdown.humanWait` en est la somme). */
+export interface MetricsHumanWaits {
+  /** Livraisons qui ont attendu l'utilisateur : une Attente humaine non nulle. */
+  waited: number;
+  /** Médiane et P85 de l'Attente humaine de ces Livraisons seulement (`n` vaut `waited`). */
+  stats: MetricsDurationStats;
+  /** Au moins `minDeliveries` Livraisons qui ont attendu : en dessous, les centiles sont donnés, mais ne disent pas grand-chose. */
+  reliable: boolean;
+  /** Le seuil, celui de la Tendance longue : 4 Livraisons. */
+  minDeliveries: number;
+  /** Part de l'Attente humaine dans le Cycle Time cumulé (`humanWait / total`), de 0 à 1 ; null quand il est nul. */
+  share: number | null;
 }
 
 /** Ce que le domaine calcule : tout ce qu'affiche la page Métriques, hors Projets. */
@@ -1027,6 +1068,8 @@ export interface MetricsResponse extends MetricsReport {
   health: MetricsHealth;
   /** Mesures de relecture (bdesk-pz0.5) : calculées par `computeReview`, à côté de `computeMetrics`, sur la même période. */
   review: MetricsReview;
+  /** Décomposition du Cycle Time et Attente humaine (bdesk-pz0.6) : calculées par `computeCycleTimeBreakdown`, à côté de `computeMetrics`, sur la même période. */
+  cycleTimeBreakdown: MetricsCycleTimeBreakdown;
   /** Tendance longue (bdesk-l77.4) : calculée par `longTrendOf`, sur les 12 dernières semaines, quelle que soit la période. */
   longTrend: MetricsLongTrend;
 }

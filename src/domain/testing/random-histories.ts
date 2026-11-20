@@ -19,7 +19,7 @@ export function seededRandom(seed: number): Random {
 }
 
 const HOUR = 3_600_000;
-const STATUSES = ['open', 'in_progress', 'blocked', 'deferred', 'hooked', 'closed'];
+const STATUSES: readonly string[] = ['open', 'in_progress', 'blocked', 'deferred', 'hooked', 'closed'];
 /** Le 1er octobre 2026, 00:00 UTC. */
 const BASE = Date.UTC(2026, 9, 1);
 
@@ -35,6 +35,11 @@ export interface RandomHistoryOptions {
    * Une seule horloge pour tout le Projet, au lieu d'une par ticket : voir `randomLineage`. Faux par défaut.
    */
   sharedClock?: boolean;
+  /**
+   * Les statuts que prend un ticket entre sa création (ouvert) et sa clôture finale, tirés au hasard ; par défaut ceux de base (ouvert, en cours, bloqué,
+   * différé, rattaché à un agent, fermé). Les mêmes tirages, donc les mêmes historiques, pour une liste de même longueur.
+   */
+  statuses?: readonly string[];
 }
 
 /** Les deux façons de dater un tirage, pour `it.each` : une horloge par ticket, ou une seule pour le Projet (`sharedClock`). */
@@ -55,9 +60,9 @@ export const CLOCKS = [
  */
 export function randomHistories(random: Random, options: RandomHistoryOptions): TicketHistory[] {
   if (options.sharedClock) return randomLineage(random, options).histories;
-  const { tickets: count, clockBack } = options;
+  const { tickets: count, clockBack, statuses = STATUSES } = options;
   const ids = Array.from({ length: count }, (_, index) => `t-${index}`);
-  return ids.map((id) => history(random, id, ids.filter((other) => other !== id), clockBack));
+  return ids.map((id) => history(random, id, ids.filter((other) => other !== id), clockBack, statuses));
 }
 
 /** Un commit de la lignée tirée au hasard : sa date, les tickets dont il change le statut, ceux dont il change les dépendances. */
@@ -82,9 +87,9 @@ export interface RandomLineage {
  * des statuts, comme dans l'historique Dolt. Un ticket sur quatre est un bug, relié à sa création (`discovered-from`) à un
  * ticket déjà créé, souvent déjà fermé : celui à partir duquel il a été découvert.
  */
-export function randomLineage(random: Random, { tickets: count, clockBack }: RandomHistoryOptions): RandomLineage {
+export function randomLineage(random: Random, { tickets: count, clockBack, statuses = STATUSES }: RandomHistoryOptions): RandomLineage {
   const ids = Array.from({ length: count }, (_, index) => `t-${index}`);
-  const todo = new Map(ids.map((id) => [id, statusPlan(random)]));
+  const todo = new Map(ids.map((id) => [id, statusPlan(random, statuses)]));
   const snapshots = new Map(ids.map((id) => [id, [] as StatusSnapshot[]]));
   const links = new Map(ids.map((id) => [id, [] as DependencyHistory[]]));
   const types = new Map(ids.map((id) => [id, random(4) === 0 ? 'bug' : 'task']));
@@ -145,9 +150,9 @@ export function randomLineage(random: Random, { tickets: count, clockBack }: Ran
 }
 
 /** Les statuts que prend un ticket, dans l'ordre : créé ouvert, 0 à 7 changements, puis fermé trois fois sur quatre. */
-function statusPlan(random: Random): string[] {
+function statusPlan(random: Random, statuses: readonly string[]): string[] {
   const plan = ['open'];
-  for (let changes = random(8); changes > 0; changes--) plan.push(STATUSES[random(STATUSES.length)] ?? 'open');
+  for (let changes = random(8); changes > 0; changes--) plan.push(statuses[random(statuses.length)] ?? 'open');
   if (random(4) > 0) plan.push('closed');
   return plan;
 }
@@ -160,7 +165,7 @@ function pick<T>(random: Random, items: readonly T[], n: number): T[] {
   return picked;
 }
 
-function history(random: Random, id: string, others: string[], clockBack: number): TicketHistory {
+function history(random: Random, id: string, others: string[], clockBack: number, statuses: readonly string[]): TicketHistory {
   let time = BASE + random(48) * HOUR;
   let earliest = time;
   let latest = time;
@@ -171,7 +176,7 @@ function history(random: Random, id: string, others: string[], clockBack: number
     latest = Math.max(latest, time);
     snapshots.push({ status, at: new Date(time) });
   };
-  for (let changes = random(8); changes > 0; changes--) next(STATUSES[random(STATUSES.length)] ?? 'open');
+  for (let changes = random(8); changes > 0; changes--) next(statuses[random(statuses.length)] ?? 'open');
   if (random(4) > 0) next('closed');
 
   const dependencies: DependencyHistory[] = [];
