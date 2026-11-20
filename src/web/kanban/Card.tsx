@@ -119,8 +119,10 @@ export function Card({
       <Blocking issue={issue} />
       {/* Le statut que la colonne ne dit pas (`showsStatus`) : celui d'un ticket en pause, un Statut de relais dans Bloqué, un autre statut déclaré de travail. */}
       {showsStatus(issue.status, lane, declared) ? (
-        // Un statut inconnu peut être un seul long mot : il se coupe plutôt que de déborder de la carte (`wrap-break-word`).
-        <p data-card-status className="self-start rounded-full border border-line px-1.5 text-xs leading-5 text-ink-2 wrap-break-word">
+        // Un statut déclaré ou inconnu peut être un seul long mot (`waiting_on_customer`). Alignée à gauche (`self-start`), la pastille prendrait la
+        // largeur du mot entier et déborderait de la carte, sur la colonne voisine : elle n'est jamais plus large que la carte (`max-w-full`), et le
+        // mot s'y coupe (`wrap-break-word`), sur autant de lignes qu'il le faut.
+        <p data-card-status className="max-w-full self-start rounded-full border border-line px-1.5 text-xs leading-5 text-ink-2 wrap-break-word">
           {statusLabel(issue.status, language)}
         </p>
       ) : null}

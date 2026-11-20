@@ -161,6 +161,7 @@ export function Board({ project, issues, declared }: { project: Project; issues:
             count={board.columns[id].length}
             shown={id === column}
             layout={layout}
+            columns={board.columnIds}
             doneDays={params.doneDays}
             since={since}
             closedEarlier={board.closedEarlier}

@@ -3,6 +3,8 @@ import { kanban } from '../i18n/catalog/kanban';
 import type { Language } from '../i18n/language';
 import { localDateFormat } from '../lib/localDay';
 import { FORMATS } from '../metrics/format';
+import { HANDOFF_COLUMN } from '../../domain/columns';
+import { HANDOFF_STATUSES } from '../../domain/statuses';
 import { COLUMN_IDS, type ColumnId } from './columns';
 
 export interface ColumnMeta {
@@ -14,9 +16,10 @@ export interface ColumnMeta {
   hint: (doneDays: number) => string;
   /**
    * La règle en toutes lettres, en infobulle. `since` (ms epoch) est minuit du premier jour de la fenêtre de Terminé :
-   * donné, la règle l'écrit en toutes lettres.
+   * donné, la règle l'écrit en toutes lettres. `columns` : les colonnes du tableau ; Bloqué ne cite que les Statuts de relais qui y ont la leur
+   * (toutes les colonnes, sans `columns`).
    */
-  rule: (doneDays: number, since?: number) => string;
+  rule: (doneDays: number, since?: number, columns?: readonly ColumnId[]) => string;
   /** Ce que la colonne dit quand elle n'a aucune carte. */
   empty: (doneDays: number) => string;
 }
@@ -41,7 +44,7 @@ function firstDay(since: number, language: Language): string {
 const columnMetaIn = (language: Language): Record<ColumnId, ColumnMeta> => {
   const { columns } = kanban[language];
   const noTicket = () => columns.empty;
-  const plain = (id: Exclude<ColumnId, 'done'>, icon: LucideIcon): ColumnMeta => ({
+  const plain = (id: Exclude<ColumnId, 'done' | 'blocked'>, icon: LucideIcon): ColumnMeta => ({
     id,
     label: columns[id].label,
     icon,
@@ -57,7 +60,18 @@ const columnMetaIn = (language: Language): Record<ColumnId, ColumnMeta> => {
     inReview: plain('inReview', Eye),
     inIntegration: plain('inIntegration', GitMerge),
     awaitingHuman: plain('awaitingHuman', CircleUserRound),
-    blocked: plain('blocked', Ban),
+    blocked: {
+      id: 'blocked',
+      label: columns.blocked.label,
+      icon: Ban,
+      hint: () => columns.blocked.hint,
+      // Les Statuts de relais en Blocage, ceux seulement dont le tableau a la colonne : un Projet qui n'en a aucun n'en lit aucun.
+      rule: (_days, _since, shown = COLUMN_IDS) =>
+        columns.blocked.rule(
+          HANDOFF_STATUSES.filter((status) => shown.includes(HANDOFF_COLUMN[status])).map((status) => kanban[language].statuses[status]),
+        ),
+      empty: noTicket,
+    },
     done: {
       id: 'done',
       label: columns.done.label,

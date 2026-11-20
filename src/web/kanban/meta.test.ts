@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { columnsOf } from '../../domain/columns';
 import { withTimeZone } from '../test/timeZone';
 import { COLUMN_IDS } from './columns';
 import {
@@ -43,6 +44,21 @@ describe('les colonnes affichées', () => {
     );
     expect(COLUMN_META.blocked.rule(14)).toBe(
       'Ticket au statut bloqué, ou dans un statut de travail mais en Blocage (il dépend d’un ticket qui n’est pas fermé) : en cours, rattaché à un agent, en relecture, en intégration, à valider ou un autre statut que le Projet déclare comme travail.',
+    );
+  });
+
+  it('ne citent dans la règle de Bloqué que les Statuts de relais dont le tableau a la colonne, en français et en anglais', () => {
+    expect(COLUMN_META.blocked.rule(14, undefined, columnsOf([]))).toBe(
+      'Ticket au statut bloqué, ou dans un statut de travail mais en Blocage (il dépend d’un ticket qui n’est pas fermé) : en cours, rattaché à un agent ou un autre statut que le Projet déclare comme travail.',
+    );
+    expect(COLUMN_META.blocked.rule(14, undefined, columnsOf(['awaiting_human']))).toBe(
+      'Ticket au statut bloqué, ou dans un statut de travail mais en Blocage (il dépend d’un ticket qui n’est pas fermé) : en cours, rattaché à un agent, à valider ou un autre statut que le Projet déclare comme travail.',
+    );
+    expect(columnMeta('en').blocked.rule(14, undefined, columnsOf([]))).toBe(
+      'Ticket with the blocked status, or in a work status but Blocked (it depends on a ticket that isn’t closed): in progress, hooked to an agent or another status the Project declares as work.',
+    );
+    expect(columnMeta('en').blocked.rule(14, undefined, columnsOf(['in_review', 'in_integration']))).toBe(
+      'Ticket with the blocked status, or in a work status but Blocked (it depends on a ticket that isn’t closed): in progress, hooked to an agent, in review, in integration or another status the Project declares as work.',
     );
   });
 

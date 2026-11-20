@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { useFormat, useLanguage, useT } from '../i18n';
 import { cx } from '../lib/cx';
 import type { Board, ColumnId } from './columns';
@@ -16,6 +16,20 @@ import { columnMeta, ticketNoun } from './meta';
  * à l'ouverture (`?col=`) et quand h ou l change de colonne, avec la place de son anneau de focus. Quand la rangée change de largeur, c'est le bouton
  * qui a le focus, si on la parcourt au clavier, sinon celui de la colonne affichée.
  */
+
+/** Ramène ce bouton à la vue, en faisant défiler la rangée seule, à la main : `scrollIntoView` pourrait aussi faire défiler la page. */
+function reveal(group: HTMLElement, button: HTMLElement | null) {
+  if (!button) return;
+  // Le bouton garde de chaque côté la place du remplissage de la rangée, où tient son anneau de focus.
+  const room = Number.parseFloat(getComputedStyle(group).paddingLeft) || 0;
+  const { offsetLeft, offsetWidth } = button;
+  if (offsetLeft - room < group.scrollLeft) group.scrollLeft = offsetLeft - room;
+  else if (offsetLeft + offsetWidth + room > group.scrollLeft + group.clientWidth) group.scrollLeft = offsetLeft + offsetWidth + room - group.clientWidth;
+}
+
+/** Le bouton de la colonne affichée. */
+const activeButton = (group: HTMLElement) => group.querySelector<HTMLElement>('button[aria-pressed="true"]');
+
 export function ColumnSelector({
   board,
   current,
@@ -33,30 +47,30 @@ export function ColumnSelector({
   const meta = columnMeta(language);
   const row = useRef<HTMLDivElement>(null);
 
+  // À l'ouverture et à chaque changement de colonne : le bouton de la colonne affichée.
   useLayoutEffect(() => {
     const group = row.current;
-    if (!layout.scrolls || !group) return;
-    /** Ramène ce bouton à la vue, en faisant défiler la rangée seule, à la main : `scrollIntoView` pourrait aussi faire défiler la page. */
-    const reveal = (button: HTMLElement | null) => {
-      if (!button) return;
-      // Le bouton garde de chaque côté la place du remplissage de la rangée, où tient son anneau de focus.
-      const room = Number.parseFloat(getComputedStyle(group).paddingLeft) || 0;
-      const { offsetLeft, offsetWidth } = button;
-      if (offsetLeft - room < group.scrollLeft) group.scrollLeft = offsetLeft - room;
-      else if (offsetLeft + offsetWidth + room > group.scrollLeft + group.clientWidth) group.scrollLeft = offsetLeft + offsetWidth + room - group.clientWidth;
-    };
-    const active = () => group.querySelector<HTMLElement>('button[aria-pressed="true"]');
-    reveal(active());
-    // Et quand la rangée change de largeur (fenêtre redimensionnée, téléphone tourné) : le bouton qui a le focus, s'il est dans la rangée (on la
-    // parcourt au clavier), sinon celui de la colonne affichée, ne sort pas de la vue.
-    if (typeof ResizeObserver === 'undefined') return;
+    if (layout.scrolls && group) reveal(group, activeButton(group));
+  }, [current, layout.scrolls]);
+
+  // Quand la rangée change de largeur (fenêtre redimensionnée, téléphone tourné, rangée qui apparaît) : le bouton qui a le focus, s'il est dans la
+  // rangée (on la parcourt au clavier), sinon celui de la colonne affichée, ne sort pas de la vue. Un seul observateur, de l'ouverture à la fin,
+  // indépendant de la colonne affichée ; et il n'agit que si la largeur a changé. Le navigateur prévient aussi un observateur dès qu'il commence à
+  // observer, sans que rien n'ait changé : recréé à chaque colonne, l'observateur ramenait alors le bouton qui a le focus, et défaisait le
+  // défilement que h ou l venait de faire vers la nouvelle colonne.
+  useEffect(() => {
+    const group = row.current;
+    if (!layout.scrolls || !group || typeof ResizeObserver === 'undefined') return;
+    let width = group.clientWidth;
     const observer = new ResizeObserver(() => {
+      if (group.clientWidth === width) return;
+      width = group.clientWidth;
       const focused = document.activeElement instanceof HTMLElement && group.contains(document.activeElement) ? document.activeElement.closest('button') : null;
-      reveal(focused ?? active());
+      reveal(group, focused ?? activeButton(group));
     });
     observer.observe(group);
     return () => observer.disconnect();
-  }, [current, layout.scrolls]);
+  }, [layout.scrolls]);
 
   return (
     <div data-column-selector className={cx('sticky top-12 z-10 -mx-4 bg-panel px-4 py-1.5 md:top-11 md:-mx-5 md:px-5', layout.selector)}>

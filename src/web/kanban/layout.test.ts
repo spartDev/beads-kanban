@@ -5,6 +5,7 @@ import { statusLabel } from '../design/issue-palette';
 import { CATALOGS } from '../i18n/catalog';
 import type { Language } from '../i18n/language';
 import { formatAge } from '../lib/relativeTime';
+import { FORMATS } from '../metrics/format';
 import { FLEX_SHRINK, holds, lengthOf, names, resolved, rootFontSizeOf, rulesFor, selectorOf, type Rule } from '../test/compiledCss';
 import { KERNING_ALLOWANCE, MONO_FILE, SANS_FILE, textMeasurer } from '../test/fontMetrics';
 import { COLUMN_IDS } from './columns';
@@ -57,6 +58,11 @@ const SIDEBAR = matched(/<aside className="([^"]+)"/.exec(source('../shell/Sideb
 const PAGE = matched(/'(mx-auto flex w-full [^']+)'/.exec(source('../pages/Page.tsx')), 'les classes de la page');
 const WIDE_PAGE = matched(/wide \? '([^']+)'/.exec(source('../pages/Page.tsx')), 'les classes de la page large');
 const GRID = matched(/cx\('([^']+)', layout\.grid\)/.exec(source('./Board.tsx')), 'la grille du tableau');
+// L'en-tête d'une colonne (ses marges, sa ligne de texte, la liste de Terminé) et la carte (sa marge de défilement, son anneau de focus).
+const HEADER = matched(/<header className=\{cx\('([^']+)', layout\.header\)\}/.exec(source('./Column.tsx')), 'l’en-tête d’une colonne');
+const HEADER_ROW = matched(/<div className=\{cx\('([^']+)', layout\.headerRow\)\}/.exec(source('./Column.tsx')), 'la ligne de l’en-tête');
+const DONE_SELECT = matched(/className="(ml-auto h-6 [^"]+)"/.exec(source('./Column.tsx')), 'la liste de Terminé');
+const CARD = matched(/'(relative flex scroll-mb-20 [^']+)'/.exec(source('./Card.tsx')), 'la carte');
 const BODY_TEXT = 'body';
 
 const TEXT = { ui: 'text-ui', xs: 'text-xs', micro: 'text-micro', semibold: 'font-semibold', medium: 'font-medium' } as const;
@@ -79,7 +85,7 @@ const LAYOUT_PARTS = (layout: BoardLayout) => [
   layout.selectorLabel,
 ];
 const COUNTS = [5, 6, 7, 8] as const;
-const sheet = await sheetFor([SIDEBAR, PAGE, WIDE_PAGE, GRID, ...Object.values(TEXT), ...COUNTS.flatMap((count) => LAYOUT_PARTS(boardLayout(count)))]);
+const sheet = await sheetFor([SIDEBAR, PAGE, WIDE_PAGE, GRID, HEADER, HEADER_ROW, DONE_SELECT, CARD, ...Object.values(TEXT), ...COUNTS.flatMap((count) => LAYOUT_PARTS(boardLayout(count)))]);
 const ROOT = rootFontSizeOf(sheet);
 const px = (value: string) => lengthOf(sheet, value, ROOT);
 /** `n` unités d'espacement de Tailwind (`px-1.5` : 1,5), lues dans la feuille (`--spacing`). */
@@ -468,6 +474,69 @@ describe.each([6, 7, 8])('à %i colonnes côte à côte, au seuil, une colonne �
       }
     }
     expect(failures).toEqual([]);
+  });
+
+  /** Combien de lignes il faut à `value`, en `text-xs`, sur une ligne de `width` px : il passe à la ligne entre deux mots. */
+  function xsLines(value: string, width: number): number {
+    const space = sans(' ', { size: XS });
+    let lines = 1;
+    let line = 0;
+    for (const word of value.split(' ')) {
+      const size = text(word, XS);
+      if (line > 0 && line + space + size > width) {
+        lines++;
+        line = size;
+      } else line = line === 0 ? size : line + space + size;
+    }
+    return lines;
+  }
+
+  /** La largeur d'un compte écrit dans `language` (« 1 067 », « 1,067 ») : chiffres tabulaires, séparateur de milliers compris. */
+  const countWidth = (count: number, language: Language) =>
+    [...FORMATS[language].formatCount(count)].reduce((width, char) => width + (/\d/.test(char) ? digit : sans(char, { size: XS })), 0) + KERNING_ALLOWANCE;
+
+  /**
+   * La hauteur d'un en-tête dans une colonne étroite, comme le navigateur le range : ses marges (`pt-2.5`, `pb-1.5`) ; sa ligne de texte
+   * (`headerLines`), chaque ligne de la hauteur de ligne du corps, celle où tient la liste de Terminé de la hauteur de la liste (`h-6`), le tout
+   * d'au moins `min-h-6` ; l'écart (`gap-0.5`) ; la règle (`text-xs`), en autant de lignes qu'il lui en faut.
+   */
+  function headerHeight(id: (typeof COLUMN_IDS)[number], count: number, days: number, language: Language): number {
+    const meta = columnMeta(language)[id];
+    const withSelect = id === 'done';
+    const { lines } = headerLines(meta.label, countWidth(count, language), withSelect ? select(language) : undefined);
+    const rowLine = px(sheet.find((rule) => rule.selector === BODY_TEXT && 'line-height' in rule.declarations)?.declarations['line-height'] as string);
+    const selectHeight = px(atViewport(sheet, DONE_SELECT, 'height', 1440) as string);
+    const lastLine = withSelect ? Math.max(rowLine, selectHeight) : rowLine;
+    const row = Math.max(px(atViewport(sheet, HEADER_ROW, 'min-height', 1440) as string), (lines - 1) * rowLine + lastLine);
+    const xsLine = lengthOf(sheet, resolved(sheet, atViewport(sheet, TEXT.xs, 'line-height', 1440) as string), ROOT, () => XS);
+    const [top, bottom, gap] = (['padding-top', 'padding-bottom', 'gap'] as const).map((property) => px(atViewport(sheet, HEADER, property, 1440) as string));
+    return (top as number) + row + (gap as number) + xsLines(meta.hint(days), header) * xsLine + (bottom as number);
+  }
+
+  it('garde au clavier une carte entière sous les en-têtes collants : sa marge de défilement couvre la barre du haut, l’en-tête le plus haut et l’anneau de focus', () => {
+    // L'en-tête le plus haut au seuil, où les colonnes sont le plus étroites : dans les deux langues, jusqu'à 9 999 cartes, Terminé à chaque durée.
+    // Côte à côte, tous les en-têtes ont sa hauteur (les colonnes sont des sous-grilles).
+    let tallest = 0;
+    for (const language of LANGUAGES) {
+      for (const id of COLUMN_IDS) {
+        for (const count of [9, 99, 999, 9_999]) {
+          for (const days of id === 'done' ? doneDayChoices(7) : [14]) tallest = Math.max(tallest, headerHeight(id, count, days, language));
+        }
+      }
+    }
+    // Ce que mesure Chromium à 1 440 px, avec moins de 100 cartes par colonne : 108 px (bdesk-pz0.4, relecture 3) ; au seuil, avec 9 999 cartes, plus.
+    expect(tallest).toBeGreaterThanOrEqual(108);
+    // L'en-tête colle sous la barre du haut (`top-11`) ; l'anneau de focus (`ring-2`) déborde de la carte.
+    const stuckAt = px(valueAt(layout.header, 'top', sizes) as string);
+    const ring = Number(matched(/(?:^|:)ring-(\d+)(?:\s|$)/.exec(CARD), 'l’anneau de focus de la carte'));
+    const needed = stuckAt + tallest + ring;
+    const margin = px(valueAt(`${CARD} ${layout.card.item}`, 'scroll-margin-top', sizes) as string);
+    expect(margin, `${margin} px pour ${needed.toFixed(2)} px`).toBeGreaterThanOrEqual(needed);
+    // Pas plus qu'il ne faut : une carte remontée au clavier ne s'éloigne pas de son en-tête de plus d'une demi-rem.
+    expect(margin - needed).toBeLessThan(ROOT / 2);
+    // Une colonne seule, en deçà du seuil : l'en-tête ne colle pas, la carte garde la marge d'avant (`scroll-mt-28`), celle du tableau de cinq colonnes.
+    expect(valueAt(`${CARD} ${layout.card.item}`, 'scroll-margin-top', { board: wide - 1, column: 337 })).toBe(valueAt(CARD, 'scroll-margin-top', 0));
+    expect(valueAt(CARD, 'scroll-margin-top', 0)).toBe('calc(var(--spacing) * 28)');
   });
 
   it.each(LANGUAGES)('en %s, chaque pastille d’une carte tient, sans pictogramme : agent, Signaux, Abandon, Renoncement, et chaque mot du statut', (language) => {

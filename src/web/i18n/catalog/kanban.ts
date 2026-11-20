@@ -80,7 +80,9 @@ const fr = {
     blocked: {
       label: 'Bloqué',
       hint: 'Blocage ou statut bloqué',
-      rule: 'Ticket au statut bloqué, ou dans un statut de travail mais en Blocage (il dépend d’un ticket qui n’est pas fermé) : en cours, rattaché à un agent, en relecture, en intégration, à valider ou un autre statut que le Projet déclare comme travail.',
+      /** `relays` : les Statuts de relais qui ont leur colonne au tableau, écrits comme dans une phrase (« en relecture ») ; aucun sans eux. */
+      rule: (relays: readonly string[]) =>
+        `Ticket au statut bloqué, ou dans un statut de travail mais en Blocage (il dépend d’un ticket qui n’est pas fermé) : ${['en cours', 'rattaché à un agent', ...relays].join(', ')} ou un autre statut que le Projet déclare comme travail.`,
     },
     done: {
       label: 'Terminé',
@@ -396,7 +398,8 @@ const en: typeof fr = {
     blocked: {
       label: 'Blocked',
       hint: 'Blockage or blocked status',
-      rule: 'Ticket with the blocked status, or in a work status but Blocked (it depends on a ticket that isn’t closed): in progress, hooked to an agent, in review, in integration, awaiting validation or another status the Project declares as work.',
+      rule: (relays: readonly string[]) =>
+        `Ticket with the blocked status, or in a work status but Blocked (it depends on a ticket that isn’t closed): ${['in progress', 'hooked to an agent', ...relays].join(', ')} or another status the Project declares as work.`,
     },
     done: {
       label: 'Done',

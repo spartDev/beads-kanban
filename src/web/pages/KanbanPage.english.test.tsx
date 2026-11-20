@@ -61,7 +61,8 @@ describe('the kanban, in English', () => {
       [
         'Blocked',
         'Blockage or blocked status',
-        'Ticket with the blocked status, or in a work status but Blocked (it depends on a ticket that isn’t closed): in progress, hooked to an agent, in review, in integration, awaiting validation or another status the Project declares as work.',
+        // Cinq colonnes : aucun Statut de relais à citer.
+        'Ticket with the blocked status, or in a work status but Blocked (it depends on a ticket that isn’t closed): in progress, hooked to an agent or another status the Project declares as work.',
       ],
     ];
     for (const [column, hint, rule] of rules) {

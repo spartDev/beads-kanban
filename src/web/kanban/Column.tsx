@@ -22,6 +22,7 @@ export function Column({
   count,
   shown,
   layout,
+  columns,
   doneDays,
   since,
   closedEarlier,
@@ -35,6 +36,8 @@ export function Column({
   shown: boolean;
   /** La disposition du tableau, selon son nombre de colonnes : le seuil où elles sont côte à côte. */
   layout: BoardLayout;
+  /** Les colonnes du tableau : la règle de Bloqué ne cite que les Statuts de relais qui y ont la leur. */
+  columns: readonly ColumnId[];
   doneDays: number;
   /** Terminé : minuit du premier jour de la fenêtre (ms epoch), que la règle écrit en toutes lettres. */
   since: number;
@@ -78,7 +81,7 @@ export function Column({
           {id === 'done' && layout.inlineHeader ? ' ' : null}
           {id === 'done' ? <DoneWindow doneDays={doneDays} onChange={onDoneDays} /> : null}
         </div>
-        <p title={meta.rule(doneDays, since)} className="text-xs text-ink-3">
+        <p title={meta.rule(doneDays, since, columns)} className="text-xs text-ink-3">
           {meta.hint(doneDays)}
         </p>
       </header>
