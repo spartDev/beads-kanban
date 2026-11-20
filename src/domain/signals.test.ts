@@ -262,7 +262,7 @@ describe('signalsOf : Validation qui attend', () => {
 });
 
 describe('signalsOf : Boucle de Retours', () => {
-  /** Un ticket créé il y a 2 jours, puis passé par `statuses`, une heure d'écart chacun, jusqu'à 10 heures avant NOW. */
+  /** Un ticket créé il y a 2 jours, puis passé par `statuses`, une heure d'écart chacun : le dernier au plus 10 heures après la création. */
   const passedThrough = (id: string, statuses: string[], extra: Partial<MetricsTicket> = {}) =>
     ticket(
       id,
@@ -377,10 +377,15 @@ describe('signalsOf : ordre des nouveaux Signaux', () => {
       ['blocked', ago(4)],
     ]);
 
-    const order = signalsAt([looping('l3', 3), waiting('vb', 2), looping('l4', 4), blocked, waiting('va', 1.5)]).map((signal) =>
-      'ticket' in signal ? `${signal.kind}:${signal.ticket.id}` : signal.kind,
-    );
+    // Un ticket en cours depuis 30 jours : 30 relevés quotidiens à 1, un WIP habituel de 1, que dépassent les tickets en travail de maintenant.
+    const longRunning = ticket('a', [
+      ['open', ago(30) - HOUR],
+      ['in_progress', ago(30)],
+    ]);
 
-    expect(order).toEqual(['longBlockage:k', 'waitingValidation:vb', 'waitingValidation:va', 'sendBackLoop:l4', 'sendBackLoop:l3']);
+    const order = signalsAt([looping('l3', 3), waiting('vb', 2), longRunning, looping('l4', 4), blocked, waiting('va', 1.5)])
+      .map((signal) => ('ticket' in signal ? `${signal.kind}:${signal.ticket.id}` : signal.kind));
+
+    expect(order).toEqual(['longBlockage:k', 'unusualWip', 'waitingValidation:vb', 'waitingValidation:va', 'sendBackLoop:l4', 'sendBackLoop:l3']);
   });
 });

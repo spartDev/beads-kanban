@@ -126,6 +126,7 @@ describe('rapport de rétrospective : les Signaux de relais', () => {
 
   it('en anglais, sous leurs noms anglais', () => {
     const text = plain(buildRetrospective({ scopeName: 'beads-desktop', metrics: metrics(), signals: { status: 'ok', response: relayed }, language: 'en' }));
+    expect(text).toContain('### Unusual WIP\n\n- beads-desktop: 9 tickets in progress, above 6, the P85 of daily WIP over the last 90 days');
     expect(text).toContain('### Waiting validation\n\n- `bdesk-v` Export \\*csv\\*: Awaiting validation for 3 d');
     expect(text).toContain('### Send-back loop\n\n- `bdesk-l` Thème sombre: 4 Send-backs to development, still not closed');
   });

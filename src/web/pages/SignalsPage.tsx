@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 import { useProjects, useSignals } from '../data/hooks';
 import { projectInSentence } from '../data/projectNames';
 import { UnreadableProjects } from '../metrics/Notices';
-import { MetricHelp } from '../metrics/Tiles';
+import { MetricHelp } from '../metrics/MetricHelp';
 import type { ApiSignal, Project, SignalsResponse } from '../data/types';
 import { useLanguage, useT } from '../i18n';
 import { isInvisibleText } from '../lib/invisibleText';
